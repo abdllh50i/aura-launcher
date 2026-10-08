@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg">#0A0C0F</color>
+    <color name="card">#12161B</color>
+    <color name="card2">#181D24</color>
+    <color name="stroke">#222A33</color>
+    <color name="text">#F4F6F8</color>
+    <color name="text2">#9AA5B1</color>
+    <color name="text3">#66717E</color>
+    <color name="accent">#3E6AE1</color>
+    <color name="success">#2FD07A</color>
+    <color name="warn">#F5A524</color>
+    <color name="danger">#E5484D</color>
+    <color name="scrim">#CC05070A</color>
+    <color name="launcher_bg">#0B0D10</color>
+</resources>

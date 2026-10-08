@@ -1,0 +1,5 @@
+# Aura ROM integration (see /system/bin/aura-prepare.sh).
+# Runs after persist properties are loaded and before zygote starts, so the NWD framework reads the patched
+# config on the very same boot. `timeout` guarantees it can never delay boot by more than a few seconds.
+on load_persist_props_action
+    exec - root root -- /system/bin/timeout 15 /system/bin/sh /system/bin/aura-prepare.sh

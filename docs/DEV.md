@@ -1,0 +1,34 @@
+# Developer notes
+
+## Build the app
+```
+set JAVA_HOME=...\jdk-17   &  set ANDROID_HOME=...\Sdk
+gradlew :app:assembleRelease        (needs signing\keystore.properties — see below)
+```
+`app/build.gradle.kts` reads `signing/keystore.properties` (storeFile, storePassword, keyAlias, keyPassword). The keystore is
+never committed. Versions: `-PappVersionName=1.2.3 -PappVersionCode=10203` (code = MAJOR*10000 + MINOR*100 + PATCH).
+The updater compares the GitHub tag (`v1.2.3`) with `BuildConfig.VERSION_NAME`, and the downloaded APK must carry the same
+signing certificate and a higher versionCode.
+
+## Publish an app update (what the on-screen updater installs)
+1. bump the version, build release, 2. `gh release create vX.Y.Z aura-X.Y.Z.apk aura-X.Y.Z.apk.sha256 --notes "..."`.
+Release notes are shown in the update screen. `rom/make-release.ps1 -Version X.Y.Z` builds the APK, the ROM image and the pack.
+
+## ROM workshop (how the system image is built)
+The stock `system.img` (ext4, from the dump) is edited inside an Android 10 emulator because it ships the real
+`e2fsck`/`resize2fs` and a Linux ext4 driver: `rom/workshop/apply.sh` grows the filesystem into the free space of its logical
+partition (never beyond), mounts it, copies `rom/system/**`, patches the NWD config with `rom/system/bin/aura-prepare.sh --image`
+and the `build.prop` default-launcher line, runs `e2fsck -fn`. `rom/tools/imgdiff.py` then proves, file by file, that only the
+intended paths changed; `rom/tools/make_patch.py` turns the difference into a block patch (forward + reverse), which
+`rom/flash/aura-flash.sh` applies with full hash verification on the unit.
+
+Emulator: AVD "CarUnit" (Android 10 x86_64, 1024×600, 160 dpi) created with `ANDROID_AVD_HOME` on an ASCII path; the stock image is pushed to
+`/data/local/tmp/ws/system.img` once.
+
+## Facts about the firmware (from the dump)
+* No `avb` flag in the vendor fstab → no dm-verity on system/vendor/product; vbmeta uses the public AOSP test keys.
+* `persist.nwd.launcher.default=<pkg>` makes the patched PackageManager return that package as HOME.
+* The firmware keeps trusted apps in `AppConfig.xml` (`NwdApp`), a background-kill whitelist in `TaskWhitelist.xml`, and a
+  fast-dexopt list; `aura-prepare.sh` registers Aura in all of them at every boot (idempotent).
+* The stock launcher also reports "home in front" (ACTION_APP_IN_OUT, app id 4) and starts the floating volume bar, boot tip and
+  assistive touch services; Aura repeats both (`system/NwdBridge.kt`).

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- soft ring -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M54,54m-24,0a24,24 0,1 1,48 0a24,24 0,1 1,-48 0"
+        android:strokeColor="#FFF4F6F8"
+        android:strokeWidth="3" />
+    <!-- accent arc -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M54,30A24,24 0,0 1,78,54"
+        android:strokeColor="#FF3E6AE1"
+        android:strokeLineCap="round"
+        android:strokeWidth="6" />
+    <!-- core -->
+    <path
+        android:fillColor="#FFF4F6F8"
+        android:pathData="M54,54m-6,0a6,6 0,1 1,12,0a6,6 0,1 1,-12,0" />
+</vector>

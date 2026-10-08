@@ -1,0 +1,14 @@
+.gradle/
+build/
+local.properties
+signing/
+*.jks
+*.keystore
+.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+rom/stage/
+out/
+*.log
