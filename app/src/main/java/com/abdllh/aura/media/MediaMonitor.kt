@@ -73,33 +73,50 @@ object MediaMonitor {
     }
 
     // ---------------------------------------------------------------- broadcasts
+    private const val ACTION_NWD_INFO = "com.nwd.action.send_media_play_info"
+
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            val e = intent.extras
-            if (e != null) Log.d(TAG, "${intent.action} -> ${e.keySet().joinToString { k -> "$k=${e.get(k)}" }}")
-            fun s(vararg keys: String): String {
-                for (k in keys) {
-                    val v = e?.get(k)
-                    if (v is String && v.isNotBlank()) return v
-                }
-                return ""
+            // Any app may send these broadcasts and unparcelling a hostile extra throws: never let that kill the launcher.
+            try {
+                handle(intent)
+            } catch (t: Throwable) {
+                Log.w(TAG, "ignored ${intent.action}: $t")
             }
-            val title = s("track", "title", "name", "song", "songname", "music_name")
-            val artist = s("artist", "singer", "artistname")
-            val playing = when (val p = e?.get("playing") ?: e?.get("isPlaying") ?: e?.get("state")) {
-                is Boolean -> p
-                is Int -> p == 1 || p == 3
-                else -> broadcastInfo?.playing ?: true
-            }
-            if (intent.action == "com.android.music.playstatechanged" && title.isEmpty()) {
-                broadcastInfo = broadcastInfo?.copy(playing = playing) ?: return
-            } else if (title.isNotEmpty() || artist.isNotEmpty()) {
-                broadcastInfo = NowPlaying(title.ifEmpty { artist }, if (title.isEmpty()) "" else artist, null, playing, null)
-            } else {
-                return
-            }
-            publish()
         }
+    }
+
+    private fun handle(intent: Intent) {
+        val e = intent.extras
+        fun s(vararg keys: String): String {
+            for (k in keys) {
+                val v = e?.get(k)
+                if (v is String && v.isNotBlank()) return v
+            }
+            return ""
+        }
+        // The NWD apps report through OuterBroadcastSender.sendMediaPlayInfo: extra_media_name / _artist, and
+        // extra_media_app_src_inout = 1 when the source was closed.
+        if (intent.action == ACTION_NWD_INFO && (e?.get("extra_media_app_src_inout") as? Int) == 1) {
+            broadcastInfo = null
+            publish()
+            return
+        }
+        val title = s("extra_media_name", "track", "title", "name", "song", "songname", "music_name")
+        val artist = s("extra_media_artist", "artist", "singer", "artistname")
+        val playing = when (val p = e?.get("playing") ?: e?.get("isPlaying") ?: e?.get("state")) {
+            is Boolean -> p
+            is Int -> p == 1 || p == 3
+            else -> broadcastInfo?.playing ?: true
+        }
+        if (intent.action == "com.android.music.playstatechanged" && title.isEmpty()) {
+            broadcastInfo = broadcastInfo?.copy(playing = playing) ?: return
+        } else if (title.isNotEmpty() || artist.isNotEmpty()) {
+            broadcastInfo = NowPlaying(title.ifEmpty { artist }, if (title.isEmpty()) "" else artist, null, playing, null)
+        } else {
+            return
+        }
+        publish()
     }
 
     private fun registerBroadcasts() {

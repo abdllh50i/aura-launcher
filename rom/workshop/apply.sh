@@ -30,8 +30,10 @@ step "check (read-only), then grow filesystem to $PARTITION_BLOCKS blocks"
 # NB: never `e2fsck -y` here: it would "optimise" directories and rewrite thousands of blocks for no reason.
 e2fsck -fn $IMG > $WS/fsck_pre.log 2>&1 || fail "stock image is not clean"
 tail -1 $WS/fsck_pre.log
-resize2fs -f $IMG $PARTITION_BLOCKS 2>&1 | tail -2
+resize2fs -f $IMG $PARTITION_BLOCKS > $WS/resize.log 2>&1 || { cat $WS/resize.log; fail "resize2fs failed"; }
+tail -2 $WS/resize.log
 [ "$(stat -c %s $IMG)" = "$PARTITION_BYTES" ] || fail "image size changed: $(stat -c %s $IMG) != $PARTITION_BYTES"
+tune2fs -l $IMG | grep -q "^Block count: *$PARTITION_BLOCKS\$" || fail "filesystem block count is not $PARTITION_BLOCKS after the resize"
 e2fsck -fn $IMG > $WS/fsck_resized.log 2>&1 || fail "fsck after resize"
 tail -1 $WS/fsck_resized.log
 
@@ -74,7 +76,7 @@ grep -q '^ro.aura.rom.version=' $WS/bp.new || printf '\n# Aura ROM\nro.aura.rom.
 cat $WS/bp.new > $bp || fail "write build.prop"
 touch -t $STAMP $bp
 rm -f $WS/bp.new
-grep -n 'launcher.default\|aura' $bp
+grep -n -e 'launcher.default' -e 'aura' $bp
 
 step "verify what we wrote"
 ls -lZ $R/priv-app/Aura $R/etc/init/aura.rc $R/etc/permissions/privapp-permissions-aura.xml $R/bin/aura-prepare.sh

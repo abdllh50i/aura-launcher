@@ -7,8 +7,8 @@
       .\aura-rom.ps1 -Action Restore -Ip 192.168.1.50      Aura ROM        ->  stock firmware
 
   What it does: checks the device really is a K2501, reads the hash of the system partition, and only if that is the
-  exact stock (or exact Aura) image it writes the small block patch (about 6 MB), verifies the result and reboots.
-  Anything unexpected = it refuses and writes nothing.
+  exact stock (or exact Aura) image - or an interrupted run of this very patch - it writes the small block patch
+  (a few MB), verifies the result and reboots. Anything unexpected = it refuses and writes nothing.
 #>
 param(
     [ValidateSet("Status", "Install", "Restore")][string]$Action = "Status",
@@ -80,12 +80,21 @@ Say "Build  : $build" "Cyan"
 if ($model -ne $ExpectModel -and $nwd -ne $ExpectModel) {
     Die "This is not a '$ExpectModel' (found '$model'). Refusing to touch it. (If this is the TV or another device, that is exactly why this check exists.)"
 }
+
+# what the system that is running right now says (after a reboot this is the proof that the ROM is live)
+$romVer = Prop "ro.aura.rom.version"
+$homeApp = Prop "persist.nwd.launcher.default"
+$auraPath = ((A shell "pm path com.abdllh.aura 2>&1") -join " ").Trim()
+if ($romVer) { Say "Running: Aura ROM $romVer   home app = $homeApp   $auraPath" "Cyan" }
+else { Say "Running: no Aura ROM in the running system   home app = $homeApp" "Cyan" }
+
 foreach ($f in "forward.bin", "reverse.bin", "ranges.txt", "hashes.txt") {
     if (-not (Test-Path (Join-Path $pack $f))) { Die "Patch pack incomplete: $pack\$f is missing." }
 }
 if (-not (Test-Path $flashSh)) { Die "aura-flash.sh is missing next to this script." }
+$packMB = [math]::Round((Get-Item (Join-Path $pack "forward.bin")).Length / 1MB, 1)
 
-# ---------------------------------------------------------------- push pack + script
+# ---------------------------------------------------------------- push pack + script (and prove the copy is complete)
 Say ""
 Say "Copying the patch pack to the unit ..."
 A shell "rm -rf $remote; mkdir -p $remote" | Out-Null
@@ -94,7 +103,18 @@ $sh = [IO.File]::ReadAllText($flashSh) -replace "`r`n", "`n"
 $tmp = Join-Path $env:TEMP "aura-flash.sh"
 [IO.File]::WriteAllText($tmp, $sh, (New-Object Text.UTF8Encoding($false)))
 & $adbExe -s $script:dev push $tmp "$remote/aura-flash.sh" 2>&1 | Out-Null
-if (-not ((A shell "ls $remote/patch/forward.bin 2>&1") -join "" -match "forward.bin")) { Die "Copy to the unit failed." }
+
+function Remote-Size($path) {
+    $o = (A shell "wc -c < $path") -join ""
+    if ($o -match '^\s*(\d+)\s*$') { return [int64]$Matches[1] }
+    return -1
+}
+foreach ($f in "forward.bin", "reverse.bin", "ranges.txt", "hashes.txt") {
+    $want = (Get-Item (Join-Path $pack $f)).Length
+    $got = Remote-Size "$remote/patch/$f"
+    if ($got -ne $want) { Die "Copying $f to the unit failed (the unit has $got bytes, expected $want). Nothing was written; run the script again." }
+}
+if ((Remote-Size "$remote/aura-flash.sh") -ne (New-Object Text.UTF8Encoding($false)).GetByteCount($sh)) { Die "Copying aura-flash.sh to the unit failed. Nothing was written; run the script again." }
 
 function Flash($mode) {
     $lines = @()
@@ -106,28 +126,34 @@ function Flash($mode) {
 
 # ---------------------------------------------------------------- status
 Say ""
-Say "Reading the system partition hash (this takes up to a minute) ..."
+Say "Reading the system partition (this takes up to a minute) ..."
 $st = Flash "status"
-$state = ($st | Where-Object { $_ -match "^STATE:" } | Select-Object -First 1)
-if (-not $state) { Die "Could not read the state. Output above." }
-$isStock = $state -match "stock"
-$isAura = $state -match "Aura ROM applied"
-if ($Action -eq "Status") { Say ""; Say $state "Green"; exit 0 }
+$stateLine = ($st | Where-Object { $_ -match "^STATE:" } | Select-Object -First 1)
+$stateCode = ($st | Where-Object { $_ -match "^STATE_CODE=" } | Select-Object -First 1)
+if (-not $stateLine -or -not $stateCode) { Die "Could not read the state. Output above." }
+$code = ($stateCode -replace "^STATE_CODE=", "").Trim()
+if ($Action -eq "Status") {
+    Say ""
+    $color = "Green"; if ($code -eq "PARTIAL" -or $code -eq "UNKNOWN") { $color = "Yellow" }
+    Say $stateLine $color
+    exit 0
+}
 
 if ($Action -eq "Install") {
-    if ($isAura) { Say ""; Say "The Aura ROM is already installed. Nothing to do." "Green"; exit 0 }
-    if (-not $isStock) { Die "The system partition is neither the expected stock image nor the Aura image. Nothing was written." }
+    if ($code -eq "AURA") { Say ""; Say "The Aura ROM is already installed. Nothing to do." "Green"; exit 0 }
+    if ($code -ne "STOCK" -and $code -ne "PARTIAL") { Die "The system partition is neither the expected stock image nor an interrupted run of this patch (another firmware version?). Nothing was written and the unit was not changed." }
 }
 if ($Action -eq "Restore") {
-    if ($isStock) { Say ""; Say "The unit already has the stock firmware. Nothing to do." "Green"; exit 0 }
-    if (-not $isAura) { Die "The system partition is neither the Aura image nor the stock image. Nothing was written." }
+    if ($code -eq "STOCK") { Say ""; Say "The unit already has the stock firmware. Nothing to do." "Green"; exit 0 }
+    if ($code -ne "AURA" -and $code -ne "PARTIAL") { Die "The system partition is neither the Aura image nor an interrupted run of this patch. Nothing was written." }
 }
+if ($code -eq "PARTIAL") { Say ""; Say "$stateLine" "Yellow" }
 
 # ---------------------------------------------------------------- confirmation
 Say ""
 if ($Action -eq "Install") {
     Say "READY TO INSTALL the Aura ROM." "Yellow"
-    Say "  - writes about 6 MB of changed blocks into the system partition (not the whole system)" "Yellow"
+    Say "  - writes about $packMB MB of changed blocks into the system partition (not the whole system)" "Yellow"
     Say "  - the result is verified against the expected hash; on any problem the old blocks are written back" "Yellow"
     Say "  - your data (apps, settings, paired phones) is not touched" "Yellow"
 } else {
@@ -145,21 +171,41 @@ Say "Writing ..." "Cyan"
 $mode = if ($Action -eq "Install") { "apply" } else { "revert" }
 $out = Flash $mode
 if (-not ($out | Where-Object { $_ -match "^RESULT: OK" })) {
-    Die "The patch did not complete. Read the lines above. The unit has NOT been rebooted."
+    Say ""
+    Say "The patch did not report success. The unit has NOT been rebooted - do not switch it off or reboot it yet." "Red"
+    Say "  * If the lines above end with 'previous contents were restored and verified', nothing changed: you may try again." "Yellow"
+    Say "  * If the connection dropped or the output stops early, wait two minutes (the unit finishes the run by itself),"  "Yellow"
+    Say "    then run this script with -Action Status. An interrupted run is completed by running Install (or Restore) again." "Yellow"
+    Say "  * A log is kept on the unit: adb -s $script:dev shell cat $remote/flash.log" "Yellow"
+    Die "The $Action did not complete."
 }
 
+# small follow-up script, pushed as a file (no quoting games through three shells)
 if ($Action -eq "Install") {
     # make sure a previous crash-guard / kill switch does not leave the stock launcher selected
-    A shell "setprop persist.aura.disabled 0; rm -f /data/aura_disabled /data/data/com.abdllh.aura/files/disable_home" | Out-Null
+    $follow = "setprop persist.aura.disabled 0`nrm -f /data/aura_disabled /data/data/com.abdllh.aura/files/disable_home`necho prepared`n"
 } else {
     # undo the config edits made at boot and give the home role back to the stock launcher
-    $undo = 'for f in /data/nwdappconfig/app/*.pre-aura; do [ -f "$f" ] && cat "$f" > "${f%.pre-aura}" && rm -f "$f"; done; setprop persist.nwd.launcher.default com.android.launcher; setprop persist.aura.disabled 0; echo undone'
-    A shell $undo | ForEach-Object { Say "  $_" }
+    $follow = @'
+for f in /data/nwdappconfig/app/*.pre-aura; do
+  [ -f "$f" ] || continue
+  cat "$f" > "${f%.pre-aura}" && rm -f "$f"
+done
+setprop persist.nwd.launcher.default com.android.launcher
+setprop persist.aura.disabled 0
+echo undone
+'@
+    $follow = ($follow -replace "`r`n", "`n") + "`n"
 }
+$ftmp = Join-Path $env:TEMP "aura-follow.sh"
+[IO.File]::WriteAllText($ftmp, $follow, (New-Object Text.UTF8Encoding($false)))
+& $adbExe -s $script:dev push $ftmp "$remote/follow.sh" 2>&1 | Out-Null
+A shell "sh $remote/follow.sh" | ForEach-Object { Say "  $_" }
 
 Say ""
 Say "DONE: $Action succeeded." "Green"
-if ($NoReboot) { Say "Reboot the unit yourself to finish." "Yellow"; exit 0 }
+if ($NoReboot) { Say "Reboot the unit now to finish, and do not use it before that (the running system still holds the old file tables)." "Yellow"; exit 0 }
 Say "Rebooting the unit ..." "Cyan"
 A shell "reboot" | Out-Null
 Say "The first start after installing is slower (new apps are optimised); wait up to 3 minutes." "Gray"
+Say "Afterwards run status.bat: it must say 'Running: Aura ROM' and show the Aura app path." "Gray"

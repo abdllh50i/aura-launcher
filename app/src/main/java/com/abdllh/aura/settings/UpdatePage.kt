@@ -49,7 +49,7 @@ class UpdatePage(private val act: SettingsActivity) : Page(R.string.set_update, 
         val t = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
         t.addView(ctx.label(22f, Palette.text, Fonts.MEDIUM).apply { text = "Aura ${BuildConfig.VERSION_NAME}" })
         t.addView(ctx.label(13.5f, Palette.text2, Fonts.REGULAR).apply {
-            text = ctx.getString(R.string.upd_build_line, BuildConfig.VERSION_CODE, ctx.getString(if (Prefs.updateBeta) R.string.upd_channel_beta else R.string.upd_channel_stable))
+            text = ctx.getString(R.string.upd_build_line, BuildConfig.VERSION_CODE.toString(), ctx.getString(if (Prefs.updateBeta) R.string.upd_channel_beta else R.string.upd_channel_stable))
         }, lp(MATCH, WRAP).apply { topMargin = 4.dp })
         head.addView(t, lp(0, WRAP, 1f).apply { marginStart = 18.dp })
         col.addView(head, lp(MATCH, WRAP))
@@ -67,11 +67,12 @@ class UpdatePage(private val act: SettingsActivity) : Page(R.string.set_update, 
         col.addRow(ctx.switchRow(R.drawable.ic_refresh, ctx.getString(R.string.upd_auto), ctx.getString(R.string.upd_auto_sub), Prefs.updateAuto) { Prefs.updateAuto = it }, 8)
         col.addRow(ctx.switchRow(R.drawable.ic_zap, ctx.getString(R.string.upd_beta), ctx.getString(R.string.upd_beta_sub), Prefs.updateBeta) {
             Prefs.updateBeta = it
+            UpdateManager.forget() // a release found on the other channel must not stay on offer
             act.rebuild()
         }, 10)
         col.addRow(ctx.settingRow(R.drawable.ic_github, ctx.getString(R.string.upd_source), Prefs.updateRepo, ctx.iconView(R.drawable.ic_edit, 22, Palette.text3)) {
             InputDialog.show(ctx, ctx.getString(R.string.upd_source), "owner/repo", Prefs.updateRepo) { v ->
-                if (GitHub.isValidRepo(v)) { Prefs.updateRepo = v; Prefs.availableTag = ""; act.rebuild() }
+                if (GitHub.isValidRepo(v)) { Prefs.updateRepo = v.trim(); UpdateManager.forget(); act.rebuild() }
                 else android.widget.Toast.makeText(ctx, R.string.upd_err_repo, android.widget.Toast.LENGTH_LONG).show()
             }
         }, 10)

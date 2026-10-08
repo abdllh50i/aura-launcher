@@ -92,7 +92,7 @@
     <string name="btn_save">Save</string>
 
     <!-- software update -->
-    <string name="upd_build_line">Build %1$d · %2$s channel</string>
+    <string name="upd_build_line">Build %1$s · %2$s channel</string>
     <string name="upd_channel_beta">Beta</string>
     <string name="upd_channel_stable">Stable</string>
     <string name="upd_options">Options</string>
@@ -133,5 +133,6 @@
     <string name="upd_err_repo">Invalid source. Use the form owner/repository.</string>
     <string name="upd_err_incomplete">The download is incomplete or the release changed while downloading. Please try again.</string>
     <string name="upd_err_cancelled">Installation was cancelled.</string>
+    <string name="upd_err_timeout">The installation did not finish in time. Please try again.</string>
     <string name="upd_err_install">Installation failed: %1$s</string>
 </resources>

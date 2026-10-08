@@ -1,7 +1,9 @@
 package com.abdllh.aura.update
 
 import android.content.Context
+import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.content.pm.Signature
 import android.net.ConnectivityManager
 import android.os.Handler
 import android.os.Looper
@@ -36,8 +38,13 @@ object UpdateManager {
     private val listeners = CopyOnWriteArrayList<(State) -> Unit>()
     private val io = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
+    private val lock = Any()
     @Volatile private var cancelled = false
+    @Volatile private var installSession = -1
+
     private const val AUTO_INTERVAL_MS = 6 * 60 * 60 * 1000L
+    private const val RETRY_INTERVAL_MS = 15 * 60 * 1000L
+    private const val INSTALL_TIMEOUT_MS = 3 * 60 * 1000L
 
     fun init(ctx: Context) {
         app = ctx.applicationContext
@@ -73,6 +80,13 @@ object UpdateManager {
             else -> false
         }
 
+    /** Atomically claims the state machine: false when an operation is already running (a double tap starts nothing twice). */
+    private fun begin(s: State): Boolean = synchronized(lock) {
+        if (busy) return false
+        post(s)
+        true
+    }
+
     val currentVersion: Version get() = Version.parse(BuildConfig.VERSION_NAME) ?: Version.parse("0.0.0")!!
 
     fun hasUpdateBadge(): Boolean {
@@ -88,18 +102,26 @@ object UpdateManager {
         true
     }
 
-    /** Called when the launcher comes to the foreground: checks at most every few hours. */
+    /**
+     * Called when the launcher comes to the foreground: checks at most every few hours, and after a failed attempt not
+     * again for a quarter of an hour (a unit that is "online" but cannot reach GitHub must not retry on every Home press).
+     * A wall clock that jumped backwards never suppresses a check.
+     */
     fun autoCheckIfDue() {
         if (!Prefs.updateAuto || busy) return
-        if (System.currentTimeMillis() - Prefs.lastUpdateCheck < AUTO_INTERVAL_MS) return
+        val now = System.currentTimeMillis()
+        val lastOk = Prefs.lastUpdateCheck
+        val lastTry = Prefs.lastUpdateAttempt
+        if (now >= lastOk && now - lastOk < AUTO_INTERVAL_MS) return
+        if (now >= lastTry && now - lastTry < RETRY_INTERVAL_MS) return
         if (!isOnline()) return
         check()
     }
 
     fun check() {
-        if (busy) return
+        if (!begin(State.Checking)) return
         cancelled = false
-        post(State.Checking)
+        Prefs.lastUpdateAttempt = System.currentTimeMillis()
         io.execute {
             try {
                 val rel = GitHub.latest(Prefs.updateRepo, Prefs.updateBeta)
@@ -127,6 +149,15 @@ object UpdateManager {
         cancelled = true
     }
 
+    /** The update source or channel changed: what was known about "the newest release" no longer applies. */
+    fun forget() {
+        Prefs.availableTag = ""
+        Prefs.releaseCache = ""
+        Prefs.lastUpdateCheck = 0L
+        Prefs.lastUpdateAttempt = 0L
+        synchronized(lock) { if (!busy) post(State.Idle) }
+    }
+
     /** Download the available release, verify it, and hand it to the installer. */
     fun downloadAndInstall() {
         val seen = when (val s = state) {
@@ -134,13 +165,12 @@ object UpdateManager {
             is State.Failed -> s.release
             else -> null
         } ?: return
-        if (busy) return
+        if (!begin(State.Checking)) return
         cancelled = false
         io.execute {
             var rel = seen
             val dir = File(app.cacheDir, "updates")
             try {
-                post(State.Checking)
                 // The asset URL, size or digest may have changed since the last check: always start from fresh metadata.
                 try {
                     val fresh = GitHub.latest(Prefs.updateRepo, Prefs.updateBeta)
@@ -149,15 +179,26 @@ object UpdateManager {
                         rel = fresh
                         Prefs.availableTag = fresh.tag
                         Prefs.releaseCache = fresh.toJson()
+                    } else {
+                        // What we were about to install is gone (withdrawn, or the channel changed): never install stale data.
+                        Prefs.availableTag = ""
+                        Prefs.releaseCache = ""
+                        post(State.UpToDate(System.currentTimeMillis(), fresh == null))
+                        return@execute
                     }
-                } catch (e: UpdateException) {
-                    android.util.Log.w("AuraUpdate", "refresh before download failed (${e.kind}), using cached release")
+                } catch (e: Exception) {
+                    android.util.Log.w("AuraUpdate", "refresh before download failed (${(e as? UpdateException)?.kind ?: e}), using the cached release")
                 }
-                val file = File(dir, "${rel.tag}-${rel.apkSize}-${rel.apkName}.part")
+                val file = File(dir, partName(rel))
+                dir.mkdirs()
                 dir.listFiles()?.filter { it.name.endsWith(".part") && it != file }?.forEach { it.delete() }
-                post(State.Downloading(rel, 0, rel.apkSize, 0))
+                val have = if (file.exists()) file.length() else 0L
+                if (rel.apkSize > 0 && dir.usableSpace < rel.apkSize - have + 16L * 1024 * 1024) {
+                    throw UpdateException(UpdateException.Kind.STORAGE, "Not enough free space")
+                }
+                post(State.Downloading(rel, have, rel.apkSize, 0))
                 var lastTs = System.currentTimeMillis()
-                var lastBytes = 0L
+                var lastBytes = have
                 var speed = 0L
                 GitHub.download(rel.apkUrl, file, rel.apkSize, { cancelled }) { done, total ->
                     val now = System.currentTimeMillis()
@@ -171,10 +212,12 @@ object UpdateManager {
                 post(State.Verifying(rel))
                 verify(rel, file)
                 post(State.Installing(rel))
-                ApkInstaller.install(app, file)
-                // Result arrives via InstallResultReceiver (the process is usually replaced on success).
+                main.postDelayed(installWatchdog, INSTALL_TIMEOUT_MS)
+                ApkInstaller.install(app, file) { installSession = it }
+                // The result arrives via InstallResultReceiver (the process is usually replaced on success).
             } catch (e: UpdateException) {
                 android.util.Log.w("AuraUpdate", "install flow failed: ${e.kind} ${e.message}", e)
+                main.removeCallbacks(installWatchdog)
                 if (e.kind == UpdateException.Kind.CANCELLED) {
                     post(State.Available(rel))
                 } else {
@@ -184,13 +227,20 @@ object UpdateManager {
                     post(State.Failed(messageFor(e), rel))
                 }
             } catch (t: Throwable) {
+                main.removeCallbacks(installWatchdog)
                 post(State.Failed(app.getString(R.string.upd_err_install, t.message ?: ""), rel))
             }
         }
     }
 
+    /** The partial download's name identifies the exact release asset it belongs to (and cannot contain a path). */
+    private fun partName(rel: Release): String {
+        val d = MessageDigest.getInstance("SHA-256").digest("${rel.tag}|${rel.apkSize}|${rel.apkName}".toByteArray())
+        return d.joinToString("") { "%02x".format(it) }.take(24) + ".part"
+    }
+
     private fun verify(rel: Release, file: File) {
-        // 1) integrity
+        // 1) integrity: the digest GitHub published for the asset, else the companion .sha256 file (an error if it cannot be read)
         var expected = rel.sha256
         if (expected == null && rel.sha256Url != null) expected = GitHub.fetchDigest(rel.sha256Url)
         if (expected != null) {
@@ -206,10 +256,8 @@ object UpdateManager {
             ?: throw UpdateException(UpdateException.Kind.PARSE, "Not an APK")
         if (archive.packageName != app.packageName) throw UpdateException(UpdateException.Kind.SIGNATURE, "Package mismatch: ${archive.packageName}")
         val mine = pm.getPackageInfo(app.packageName, flags)
-        @Suppress("DEPRECATION")
-        val a = signerDigests(archive.signingInfo?.apkContentsSigners ?: archive.signatures)
-        @Suppress("DEPRECATION")
-        val b = signerDigests(mine.signingInfo?.apkContentsSigners ?: mine.signatures)
+        val a = signerDigests(signers(archive))
+        val b = signerDigests(signers(mine))
         if (a.isEmpty() || a != b) throw UpdateException(UpdateException.Kind.SIGNATURE, "Signature mismatch")
         @Suppress("DEPRECATION")
         val newCode = if (android.os.Build.VERSION.SDK_INT >= 28) archive.longVersionCode else archive.versionCode.toLong()
@@ -218,26 +266,42 @@ object UpdateManager {
         if (newCode <= curCode) throw UpdateException(UpdateException.Kind.VERSION, "Not newer ($newCode <= $curCode)")
     }
 
-    private fun signerDigests(s: Array<android.content.pm.Signature>?): Set<String> {
+    @Suppress("DEPRECATION")
+    private fun signers(info: PackageInfo): Array<Signature>? =
+        if (android.os.Build.VERSION.SDK_INT >= 28) info.signingInfo?.apkContentsSigners ?: info.signatures else info.signatures
+
+    private fun signerDigests(s: Array<Signature>?): Set<String> {
         if (s == null) return emptySet()
         val md = MessageDigest.getInstance("SHA-256")
         return s.map { sig -> md.digest(sig.toByteArray()).joinToString("") { "%02x".format(it) } }.toSet()
     }
 
+    /** If no answer comes from the installer (lost broadcast, installer restarted), do not stay "Installing" forever. */
+    private val installWatchdog = Runnable {
+        val s = state
+        if (s is State.Installing) {
+            ApkInstaller.abandon(app, installSession)
+            installSession = -1
+            post(State.Failed(app.getString(R.string.upd_err_timeout), s.release))
+        }
+    }
+
     fun onInstalled() {
         // Usually unreachable: the process is replaced. Keep state sane if it is not.
+        main.removeCallbacks(installWatchdog)
         Prefs.availableTag = ""
+        Prefs.releaseCache = ""
         val now = System.currentTimeMillis()
         post(State.UpToDate(now))
     }
 
-    fun onInstallFailed(msg: String?) {
-        val rel = when (val s = state) {
-            is State.Installing -> s.release
-            is State.Failed -> s.release
-            else -> null
-        }
-        post(State.Failed(if (msg.isNullOrBlank()) app.getString(R.string.upd_err_cancelled) else app.getString(R.string.upd_err_install, msg), rel))
+    /** [sessionId] is the install session the answer belongs to (-1 = unknown); answers about older sessions are ignored. */
+    fun onInstallFailed(sessionId: Int, msg: String?) {
+        if (sessionId >= 0 && installSession >= 0 && sessionId != installSession) return
+        val s = state as? State.Installing ?: return
+        main.removeCallbacks(installWatchdog)
+        installSession = -1
+        post(State.Failed(if (msg.isNullOrBlank()) app.getString(R.string.upd_err_cancelled) else app.getString(R.string.upd_err_install, msg), s.release))
     }
 
     private fun messageFor(e: UpdateException): String = when (e.kind) {
@@ -256,5 +320,6 @@ object UpdateManager {
         UpdateException.Kind.INCOMPLETE -> app.getString(R.string.upd_err_incomplete)
         UpdateException.Kind.CANCELLED -> app.getString(R.string.upd_err_cancelled)
         UpdateException.Kind.INSTALL -> app.getString(R.string.upd_err_install, e.message ?: "")
+        UpdateException.Kind.TIMEOUT -> app.getString(R.string.upd_err_timeout)
     }
 }

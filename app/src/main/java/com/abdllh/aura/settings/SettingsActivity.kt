@@ -161,13 +161,24 @@ class SettingsActivity : Activity() {
         recreate()
     }
 
-    override fun onResume() {
-        super.onResume()
+    private val dotObserver: (UpdateManager.State) -> Unit = {
         updateDot?.visibility = if (UpdateManager.hasUpdateBadge()) View.VISIBLE else View.GONE
     }
 
+    override fun onResume() {
+        super.onResume()
+        UpdateManager.observe(dotObserver) // also refreshes the dot right away
+    }
+
+    override fun onPause() {
+        UpdateManager.unobserve(dotObserver)
+        super.onPause()
+    }
+
     override fun onDestroy() {
-        if (current >= 0) pages[current].onHide()
+        // Every page lets go of its listeners (rebuild() resets `current` before the activity is recreated, so a
+        // page that was showing would otherwise stay registered with UpdateManager and keep this dead activity alive).
+        if (::pages.isInitialized) for (p in pages) p.onHide()
         super.onDestroy()
     }
 }

@@ -1,7 +1,15 @@
 package com.abdllh.aura.update
 
-/** Semantic-version comparison for tags like "v1.2.3" or "1.3.0-beta.2". */
+/**
+ * Semantic-version comparison for tags like "v1.2.3" or "1.3.0-beta.2".
+ *
+ * Android only looks at versionCode, so the build derives it from the version name in a way that keeps the same order:
+ * (MAJOR*10000 + MINOR*100 + PATCH) * 100 + (99 for a stable release, or the pre-release number 1..98 for "-beta.N").
+ * See `versionCodeFor` in app/build.gradle.kts.
+ */
 class Version private constructor(private val nums: List<Int>, private val pre: String) : Comparable<Version> {
+
+    val isPrerelease: Boolean get() = pre.isNotEmpty()
 
     override fun compareTo(other: Version): Int {
         val n = maxOf(nums.size, other.nums.size)

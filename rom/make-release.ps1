@@ -16,13 +16,11 @@ New-Item -ItemType Directory -Force -Path $rel | Out-Null
 $env:JAVA_HOME = "C:\Program Files\Eclipse Adoptium\jdk-17.0.17.10-hotspot"
 $env:ANDROID_HOME = "E:\Android\Sdk"
 
-$parts = $Version.Split(".")
-$code = [int]$parts[0] * 10000 + [int]$parts[1] * 100 + [int]$parts[2]
-
-# ---- 1. APK
+# ---- 1. APK  (the versionCode is derived from the version name by app\build.gradle.kts: 1.3.0-beta.2 < 1.3.0)
+if ($Version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') { throw "Version must look like 1.2.3 or 1.2.3-beta.4 (got '$Version')" }
 Push-Location $proj
-& ".\gradlew.bat" :app:assembleRelease --offline "-PappVersionName=$Version" "-PappVersionCode=$code" | Out-Host
-if ($LASTEXITCODE -ne 0) { throw "gradle failed" }
+& ".\gradlew.bat" :app:assembleRelease --offline "-PappVersionName=$Version" | Out-Host
+if ($LASTEXITCODE -ne 0) { Pop-Location; throw "gradle failed" }
 Pop-Location
 $apk = Join-Path $rel "aura-$Version.apk"
 Copy-Item (Join-Path $proj "app\build\outputs\apk\release\app-release.apk") $apk -Force
@@ -56,8 +54,8 @@ foreach ($f in "forward.bin", "reverse.bin", "ranges.txt", "hashes.txt", "manife
 foreach ($f in "aura-flash.sh", "aura-rom.ps1", "install.bat", "restore.bat", "status.bat") { Copy-Item (Join-Path $PSScriptRoot "flash\$f") "$pk\$f" }
 foreach ($f in "README.ar.md", "README.md") { if (Test-Path (Join-Path $proj $f)) { Copy-Item (Join-Path $proj $f) "$pk\$f" } }
 $zip = Join-Path $rel "aura-rom-$Version.zip"
-if (Test-Path $zip) { Remove-Item $zip }
-Compress-Archive -Path "$pk\*" -DestinationPath $zip -CompressionLevel Optimal
+python (Join-Path $PSScriptRoot "tools\make_zip.py") $pk $zip | Out-Host   # portable entry names (forward slashes)
+if (-not (Test-Path $zip)) { throw "zip was not created" }
 $zh = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
 Set-Content -Path "$zip.sha256" -Value "$zh  aura-rom-$Version.zip" -Encoding ascii
 "ROM pack: $zip  ($([math]::Round((Get-Item $zip).Length/1MB,1)) MB)  sha256=$zh"

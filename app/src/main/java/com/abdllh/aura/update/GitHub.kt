@@ -2,6 +2,7 @@ package com.abdllh.aura.update
 
 import com.abdllh.aura.BuildConfig
 import org.json.JSONArray
+import org.json.JSONException
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
@@ -11,7 +12,9 @@ import java.net.SocketTimeoutException
 import java.net.URL
 import java.net.UnknownHostException
 import java.security.MessageDigest
-import javax.net.ssl.SSLException
+import java.security.cert.CertificateException
+import javax.net.ssl.SSLHandshakeException
+import javax.net.ssl.SSLPeerUnverifiedException
 
 /** A published GitHub release that carries an installable APK. */
 data class Release(
@@ -49,7 +52,7 @@ data class Release(
 }
 
 class UpdateException(val kind: Kind, message: String) : Exception(message) {
-    enum class Kind { NETWORK, TLS, RATE_LIMIT, NOT_FOUND, SERVER, PARSE, NO_APK, HASH, SIGNATURE, VERSION, STORAGE, INSTALL, CANCELLED, REPO, INCOMPLETE }
+    enum class Kind { NETWORK, TLS, RATE_LIMIT, NOT_FOUND, SERVER, PARSE, NO_APK, HASH, SIGNATURE, VERSION, STORAGE, INSTALL, CANCELLED, REPO, INCOMPLETE, TIMEOUT }
 }
 
 /** Minimal GitHub Releases client (public repositories, unauthenticated). */
@@ -81,19 +84,31 @@ object GitHub {
         return c
     }
 
+    /**
+     * Maps what the platform throws to something the UI can explain. Only certificate problems mean "check the clock";
+     * a connection that dies mid-handshake or mid-download is an ordinary network error.
+     */
     private fun <T> guard(block: () -> T): T = try {
         block()
     } catch (e: UpdateException) {
         throw e
-    } catch (e: SSLException) {
+    } catch (e: SSLHandshakeException) {
         throw UpdateException(UpdateException.Kind.TLS, e.message ?: "TLS error")
+    } catch (e: SSLPeerUnverifiedException) {
+        throw UpdateException(UpdateException.Kind.TLS, e.message ?: "TLS error")
+    } catch (e: CertificateException) {
+        throw UpdateException(UpdateException.Kind.TLS, e.message ?: "TLS error")
+    } catch (e: JSONException) {
+        throw UpdateException(UpdateException.Kind.PARSE, e.message ?: "Bad JSON")
     } catch (e: UnknownHostException) {
         throw UpdateException(UpdateException.Kind.NETWORK, e.message ?: "No connection")
     } catch (e: SocketTimeoutException) {
         throw UpdateException(UpdateException.Kind.NETWORK, "Timed out")
     } catch (e: IOException) {
         android.util.Log.w("AuraUpdate", "io error: $e", e)
-        throw UpdateException(UpdateException.Kind.NETWORK, e.message ?: "I/O error")
+        val m = e.message ?: ""
+        if (m.contains("ENOSPC") || m.contains("No space left", ignoreCase = true)) throw UpdateException(UpdateException.Kind.STORAGE, m)
+        throw UpdateException(UpdateException.Kind.NETWORK, m.ifEmpty { "I/O error" })
     }
 
     private fun readBody(c: HttpURLConnection): String {
@@ -108,95 +123,101 @@ object GitHub {
         return c.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
     }
 
-    /** Newest installable release (stable only unless [includePre]). Returns null when none exists. */
+    /** Release builds only ever download over HTTPS; a debug build may use the local mock server over HTTP. */
+    private fun secureUrl(u: String) = u.startsWith("https://") || (BuildConfig.DEBUG && u.startsWith("http://"))
+
+    /** `optString` turns a JSON null into the text "null"; this returns "" instead. */
+    private fun JSONObject.str(key: String): String = if (isNull(key)) "" else optString(key, "")
+
+    /**
+     * Newest installable release. Stable channel: no pre-releases (neither flagged on GitHub nor tagged "-beta.N").
+     * Releases without an APK (for example one that only carries the ROM pack) are skipped, so they can never block
+     * updates. Returns null when no usable release exists.
+     */
     fun latest(repo: String, includePre: Boolean): Release? = guard {
         if (!isValidRepo(repo)) throw UpdateException(UpdateException.Kind.REPO, "Bad repository: $repo")
-        if (!includePre) {
-            val c = open("$API/repos/$repo/releases/latest", true)
-            try {
-                parseRelease(JSONObject(readBody(c)))
-            } catch (e: UpdateException) {
-                if (e.kind == UpdateException.Kind.NOT_FOUND) null else throw e
-            } finally {
-                c.disconnect()
+        val c = open("$API/repos/$repo/releases?per_page=30", true)
+        try {
+            val arr = JSONArray(readBody(c))
+            var best: Release? = null
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                if (o.optBoolean("draft")) continue
+                if (!includePre && o.optBoolean("prerelease")) continue
+                val r = try { parseRelease(o) } catch (_: UpdateException) { null } ?: continue
+                val v = r.version ?: continue
+                if (!includePre && v.isPrerelease) continue
+                val b = best
+                if (b == null || v > b.version!!) best = r
             }
-        } else {
-            val c = open("$API/repos/$repo/releases?per_page=15", true)
-            try {
-                val arr = JSONArray(readBody(c))
-                var best: Release? = null
-                for (i in 0 until arr.length()) {
-                    val o = arr.getJSONObject(i)
-                    if (o.optBoolean("draft")) continue
-                    val r = try { parseRelease(o) } catch (_: UpdateException) { null } ?: continue
-                    val v = r.version ?: continue
-                    val b = best
-                    if (b == null || v > b.version!!) best = r
-                }
-                best
-            } catch (e: UpdateException) {
-                if (e.kind == UpdateException.Kind.NOT_FOUND) null else throw e
-            } finally {
-                c.disconnect()
-            }
+            best
+        } catch (e: UpdateException) {
+            if (e.kind == UpdateException.Kind.NOT_FOUND) null else throw e
+        } finally {
+            c.disconnect()
         }
     }
 
     private fun parseRelease(o: JSONObject): Release {
-        val tag = o.optString("tag_name")
+        val tag = o.str("tag_name")
         if (Version.parse(tag) == null) throw UpdateException(UpdateException.Kind.PARSE, "Bad tag: $tag")
         val assets = o.optJSONArray("assets") ?: JSONArray()
         var apk: JSONObject? = null
         for (i in 0 until assets.length()) {
-            val a = assets.getJSONObject(i)
-            val n = a.optString("name")
+            val a = assets.optJSONObject(i) ?: continue
+            val n = a.str("name")
             if (n.endsWith(".apk", true) && !n.contains("debug", true)) {
                 if (apk == null || n.startsWith("aura", true)) apk = a
             }
         }
         val chosen = apk ?: throw UpdateException(UpdateException.Kind.NO_APK, "No APK attached to $tag")
-        val name = chosen.optString("name")
+        val name = chosen.str("name")
+        val url = chosen.str("browser_download_url")
+        if (!secureUrl(url)) throw UpdateException(UpdateException.Kind.PARSE, "Bad download URL")
+
+        // Expected SHA-256, strongest source first: the digest GitHub computed for the asset, then the companion
+        // "<apk>.sha256" file, and only if neither exists a hash quoted in the release notes.
         var sha: String? = null
-        val digest = chosen.optString("digest")
+        val digest = chosen.str("digest")
         if (digest.startsWith("sha256:")) sha = digest.removePrefix("sha256:").lowercase()
         var shaUrl: String? = null
         for (i in 0 until assets.length()) {
-            val a = assets.getJSONObject(i)
-            if (a.optString("name").equals("$name.sha256", true)) shaUrl = a.optString("browser_download_url")
+            val a = assets.optJSONObject(i) ?: continue
+            if (a.str("name").equals("$name.sha256", true)) shaUrl = a.str("browser_download_url").takeIf { secureUrl(it) }
         }
-        val notes = o.optString("body").orEmpty()
-        if (sha == null) {
+        val notes = o.str("body")
+        if (sha == null && shaUrl == null) {
             val m = Regex("(?i)sha-?256[^0-9a-f]{0,6}([0-9a-f]{64})").find(notes)
             if (m != null) sha = m.groupValues[1].lowercase()
         }
         return Release(
             tag = tag,
-            name = o.optString("name").ifBlank { tag },
+            name = o.str("name").ifBlank { tag },
             notes = notes,
             prerelease = o.optBoolean("prerelease"),
-            publishedAt = o.optString("published_at"),
+            publishedAt = o.str("published_at"),
             apkName = name,
-            apkUrl = chosen.optString("browser_download_url"),
+            apkUrl = url,
             apkSize = chosen.optLong("size"),
             sha256 = sha,
             sha256Url = shaUrl
         )
     }
 
-    /** Fetches the expected digest from a companion "<apk>.sha256" asset when the API did not provide one. */
-    fun fetchDigest(url: String): String? {
-        return try {
-            guard {
-                val c = open(url, false)
-                try {
-                    val txt = c.inputStream.bufferedReader().use { it.readText() }
-                    Regex("([0-9a-fA-F]{64})").find(txt)?.groupValues?.get(1)?.lowercase()
-                } finally {
-                    c.disconnect()
-                }
-            }
-        } catch (_: UpdateException) {
-            null
+    /**
+     * Reads the expected digest from a companion "<apk>.sha256" asset. A release that publishes one must be checked
+     * against it, so a failure here is an error and never silently skips the check.
+     */
+    fun fetchDigest(url: String): String = guard {
+        val c = open(url, false)
+        try {
+            val code = c.responseCode
+            if (code !in 200..299) throw UpdateException(UpdateException.Kind.SERVER, "HTTP $code")
+            val txt = c.inputStream.bufferedReader().use { it.readText() }
+            Regex("([0-9a-fA-F]{64})").find(txt)?.groupValues?.get(1)?.lowercase()
+                ?: throw UpdateException(UpdateException.Kind.PARSE, "No SHA-256 in $url")
+        } finally {
+            c.disconnect()
         }
     }
 
@@ -236,6 +257,9 @@ object GitHub {
                             if (n < 0) break
                             out.write(buf, 0, n)
                             done += n
+                            if (expectedSize > 0 && done > expectedSize) {
+                                throw UpdateException(UpdateException.Kind.INCOMPLETE, "More data than announced ($done > $expectedSize)")
+                            }
                             progress(done, total)
                         }
                         out.fd.sync()

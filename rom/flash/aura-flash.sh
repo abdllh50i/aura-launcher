@@ -8,68 +8,151 @@
 # PACKDIR holds: forward.bin reverse.bin ranges.txt hashes.txt   (made by rom/tools/make_patch.py)
 # DEVICE defaults to /dev/block/mapper/system (the live "system" logical partition).
 #
-# Safety: the whole device hash must equal the expected *source* hash before anything is written, the patch is only a
-# few hundred KiB of changed blocks, and the result is verified against the expected *target* hash; if verification
-# fails the previous contents are written back and verified again.
+# Safety
+#  * Nothing is written unless the whole-device SHA-256 equals the expected source (stock for apply, Aura for revert), or
+#    the device is provably an interrupted run of this very patch: every block outside the patch ranges still matches
+#    ("rest" hash), so rewriting all ranges leads to a known image again.
+#  * The patch is only the changed 4 KiB blocks (a few MiB). The pack files are size- and hash-checked before the first
+#    write. The result is verified against the whole-device target hash; on failure the previous blocks are written back
+#    and verified again.
+#  * A dropped connection (Wi-Fi, closed console) cannot kill the script half-way: HUP and PIPE are ignored.
+#
+# Output lines a caller can rely on:  STATE_CODE=STOCK|AURA|PARTIAL|UNKNOWN   and   RESULT: OK | ... (see the end)
 
 BS=4096
 MODE=$1
 PACK=$2
 DEV=${3:-/dev/block/mapper/system}
 
-say()  { echo "$*"; }
-die()  { echo "ERROR: $*"; exit 1; }
+trap '' HUP PIPE
+
+LOG="$(dirname "$PACK")/flash.log"
+say() { echo "$*"; echo "$*" >> "$LOG" 2>/dev/null; }
+die() { say "ERROR: $*"; exit 1; }
 
 [ -n "$MODE" ] && [ -d "$PACK" ] || die "usage: aura-flash.sh apply|revert|status PACKDIR [DEVICE]"
 [ -b "$DEV" ] || [ -e "$DEV" ] || die "device not found: $DEV"
 for f in forward.bin reverse.bin ranges.txt hashes.txt; do [ -f "$PACK/$f" ] || die "pack is incomplete (missing $f)"; done
 
-OLD=$(grep '^old=' "$PACK/hashes.txt" | cut -d= -f2)
-NEW=$(grep '^new=' "$PACK/hashes.txt" | cut -d= -f2)
-[ ${#OLD} = 64 ] && [ ${#NEW} = 64 ] || die "bad hashes.txt"
+hv() { grep "^$1=" "$PACK/hashes.txt" | cut -d= -f2 | tr -d '\r '; }
+OLD=$(hv old); NEW=$(hv new); REST=$(hv rest); FSHA=$(hv forward_sha256); RSHA=$(hv reverse_sha256); IMGB=$(hv image_bytes)
+[ ${#OLD} = 64 ] && [ ${#NEW} = 64 ] && [ ${#REST} = 64 ] && [ ${#FSHA} = 64 ] && [ ${#RSHA} = 64 ] && [ -n "$IMGB" ] || die "bad hashes.txt"
+IMG_BLOCKS=$((IMGB / BS))
+
+# ranges.txt without CR characters, one "start count offset old_sha new_sha" line per range
+RANGES="$(dirname "$PACK")/ranges.clean"
+tr -d '\r' < "$PACK/ranges.txt" > "$RANGES" || die "cannot prepare the range list"
+
+# ---- the pack itself must be complete before anything else happens
+TOTAL=0
+while read -r start count off osha nsha; do
+    [ -n "$start" ] || continue
+    TOTAL=$((TOTAL + count))
+done < "$RANGES"
+[ "$TOTAL" -gt 0 ] || die "the patch has no ranges"
+for b in forward.bin reverse.bin; do
+    sz=$(wc -c < "$PACK/$b" | tr -d ' ')
+    [ "$sz" = "$((TOTAL * BS))" ] || die "$b has the wrong size ($sz bytes, expected $((TOTAL * BS))) - copy the pack again"
+done
+[ "$(sha256sum "$PACK/forward.bin" | cut -d' ' -f1)" = "$FSHA" ] || die "forward.bin is damaged (checksum) - copy the pack again"
+[ "$(sha256sum "$PACK/reverse.bin" | cut -d' ' -f1)" = "$RSHA" ] || die "reverse.bin is damaged (checksum) - copy the pack again"
 
 hash_dev() {
     sync
+    blockdev --flushbufs "$DEV" 2>/dev/null
     echo 3 > /proc/sys/vm/drop_caches 2>/dev/null
     sha256sum "$DEV" | cut -d' ' -f1
 }
 
-# write_ranges BIN : writes every range of ranges.txt from BIN to the device
+hash_blocks() {   # hash_blocks START COUNT
+    dd if="$DEV" bs=$BS skip="$1" count="$2" 2>/dev/null | sha256sum | cut -d' ' -f1
+}
+
+# SHA-256 of every block outside the patch ranges, in order (the same definition make_patch.py uses)
+hash_rest() {
+    {
+        pos=0
+        while read -r start count off osha nsha; do
+            [ -n "$start" ] || continue
+            [ "$start" -gt "$pos" ] && dd if="$DEV" bs=$BS skip="$pos" count=$((start - pos)) 2>/dev/null
+            pos=$((start + count))
+        done < "$RANGES"
+        [ "$IMG_BLOCKS" -gt "$pos" ] && dd if="$DEV" bs=$BS skip="$pos" count=$((IMG_BLOCKS - pos)) 2>/dev/null
+    } | sha256sum | cut -d' ' -f1
+}
+
+# how many ranges currently hold the stock data / the Aura data / something else (informational)
+count_ranges() {
+    R_OLD=0; R_NEW=0; R_OTHER=0
+    while read -r start count off osha nsha; do
+        [ -n "$start" ] || continue
+        h=$(hash_blocks "$start" "$count")
+        if [ "$h" = "$osha" ]; then R_OLD=$((R_OLD + 1))
+        elif [ "$h" = "$nsha" ]; then R_NEW=$((R_NEW + 1))
+        else R_OTHER=$((R_OTHER + 1)); fi
+    done < "$RANGES"
+}
+
+# write_ranges BIN : writes every range of the patch from BIN (forward.bin or reverse.bin) to the device
 write_ranges() {
     bin=$1
     n=0
-    while read -r start count off; do
+    while read -r start count off osha nsha; do
         [ -n "$start" ] || continue
-        dd if="$bin" of="$DEV" bs=$BS skip="$off" seek="$start" count="$count" conv=notrunc 2>/dev/null || return 1
+        dd if="$bin" of="$DEV" bs=$BS skip="$off" seek="$start" count="$count" conv=notrunc,fsync 2>/dev/null || { say "  write failed at block $start"; return 1; }
         n=$((n + 1))
-    done < "$PACK/ranges.txt"
+    done < "$RANGES"
     sync
+    blockdev --flushbufs "$DEV" 2>/dev/null
     say "  wrote $n ranges"
     return 0
 }
 
 say "Aura ROM patch: mode=$MODE device=$DEV"
-say "  reading current system partition hash (about 20-60 s)..."
+
+SIZE_OK=1
+DSZ=$(blockdev --getsize64 "$DEV" 2>/dev/null)
+case "$DSZ" in
+    ''|*[!0-9]*) ;;    # cannot tell: the hash decides
+    *) [ "$DSZ" = "$IMGB" ] || { SIZE_OK=0; say "  the device is $DSZ bytes, this patch is for $IMGB bytes"; } ;;
+esac
+
+say "  reading the system partition (about 20-60 s)..."
 CUR=$(hash_dev)
 say "  current = $CUR"
 
+if [ "$CUR" = "$OLD" ]; then STATE=STOCK
+elif [ "$CUR" = "$NEW" ]; then STATE=AURA
+elif [ "$SIZE_OK" = 1 ]; then
+    say "  matches neither image - checking whether this is an interrupted run of the patch (about 20-60 s)..."
+    if [ "$(hash_rest)" = "$REST" ]; then STATE=PARTIAL; else STATE=UNKNOWN; fi
+else
+    STATE=UNKNOWN
+fi
+
 case "$MODE" in
 status)
-    if [ "$CUR" = "$OLD" ]; then say "STATE: stock firmware (patch NOT applied)"
-    elif [ "$CUR" = "$NEW" ]; then say "STATE: Aura ROM applied"
-    else say "STATE: unknown system contents (neither stock nor Aura)"; fi
+    case "$STATE" in
+        STOCK)   say "STATE: stock firmware (patch NOT applied)" ;;
+        AURA)    say "STATE: Aura ROM applied" ;;
+        PARTIAL) count_ranges
+                 say "STATE: interrupted patch - $R_OLD ranges are stock, $R_NEW are Aura, $R_OTHER are in between. Run install (or restore) again to finish it." ;;
+        *)       say "STATE: unknown system contents (neither stock nor Aura)" ;;
+    esac
+    say "STATE_CODE=$STATE"
     exit 0 ;;
-apply)  FROM=$OLD; TO=$NEW; BIN="$PACK/forward.bin"; BACK="$PACK/reverse.bin" ;;
-revert) FROM=$NEW; TO=$OLD; BIN="$PACK/reverse.bin"; BACK="$PACK/forward.bin" ;;
+apply)  FROM=$OLD; TO=$NEW; BIN="$PACK/forward.bin"; BACK="$PACK/reverse.bin"; WANT=AURA;  START=STOCK ;;
+revert) FROM=$NEW; TO=$OLD; BIN="$PACK/reverse.bin"; BACK="$PACK/forward.bin"; WANT=STOCK; START=AURA ;;
 *) die "unknown mode: $MODE" ;;
 esac
 
-if [ "$CUR" = "$TO" ]; then say "RESULT: already in the requested state, nothing to do"; exit 0; fi
-if [ "$CUR" != "$FROM" ]; then
+if [ "$STATE" = "$WANT" ]; then say "RESULT: already in the requested state, nothing to do"; exit 0; fi
+if [ "$STATE" != "$START" ] && [ "$STATE" != "PARTIAL" ]; then
     say "RESULT: REFUSED - the system partition is not the expected base (expected $FROM)."
     say "         Nothing was written. (Different firmware version, or an unknown modification.)"
     exit 2
 fi
+[ "$STATE" = "PARTIAL" ] && say "  the partition holds an interrupted run of this patch - finishing it"
 
 # Logical (dynamic) partitions are created read-only by the kernel: flip to read-write for the update and back afterwards.
 RO_WAS=0
@@ -82,24 +165,24 @@ if command -v blockdev >/dev/null 2>&1 && [ "$(blockdev --getro "$DEV" 2>/dev/nu
     say "  device was read-only: switched to read-write for the update"
 fi
 
-say "  base verified, writing patch..."
-if ! write_ranges "$BIN"; then
-    say "  write failed - restoring previous blocks"
-    write_ranges "$BACK"
-    die "dd failed"
+say "  base verified, writing the patch..."
+if write_ranges "$BIN"; then
+    say "  verifying the result (about 20-60 s)..."
+    AFTER=$(hash_dev)
+    say "  now     = $AFTER"
+    if [ "$AFTER" = "$TO" ]; then
+        say "RESULT: OK"
+        exit 0
+    fi
+    say "  VERIFY FAILED"
 fi
 
-say "  verifying result (about 20-60 s)..."
-AFTER=$(hash_dev)
-say "  now     = $AFTER"
-if [ "$AFTER" = "$TO" ]; then
-    say "RESULT: OK"
-    exit 0
-fi
-
-say "  VERIFY FAILED - writing the previous blocks back"
-BIN2=$BACK
-write_ranges "$BIN2"
+say "  writing the previous blocks back..."
+write_ranges "$BACK"
 AGAIN=$(hash_dev)
-if [ "$AGAIN" = "$FROM" ]; then say "RESULT: FAILED, original contents restored"; else say "RESULT: FAILED AND RESTORE NOT VERIFIED ($AGAIN)"; fi
-exit 3
+if [ "$AGAIN" = "$FROM" ]; then
+    say "RESULT: FAILED, the previous contents were restored and verified"
+    exit 3
+fi
+say "RESULT: FAILED AND THE ROLLBACK COULD NOT BE VERIFIED ($AGAIN) - do not reboot; run the same command again"
+exit 4

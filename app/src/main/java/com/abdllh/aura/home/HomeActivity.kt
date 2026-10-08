@@ -7,8 +7,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -40,7 +38,6 @@ class HomeActivity : Activity(), HomeHost {
     private var introPlayed = false
     private var builtLang = ""
     private var builtAccent = 0
-    private val handler = Handler(Looper.getMainLooper())
     private var toast: Toast? = null
 
     private val tick = object : BroadcastReceiver() {
@@ -70,7 +67,7 @@ class HomeActivity : Activity(), HomeHost {
         setContentView(buildUi())
         MediaMonitor.start(this)
         NwdBridge.startStockServicesOncePerBoot(this)
-        handler.postDelayed({ CrashGuard.clear() }, 20_000)
+        AppRepo.preload(this) // the app grid opens instantly instead of querying the package manager on the UI thread
         if (Prefs.safeModeNotice) {
             Prefs.safeModeNotice = false
             toast(getString(R.string.safe_mode_notice))
@@ -155,11 +152,6 @@ class HomeActivity : Activity(), HomeHost {
         try { unregisterReceiver(tick) } catch (_: Throwable) { }
         UpdateManager.unobserve(updateObserver)
         super.onPause()
-    }
-
-    override fun onDestroy() {
-        handler.removeCallbacksAndMessages(null)
-        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {

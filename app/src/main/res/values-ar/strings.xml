@@ -92,7 +92,7 @@
     <string name="btn_save">حفظ</string>
 
     <!-- تحديث النظام -->
-    <string name="upd_build_line">الإصدار %1$d · القناة %2$s</string>
+    <string name="upd_build_line">رقم البناء %1$s · القناة %2$s</string>
     <string name="upd_channel_beta">التجريبية</string>
     <string name="upd_channel_stable">المستقرة</string>
     <string name="upd_options">خيارات</string>
@@ -133,5 +133,6 @@
     <string name="upd_err_repo">مصدر غير صالح. استخدم الصيغة owner/repository.</string>
     <string name="upd_err_incomplete">التنزيل غير مكتمل أو تغيّر الإصدار أثناء التنزيل. حاول مرة أخرى.</string>
     <string name="upd_err_cancelled">تم إلغاء التثبيت.</string>
+    <string name="upd_err_timeout">لم يكتمل التثبيت في الوقت المناسب. حاول مرة أخرى.</string>
     <string name="upd_err_install">فشل التثبيت: %1$s</string>
 </resources>

@@ -114,9 +114,18 @@ class AppDrawer(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
     fun open() {
         if (isOpen) return
         isOpen = true
-        all = AppRepo.load(context)
+        all = AppRepo.cached ?: emptyList()
         search.setText("")
         applyFilter("")
+        if (all.isEmpty()) empty.visibility = GONE // still loading: do not claim "no apps"
+        AppRepo.loadAsync(context) { fresh ->
+            if (fresh.isNotEmpty() && fresh != all) {
+                all = fresh
+                applyFilter(search.text.toString())
+            } else if (fresh.isEmpty() && all.isEmpty()) {
+                applyFilter(search.text.toString())
+            }
+        }
         visibility = VISIBLE
         sheet.translationY = (height * 0.14f).coerceAtLeast(60f)
         sheet.alpha = 0f

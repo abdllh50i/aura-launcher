@@ -67,9 +67,15 @@ object Prefs {
         get() = sp.getBoolean("updateBeta", false)
         set(v) { sp.edit().putBoolean("updateBeta", v).apply() }
 
+    /** Time of the last *successful* check. */
     var lastUpdateCheck: Long
         get() = sp.getLong("lastUpdateCheck", 0L)
         set(v) { sp.edit().putLong("lastUpdateCheck", v).apply() }
+
+    /** Time of the last attempt, successful or not (keeps the automatic check from hammering GitHub while it fails). */
+    var lastUpdateAttempt: Long
+        get() = sp.getLong("lastUpdateAttempt", 0L)
+        set(v) { sp.edit().putLong("lastUpdateAttempt", v).apply() }
 
     /** JSON of the newest release found by the last check (restored on start so "update available" survives restarts). */
     var releaseCache: String

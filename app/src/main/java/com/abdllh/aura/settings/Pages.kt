@@ -232,7 +232,8 @@ class AboutPage(private val act: SettingsActivity) : Page(R.string.set_about, R.
                 kind = if (isAura) ABtn.Kind.TONAL else ABtn.Kind.PRIMARY
                 setText(if (isAura) R.string.about_use_stock else R.string.about_use_aura)
                 setOnClickListener {
-                    val ok = Device.setHome(if (isAura) Device.STOCK_LAUNCHER else ctx.packageName)
+                    // also moves the boot-time kill switch, otherwise the next boot would undo the choice
+                    val ok = CrashGuard.setAuraEnabled(ctx, !isAura, "user")
                     Toast.makeText(ctx, if (ok) R.string.about_home_changed else R.string.about_home_failed, Toast.LENGTH_LONG).show()
                     act.rebuild()
                 }

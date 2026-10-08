@@ -8,7 +8,11 @@ import java.util.Locale
 object LocaleHelper {
     fun wrap(base: Context): Context {
         val code = try { Prefs.lang } catch (_: Throwable) { "system" }
-        if (code == "system") return base
+        if (code == "system") {
+            // an earlier override must not leak into the "System" choice
+            try { Locale.setDefault(android.content.res.Resources.getSystem().configuration.locales.get(0)) } catch (_: Throwable) { }
+            return base
+        }
         val locale = when (code) {
             "ar" -> Locale("ar")
             else -> Locale("en")

@@ -48,6 +48,25 @@ object Known {
 
 object AppRepo {
     private val collator: Collator = Collator.getInstance()
+    private val worker = Executors.newSingleThreadExecutor()
+    private val main = Handler(Looper.getMainLooper())
+
+    /** Last list produced by [loadAsync] (hidden apps filtered out); shown instantly while a fresh one is being built. */
+    @Volatile
+    var cached: List<AppInfo>? = null
+        private set
+
+    /** Queries the package manager on a background thread and delivers the list on the main thread. */
+    fun loadAsync(ctx: Context, done: (List<AppInfo>) -> Unit) {
+        val app = ctx.applicationContext
+        worker.execute {
+            val list = try { load(app) } catch (_: Throwable) { emptyList() }
+            if (list.isNotEmpty()) cached = list
+            main.post { done(list) }
+        }
+    }
+
+    fun preload(ctx: Context) = loadAsync(ctx) { }
 
     fun isInstalled(ctx: Context, pkg: String): Boolean = try {
         ctx.packageManager.getApplicationInfo(pkg, 0)
