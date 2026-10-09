@@ -34,6 +34,21 @@
     <string name="dock_settings">Settings</string>
     <string name="drawer_search">Search apps</string>
     <string name="drawer_empty">No apps found</string>
+    <string name="drawer_title">Apps</string>
+    <string name="home_car">Your car — drag to turn it</string>
+    <string name="ctl_title">Controls</string>
+    <string name="ctl_theme">Appearance</string>
+    <string name="ctl_wifi">Wi-Fi</string>
+    <string name="ctl_bluetooth">Bluetooth</string>
+    <string name="ctl_car">Car</string>
+    <string name="ctl_vol_down">Volume down</string>
+    <string name="ctl_vol_up">Volume up</string>
+    <string name="theme_auto">Auto</string>
+    <string name="theme_dark">Dark</string>
+    <string name="theme_light">Light</string>
+    <string name="media_prev">Previous</string>
+    <string name="media_play">Play or pause</string>
+    <string name="media_next">Next</string>
     <string name="safe_mode_notice">Aura stopped after repeated crashes — the stock launcher was restored</string>
 
     <!-- settings -->
@@ -46,6 +61,8 @@
     <string name="set_about">About</string>
     <string name="set_appearance">Appearance</string>
     <string name="set_accent">Accent colour</string>
+    <string name="set_theme">Theme</string>
+    <string name="set_theme_sub">Auto is light during the day and dark at night</string>
     <string name="set_clock24">24-hour clock</string>
     <string name="set_dock_labels">Show dock labels</string>
     <string name="set_language">Language</string>

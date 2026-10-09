@@ -1,9 +1,7 @@
 package com.abdllh.aura.home
 
 import android.content.Context
-import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
-import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -16,6 +14,7 @@ import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Shapes
 import com.abdllh.aura.ui.WRAP
+import com.abdllh.aura.ui.elevate
 import com.abdllh.aura.ui.flp
 import com.abdllh.aura.ui.label
 import com.abdllh.aura.ui.lp
@@ -23,67 +22,64 @@ import com.abdllh.aura.ui.pressScale
 import com.abdllh.aura.ui.roundedClip
 import com.abdllh.aura.util.dp
 
-/** "Now playing" card with transport controls. Tapping it opens the playing app (or the stock Music app). */
-class MediaCard(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
+/** Floating "now playing" bar on the map. Tapping it opens the playing app (or the stock Music app). */
+class MediaCard(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
     private val art = ImageView(ctx).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
-    private val artFallback = ImageView(ctx).apply { setImageResource(R.drawable.ic_music); setColorFilter(Palette.text3); scaleType = ImageView.ScaleType.CENTER_INSIDE }
-    private val title: AText = ctx.label(19f, Palette.text, Fonts.MEDIUM)
-    private val artist: AText = ctx.label(14f, Palette.text2, Fonts.REGULAR)
-    private val source: AText = ctx.label(11f, Palette.text3, Fonts.MEDIUM)
-    private val playBtn = FrameLayout(ctx)
+    private val artFallback = ImageView(ctx).apply { setImageResource(R.drawable.ic_music); setColorFilter(Palette.text3); scaleType = ImageView.ScaleType.FIT_CENTER }
+    private val title: AText = ctx.label(16f, Palette.text, Fonts.MEDIUM)
+    private val artist: AText = ctx.label(13f, Palette.text2, Fonts.REGULAR)
     private val playIcon = ImageView(ctx)
     private var np: NowPlaying? = null
 
     private val listener: (NowPlaying?) -> Unit = { bind(it) }
 
     init {
-        background = Shapes.clickableCard(26f)
-        roundedClip(26f)
+        orientation = HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPaddingRelative(10.dp, 10.dp, 12.dp, 10.dp)
+        background = Shapes.glassPressable(20f)
+        elevate(10f)
         isClickable = true
         pressScale(0.985f)
         setOnClickListener { openSource() }
 
-        val col = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; setPadding(18.dp, 16.dp, 18.dp, 14.dp) }
-
-        val top = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         val artBox = FrameLayout(ctx).apply {
-            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(0xFF232A35.toInt(), 0xFF171C24.toInt())).apply { cornerRadius = 16f.dp }
-            roundedClip(16f)
+            background = Shapes.rect(Palette.card2, 14f)
+            roundedClip(14f)
         }
-        artBox.addView(artFallback, flp(MATCH, MATCH).also { it.setMargins(22.dp, 22.dp, 22.dp, 22.dp) })
+        artBox.addView(artFallback, flp(26.dp, 26.dp, Gravity.CENTER))
         artBox.addView(art, flp(MATCH, MATCH))
-        top.addView(artBox, lp(84.dp, 84.dp))
-        val txt = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-        txt.addView(source)
-        txt.addView(title, lp(MATCH, WRAP).apply { topMargin = 4.dp })
-        txt.addView(artist, lp(MATCH, WRAP).apply { topMargin = 3.dp })
-        top.addView(txt, lp(0, WRAP, 1f).apply { marginStart = 14.dp })
-        col.addView(top, lp(MATCH, WRAP))
+        addView(artBox, lp(62.dp, 62.dp))
 
-        col.addView(View(ctx), lp(MATCH, 0, 1f))
+        val txt = LinearLayout(ctx).apply { orientation = VERTICAL }
+        txt.addView(title, lp(MATCH, WRAP))
+        txt.addView(artist, lp(MATCH, WRAP).apply { topMargin = 3.dp })
+        addView(txt, lp(0, WRAP, 1f).apply { marginStart = 14.dp; marginEnd = 8.dp })
 
         // transport controls keep their left-to-right order in every language (like a physical player)
-        val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; layoutDirection = LAYOUT_DIRECTION_LTR }
-        row.addView(transport(ctx, R.drawable.ic_skip_back) { MediaMonitor.send(context, MediaMonitor.Key.PREV) }, lp(56.dp, 56.dp))
-        playBtn.apply {
+        val row = LinearLayout(ctx).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; layoutDirection = LAYOUT_DIRECTION_LTR }
+        row.addView(transport(ctx, R.drawable.ic_skip_back, R.string.media_prev) { MediaMonitor.send(context, MediaMonitor.Key.PREV) }, lp(46.dp, 46.dp))
+        val play = FrameLayout(ctx).apply {
             background = Shapes.pressable(Shapes.oval(Palette.text), Shapes.oval(Palette.text2))
             isClickable = true
-            pressScale(0.92f)
+            contentDescription = ctx.getString(R.string.media_play)
+            pressScale(0.9f)
             setOnClickListener { togglePlay() }
-            addView(playIcon.apply { setColorFilter(Palette.bg); scaleType = ImageView.ScaleType.FIT_CENTER }, flp(26.dp, 26.dp, Gravity.CENTER))
+            addView(playIcon.apply { setColorFilter(Palette.card); scaleType = ImageView.ScaleType.FIT_CENTER }, flp(22.dp, 22.dp, Gravity.CENTER))
         }
-        row.addView(playBtn, lp(60.dp, 60.dp).apply { marginStart = 22.dp; marginEnd = 22.dp })
-        row.addView(transport(ctx, R.drawable.ic_skip_fwd) { MediaMonitor.send(context, MediaMonitor.Key.NEXT) }, lp(56.dp, 56.dp))
-        col.addView(row, lp(MATCH, WRAP))
-        addView(col, flp(MATCH, MATCH))
+        row.addView(play, lp(50.dp, 50.dp).apply { marginStart = 6.dp; marginEnd = 6.dp })
+        row.addView(transport(ctx, R.drawable.ic_skip_fwd, R.string.media_next) { MediaMonitor.send(context, MediaMonitor.Key.NEXT) }, lp(46.dp, 46.dp))
+        addView(row, lp(WRAP, WRAP))
         bind(null)
     }
 
-    private fun transport(ctx: Context, res: Int, onClick: () -> Unit): FrameLayout = FrameLayout(ctx).apply {
+    private fun transport(ctx: Context, res: Int, desc: Int, onClick: () -> Unit): FrameLayout = FrameLayout(ctx).apply {
+        background = Shapes.ghostOval()
         isClickable = true
-        pressScale(0.9f)
+        contentDescription = ctx.getString(desc)
+        pressScale(0.88f)
         setOnClickListener { onClick() }
-        addView(ImageView(ctx).apply { setImageResource(res); setColorFilter(Palette.text); scaleType = ImageView.ScaleType.FIT_CENTER }, flp(26.dp, 26.dp, Gravity.CENTER))
+        addView(ImageView(ctx).apply { setImageResource(res); setColorFilter(Palette.text); scaleType = ImageView.ScaleType.FIT_CENTER }, flp(24.dp, 24.dp, Gravity.CENTER))
     }
 
     private fun togglePlay() {
@@ -101,14 +97,17 @@ class MediaCard(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
         if (n == null) {
             title.setText(R.string.media_nothing)
             artist.setText(R.string.media_tap_music)
-            source.text = ""
             art.setImageDrawable(null)
             artFallback.visibility = VISIBLE
             playIcon.setImageResource(R.drawable.ic_play)
         } else {
             title.text = n.title
-            artist.text = n.artist
-            source.text = sourceLabel(n.sourcePkg)
+            val src = sourceLabel(n.sourcePkg)
+            artist.text = when {
+                n.artist.isNotBlank() && src.isNotBlank() -> "${n.artist}  ·  $src"
+                n.artist.isNotBlank() -> n.artist
+                else -> src
+            }
             if (n.art != null) { art.setImageBitmap(n.art); artFallback.visibility = GONE } else { art.setImageDrawable(null); artFallback.visibility = VISIBLE }
             playIcon.setImageResource(if (n.playing) R.drawable.ic_pause else R.drawable.ic_play)
         }

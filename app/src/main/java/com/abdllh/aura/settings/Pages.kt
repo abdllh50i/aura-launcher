@@ -23,6 +23,7 @@ import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Shapes
+import com.abdllh.aura.ui.Theme
 import com.abdllh.aura.ui.WRAP
 import com.abdllh.aura.ui.iconView
 import com.abdllh.aura.ui.label
@@ -37,10 +38,30 @@ class GeneralPage(private val act: SettingsActivity) : Page(R.string.set_general
         val col = ctx.pageColumn()
         col.addView(ctx.sectionTitle(ctx.getString(R.string.set_appearance)))
 
+        val theme = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(20.dp, 16.dp, 20.dp, 18.dp)
+            background = Shapes.card(18f)
+        }
+        val themeHead = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        themeHead.addView(ctx.iconView(R.drawable.ic_contrast, 24, Palette.text2), lp(24.dp, 24.dp).apply { marginEnd = 16.dp })
+        val themeTitles = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+        themeTitles.addView(ctx.label(17f, Palette.text, Fonts.MEDIUM).apply { setText(R.string.set_theme) })
+        themeTitles.addView(ctx.label(13.5f, Palette.text2, Fonts.REGULAR, lines = 2).apply { setText(R.string.set_theme_sub) }, lp(MATCH, WRAP).apply { topMargin = 3.dp })
+        themeHead.addView(themeTitles, lp(0, WRAP, 1f))
+        theme.addView(themeHead)
+        val modes = listOf(Theme.AUTO, Theme.LIGHT, Theme.DARK)
+        val names = listOf(ctx.getString(R.string.theme_auto), ctx.getString(R.string.theme_light), ctx.getString(R.string.theme_dark))
+        theme.addView(Segmented(ctx, names, modes.indexOf(Prefs.theme).coerceAtLeast(0)) { i ->
+            Prefs.theme = modes[i]
+            if (Theme.refresh()) act.rebuild()
+        }, lp(MATCH, WRAP).apply { topMargin = 14.dp })
+        col.addRow(theme)
+
         val accent = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(20.dp, 16.dp, 20.dp, 18.dp)
-            background = Shapes.rect(Palette.card, 18f, Palette.stroke)
+            background = Shapes.card(18f)
         }
         val head = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         head.addView(ctx.iconView(R.drawable.ic_droplet, 24, Palette.text2), lp(24.dp, 24.dp).apply { marginEnd = 16.dp })
@@ -56,7 +77,7 @@ class GeneralPage(private val act: SettingsActivity) : Page(R.string.set_general
         val langCard = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(20.dp, 16.dp, 20.dp, 18.dp)
-            background = Shapes.rect(Palette.card, 18f, Palette.stroke)
+            background = Shapes.card(18f)
         }
         val codes = listOf("system", "ar", "en")
         val seg = Segmented(ctx, listOf(ctx.getString(R.string.lang_system), "العربية", "English"), codes.indexOf(Prefs.lang).coerceAtLeast(0), arabicIndex = 1) { i ->
@@ -195,7 +216,7 @@ class VehiclePage(private val act: SettingsActivity) : Page(R.string.set_vehicle
     private fun tile(ctx: Context, t: Tile): LinearLayout = LinearLayout(ctx).apply {
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER
-        background = Shapes.pressable(Shapes.rect(Palette.card, 20f, Palette.stroke), Shapes.rect(Palette.card2, 20f, Palette.stroke))
+        background = Shapes.clickableCard(20f)
         isClickable = true
         pressScale(0.96f)
         setOnClickListener {

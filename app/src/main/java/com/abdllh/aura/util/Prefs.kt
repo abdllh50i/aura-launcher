@@ -11,6 +11,8 @@ object Prefs {
 
     fun init(ctx: Context) {
         sp = ctx.getSharedPreferences("aura", Context.MODE_PRIVATE)
+        // 1.0 offered a near-white accent, which disappears on the light theme: it became "graphite"
+        if (sp.getInt("accent", 0) == 0xFFE8EAED.toInt()) accent = 0xFF8E959F.toInt()
         Palette.accent = accent
     }
 
@@ -19,6 +21,11 @@ object Prefs {
     var accent: Int
         get() = sp.getInt("accent", Palette.DEFAULT_ACCENT)
         set(v) { sp.edit().putInt("accent", v).apply(); Palette.accent = v }
+
+    /** "auto" | "dark" | "light" (see [com.abdllh.aura.ui.Theme]) */
+    var theme: String
+        get() = sp.getString("theme", "auto") ?: "auto"
+        set(v) { sp.edit().putString("theme", v).apply() }
 
     /** "system" | "ar" | "en" */
     var lang: String
@@ -42,7 +49,7 @@ object Prefs {
         set(v) { sp.edit().putString("workAddress", v).apply() }
 
     var dockLabels: Boolean
-        get() = sp.getBoolean("dockLabels", true)
+        get() = sp.getBoolean("dockLabels", false)
         set(v) { sp.edit().putBoolean("dockLabels", v).apply() }
 
     var hiddenApps: Set<String>

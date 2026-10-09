@@ -69,12 +69,13 @@ class RoundBtn(context: Context, private val res: Int, private val sizeDp: Int =
     fun setIcon(r: Int) { img.setImageResource(r) }
 
     private fun restyle() {
-        val normal = Shapes.oval(Palette.card2, Palette.stroke)
-        val pressed = Shapes.oval(Palette.card3, Palette.stroke)
+        // light theme: white buttons lifted by a soft shadow; dark theme: flat tonal buttons
         background = Shapes.pressable(
-            if (active) Shapes.oval(Palette.withAlpha(Palette.accent, 0.22f), Palette.withAlpha(Palette.accent, 0.55f)) else normal,
-            pressed
+            if (active) Shapes.oval(Palette.mix(if (Palette.dark) Palette.card2 else Palette.card, Palette.accent, if (Palette.dark) 0.18f else 0.12f))
+            else Shapes.oval(if (Palette.dark) Palette.card2 else Palette.card),
+            Shapes.oval(Palette.card3)
         )
+        elevate(if (Palette.dark) 0f else 3f)
         img.setColorFilter(if (active) Palette.accent else Palette.text)
     }
 

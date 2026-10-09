@@ -31,23 +31,17 @@ class ABtn @JvmOverloads constructor(
     fun restyle() {
         when (kind) {
             Kind.PRIMARY -> {
-                background = Shapes.pressable(
-                    Shapes.rect(Palette.accent, 14f),
-                    Shapes.rect(Palette.mix(Palette.accent, 0xFFFFFFFF.toInt(), 0.18f), 14f)
-                )
+                background = Shapes.accent(14f)
                 setTextColor(Palette.onColor(Palette.accent))
             }
             Kind.TONAL -> {
-                background = Shapes.pressable(
-                    Shapes.rect(Palette.card3, 14f, Palette.stroke),
-                    Shapes.rect(0xFF2A3240.toInt(), 14f, Palette.stroke)
-                )
+                background = Shapes.pressable(Shapes.rect(Palette.card2, 14f), Shapes.rect(Palette.card3, 14f))
                 setTextColor(Palette.text)
             }
             Kind.GHOST -> {
                 background = Shapes.pressable(
                     Shapes.rect(0x00000000, 14f, Palette.stroke),
-                    Shapes.rect(0x14FFFFFF, 14f, Palette.stroke)
+                    Shapes.rect(Palette.press, 14f, Palette.stroke)
                 )
                 setTextColor(Palette.text2)
             }

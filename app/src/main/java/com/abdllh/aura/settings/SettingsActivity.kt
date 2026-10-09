@@ -2,7 +2,6 @@ package com.abdllh.aura.settings
 
 import android.app.Activity
 import android.content.Context
-import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
@@ -16,6 +15,7 @@ import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Shapes
+import com.abdllh.aura.ui.Theme
 import com.abdllh.aura.ui.WRAP
 import com.abdllh.aura.ui.flp
 import com.abdllh.aura.ui.iconView
@@ -52,11 +52,15 @@ class SettingsActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Fonts.refreshLocale(this)
-        window.setBackgroundDrawable(ColorDrawable(Palette.bg))
+        Theme.refresh()
+        Theme.window(this)
         if (com.abdllh.aura.BuildConfig.DEBUG) {
             // test hooks:  am start -n .../.settings.SettingsActivity --es api_base http://10.0.2.2:8765 --es repo test/aura
             intent.getStringExtra("api_base")?.let { com.abdllh.aura.util.Prefs.apiBase = it }
             intent.getStringExtra("repo")?.let { com.abdllh.aura.util.Prefs.updateRepo = it }
+            // screenshots:  --es theme dark|light|auto  --es lang ar|en|system  (then press Home)
+            intent.getStringExtra("theme")?.let { com.abdllh.aura.util.Prefs.theme = it; Theme.refresh(); Theme.window(this) }
+            intent.getStringExtra("lang")?.let { com.abdllh.aura.util.Prefs.lang = it }
         }
         pages = listOf(GeneralPage(this), UpdatePage(this), DisplaySoundPage(this), NavigationPage(this), VehiclePage(this), AboutPage(this))
         setContentView(buildFrame())
@@ -71,13 +75,13 @@ class SettingsActivity : Activity() {
         // ---- sidebar
         val side = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(16.dp, 14.dp, 12.dp, 14.dp)
+            setPaddingRelative(16.dp, 14.dp, 12.dp, 14.dp)
         }
         val back = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(8.dp, 0, 8.dp, 0)
-            background = Shapes.pressable(Shapes.rect(0x00000000, 16f), Shapes.rect(0x18FFFFFF, 16f))
+            background = Shapes.ghost(16f)
             isClickable = true
             pressScale(0.97f)
             setOnClickListener { finish() }
@@ -94,7 +98,7 @@ class SettingsActivity : Activity() {
             val item = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(16.dp, 0, 14.dp, 0)
+                setPaddingRelative(16.dp, 0, 14.dp, 0)
                 isClickable = true
                 pressScale(0.98f)
                 setOnClickListener { show(i, true) }
@@ -114,7 +118,7 @@ class SettingsActivity : Activity() {
         // ---- content
         val right = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(8.dp, 18.dp, 24.dp, 0)
+            setPaddingRelative(8.dp, 18.dp, 24.dp, 0)
         }
         title = label(28f, Palette.text, Fonts.LIGHT)
         right.addView(title, lp(MATCH, WRAP).apply { bottomMargin = 12.dp; marginStart = 6.dp })
@@ -132,8 +136,7 @@ class SettingsActivity : Activity() {
         val page = pages[index]
         for ((i, item) in navItems.withIndex()) {
             val sel = i == index
-            item.background = if (sel) Shapes.rect(Palette.withAlpha(Palette.accent, 0.16f), 18f, Palette.withAlpha(Palette.accent, 0.45f))
-            else Shapes.pressable(Shapes.rect(0x00000000, 18f), Shapes.rect(0x14FFFFFF, 18f))
+            item.background = if (sel) Shapes.rect(Palette.accentSoft(), 18f) else Shapes.ghost(18f)
             (item.getChildAt(0) as android.widget.ImageView).setColorFilter(if (sel) Palette.accent else Palette.text2)
             (item.getChildAt(1) as AText).setTextColor(if (sel) Palette.text else Palette.text2)
         }

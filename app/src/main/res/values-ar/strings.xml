@@ -34,6 +34,21 @@
     <string name="dock_settings">الإعدادات</string>
     <string name="drawer_search">ابحث في التطبيقات</string>
     <string name="drawer_empty">لا توجد تطبيقات</string>
+    <string name="drawer_title">التطبيقات</string>
+    <string name="home_car">سيارتك — اسحب لتدويرها</string>
+    <string name="ctl_title">التحكم</string>
+    <string name="ctl_theme">المظهر</string>
+    <string name="ctl_wifi">واي فاي</string>
+    <string name="ctl_bluetooth">بلوتوث</string>
+    <string name="ctl_car">السيارة</string>
+    <string name="ctl_vol_down">خفض الصوت</string>
+    <string name="ctl_vol_up">رفع الصوت</string>
+    <string name="theme_auto">تلقائي</string>
+    <string name="theme_dark">داكن</string>
+    <string name="theme_light">فاتح</string>
+    <string name="media_prev">السابق</string>
+    <string name="media_play">تشغيل أو إيقاف</string>
+    <string name="media_next">التالي</string>
     <string name="safe_mode_notice">توقف Aura بعد تعطل متكرر — تمت إعادة اللانشر الأصلي</string>
 
     <!-- الإعدادات -->
@@ -46,6 +61,8 @@
     <string name="set_about">حول</string>
     <string name="set_appearance">المظهر</string>
     <string name="set_accent">لون التمييز</string>
+    <string name="set_theme">الوضع</string>
+    <string name="set_theme_sub">التلقائي فاتح في النهار وداكن في الليل</string>
     <string name="set_clock24">نظام 24 ساعة</string>
     <string name="set_dock_labels">إظهار أسماء الأيقونات</string>
     <string name="set_language">اللغة</string>

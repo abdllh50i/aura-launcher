@@ -50,8 +50,7 @@ fun Context.settingRow(
     gravity = Gravity.CENTER_VERTICAL
     minimumHeight = 66.dp
     setPadding(20.dp, 10.dp, 20.dp, 10.dp)
-    background = if (onClick != null) Shapes.pressable(Shapes.rect(Palette.card, 18f, Palette.stroke), Shapes.rect(Palette.card2, 18f, Palette.stroke))
-    else Shapes.rect(Palette.card, 18f, Palette.stroke)
+    background = if (onClick != null) Shapes.clickableCard(18f) else Shapes.card(18f)
     if (icon != null) addView(iconView(icon, 24, iconTint), lp(24.dp, 24.dp).apply { marginEnd = 16.dp })
     val t = LinearLayout(this@settingRow).apply { orientation = LinearLayout.VERTICAL }
     t.addView(label(17f, Palette.text, Fonts.MEDIUM, lines = 2).apply { text = title })
@@ -85,7 +84,7 @@ fun Context.sliderRow(icon: Int, title: CharSequence, slider: AuraSlider, valueV
     val col = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(20.dp, 14.dp, 20.dp, 16.dp)
-        background = Shapes.rect(Palette.card, 18f, Palette.stroke)
+        background = Shapes.card(18f)
     }
     val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
     head.addView(iconView(icon, 22, Palette.text2), lp(22.dp, 22.dp).apply { marginEnd = 12.dp })

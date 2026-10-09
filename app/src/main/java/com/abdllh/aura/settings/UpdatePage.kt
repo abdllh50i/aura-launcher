@@ -43,7 +43,7 @@ class UpdatePage(private val act: SettingsActivity) : Page(R.string.set_update, 
             setPadding(22.dp, 18.dp, 22.dp, 18.dp)
             background = Shapes.card(22f)
         }
-        val badge = FrameLayout(ctx).apply { background = Shapes.oval(Palette.withAlpha(Palette.accent, 0.18f), Palette.withAlpha(Palette.accent, 0.5f)) }
+        val badge = FrameLayout(ctx).apply { background = Shapes.oval(Palette.accentSoft()) }
         badge.addView(ctx.iconView(R.drawable.ic_layers, 28, Palette.accent).apply { layoutParams = FrameLayout.LayoutParams(28.dp, 28.dp, Gravity.CENTER) })
         head.addView(badge, lp(60.dp, 60.dp))
         val t = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
@@ -58,7 +58,7 @@ class UpdatePage(private val act: SettingsActivity) : Page(R.string.set_update, 
         holder = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(22.dp, 20.dp, 22.dp, 20.dp)
-            background = Shapes.rect(Palette.card, 22f, Palette.stroke)
+            background = Shapes.card(22f)
         }
         col.addRow(holder, 14)
 

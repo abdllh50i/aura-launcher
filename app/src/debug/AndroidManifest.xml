@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only: the tool that renders the 3D car into the turntable frames shipped with the app (tools/car3d). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name=".debug.CarBakerActivity"
+            android:exported="true"
+            android:screenOrientation="landscape" />
+    </application>
+</manifest>

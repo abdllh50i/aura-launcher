@@ -69,7 +69,11 @@ class AuraSwitch @JvmOverloads constructor(
         val rtl = layoutDirection == LAYOUT_DIRECTION_RTL
         val travel = w - pad * 2 - d
         val x = if (rtl) (w - pad - d) - travel * t else pad + travel * t
-        paint.color = if (t > 0.5f) 0xFFFFFFFF.toInt() else Palette.text2
+        if (!Palette.dark) {
+            paint.color = 0x26000000
+            c.drawCircle(x + d / 2, h / 2 + 1.dp, d / 2, paint)
+        }
+        paint.color = if (t > 0.5f || !Palette.dark) 0xFFFFFFFF.toInt() else Palette.text2
         c.drawCircle(x + d / 2, h / 2, d / 2, paint)
     }
 }

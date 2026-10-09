@@ -69,7 +69,9 @@ ICONS = {
     "compass": ([circle(12, 12, 10), "M16.24,7.76l-2.12,6.36 -6.36,2.12 2.12,-6.36 6.36,-2.12z"], False),
     "droplet": (["M12,2.69l5.66,5.66a8,8 0,1 1,-11.31,0z"], False),
     "wrench_screw": (["M12,2v4", "M12,18v4", "M4.93,4.93l2.83,2.83", "M16.24,16.24l2.83,2.83", "M2,12h4", "M18,12h4", "M4.93,19.07l2.83,-2.83", "M16.24,7.76l2.83,-2.83"], False),
+    "contrast": ([circle(12, 12, 9), "F:M12,3a9,9 0,0 1,0,18z"], False),
 }
+# A path string starting with "F:" is a plain filled shape inside an outline icon.
 
 HEAD = ('<?xml version="1.0" encoding="utf-8"?>\n'
         '<vector xmlns:android="http://schemas.android.com/apk/res/android"\n'
@@ -81,7 +83,9 @@ def main():
     for name, (paths, filled) in ICONS.items():
         body = []
         for p in paths:
-            if filled:
+            if p.startswith("F:"):
+                body.append('    <path\n        android:pathData="%s"\n        android:fillColor="#FFFFFFFF"/>\n' % p[2:])
+            elif filled:
                 body.append('    <path\n        android:pathData="%s"\n        android:fillColor="#FFFFFFFF"\n        android:strokeColor="#FFFFFFFF"\n        android:strokeWidth="1.2"\n        android:strokeLineJoin="round"/>\n' % p)
             else:
                 body.append('    <path\n        android:pathData="%s"\n        android:fillColor="#00000000"\n        android:strokeColor="#FFFFFFFF"\n        android:strokeWidth="1.7"\n        android:strokeLineCap="round"\n        android:strokeLineJoin="round"/>\n' % p)

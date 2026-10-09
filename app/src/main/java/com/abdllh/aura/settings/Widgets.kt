@@ -43,7 +43,7 @@ class Segmented(
 
     init {
         orientation = HORIZONTAL
-        background = Shapes.rect(Palette.card2, 16f, Palette.stroke)
+        background = Shapes.rect(Palette.card2, 16f)
         setPadding(4.dp, 4.dp, 4.dp, 4.dp)
         for ((i, t) in options.withIndex()) {
             val c = ctx.label(15f, Palette.text2, Fonts.MEDIUM, gravity = Gravity.CENTER).apply {
@@ -91,7 +91,7 @@ class Swatches(ctx: Context, private val colors: IntArray, selected: Int, privat
             val dot = FrameLayout(context).apply {
                 isClickable = true
                 pressScale(0.9f)
-                background = if (c == sel) Shapes.oval(c, 0xFFFFFFFF.toInt(), 3) else Shapes.oval(c, Palette.stroke, 1)
+                background = if (c == sel) Shapes.oval(c, Palette.text, 3) else Shapes.oval(c, Palette.stroke, 1)
                 setOnClickListener { sel = c; build(); onPick(c) }
             }
             addView(dot, lp(38.dp, 38.dp).apply { if (i > 0) marginStart = 12.dp })
@@ -186,7 +186,7 @@ object InputDialog {
 
         val box = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            background = Shapes.card(24f, 0xFF1A2028.toInt(), 0xFF14181E.toInt())
+            background = Shapes.rect(Palette.sheet, 24f, if (Palette.dark) Palette.stroke else 0)
             setPadding(26.dp, 22.dp, 26.dp, 20.dp)
         }
         box.addView(ctx.label(20f, Palette.text, Fonts.MEDIUM).apply { text = title })

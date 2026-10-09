@@ -1,11 +1,8 @@
 package com.abdllh.aura.home
 
-import android.animation.Animator
-import android.animation.AnimatorListenerAdapter
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.provider.Settings
 import android.text.Editable
@@ -13,7 +10,7 @@ import android.text.TextWatcher
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.view.animation.DecelerateInterpolator
+import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.BaseAdapter
 import android.widget.EditText
@@ -27,6 +24,7 @@ import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Shapes
+import com.abdllh.aura.ui.Sheet
 import com.abdllh.aura.ui.WRAP
 import com.abdllh.aura.ui.flp
 import com.abdllh.aura.ui.iconView
@@ -35,38 +33,33 @@ import com.abdllh.aura.ui.lp
 import com.abdllh.aura.ui.pressScale
 import com.abdllh.aura.util.dp
 
-/** Full-screen app grid that slides up over the home screen. */
-class AppDrawer(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
-    private val scrim = View(ctx).apply { setBackgroundColor(0xE6070A0D.toInt()); alpha = 0f }
-    private val sheet = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+/** All apps: a sheet that slides up over the home screen, with search. Long-press an app for its system info page. */
+class AppDrawer(ctx: Context, private val host: HomeHost) : Sheet(ctx, true) {
     private val search: EditText
     private val grid = GridView(ctx)
     private val empty: AText = ctx.label(16f, Palette.text3, Fonts.REGULAR, gravity = Gravity.CENTER)
     private var all: List<AppInfo> = emptyList()
     private var shown: List<AppInfo> = emptyList()
     private val adapter = Adapter()
-    var isOpen = false
-        private set
 
     init {
-        visibility = GONE
-        isClickable = true
-        addView(scrim, flp(MATCH, MATCH))
-        scrim.setOnClickListener { close() }
-
-        sheet.setPadding(28.dp, 18.dp, 28.dp, 10.dp)
+        val content = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(26.dp, 6.dp, 26.dp, 0)
+        }
         val top = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        top.addView(ctx.label(22f, Palette.text, Fonts.MEDIUM).apply { setText(R.string.drawer_title) }, lp(WRAP, WRAP).apply { marginEnd = 22.dp })
         search = EditText(ctx).apply {
             setHint(R.string.drawer_search)
             setHintTextColor(Palette.text3)
             setTextColor(Palette.text)
-            textSize = 17f
+            textSize = 16f
             typeface = Fonts.get(Fonts.REGULAR)
             maxLines = 1
             isSingleLine = true
-            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
-            setPadding(50.dp, 0, 20.dp, 0)
-            background = Shapes.rect(Palette.card2, 26f, Palette.stroke)
+            imeOptions = EditorInfo.IME_ACTION_SEARCH or EditorInfo.IME_FLAG_NO_EXTRACT_UI
+            setPaddingRelative(48.dp, 0, 18.dp, 0)
+            background = Shapes.rect(Palette.card2, 24f)
             addTextChangedListener(object : TextWatcher {
                 override fun afterTextChanged(s: Editable?) = applyFilter(s?.toString().orEmpty())
                 override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -75,49 +68,55 @@ class AppDrawer(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
         }
         val searchBox = FrameLayout(ctx)
         searchBox.addView(search, flp(MATCH, MATCH))
-        searchBox.addView(ctx.iconView(R.drawable.ic_search, 22, Palette.text3).apply { layoutParams = flp(22.dp, 22.dp, Gravity.START or Gravity.CENTER_VERTICAL).apply { marginStart = 16.dp } })
-        top.addView(searchBox, lp(0, 52.dp, 1f))
-        val close = FrameLayout(ctx).apply {
-            background = Shapes.pressable(Shapes.oval(Palette.card2, Palette.stroke), Shapes.oval(Palette.card3, Palette.stroke))
+        searchBox.addView(ctx.iconView(R.drawable.ic_search, 20, Palette.text3).apply {
+            layoutParams = flp(20.dp, 20.dp, Gravity.START or Gravity.CENTER_VERTICAL).apply { marginStart = 17.dp }
+        })
+        top.addView(searchBox, lp(0, 48.dp, 1f))
+        val closeBtn = FrameLayout(ctx).apply {
+            background = Shapes.tonalOval()
             isClickable = true
-            pressScale(0.92f)
+            contentDescription = ctx.getString(R.string.btn_cancel)
+            pressScale(0.9f)
             setOnClickListener { close() }
-            addView(ctx.iconView(R.drawable.ic_close, 22, Palette.text).apply { layoutParams = flp(22.dp, 22.dp, Gravity.CENTER) })
+            addView(ctx.iconView(R.drawable.ic_close, 20, Palette.text).apply { layoutParams = flp(20.dp, 20.dp, Gravity.CENTER) })
         }
-        top.addView(close, lp(52.dp, 52.dp).apply { marginStart = 14.dp })
-        sheet.addView(top, lp(MATCH, WRAP))
+        top.addView(closeBtn, lp(48.dp, 48.dp).apply { marginStart = 14.dp })
+        content.addView(top, lp(MATCH, WRAP))
 
         grid.apply {
             numColumns = 8
-            verticalSpacing = 8.dp
+            verticalSpacing = 6.dp
             horizontalSpacing = 4.dp
             stretchMode = GridView.STRETCH_COLUMN_WIDTH
             selector = android.graphics.drawable.ColorDrawable(0)
             isVerticalScrollBarEnabled = false
             overScrollMode = OVER_SCROLL_NEVER
             clipToPadding = false
-            setPadding(0, 16.dp, 0, 8.dp)
+            setPadding(0, 14.dp, 0, 18.dp)
             adapter = this@AppDrawer.adapter
         }
-        sheet.addView(grid, lp(MATCH, 0, 1f))
-        addView(sheet, flp(MATCH, MATCH))
-        addView(empty, flp(MATCH, MATCH, Gravity.CENTER).also { it.topMargin = 60.dp })
+        val body = FrameLayout(ctx)
+        body.addView(grid, flp(MATCH, MATCH))
+        body.addView(empty, flp(MATCH, WRAP, Gravity.CENTER))
         empty.setText(R.string.drawer_empty)
         empty.visibility = GONE
-        sheet.background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0xFF0F1318.toInt(), 0xFF090B0F.toInt()))
+        content.addView(body, lp(MATCH, 0, 1f))
+        panel.addView(content, lp(MATCH, 0, 1f))
     }
 
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
-        grid.numColumns = (w / 126.dp).coerceIn(4, 12)
+        super.onSizeChanged(w, h, ow, oh)
+        grid.numColumns = ((w - 72.dp) / 112.dp).coerceIn(4, 12)
     }
 
-    fun open() {
-        if (isOpen) return
-        isOpen = true
+    override fun dragZone(): Int = 30.dp
+
+    override fun onOpen() {
         all = AppRepo.cached ?: emptyList()
         search.setText("")
         applyFilter("")
         if (all.isEmpty()) empty.visibility = GONE // still loading: do not claim "no apps"
+        grid.setSelection(0)
         AppRepo.loadAsync(context) { fresh ->
             if (fresh.isNotEmpty() && fresh != all) {
                 all = fresh
@@ -126,26 +125,11 @@ class AppDrawer(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
                 applyFilter(search.text.toString())
             }
         }
-        visibility = VISIBLE
-        sheet.translationY = (height * 0.14f).coerceAtLeast(60f)
-        sheet.alpha = 0f
-        scrim.animate().alpha(1f).setDuration(220).start()
-        sheet.animate().translationY(0f).alpha(1f).setDuration(280).setInterpolator(DecelerateInterpolator(1.6f)).setListener(null).start()
     }
 
-    fun close() {
-        if (!isOpen) return
-        isOpen = false
-        hideKeyboard()
-        scrim.animate().alpha(0f).setDuration(180).start()
-        sheet.animate().translationY(height * 0.10f).alpha(0f).setDuration(200).setInterpolator(DecelerateInterpolator())
-            .setListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationEnd(a: Animator) { if (!isOpen) visibility = GONE }
-            }).start()
-    }
-
-    private fun hideKeyboard() {
+    override fun onClose() {
         try { (context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(windowToken, 0) } catch (_: Throwable) { }
+        search.clearFocus()
     }
 
     private fun applyFilter(q: String) {
@@ -167,7 +151,6 @@ class AppDrawer(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
     }
 
     private inner class Cell(ctx: Context) : LinearLayout(ctx) {
-        private val tile = FrameLayout(ctx)
         private val icon = ImageView(ctx)
         private val name: AText = ctx.label(12.5f, Palette.text2, Fonts.REGULAR, gravity = Gravity.CENTER)
         private var tag: String? = null
@@ -175,22 +158,20 @@ class AppDrawer(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
         init {
             orientation = VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(4.dp, 8.dp, 4.dp, 8.dp)
-            tile.background = Shapes.rect(Palette.card2, 20f, Palette.stroke)
+            setPadding(4.dp, 10.dp, 4.dp, 10.dp)
             icon.scaleType = ImageView.ScaleType.FIT_CENTER
-            tile.addView(icon, flp(44.dp, 44.dp, Gravity.CENTER))
-            addView(tile, lp(70.dp, 70.dp))
-            addView(name, lp(MATCH, WRAP).apply { topMargin = 7.dp })
-            background = Shapes.pressable(Shapes.rect(0x00000000, 20f), Shapes.rect(0x14FFFFFF, 20f))
+            addView(icon, lp(58.dp, 58.dp))
+            addView(name, lp(MATCH, WRAP).apply { topMargin = 8.dp })
+            background = Shapes.ghost(18f)
             isClickable = true
-            pressScale(0.94f)
+            pressScale(0.92f)
         }
 
         fun bind(a: AppInfo) {
             tag = a.pkg
             name.text = a.label
             icon.setImageDrawable(null)
-            IconLoader.get(context, a.pkg, 96) { bmp: Bitmap? -> if (tag == a.pkg && bmp != null) icon.setImageBitmap(bmp) }
+            IconLoader.get(context, a.pkg, 116) { bmp: Bitmap? -> if (tag == a.pkg && bmp != null) icon.setImageBitmap(bmp) }
             setOnClickListener {
                 close()
                 if (!AppRepo.launch(context, a.pkg)) host.toast(context.getString(R.string.err_app_missing))

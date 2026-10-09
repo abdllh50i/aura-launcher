@@ -58,6 +58,24 @@ Never scan the LAN while developing if other adb devices (a TV...) live on it: u
 Emulator: AVD "CarUnit" (Android 10 x86_64, 1024×600, 160 dpi) created with `ANDROID_AVD_HOME` on an ASCII path; the stock image is pushed to
 `/data/local/tmp/ws/system.img` once.
 
+## Home screen design
+`home/HomeActivity.kt` lays out `CarPanel` (clock, the car, quick buttons), `MapPanel` (decorative map, "Where to?",
+Home/Work, the floating `MediaCard`), the `Dock` and two bottom sheets (`ControlsSheet`, `AppDrawer`, both on `ui/Sheet.kt`).
+Colours are theme tokens in `ui/Palette.kt`; `ui/Theme.kt` resolves dark / light / auto (light between an estimated sunrise
+and sunset) and a theme or accent change rebuilds the views in place behind a `PixelCopy` snapshot that fades out.
+Keep idle frames free: nothing on the home screen animates when untouched except the small `MapPuck`.
+
+### The 3D car (`tools/car3d`, debug-only `CarBakerActivity`)
+The car is not rendered live (the source model has ~726k triangles and 8K textures; the unit has a Mali-G31). Instead a
+turntable is pre-rendered once on the emulator's GPU and shipped as 90 WebP frames (4° apart, 640×360 with alpha, ~1.7 MB):
+1. `fbx2mesh.py model.fbx OUT --front -x` → `mesh.bin` (positions, normals, GL UVs, indices; binary FBX parsed by `fbx_binary.py`),
+2. `prep_textures.py` → `basecolor.jpg` + `rm.png` (roughness/metalness), `find_plates.py OUT` blanks the licence plates,
+3. `bake.ps1 -Out DIR -Params "frames=90`nss=4..." -Install -PushMesh` runs `app/src/debug/.../CarBakerActivity` (GLES2:
+   studio environment, GGX specular, clear coat, ambient occlusion from 64 depth maps, soft floor shadow, 4× supersampling),
+4. `pack_frames.py DIR app/src/main/assets/car --default 80` → `f_NNN.webp` + `car.json` (frame size, resting frame, boxes).
+At runtime `ui/CarFrames.kt` decodes frames on two worker threads into a small LRU (bitmaps are reused), and `ui/CarStage.kt`
+turns them with drag, fling, snap and a spring back to the resting view (mirrored in RTL). The model itself is not in the repo.
+
 ## Facts about the firmware (from the dump)
 * No `avb` flag in the vendor fstab → no dm-verity on system/vendor/product; vbmeta uses the public AOSP test keys.
 * `persist.nwd.launcher.default=<pkg>` makes the patched PackageManager return that package as HOME.
