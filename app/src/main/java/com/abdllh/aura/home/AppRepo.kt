@@ -89,6 +89,10 @@ object AppRepo {
             val sys = (ai.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
             out.add(AppInfo(ai.packageName, ai.name, ri.loadLabel(pm).toString(), sys))
         }
+        // Aura's own Maps and Music (they can be pinned to the dock like any app)
+        for ((id, res) in listOf(DockPins.MAPS to com.abdllh.aura.R.string.dock_nav, DockPins.MUSIC to com.abdllh.aura.R.string.dock_music)) {
+            if (includeHidden || id !in hidden) out.add(AppInfo(id, "", ctx.getString(res), true))
+        }
         // ZLink kept off by Aura is disabled, so it has no launcher entry: it stays in the list (opening it turns it on)
         if (Known.ZLINK !in seen && (includeHidden || Known.ZLINK !in hidden) && com.abdllh.aura.system.ZLinkGuard.available(ctx)) {
             try {
@@ -105,13 +109,25 @@ object AppRepo {
         ctx.packageManager.getLaunchIntentForPackage(pkg)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
 
     fun launch(ctx: Context, pkg: String): Boolean = try {
-        if (pkg == Known.ZLINK) com.abdllh.aura.system.ZLinkGuard.open(ctx) // kept off by Aura: turned on first
-        else {
-            val i = launchIntent(ctx, pkg)
-            if (i != null) { ctx.startActivity(i); true } else false
+        when (pkg) {
+            DockPins.MUSIC -> { com.abdllh.aura.music.MusicActivity.open(ctx); true }
+            DockPins.MAPS -> Actions.nav(ctx)
+            Known.ZLINK -> com.abdllh.aura.system.ZLinkGuard.open(ctx) // kept off by Aura: turned on first
+            else -> {
+                val i = launchIntent(ctx, pkg)
+                if (i != null) { ctx.startActivity(i); true } else false
+            }
         }
     } catch (_: Throwable) {
         false
+    }
+
+    /** The app's name as the launcher shows it. */
+    fun label(ctx: Context, pkg: String): String = try {
+        val pm = ctx.packageManager
+        pm.getApplicationLabel(pm.getApplicationInfo(pkg, PackageManager.MATCH_DISABLED_COMPONENTS)).toString()
+    } catch (_: Throwable) {
+        pkg
     }
 
     fun launchComponent(ctx: Context, pkg: String, cls: String): Boolean = try {
@@ -153,7 +169,8 @@ object IconLoader {
         val app = ctx.applicationContext
         pool.execute {
             val bmp = try {
-                toBitmap(app.packageManager.getApplicationIcon(pkg), sizePx)
+                // Aura's own apps ("aura:maps"...) and the known head-unit apps get Aura's coloured tile
+                DockTiles.bitmap(app, pkg, sizePx) ?: toBitmap(app.packageManager.getApplicationIcon(pkg), sizePx)
             } catch (_: Throwable) {
                 null
             }

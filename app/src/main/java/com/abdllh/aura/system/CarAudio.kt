@@ -42,6 +42,8 @@ object CarAudio {
 
     private val main = Handler(Looper.getMainLooper())
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
+    private val paramListeners = CopyOnWriteArrayList<(Int, Int) -> Unit>()
+    @Volatile private var selfAt = -1_000_000L // when Aura itself last changed the volume or the mute
     private var app: Context? = null
     private var service: IBinder? = null
     private var binding = false
@@ -74,6 +76,12 @@ object CarAudio {
     fun removeListener(l: () -> Unit) { listeners.remove(l) }
     private fun notifyChanged() = main.post { for (l in listeners) l() }
 
+    /** Every audio parameter the firmware reports (type, value), on the main thread: 14 media, 15 navigation, 16 phone. */
+    fun addParamListener(l: (Int, Int) -> Unit) { paramListeners.add(l) }
+
+    /** Did Aura's own screen change the volume or the mute just now (so a report of it is only the echo)? */
+    fun changedByAura(withinMs: Long = 1500L): Boolean = android.os.SystemClock.elapsedRealtime() - selfAt < withinMs
+
     // ------------------------------------------------------------------------------------------ public API
     fun max(): Int = if (nwd) readKey(KEY_MAX, 40).coerceAtLeast(1) else am()?.getStreamMaxVolume(AudioManager.STREAM_MUSIC)?.coerceAtLeast(1) ?: 15
 
@@ -86,6 +94,7 @@ object CarAudio {
     fun muted(): Boolean = if (nwd) readKey(KEY_MUTE, 0) == 1 else am()?.isStreamMute(AudioManager.STREAM_MUSIC) == true
 
     fun setVolume(v: Int) {
+        selfAt = android.os.SystemClock.elapsedRealtime()
         val value = v.coerceIn(0, max())
         if (!nwd) {
             val a = am() ?: return
@@ -106,6 +115,7 @@ object CarAudio {
     fun step(delta: Int) = setVolume(volume() + delta)
 
     fun setMuted(mute: Boolean) {
+        selfAt = android.os.SystemClock.elapsedRealtime()
         if (!nwd) {
             am()?.adjustStreamVolume(AudioManager.STREAM_MUSIC, if (mute) AudioManager.ADJUST_MUTE else AudioManager.ADJUST_UNMUTE, 0)
             notifyChanged()
@@ -129,6 +139,7 @@ object CarAudio {
                     val type = data.readInt()
                     val value = data.readInt()
                     if (type == PARAM_SYSTEM_VOLUME) { known = value; notifyChanged() }
+                    if (paramListeners.isNotEmpty()) main.post { for (l in paramListeners) l(type, value) }
                 }
                 reply?.writeNoException()
                 true

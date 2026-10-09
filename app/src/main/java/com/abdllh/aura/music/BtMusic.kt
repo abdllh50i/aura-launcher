@@ -179,7 +179,8 @@ object BtMusic {
         try {
             c.sendBroadcast(Intent("com.nwd.action.ACTION_APP_IN_OUT").putExtra("extra_app_id", BT_MUSIC_APP_ID)
                 .putExtra("extra_app_operation", 1).putExtra("extra_app_event", 0))
-            c.sendBroadcast(Intent("com.nwd.ACTION_MEDIA_PLAY").putExtra("extra_app_id", BT_MUSIC_APP_ID))
+            c.sendBroadcast(Intent("com.nwd.ACTION_MEDIA_PLAY").putExtra("extra_app_id", BT_MUSIC_APP_ID)
+                .putExtra(com.abdllh.aura.media.MediaMonitor.EXTRA_SELF, true)) // not the stock screen (MusicKeys)
         } catch (_: Throwable) {
         }
         Player.pauseForOtherSource()

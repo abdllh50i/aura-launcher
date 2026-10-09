@@ -94,9 +94,11 @@ class MapsActivity : Activity() {
         Theme.refresh()
         Theme.window(this, Palette.bg)
         map = AuraMap(this, interactive = true, texture = false)
+        map.startPadding = panelWidth() + 32.dp // the car sits in the part of the map the panels leave free
         map.onCreate(savedInstanceState)
         setContentView(buildUi())
         map.onUserMoved = { recenterBtn.visibility = View.VISIBLE }
+        map.onLongPress = { p -> dropPin(p) }
         map.onReady = { syncNav(); CarLocation.last?.let { onFix(it) } }
         if (!CarLocation.hasPermission(this)) {
             requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION), 1)
@@ -138,8 +140,51 @@ class MapsActivity : Activity() {
             }
         }
         if (i?.getBooleanExtra("search", false) == true) openSearch()
+        if (BuildConfig.DEBUG) i?.getStringExtra("q")?.let { q -> openSearch(); input.setText(q); runSearch(q); hideKeyboard() } // tests
+        i?.getStringExtra("pick")?.let { which -> // Home / Work chosen on the map, then back to the home screen
+            pickFor = which
+            finishAfterPick = true
+            showPickHint()
+        }
         i?.removeExtra("go")
         i?.removeExtra("search")
+        i?.removeExtra("pick")
+    }
+
+    private var pickFor: String? = null
+    private var finishAfterPick = false
+
+    /** Choosing Home / Work: the search field says how, for as long as it takes. */
+    private fun showPickHint() {
+        val which = pickFor ?: return
+        input.setHint(if (which == "work") R.string.maps_pick_work_short else R.string.maps_pick_home_short)
+        toast(getString(if (which == "work") R.string.maps_pick_work else R.string.maps_pick_home))
+    }
+
+    /** Long press on the map: a pin there, named after what is at that spot, ready to drive to or keep as Home / Work. */
+    private fun dropPin(p: LatLon) {
+        if (NavSession.state != NavSession.State.IDLE) return
+        select(Place(getString(R.string.maps_dropped_pin), "", p))
+        val pin = selected
+        Places.reverse(p, arabic) { found ->
+            if (isDestroyed || selected !== pin || found == null) return@reverse
+            val named = Place(found.name, found.detail, p)
+            selected = named
+            placeName.text = named.name
+            placeDetail.text = named.detail
+            placeDetail.visibility = if (named.detail.isBlank()) View.GONE else View.VISIBLE
+            input.setText(named.name)
+        }
+    }
+
+    /** Saved as Home / Work; when Maps was opened just to choose it, back to where the user came from. */
+    private fun savePlace(which: String) {
+        val p = selected ?: return
+        if (which == "home") Places.home = p else Places.work = p
+        toast(getString(R.string.maps_saved))
+        pickFor = null
+        input.setHint(R.string.home_where_to)
+        if (finishAfterPick) { finishAfterPick = false; finish() }
     }
 
     override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, grants: IntArray) {
@@ -226,6 +271,7 @@ class MapsActivity : Activity() {
         if (!::banner.isInitialized) return
         val st = NavSession.state
         val navigating = st != NavSession.State.IDLE
+        map.setFps(if (st == NavSession.State.NAVIGATING) 60 else 30) // a turning, tilted map needs the frames
         searchCard.visibility = if (navigating) View.GONE else View.VISIBLE
         if (navigating) { resultsCard.visibility = View.GONE; placeCard.visibility = View.GONE; hideKeyboard() }
         banner.visibility = if (st == NavSession.State.NAVIGATING) View.VISIBLE else View.GONE
@@ -320,7 +366,7 @@ class MapsActivity : Activity() {
         map.setDestination(p.pos)
         map.setRoute(null)
         val car = CarLocation.last
-        map.overview(listOfNotNull(p.pos, car?.let { LatLon(it.latitude, it.longitude) }), panelWidth() + 40.dp, 90.dp, 90.dp, 60.dp)
+        map.overview(listOfNotNull(p.pos, car?.let { LatLon(it.latitude, it.longitude) }), panelWidth() + 40.dp, 90.dp, 150.dp, 60.dp)
         requestRoute()
     }
 
@@ -339,7 +385,7 @@ class MapsActivity : Activity() {
             placeRoute.text = "${Units.duration(r.duration, arabic)} · ${Units.distance(r.distance, arabic)} · ${getString(R.string.maps_arrival)} ${Units.arrival(r.duration, Prefs.clock24)}"
             map.setRoute(r.line.points)
             // + the place itself: the route ends on the nearest road, the pin can stand well off it
-            map.overview(r.line.points + p.pos, panelWidth() + 40.dp, 90.dp, 90.dp, 60.dp)
+            map.overview(r.line.points + p.pos, panelWidth() + 40.dp, 90.dp, 150.dp, 60.dp)
         }
     }
 
@@ -439,10 +485,10 @@ class MapsActivity : Activity() {
         val home = Places.home
         val work = Places.work
         results.addView(row(R.drawable.ic_home, getString(R.string.home_home), home?.name ?: getString(R.string.maps_set_place_hint), null) {
-            if (home != null) { closeSearch(); driveTo(home) } else toast(getString(R.string.maps_set_place_hint))
+            if (home != null) { closeSearch(); driveTo(home) } else { closeSearch(); pickFor = "home"; showPickHint() }
         })
         results.addView(row(R.drawable.ic_briefcase, getString(R.string.home_work), work?.name ?: getString(R.string.maps_set_place_hint), null) {
-            if (work != null) { closeSearch(); driveTo(work) } else toast(getString(R.string.maps_set_place_hint))
+            if (work != null) { closeSearch(); driveTo(work) } else { closeSearch(); pickFor = "work"; showPickHint() }
         })
         val rec = Places.recents
         if (rec.isNotEmpty()) {
@@ -557,7 +603,8 @@ class MapsActivity : Activity() {
             recenterBtn.visibility = View.GONE
             map.setCamera(if (NavSession.state == NavSession.State.NAVIGATING) AuraMap.Camera.NAVIGATE else AuraMap.Camera.FOLLOW)
         }.apply { visibility = View.GONE }
-        root.addView(recenterBtn, flp(WRAP, 60.dp, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = 24.dp })
+        // beside the speed bubble on the free side: the cards on the start side never cover it
+        root.addView(recenterBtn, flp(WRAP, 60.dp, Gravity.BOTTOM or Gravity.END).apply { setMargins(0, 0, 126.dp, 56.dp); marginEnd = 126.dp })
 
         speedBubble = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -626,8 +673,8 @@ class MapsActivity : Activity() {
             if (BuildConfig.DEBUG) setOnLongClickListener { intent.putExtra("simulate", true); go(); true }
         }
         actions.addView(goBtn, lp(0, 64.dp, 1f))
-        actions.addView(textButton(R.string.maps_set_home) { selected?.let { Places.home = it; toast(getString(R.string.maps_saved)) } }, lp(WRAP, 64.dp).apply { marginStart = 10.dp })
-        actions.addView(textButton(R.string.maps_set_work) { selected?.let { Places.work = it; toast(getString(R.string.maps_saved)) } }, lp(WRAP, 64.dp).apply { marginStart = 10.dp })
+        actions.addView(textButton(R.string.maps_set_home) { savePlace("home") }, lp(WRAP, 64.dp).apply { marginStart = 10.dp })
+        actions.addView(textButton(R.string.maps_set_work) { savePlace("work") }, lp(WRAP, 64.dp).apply { marginStart = 10.dp })
         c.addView(actions, lp(MATCH, WRAP).apply { topMargin = 16.dp })
         return c
     }
@@ -648,7 +695,7 @@ class MapsActivity : Activity() {
         t.addView(tripLeft, lp(WRAP, WRAP).apply { topMargin = 2.dp })
         c.addView(t, lp(0, WRAP, 1f))
         c.addView(roundIcon(R.drawable.ic_layers, 60) {
-            NavSession.route?.let { r -> map.overview(r.line.points, panelWidth() + 40.dp, 90.dp, 100.dp, 60.dp); recenterBtn.visibility = View.VISIBLE }
+            NavSession.route?.let { r -> map.overview(r.line.points, panelWidth() + 40.dp, 90.dp, 150.dp, 60.dp); recenterBtn.visibility = View.VISIBLE }
         }, lp(60.dp, 60.dp))
         val end = label(19f, 0xFFFFFFFF.toInt(), Fonts.MEDIUM, gravity = Gravity.CENTER).apply {
             setText(R.string.maps_end)

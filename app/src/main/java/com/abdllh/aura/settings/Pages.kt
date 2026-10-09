@@ -123,6 +123,13 @@ class DisplaySoundPage(private val act: SettingsActivity) : Page(R.string.set_di
             }
         }
         col.addRow(ctx.sliderRow(R.drawable.ic_volume, ctx.getString(R.string.ctl_volume), vs, vv))
+        col.addRow(ctx.switchRow(R.drawable.ic_steering, ctx.getString(R.string.set_volume_hud), ctx.getString(R.string.set_volume_hud_sub),
+            com.abdllh.aura.system.VolumeHud.enabled) { on ->
+            com.abdllh.aura.system.VolumeHud.enabled = on
+            com.abdllh.aura.system.VolumeHud.apply(ctx) { ok ->
+                if (!ok) act.runOnUiThread { Toast.makeText(ctx, R.string.set_failed, Toast.LENGTH_LONG).show() }
+            }
+        }, 8)
 
         col.addRow(ctx.switchRow(R.drawable.ic_eye_off, ctx.getString(R.string.set_hide_status), ctx.getString(R.string.set_hide_status_sub), Prefs.hideStatusBar) {
             Prefs.hideStatusBar = it
@@ -130,6 +137,8 @@ class DisplaySoundPage(private val act: SettingsActivity) : Page(R.string.set_di
         }, 16)
 
         col.addView(ctx.sectionTitle(ctx.getString(R.string.set_music)), lp(MATCH, WRAP).apply { topMargin = 22.dp })
+        col.addRow(ctx.switchRow(R.drawable.ic_steering, ctx.getString(R.string.set_music_keys), ctx.getString(R.string.set_music_keys_sub),
+            com.abdllh.aura.system.MusicKeys.enabled) { on -> com.abdllh.aura.system.MusicKeys.enabled = on }, 8)
         col.addRow(ctx.switchRow(R.drawable.ic_disc, ctx.getString(R.string.set_bt_cover), ctx.getString(R.string.set_bt_cover_sub),
             com.abdllh.aura.music.CoverSearch.enabled) { on -> com.abdllh.aura.music.CoverSearch.enabled = on }, 8)
         if (com.abdllh.aura.system.StockMusic.available(ctx)) {
@@ -194,21 +203,30 @@ class NavigationPage(private val act: SettingsActivity) : Page(R.string.set_navi
         }
 
         col.addView(ctx.sectionTitle(ctx.getString(R.string.set_places)), lp(MATCH, WRAP).apply { topMargin = 22.dp })
-        col.addRow(placeRow(ctx, R.drawable.ic_home, R.string.home_home, Prefs.homeAddress) { Prefs.homeAddress = it })
-        col.addRow(placeRow(ctx, R.drawable.ic_briefcase, R.string.home_work, Prefs.workAddress) { Prefs.workAddress = it })
+        col.addRow(placeRow(ctx, R.drawable.ic_home, R.string.home_home, "home"))
+        col.addRow(placeRow(ctx, R.drawable.ic_briefcase, R.string.home_work, "work"))
         col.addRow(ctx.hint(ctx.getString(R.string.set_places_hint)), 12)
         return col
     }
 
-    private fun placeRow(ctx: Context, icon: Int, title: Int, value: String, save: (String) -> Unit): View =
-        ctx.settingRow(icon, ctx.getString(title), value.ifBlank { ctx.getString(R.string.home_tap_to_set) }, ctx.iconView(R.drawable.ic_edit, 22, Palette.text3)) {
-            InputDialog.show(ctx, ctx.getString(title), ctx.getString(R.string.set_address_hint), value) { v -> save(v); act.rebuild() }
+    /** Home / Work: chosen on the map (a long press drops the pin). */
+    private fun placeRow(ctx: Context, icon: Int, title: Int, which: String): View {
+        val saved = if (which == "home") com.abdllh.aura.nav.Places.home else com.abdllh.aura.nav.Places.work
+        val legacy = if (which == "home") Prefs.homeAddress else Prefs.workAddress
+        val value = saved?.name ?: legacy
+        return ctx.settingRow(icon, ctx.getString(title), value.ifBlank { ctx.getString(R.string.home_tap_to_set) }, ctx.iconView(R.drawable.ic_pin, 22, Palette.text3)) {
+            com.abdllh.aura.nav.MapsActivity.open(ctx) { putExtra("pick", which) }
         }
+    }
 }
 
 // ---------------------------------------------------------------------------------------------- Vehicle & system
 class VehiclePage(private val act: SettingsActivity) : Page(R.string.set_vehicle, R.drawable.ic_car) {
     private class Tile(val icon: Int, val label: Int, val available: (Context) -> Boolean, val run: (Context) -> Unit)
+    private var internet: InternetCard? = null
+
+    override fun onShow() { internet?.attach() }
+    override fun onHide() { internet?.detach() }
 
     override fun build(ctx: Context): View {
         val col = ctx.pageColumn()
@@ -251,6 +269,8 @@ class VehiclePage(private val act: SettingsActivity) : Page(R.string.set_vehicle
                 com.abdllh.aura.system.ZLinkGuard.apply(ctx)
             }, 8)
         }
+        internet = InternetCard(ctx).also { col.addRow(it.view, 8) }
+        col.addRow(ctx.hint(ctx.getString(R.string.net_hint)), 10)
         return col
     }
 

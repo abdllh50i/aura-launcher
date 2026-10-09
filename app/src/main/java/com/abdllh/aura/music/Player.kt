@@ -324,10 +324,11 @@ object Player {
                     c.sendBroadcast(Intent("com.nwd.action.ACTION_APP_IN_OUT").putExtra("extra_app_id", MUSIC_APP_ID)
                         .putExtra("extra_app_operation", 1).putExtra("extra_app_event", 0))
                     c.sendBroadcast(Intent("com.nwd.ACTION_REQUEST_SHORT_MUTE").putExtra("extra_short_mute_time", 50))
-                    c.sendBroadcast(Intent("com.bt.ACTION_A2DP_MUTE"))
+                    // marked as Aura's: the same broadcasts from the stock player mean its screen came up (MusicKeys)
+                    c.sendBroadcast(Intent("com.bt.ACTION_A2DP_MUTE").putExtra(MediaMonitor.EXTRA_SELF, true))
                     c.sendBroadcast(Intent("com.nwd.video.stop"))
                     c.sendBroadcast(Intent("com.nwd.ipod.stop"))
-                    c.sendBroadcast(Intent("com.nwd.ACTION_MEDIA_PLAY").putExtra("extra_app_id", MUSIC_APP_ID))
+                    c.sendBroadcast(Intent("com.nwd.ACTION_MEDIA_PLAY").putExtra("extra_app_id", MUSIC_APP_ID).putExtra(MediaMonitor.EXTRA_SELF, true))
                 }
             } catch (t: Throwable) {
                 Log.w(TAG, "source: $t")

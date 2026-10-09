@@ -51,6 +51,8 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
     var onReady: (() -> Unit)? = null
     /** The first frame has been drawn (whatever was shown in the map's place can go). */
     var onFirstFrame: (() -> Unit)? = null
+    /** A long press on the map (interactive maps): drop a pin there. */
+    var onLongPress: ((LatLon) -> Unit)? = null
     /** Fraction of the view height kept free above the car while navigating (puts the car low on the screen). */
     var navTopPadding = 0.42
     /** Extra start padding (e.g. a side panel covering the map). */
@@ -70,7 +72,13 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
     private var navZoomOffset = 0.0
     private var navBand = 0
 
-    private val firstFrame = object : MapView.OnDidFinishRenderingFrameListener {
+    // fixes arrive about once a second: the car glides over the measured interval, so it never stops in between
+    private var lastFixAt = 0L
+    private var fixInterval = 1000.0
+    private var cameraOnCar = false // follow() has positioned the camera on the car at least once
+
+    /** Re-armed at every start: whatever covers the map until it has drawn (the home screen's backdrop) can go then. */
+    private inner class FirstFrame : MapView.OnDidFinishRenderingFrameListener {
         private var done = false
         override fun onDidFinishRenderingFrame(fully: Boolean) {
             if (done) return
@@ -80,6 +88,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
             view.post { mapView.removeOnDidFinishRenderingFrameListener(this) }
         }
     }
+    private var firstFrame = FirstFrame()
 
     init {
         Mapbox.getInstance(ctx.applicationContext)
@@ -92,7 +101,6 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         if (guarded) MapGuard.starting(app)
         mapView = MapView(ctx, opts)
         mapView.setMaximumFps(30) // plenty for a map on a weak GPU, and half the work of 60
-        mapView.addOnDidFinishRenderingFrameListener(firstFrame)
         view.addView(mapView, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         // Overlays sit at the top-left corner and are moved by translation to their screen points; LEFT (not the
         // default START) so they do not start at the right edge in Arabic.
@@ -122,6 +130,11 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
             }
             m.addOnCameraMoveListener { placeOverlays() }
             m.addOnCameraIdleListener { placeOverlays() }
+            if (interactive) m.addOnMapLongClickListener { ll ->
+                val l = onLongPress ?: return@addOnMapLongClickListener false
+                l(LatLon(ll.latitude, ll.longitude))
+                true
+            }
             val start = CarLocation.lastKnown() ?: LatLon(24.7136, 46.6753) // Riyadh until the first fix
             m.moveCamera(CameraUpdateFactory.newCameraPosition(CameraPosition.Builder().target(LatLng(start.lat, start.lon)).zoom(followZoom).build()))
             loadStyle()
@@ -140,13 +153,28 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
 
     // ------------------------------------------------------------------------------------------ lifecycle
     fun onCreate(b: Bundle?) = mapView.onCreate(b)
-    fun onStart() = mapView.onStart()
-    fun onResume() = mapView.onResume()
+
+    fun onStart() {
+        mapView.onStart()
+        firstFrame = FirstFrame().also { mapView.addOnDidFinishRenderingFrameListener(it) }
+    }
+
+    fun onResume() {
+        mapView.onResume()
+        // back from another app: draw once even if nothing moves (a texture view can come back empty otherwise)
+        try { map?.triggerRepaint() } catch (_: Throwable) { }
+    }
+
     fun onPause() = mapView.onPause()
+
     fun onStop() {
         if (guarded) MapGuard.ok(app) // still alive: the engine did not crash
+        mapView.removeOnDidFinishRenderingFrameListener(firstFrame)
         mapView.onStop()
     }
+
+    /** Frame-rate cap: 30 is plenty while browsing; navigation asks for 60 so the turning map stays fluid. */
+    fun setFps(fps: Int) = mapView.setMaximumFps(fps)
     fun onLowMemory() = mapView.onLowMemory()
     fun onDestroy() {
         anim?.cancel()
@@ -154,15 +182,25 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
     }
 
     // ------------------------------------------------------------------------------------------ data
-    /** Moves the car marker (gliding over [ms]) and the camera with it. */
-    fun setCar(p: LatLon, bearing: Double, speed: Double, ms: Long = 950) {
+    /**
+     * Moves the car marker and the camera with it. The glide starts where the car is drawn now and lasts as long as
+     * the fixes are apart (measured), so the car moves continuously instead of stopping before each fix.
+     */
+    fun setCar(p: LatLon, bearing: Double, speed: Double, ms: Long = -1) {
         speedKmh = speed
         val from = carPos
         val fromB = carBearing
-        // Standing still: GPS jitter (a few metres, a wandering heading) must not keep the map redrawing all the time.
-        if (from != null && ms > 0 && speed < 4 && Geo.distance(from, p) < 6) return
+        val now = android.os.SystemClock.uptimeMillis()
+        if (lastFixAt > 0) {
+            val dt = now - lastFixAt
+            if (dt in 300..3000) fixInterval = fixInterval * 0.7 + dt * 0.3
+        }
+        lastFixAt = now
+        // Standing still: GPS jitter (a few metres, a wandering heading) must not keep the map redrawing all the time
+        // (once the camera has been put on the car: a fix that came before the map was ready still has to do that).
+        if (from != null && cameraOnCar && ms != 0L && speed < 4 && Geo.distance(from, p) < 6) return
         anim?.cancel()
-        if (from == null || Geo.distance(from, p) > 400 || ms <= 0) {
+        if (from == null || Geo.distance(from, p) > 400 || ms == 0L) {
             carPos = p
             carBearing = bearing
             follow(false)
@@ -171,7 +209,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         }
         val dB = Geo.angleDiff(fromB, bearing)
         anim = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = ms
+            duration = if (ms > 0) ms else fixInterval.toLong().coerceIn(500L, 1600L)
             interpolator = LinearInterpolator()
             addUpdateListener {
                 val t = (it.animatedValue as Float).toDouble()
@@ -205,18 +243,38 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         try { s.getSourceAs<GeoJsonSource>(MapStyle.SRC_ROUTE)?.setGeoJson(json) } catch (_: Throwable) { }
     }
 
-    /** Puts the car and the pin at the screen positions of their coordinates. */
+    /**
+     * Puts the car and the pin at the screen positions of their coordinates. While the camera follows the car, the
+     * car sits exactly at the camera's focal point, so it is placed there directly: the arrow then stays perfectly
+     * still while the map moves under it (a projected position would wobble against the map's own frames).
+     */
     private fun placeOverlays() {
         val m = map ?: return
         val proj = m.projection
-        val camBearing = m.cameraPosition.bearing
+        val cam = m.cameraPosition
+        val camBearing = cam.bearing
         val c = carPos
         if (c == null) carView.visibility = View.GONE else {
-            val sp = proj.toScreenLocation(LatLng(c.lat, c.lon))
+            val t = cam.target
+            val pad = cam.padding
+            val w = mapView.width.toFloat()
+            val h = mapView.height.toFloat()
+            val following = (camera == Camera.FOLLOW || camera == Camera.NAVIGATE) && t != null && w > 0 && h > 0 &&
+                Geo.distance(LatLon(t.latitude, t.longitude), c) < 0.5
+            val x: Float
+            val y: Float
+            if (following && pad != null && pad.size >= 4) {
+                x = (pad[0] + (w - pad[0] - pad[2]) / 2).toFloat()
+                y = (pad[1] + (h - pad[1] - pad[3]) / 2).toFloat()
+            } else {
+                val sp = proj.toScreenLocation(LatLng(c.lat, c.lon))
+                x = sp.x
+                y = sp.y
+            }
             carView.visibility = View.VISIBLE
             // fixed sizes, not width/height: those are still 0 the first time a hidden overlay is shown
-            carView.translationX = sp.x - CarMarker.SIZE.dp / 2f
-            carView.translationY = sp.y - CarMarker.SIZE.dp / 2f
+            carView.translationX = x - CarMarker.SIZE.dp / 2f
+            carView.translationY = y - CarMarker.SIZE.dp / 2f
             carView.rotation = ((carBearing - camBearing) % 360).toFloat()
         }
         val d = dest
@@ -256,6 +314,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         }
         if (animate) m.animateCamera(CameraUpdateFactory.newCameraPosition(pos), 700)
         else m.moveCamera(CameraUpdateFactory.newCameraPosition(pos))
+        cameraOnCar = true
     }
 
     /** Shows the whole route (or the car and a place) with room for the panels. */

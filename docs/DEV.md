@@ -91,6 +91,13 @@ apps' MediaSessions and the NWD broadcasts for the home card.
 `system/StockMusic.kt` (user switch, off by default): `pm disable-user com.nwd.android.music.ui` and
 `/data/nwdappconfig/app/replace_source_list.xml` (app id 2 → `com.abdllh.aura.music.MusicActivity`, re-read on
 `com.nwd.ACTION_REPLACE_SOURCE_LIST_CHANGE`); both need root, so they run through the unit's own adbd (`system/LocalAdb.kt`).
+`system/MusicKeys.kt` (on by default) opens Aura Music in place of the stock Bluetooth-music screen / music player when
+they come to the front (wheel button, CAN box, app list). Not through the replace list: an app named there becomes a
+"source" app, and KernelService force-stops the package of a source it leaves (MCU "pop source" → `back2LastSource` →
+`com.nwd.action.ACTION_STOP_APP` → `NwdManager.forceStopPackage`), which would kill the home screen; and the old CAN app
+starts `com.nwd.bt.music` directly. The stock screens' `onResume` sends `com.music.action.STOP_QQ_MUSIC` (BT music) /
+`com.bt.ACTION_A2DP_MUTE` (music) right before `com.nwd.ACTION_MEDIA_PLAY` (15 / 2); the firmware also sends MEDIA_PLAY 15
+alone for phone-projection apps, and Aura marks its own with `MediaMonitor.EXTRA_SELF`.
 
 ### The 3D car (`tools/car3d`, debug-only `CarBakerActivity`)
 The car is not rendered live (the source model has ~726k triangles and 8K textures; the unit has a Mali-G31). Instead a
@@ -120,8 +127,18 @@ turns them with drag, fling, snap and a spring back to the resting view (mirrore
   derives that property from `Settings.System phone_connect_style` (0 none, 1 HiCar, 2 EasyConnect, 3 CarPlay; with 0 it
   disables the ZLink app too) — `system/ZLinkGuard.kt` keeps it at 0 and turns it back on when the user opens ZLink.
 * Wi-Fi: AIC8800 (`aic8800_fdrv.ko`, power save on by default: `ps_on=1`, `dpsm=1`); no `iw`/`wpa_cli` on the image.
-  `system/WifiKeeper.kt` holds a high-performance Wi-Fi lock (no power save) and reconnects a Wi-Fi that stays
-  connected without internet.
+  `system/WifiKeeper.kt` holds a high-performance Wi-Fi lock (no power save), probes the web every 20 s through the
+  Wi-Fi network and, when it fails, tells apart a dead link (the phone/gateway does not answer), a phone without data
+  (its DNS or gateway answers, the internet does not), DNS trouble and blocked web; it restarts the Wi-Fi for the first
+  two (root `svc wifi`; the WifiManager calls are refused to an app targeting Android 10), asks Android to re-validate when
+  the web is back, and keeps a log (`files/wifi-log.txt`) shown in Settings → Vehicle & system.
+* The stock floating volume bar is `com.android.launcher/com.launcher.FloatBar` (started by KernelService at boot, from
+  `UartConfig.ini`); it pops up for every `notifyAudioParam` of the setting service (14 media, 15 navigation, 16 phone),
+  Aura's own changes included. `system/VolumeHud.kt` disables that component (root `pm disable`, once; allowed to draw
+  its own overlay through `appops SYSTEM_ALERT_WINDOW`) and shows Aura's display for changes Aura did not make: wheel /
+  panel / CAN buttons are announced first by `com.nwd.action.ACTION_KEY_VALUE` (byte `extra_key_value` 14 up, 15 down,
+  2 mute). The installer's restore enables the component again; `Settings.System isVolumeTouch` = 1 would also silence it
+  (observer only, must change after the bar connected).
 * Bluetooth music has no cover art in the BT module; `music/CoverSearch.kt` finds it by title + artist (iTunes Search
   API, Deezer), matching Arabic-script names against the catalogues' Latin spellings by their consonants.
 * The status bar is hidden with the framework's own `Settings.Global policy_control`

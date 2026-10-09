@@ -9,14 +9,13 @@ import android.util.Log
 import android.util.LruCache
 import com.abdllh.aura.nav.Places
 import com.abdllh.aura.util.Prefs
+import com.abdllh.aura.util.TextMatch
 import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 import java.security.MessageDigest
-import java.text.Normalizer
-import java.util.Locale
 import java.util.concurrent.Executors
 
 /**
@@ -126,7 +125,7 @@ object CoverSearch {
     /**
      * Same song? The title must match (allowing extras such as "feat." or "Remastered"); the artist, when known, too.
      * A phone often names Arabic songs in Arabic script while the catalogues use Latin transliterations
-     * ("الأماكن" / "Al Amaken"): those are compared by their consonants ([skeleton]).
+     * ("الأماكن" / "Al Amaken"): those are compared by their consonants ([TextMatch.skeleton]).
      */
     private fun matches(qTitle: String, qArtist: String, title: String, artist: String): Boolean {
         if (!same(qTitle, clean(title), words = 0.6)) return false
@@ -137,75 +136,17 @@ object CoverSearch {
         val q = norm(query)
         val r = norm(found)
         if (q.isEmpty() || r.isEmpty()) return false
-        if (q == r || r.startsWith(q) || q.startsWith(r) || overlap(q, r) >= words) return true
-        if (arabic(q) == arabic(r)) return false
-        val a = skeleton(q)
-        val b = skeleton(r)
+        if (q == r || r.startsWith(q) || q.startsWith(r) || TextMatch.overlap(q, r) >= words) return true
+        if (TextMatch.arabic(q) == TextMatch.arabic(r)) return false
+        val a = TextMatch.skeleton(q)
+        val b = TextMatch.skeleton(r)
         if (a.length < 2 || b.length < 2) return false
         val shorter = minOf(a.length, b.length)
         if ((a.contains(b) || b.contains(a)) && shorter >= 3 && shorter >= 0.6 * maxOf(a.length, b.length)) return true
-        return 1.0 - lev(a, b).toDouble() / maxOf(a.length, b.length) >= 0.75
+        return 1.0 - TextMatch.lev(a, b).toDouble() / maxOf(a.length, b.length) >= 0.75
     }
 
-    private fun arabic(s: String) = s.any { it in '؀'..'ۿ' }
-
-    /**
-     * The consonants of a name, in one alphabet: Arabic letters and their usual Latin spellings land on the same
-     * letters, vowels (and the letters that are usually written as vowels: ا و ي ع ة) are dropped, doubles collapsed.
-     * "عبدالمجيد عبدالله" and "Abdul Majeed Abdullah" both give "bdlmjdbdlh".
-     */
-    private fun skeleton(s: String): String {
-        val out = StringBuilder()
-        fun add(c: Char) { if (out.isEmpty() || out[out.length - 1] != c) out.append(c) }
-        var i = 0
-        while (i < s.length) {
-            val c = s[i]
-            val n = if (i + 1 < s.length) s[i + 1] else ' '
-            when {
-                c in AR -> AR[c]?.let { add(it) }
-                c == 'k' && n == 'h' -> { add('k'); i++ }
-                c == 'g' && n == 'h' -> { add('g'); i++ }
-                (c == 's' || c == 'c') && n == 'h' -> { add('s'); i++ }
-                c == 't' && n == 'h' -> { add('t'); i++ }
-                c == 'd' && n == 'h' -> { add('d'); i++ }
-                c == 'p' && n == 'h' -> { add('f'); i++ }
-                c == 'c' -> add(if (n == 'e' || n == 'i' || n == 'y') 's' else 'k')
-                c == 'q' -> add('k')
-                c == 'g' -> add('j') // ج is written j or (Egyptian) g; غ is gh
-                c == 'x' -> { add('k'); add('s') }
-                c == 'v' -> add('f')
-                c == 'p' -> add('b')
-                c in 'a'..'z' && c !in "aeiouyw" -> add(c)
-            }
-            i++
-        }
-        return out.toString()
-    }
-
-    private val AR: Map<Char, Char?> = mapOf(
-        'ب' to 'b', 'ت' to 't', 'ث' to 't', 'ج' to 'j', 'ح' to 'h', 'خ' to 'k', 'د' to 'd', 'ذ' to 'z', 'ر' to 'r',
-        'ز' to 'z', 'س' to 's', 'ش' to 's', 'ص' to 's', 'ض' to 'd', 'ط' to 't', 'ظ' to 'z', 'غ' to 'g', 'ف' to 'f',
-        'ق' to 'k', 'ك' to 'k', 'ل' to 'l', 'م' to 'm', 'ن' to 'n', 'ه' to 'h', 'پ' to 'b', 'چ' to 's', 'گ' to 'j',
-        'ڤ' to 'f', 'ا' to null, 'و' to null, 'ي' to null, 'ع' to null, 'ء' to null, 'ؤ' to null, 'ئ' to null
-    )
-
-    private fun lev(a: String, b: String): Int {
-        var prev = IntArray(b.length + 1) { it }
-        for (i in 1..a.length) {
-            val cur = IntArray(b.length + 1)
-            cur[0] = i
-            for (j in 1..b.length) cur[j] = minOf(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + if (a[i - 1] == b[j - 1]) 0 else 1)
-            prev = cur
-        }
-        return prev[b.length]
-    }
-
-    private fun overlap(a: String, b: String): Double {
-        val x = a.split(' ').filter { it.isNotEmpty() }.toSet()
-        val y = b.split(' ').filter { it.isNotEmpty() }.toSet()
-        if (x.isEmpty() || y.isEmpty()) return 0.0
-        return x.intersect(y).size.toDouble() / minOf(x.size, y.size)
-    }
+    private fun norm(s: String) = TextMatch.norm(s)
 
     /** What a phone sends is often decorated: "(Official Video)", "[Lyrics]", "feat. …", "Artist - Topic". */
     private fun clean(s: String): String = s
@@ -214,15 +155,6 @@ object CoverSearch {
         .replace(Regex("""(?i)\s*-\s*topic$"""), " ")
         .replace(Regex("""(?i)vevo$"""), " ")
         .trim()
-
-    /** Comparable text: lower case, no accents or Arabic diacritics, one form of alef / ya / ta marbuta, no punctuation. */
-    private fun norm(s: String): String {
-        var t = Normalizer.normalize(s.lowercase(Locale.ROOT), Normalizer.Form.NFKD)
-        t = t.replace(Regex("""\p{Mn}+"""), "") // accents and Arabic harakat
-            .replace('أ', 'ا').replace('إ', 'ا').replace('آ', 'ا').replace('ٱ', 'ا')
-            .replace('ى', 'ي').replace('ة', 'ه').replace("ـ", "")
-        return t.replace(Regex("""[^\p{L}\p{N}]+"""), " ").trim()
-    }
 
     // ------------------------------------------------------------------------------------------ network / disk
     private fun http(url: String): String = String(download(url), Charsets.UTF_8)

@@ -22,6 +22,7 @@ import com.abdllh.aura.R
 import com.abdllh.aura.ui.AText
 import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.MATCH
+import com.abdllh.aura.ui.Menu
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Shapes
 import com.abdllh.aura.ui.Sheet
@@ -33,7 +34,7 @@ import com.abdllh.aura.ui.lp
 import com.abdllh.aura.ui.pressScale
 import com.abdllh.aura.util.dp
 
-/** All apps: a sheet that slides up over the home screen, with search. Long-press an app for its system info page. */
+/** All apps: a sheet that slides up over the home screen, with search. Long-press an app to pin it to the dock. */
 class AppDrawer(ctx: Context, private val host: HomeHost) : Sheet(ctx, true) {
     private val search: EditText
     private val grid = GridView(ctx)
@@ -176,11 +177,23 @@ class AppDrawer(ctx: Context, private val host: HomeHost) : Sheet(ctx, true) {
                 close()
                 if (!AppRepo.launch(context, a.pkg)) host.toast(context.getString(R.string.err_app_missing))
             }
-            setOnLongClickListener {
-                try {
-                    context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${a.pkg}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                    close()
-                } catch (_: Throwable) { }
+            setOnLongClickListener { v ->
+                val items = ArrayList<Menu.Item>()
+                if (DockPins.contains(a.pkg)) {
+                    items.add(Menu.Item(R.drawable.ic_close, context.getString(R.string.dock_unpin)) { DockPins.remove(a.pkg) })
+                } else {
+                    items.add(Menu.Item(R.drawable.ic_plus, context.getString(R.string.dock_pin)) {
+                        if (DockPins.add(a.pkg)) host.toast(context.getString(R.string.dock_pinned, a.label))
+                        else host.toast(context.getString(R.string.dock_full, DockPins.MAX))
+                    })
+                }
+                if (!a.pkg.startsWith("aura:")) items.add(Menu.Item(R.drawable.ic_info, context.getString(R.string.drawer_app_info)) {
+                    try {
+                        context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${a.pkg}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        close()
+                    } catch (_: Throwable) { }
+                })
+                Menu.show(v, items)
                 true
             }
         }

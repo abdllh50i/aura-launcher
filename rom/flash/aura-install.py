@@ -886,7 +886,8 @@ class Installer:
             expect = "prepared"
         else:
             # also undo what Aura changed outside the system partition: its music replacing the stock music app, the
-            # hidden status bar and the phone link (ZLink) kept off (the stock system must not inherit any of them)
+            # hidden status bar, the phone link (ZLink) kept off and the stock volume bar turned off (the stock system
+            # must not inherit any of them)
             follow = ('for f in /data/nwdappconfig/app/*.pre-aura; do\n'
                       '  [ -f "$f" ] || continue\n'
                       '  cat "$f" > "${f%.pre-aura}" && rm -f "$f"\n'
@@ -894,12 +895,17 @@ class Installer:
                       'L=/data/nwdappconfig/app/replace_source_list.xml\n'
                       'grep -q com.abdllh.aura "$L" 2>/dev/null && rm -f "$L"\n'
                       'pm enable com.nwd.android.music.ui >/dev/null 2>&1\n'
+                      'pm enable com.android.launcher/com.launcher.FloatBar >/dev/null 2>&1\n'
                       'case "$(settings get global policy_control 2>/dev/null)" in *immersive.*) '
                       'settings delete global policy_control >/dev/null 2>&1 ;; esac\n'
                       '[ "$(settings get system phone_connect_style 2>/dev/null)" = "0" ] && '
                       'settings put system phone_connect_style 3 && settings put system recheck_phone_connect_style 1\n'
                       'setprop persist.nwd.launcher.default com.android.launcher\n'
-                      'setprop persist.aura.disabled 0\n'
+                      # an Aura updated from the screen lives in /data/app and would stay on as an ordinary app once
+                      # its system copy is gone: drop it (a system-only copy refuses, and goes away at the restart);
+                      # should anything of it survive, the kill switch keeps it from touching the stock system
+                      'pm uninstall com.abdllh.aura >/dev/null 2>&1\n'
+                      'setprop persist.aura.disabled 1\n'
                       'echo undone\n')
             expect = "undone"
         try:

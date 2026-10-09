@@ -30,7 +30,10 @@ import com.abdllh.aura.util.dp
  */
 class Dock(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
 
-    private class App(val icon: Int, val label: Int, val from: Int, val to: Int, val pkg: String?, val action: (() -> Unit)? = null)
+    /** A dock entry; [id] is its pin (null for the Apps button, which is always there). [style] null: the app's own icon. */
+    private class App(val id: String?, val label: String, val style: DockTiles.Style?, val pkg: String?, val action: () -> Unit)
+
+    private val pinsListener: () -> Unit = { post { rebuild() } }
 
     val apps = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
     private val volText: AText = ctx.label(18f, Palette.text, Fonts.MEDIUM, gravity = Gravity.CENTER)
@@ -99,22 +102,38 @@ class Dock(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
         )
     }
 
+    /** The pinned apps (long-press in the app drawer adds one, long-press here removes it), then the Apps button. */
     private fun items(): List<App> {
         val ctx = context
         val list = ArrayList<App>()
-        list.add(App(R.drawable.ic_phone, R.string.dock_phone, 0xFF3DD26C.toInt(), 0xFF1F9E4A.toInt(), Known.PHONE))
-        list.add(App(R.drawable.ic_nav, R.string.dock_nav, 0xFF4F86F7.toInt(), 0xFF2B57D0.toInt(), null) {
-            if (!Actions.nav(ctx)) host.toast(ctx.getString(R.string.err_no_nav))
+        for (id in DockPins.get()) {
+            val style = DockTiles.style(id)
+            when (id) {
+                DockPins.MUSIC -> list.add(App(id, ctx.getString(R.string.dock_music), style, null) { com.abdllh.aura.music.MusicActivity.open(ctx) })
+                DockPins.MAPS -> list.add(App(id, ctx.getString(R.string.dock_nav), style, null) {
+                    if (!Actions.nav(ctx)) host.toast(ctx.getString(R.string.err_no_nav))
+                })
+                else -> {
+                    if (!AppRepo.isInstalled(ctx, id)) continue // uninstalled since it was pinned
+                    val label = style?.let { ctx.getString(it.label) } ?: AppRepo.label(ctx, id)
+                    list.add(App(id, label, style, id) { if (!AppRepo.launch(ctx, id)) host.toast(ctx.getString(R.string.err_app_missing)) })
+                }
+            }
+        }
+        list.add(App(null, ctx.getString(R.string.dock_apps), DockTiles.Style(R.drawable.ic_grid, 0xFF6C7380.toInt(), 0xFF4A505B.toInt(), R.string.dock_apps), null) {
+            host.openDrawer()
         })
-        list.add(App(R.drawable.ic_music, R.string.dock_music, 0xFFFF4F79.toInt(), 0xFFD9234F.toInt(), null) {
-            com.abdllh.aura.music.MusicActivity.open(ctx)
-        })
-        list.add(App(R.drawable.ic_radio, R.string.dock_radio, 0xFFFFA43A.toInt(), 0xFFEA7408.toInt(), Known.RADIO))
-        if (AppRepo.isInstalled(ctx, Known.CAM360)) list.add(App(R.drawable.ic_camera, R.string.dock_camera, 0xFF4CC9F5.toInt(), 0xFF1E8FCB.toInt(), Known.CAM360))
-        if (AppRepo.isInstalled(ctx, Known.ZLINK)) list.add(App(R.drawable.ic_smartphone, R.string.dock_link, 0xFFB46AF2.toInt(), 0xFF7F3BC4.toInt(), Known.ZLINK))
-        if (AppRepo.isInstalled(ctx, Known.VIDEO)) list.add(App(R.drawable.ic_video, R.string.dock_video, 0xFFFF6E4A.toInt(), 0xFFDB4422.toInt(), Known.VIDEO))
-        list.add(App(R.drawable.ic_grid, R.string.dock_apps, 0xFF6C7380.toInt(), 0xFF4A505B.toInt(), null) { host.openDrawer() })
         return list
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        DockPins.addListener(pinsListener)
+    }
+
+    override fun onDetachedFromWindow() {
+        DockPins.removeListener(pinsListener)
+        super.onDetachedFromWindow()
     }
 
     fun rebuild() {
@@ -135,23 +154,34 @@ class Dock(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
         gravity = Gravity.CENTER
         setPadding(8.dp, 0, 8.dp, 0)
         isClickable = true
-        contentDescription = ctx.getString(item.label)
+        contentDescription = item.label
         pressScale(0.86f)
-        setOnClickListener {
-            val a = item.action
-            if (a != null) a() else if (item.pkg != null && !AppRepo.launch(ctx, item.pkg)) host.toast(ctx.getString(R.string.err_app_missing))
+        setOnClickListener { item.action() }
+        val id = item.id
+        if (id != null) setOnLongClickListener { v ->
+            com.abdllh.aura.ui.Menu.show(v, listOf(com.abdllh.aura.ui.Menu.Item(R.drawable.ic_close, ctx.getString(R.string.dock_unpin)) { DockPins.remove(id) }))
+            true
         }
         val labels = Prefs.dockLabels
         val size = if (labels) 52 else 62
-        val icon = FrameLayout(ctx).apply {
-            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(item.from, item.to)).apply { cornerRadius = (size * 0.3f).dp }
-            addView(ctx.iconView(item.icon, if (labels) 28 else 33, 0xFFFFFFFF.toInt()).apply {
+        val s = item.style
+        val icon: View = if (s != null) FrameLayout(ctx).apply {
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(s.from, s.to)).apply { cornerRadius = (size * 0.3f).dp }
+            addView(ctx.iconView(s.icon, if (labels) 28 else 33, 0xFFFFFFFF.toInt()).apply {
                 layoutParams = flp((if (labels) 28 else 33).dp, (if (labels) 28 else 33).dp, Gravity.CENTER)
             })
+        } else ImageView(ctx).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            val pkg = item.pkg
+            if (pkg != null) IconLoader.get(ctx, pkg, size.dp) { b -> if (b != null) setImageBitmap(b) }
         }
         addView(icon, lp(size.dp, size.dp))
         if (labels) {
-            addView(ctx.label(12.5f, Palette.text2, Fonts.REGULAR, gravity = Gravity.CENTER).apply { setText(item.label) }, lp(WRAP, WRAP).apply { topMargin = 4.dp })
+            addView(ctx.label(12.5f, Palette.text2, Fonts.REGULAR, gravity = Gravity.CENTER).apply {
+                text = item.label
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            }, lp(WRAP, WRAP).apply { topMargin = 4.dp })
         }
     }
 }

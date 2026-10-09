@@ -152,6 +152,7 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
         CarLocation.release("home")
         NavSession.removeListener(navListener)
         live?.onStop()
+        if (live != null) backdrop.visibility = View.VISIBLE // until the map has drawn again after the restart
     }
 
     fun onDestroy() {
@@ -239,8 +240,7 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
             val saved = if (which == "home") Places.home else Places.work
             val legacy = if (which == "home") Prefs.homeAddress else Prefs.workAddress
             if (saved == null && legacy.isBlank()) {
-                host.toast(context.getString(R.string.maps_set_place_hint))
-                MapsActivity.open(context) { putExtra("search", true) }
+                MapsActivity.open(context) { putExtra("pick", which) } // choose it on the map
                 return
             }
             MapsActivity.open(context) { putExtra("go", which) }

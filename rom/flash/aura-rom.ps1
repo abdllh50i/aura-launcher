@@ -204,8 +204,10 @@ if ($Action -eq "Install") {
     $follow = "setprop persist.aura.disabled 0`nrm -f /data/aura_disabled /data/data/com.abdllh.aura/files/disable_home`necho prepared`n"
     $expect = "prepared"
 } else {
-    # undo the config edits made at boot, Aura Music replacing the stock music app and the hidden status bar, and give
-    # the home role back to the stock launcher
+    # undo the config edits made at boot, Aura Music replacing the stock music app, the hidden status bar and the stock
+    # volume bar turned off, and give the home role back to the stock launcher. An Aura updated from the screen lives in
+    # /data/app and would stay on as an ordinary app once its system copy is gone: it is uninstalled (a system-only copy
+    # refuses, and goes away at the restart), and the kill switch keeps anything left of it inert.
     $follow = @'
 for f in /data/nwdappconfig/app/*.pre-aura; do
   [ -f "$f" ] || continue
@@ -214,10 +216,12 @@ done
 L=/data/nwdappconfig/app/replace_source_list.xml
 grep -q com.abdllh.aura "$L" 2>/dev/null && rm -f "$L"
 pm enable com.nwd.android.music.ui >/dev/null 2>&1
+pm enable com.android.launcher/com.launcher.FloatBar >/dev/null 2>&1
 case "$(settings get global policy_control 2>/dev/null)" in *immersive.*) settings delete global policy_control >/dev/null 2>&1 ;; esac
 [ "$(settings get system phone_connect_style 2>/dev/null)" = "0" ] && settings put system phone_connect_style 3 && settings put system recheck_phone_connect_style 1
 setprop persist.nwd.launcher.default com.android.launcher
-setprop persist.aura.disabled 0
+pm uninstall com.abdllh.aura >/dev/null 2>&1
+setprop persist.aura.disabled 1
 echo undone
 '@
     $follow = ($follow -replace "`r`n", "`n") + "`n"
