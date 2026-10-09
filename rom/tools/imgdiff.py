@@ -10,7 +10,8 @@ S_IFMT, S_IFDIR, S_IFREG, S_IFLNK = 0o170000, 0o040000, 0o100000, 0o120000
 
 class Ext4:
     def __init__(self, path):
-        self.f = open(path, "rb")
+        """[path] is a file name, or an already open binary file-like object (used by the write-order simulation)."""
+        self.f = path if hasattr(path, "read") else open(path, "rb")
         self.f.seek(1024)
         sb = self.f.read(1024)
         assert struct.unpack_from("<H", sb, 0x38)[0] == 0xEF53, "not ext4"
@@ -19,20 +20,25 @@ class Ext4:
         self.blocks_per_group = struct.unpack_from("<I", sb, 0x20)[0]
         self.inodes_per_group = struct.unpack_from("<I", sb, 0x28)[0]
         self.inode_size = struct.unpack_from("<H", sb, 0x58)[0]
-        incompat = struct.unpack_from("<I", sb, 0x60)[0]
+        self.reserved_gdt = struct.unpack_from("<H", sb, 0xCE)[0]
+        self.compat, incompat, self.ro_compat = struct.unpack_from("<III", sb, 0x5C)
+        self.incompat = incompat
+        self.sparse_super = bool(self.ro_compat & 0x1)
         is64 = bool(incompat & 0x80)
         self.desc_size = max(32, struct.unpack_from("<H", sb, 0xFE)[0]) if is64 else 32
         bc = struct.unpack_from("<I", sb, 4)[0] | ((struct.unpack_from("<I", sb, 0x150)[0] << 32) if is64 else 0)
         self.blocks = bc
         ngroups = (bc - self.first_data_block + self.blocks_per_group - 1) // self.blocks_per_group
+        self.ngroups = ngroups
         self.f.seek((self.first_data_block + 1) * self.bs)
         raw = self.f.read(ngroups * self.desc_size)
-        self.itable = []
+        self.itable, self.bbitmap, self.ibitmap = [], [], []
         for g in range(ngroups):
             d = raw[g * self.desc_size:(g + 1) * self.desc_size]
-            lo = struct.unpack_from("<I", d, 8)[0]
-            hi = struct.unpack_from("<I", d, 0x28)[0] if (is64 and self.desc_size >= 64) else 0
-            self.itable.append(lo | (hi << 32))
+            hi64 = is64 and self.desc_size >= 64
+            self.bbitmap.append(struct.unpack_from("<I", d, 0)[0] | ((struct.unpack_from("<I", d, 0x20)[0] << 32) if hi64 else 0))
+            self.ibitmap.append(struct.unpack_from("<I", d, 4)[0] | ((struct.unpack_from("<I", d, 0x24)[0] << 32) if hi64 else 0))
+            self.itable.append(struct.unpack_from("<I", d, 8)[0] | ((struct.unpack_from("<I", d, 0x28)[0] << 32) if hi64 else 0))
 
     def raw_inode(self, ino):
         g, idx = divmod(ino - 1, self.inodes_per_group)

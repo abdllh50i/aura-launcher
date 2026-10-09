@@ -8,7 +8,8 @@
 
   What it does: checks the device really is a K2501, reads the hash of the system partition, and only if that is the
   exact stock (or exact Aura) image - or an interrupted run of this very patch - it writes the small block patch
-  (a few MB), verifies the result and reboots. Anything unexpected = it refuses and writes nothing.
+  (a few MB, data first and the structures that point at it last), verifies the result and reboots.
+  Anything unexpected = it refuses and writes nothing.
 #>
 param(
     [ValidateSet("Status", "Install", "Restore")][string]$Action = "Status",
@@ -27,6 +28,7 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $pack = Join-Path $here "patch"
 $flashSh = Join-Path $here "aura-flash.sh"
 $remote = "/data/local/tmp/aura-rom"
+$packFiles = "forward.bin", "reverse.bin", "ranges.txt", "order-apply.txt", "order-revert.txt", "hashes.txt"
 
 function Say($m, $c = "Gray") { Write-Host $m -ForegroundColor $c }
 function Die($m) { Write-Host ""; Write-Host "STOPPED: $m" -ForegroundColor Red; exit 1 }
@@ -88,16 +90,22 @@ $auraPath = ((A shell "pm path com.abdllh.aura 2>&1") -join " ").Trim()
 if ($romVer) { Say "Running: Aura ROM $romVer   home app = $homeApp   $auraPath" "Cyan" }
 else { Say "Running: no Aura ROM in the running system   home app = $homeApp" "Cyan" }
 
-foreach ($f in "forward.bin", "reverse.bin", "ranges.txt", "hashes.txt") {
+foreach ($f in $packFiles) {
     if (-not (Test-Path (Join-Path $pack $f))) { Die "Patch pack incomplete: $pack\$f is missing." }
 }
 if (-not (Test-Path $flashSh)) { Die "aura-flash.sh is missing next to this script." }
 $packMB = [math]::Round((Get-Item (Join-Path $pack "forward.bin")).Length / 1MB, 1)
 
+# a run whose connection dropped keeps going on the unit (it ignores HUP): never pull the pack away from under it
+$busy = (A shell "pgrep -f '[a]ura-flash.sh'") -join " "
+if ($busy -match "\d") {
+    Die "An earlier run (process $($busy.Trim())) is still working on the unit. Wait until it is finished - 'adb -s $script:dev shell cat $remote/flash.log' shows its progress and ends with a RESULT line - then run this again."
+}
+
 # ---------------------------------------------------------------- push pack + script (and prove the copy is complete)
 Say ""
 Say "Copying the patch pack to the unit ..."
-A shell "rm -rf $remote; mkdir -p $remote" | Out-Null
+A shell "mkdir -p $remote; rm -rf $remote/patch $remote/aura-flash.sh $remote/follow.sh $remote/*.clean" | Out-Null
 & $adbExe -s $script:dev push $pack "$remote/" 2>&1 | Out-Null
 $sh = [IO.File]::ReadAllText($flashSh) -replace "`r`n", "`n"
 $tmp = Join-Path $env:TEMP "aura-flash.sh"
@@ -109,7 +117,7 @@ function Remote-Size($path) {
     if ($o -match '^\s*(\d+)\s*$') { return [int64]$Matches[1] }
     return -1
 }
-foreach ($f in "forward.bin", "reverse.bin", "ranges.txt", "hashes.txt") {
+foreach ($f in $packFiles) {
     $want = (Get-Item (Join-Path $pack $f)).Length
     $got = Remote-Size "$remote/patch/$f"
     if ($got -ne $want) { Die "Copying $f to the unit failed (the unit has $got bytes, expected $want). Nothing was written; run the script again." }
@@ -136,22 +144,30 @@ if ($Action -eq "Status") {
     Say ""
     $color = "Green"; if ($code -eq "PARTIAL" -or $code -eq "UNKNOWN") { $color = "Yellow" }
     Say $stateLine $color
+    if ($code -eq "AURA" -and -not $romVer) { Say "The unit has not been restarted since the Aura ROM was written: restart it to start using it." "Yellow" }
+    if ($code -eq "STOCK" -and $romVer) { Say "The stock firmware is written but the unit has not been restarted since: restart it to finish the restore." "Yellow" }
     exit 0
 }
 
+# a finished write whose follow-up (and reboot) never happened, for example because the connection dropped at the end
+$pending = $false
 if ($Action -eq "Install") {
-    if ($code -eq "AURA") { Say ""; Say "The Aura ROM is already installed. Nothing to do." "Green"; exit 0 }
-    if ($code -ne "STOCK" -and $code -ne "PARTIAL") { Die "The system partition is neither the expected stock image nor an interrupted run of this patch (another firmware version?). Nothing was written and the unit was not changed." }
+    if ($code -eq "AURA" -and $romVer) { Say ""; Say "The Aura ROM is already installed and running. Nothing to do." "Green"; exit 0 }
+    if ($code -eq "AURA") { $pending = $true; Say ""; Say "The Aura ROM is already written to the unit but it has not been restarted since. Finishing that." "Yellow" }
+    elseif ($code -ne "STOCK" -and $code -ne "PARTIAL") { Die "The system partition is neither the expected stock image nor an interrupted run of this patch (another firmware version?). Nothing was written and the unit was not changed." }
 }
 if ($Action -eq "Restore") {
-    if ($code -eq "STOCK") { Say ""; Say "The unit already has the stock firmware. Nothing to do." "Green"; exit 0 }
-    if ($code -ne "AURA" -and $code -ne "PARTIAL") { Die "The system partition is neither the Aura image nor an interrupted run of this patch. Nothing was written." }
+    if ($code -eq "STOCK" -and -not $romVer) { Say ""; Say "The unit already has the stock firmware. Nothing to do." "Green"; exit 0 }
+    if ($code -eq "STOCK") { $pending = $true; Say ""; Say "The stock firmware is already written to the unit but it has not been restarted since. Finishing that." "Yellow" }
+    elseif ($code -ne "AURA" -and $code -ne "PARTIAL") { Die "The system partition is neither the Aura image nor an interrupted run of this patch. Nothing was written." }
 }
 if ($code -eq "PARTIAL") { Say ""; Say "$stateLine" "Yellow" }
 
 # ---------------------------------------------------------------- confirmation
 Say ""
-if ($Action -eq "Install") {
+if ($pending) {
+    Say "READY TO FINISH: nothing more is written to the system partition; the follow-up step runs and the unit restarts." "Yellow"
+} elseif ($Action -eq "Install") {
     Say "READY TO INSTALL the Aura ROM." "Yellow"
     Say "  - writes about $packMB MB of changed blocks into the system partition (not the whole system)" "Yellow"
     Say "  - the result is verified against the expected hash; on any problem the old blocks are written back" "Yellow"
@@ -166,24 +182,27 @@ if (-not $Yes) {
 }
 
 # ---------------------------------------------------------------- do it
-Say ""
-Say "Writing ..." "Cyan"
-$mode = if ($Action -eq "Install") { "apply" } else { "revert" }
-$out = Flash $mode
-if (-not ($out | Where-Object { $_ -match "^RESULT: OK" })) {
+if (-not $pending) {
     Say ""
-    Say "The patch did not report success. The unit has NOT been rebooted - do not switch it off or reboot it yet." "Red"
-    Say "  * If the lines above end with 'previous contents were restored and verified', nothing changed: you may try again." "Yellow"
-    Say "  * If the connection dropped or the output stops early, wait two minutes (the unit finishes the run by itself),"  "Yellow"
-    Say "    then run this script with -Action Status. An interrupted run is completed by running Install (or Restore) again." "Yellow"
-    Say "  * A log is kept on the unit: adb -s $script:dev shell cat $remote/flash.log" "Yellow"
-    Die "The $Action did not complete."
+    Say "Writing ..." "Cyan"
+    $mode = if ($Action -eq "Install") { "apply" } else { "revert" }
+    $out = Flash $mode
+    if (-not ($out | Where-Object { $_ -match "^RESULT: OK" })) {
+        Say ""
+        Say "The patch did not report success. The unit has NOT been rebooted - do not switch it off or reboot it yet." "Red"
+        Say "  * If the lines above end with 'previous contents were restored and verified', nothing changed: you may try again." "Yellow"
+        Say "  * If the connection dropped or the output stops early, the unit keeps working on its own: wait two or three minutes," "Yellow"
+        Say "    then run this script with -Action Status. An interrupted run is completed by running Install (or Restore) again." "Yellow"
+        Say "  * A log is kept on the unit: adb -s $script:dev shell cat $remote/flash.log" "Yellow"
+        Die "The $Action did not complete."
+    }
 }
 
 # small follow-up script, pushed as a file (no quoting games through three shells)
 if ($Action -eq "Install") {
     # make sure a previous crash-guard / kill switch does not leave the stock launcher selected
     $follow = "setprop persist.aura.disabled 0`nrm -f /data/aura_disabled /data/data/com.abdllh.aura/files/disable_home`necho prepared`n"
+    $expect = "prepared"
 } else {
     # undo the config edits made at boot and give the home role back to the stock launcher
     $follow = @'
@@ -196,14 +215,19 @@ setprop persist.aura.disabled 0
 echo undone
 '@
     $follow = ($follow -replace "`r`n", "`n") + "`n"
+    $expect = "undone"
 }
 $ftmp = Join-Path $env:TEMP "aura-follow.sh"
 [IO.File]::WriteAllText($ftmp, $follow, (New-Object Text.UTF8Encoding($false)))
 & $adbExe -s $script:dev push $ftmp "$remote/follow.sh" 2>&1 | Out-Null
-A shell "sh $remote/follow.sh" | ForEach-Object { Say "  $_" }
+$fo = A shell "sh $remote/follow.sh"
+$fo | ForEach-Object { Say "  $_" }
+if (-not ($fo | Where-Object { $_ -match "^$expect" })) {
+    Say "WARNING: the follow-up step did not report '$expect'. The system partition itself is fine; the unit works, but run this script again after the restart to repeat the step." "Yellow"
+}
 
 Say ""
-Say "DONE: $Action succeeded." "Green"
+if ($pending) { Say "DONE: $Action finished." "Green" } else { Say "DONE: $Action succeeded." "Green" }
 if ($NoReboot) { Say "Reboot the unit now to finish, and do not use it before that (the running system still holds the old file tables)." "Yellow"; exit 0 }
 Say "Rebooting the unit ..." "Cyan"
 A shell "reboot" | Out-Null

@@ -31,6 +31,16 @@ every block *outside* the ranges (`rest`): if a run is ever interrupted, a parti
 `rest` still matches is reported as an interrupted patch and `install`/`restore` simply finish it (rewriting all ranges leads
 to a known image again); anything else is refused. `rom/tools/make_zip.py` writes the release zip (forward-slash entries).
 
+Crash consistency: the ranges are written in a fixed order (new data, superblock/group descriptors, bitmaps, inode tables,
+existing directory blocks; restore = the exact reverse), because the partition is live and a power cut during the write must
+not leave a system that cannot boot. `rom/tools/make_patch.py` classifies every changed block with `rom/tools/fsmap.py`
+(and refuses images that overwrite live file data), and `rom/tools/check_order.py` proves the order: it simulates the state
+after *every single block* of the write (both directions) and requires that all changed files, new files and their parent
+directories are always exactly the old or exactly the new version; the same check on an ascending order fails in >1000 of
+1022 states. `make-release.ps1` runs it. `scripts/test-flash.ps1` exercises the PC installer and the on-device script
+against a loop device on the emulator (round trip, interrupted runs, refusals, damaged packs, a run that outlives its adb
+session, finishing after a lost follow-up); `-Quick` runs only the round trip, e.g. on a freshly unzipped release.
+
 Emulator: AVD "CarUnit" (Android 10 x86_64, 1024×600, 160 dpi) created with `ANDROID_AVD_HOME` on an ASCII path; the stock image is pushed to
 `/data/local/tmp/ws/system.img` once.
 
