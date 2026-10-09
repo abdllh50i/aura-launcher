@@ -98,7 +98,7 @@ object CrashGuard {
         // so does the stock volume bar (AuraApp asks again at every start while the kill switch is on); back on, the
         // display and the music buttons start here when this process began with the switch on (both idempotent)
         try {
-            if (enabled) { VolumeHud.init(ctx); MusicKeys.init(ctx); VolumeHud.apply(ctx) } else VolumeHud.release(ctx)
+            if (enabled) { VolumeHud.init(ctx); MusicKeys.init(ctx); Gear.init(ctx); VolumeHud.apply(ctx) } else VolumeHud.release(ctx)
         } catch (_: Throwable) {
         }
         return Device.setHome(if (enabled) ctx.packageName else Device.STOCK_LAUNCHER)

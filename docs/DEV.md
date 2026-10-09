@@ -141,5 +141,22 @@ turns them with drag, fling, snap and a spring back to the resting view (mirrore
   (observer only, must change after the bar connected).
 * Bluetooth music has no cover art in the BT module; `music/CoverSearch.kt` finds it by title + artist (iTunes Search
   API, Deezer), matching Arabic-script names against the catalogues' Latin spellings by their consonants.
+* Power belongs to the MCU. Apps reach it with broadcast `com.nwd.action.EMU_SEND_DATA_TO_MCU` (byte[] `protocal`,
+  written verbatim to the MCU UART by KernelService, no permission); frame `F0 LEN TYPE SUB 00 data… SUM` (`LEN` = data
+  + 3, `SUM` = low byte of the sum of everything after `F0`). The factory option `sleep_power_off` is `7B 1F [mode, h]`:
+  0 sleep (stock), 1 power off at ACC off, 2…6 sleep then power off after 0/2/24/48/72 h (K25 → T5 sub-platform → the
+  new 7-mode scheme). The setting service sends the mode from `/data/nwdappconfig/app/FactoryConfig.ini`
+  (`sleep_power_off=`) again at every boot, so `system/Power.kt` writes it there too (root, original kept as
+  `FactoryConfig.ini.pre-aura`, which the ROM restore's `*.pre-aura` loop puts back) and re-sends it once the boot has
+  settled. The MCU's ACC-off test command is `C0 02 [0]`. Android's own shutdown is no use while ACC is on:
+  `ro.recovery.mode=mcu`, and the firmware's reboot watchdog powers it back.
+* Gear: R from the reverse wire (`Settings.System mcu_backcar_state`, broadcast
+  `com.android.action.ACTION_BACKCAR_STATE_CHANGE`). P/R/N/D only from the CAN app (com.nwd.can.setting): its exported
+  CanService binder `com.nwd.can.sdk.outer.adil.ICanRemote4OuterFeature` — `initSdkCfg` (2: "nwdapp" + the CAN app's
+  key for NWD apps) then `addCarInfoCallBack` (17); car info then comes as `onDistributeCanData` (1), the frame
+  `6E 02 71 <113 bytes> FF` with the gear at byte 74. Never register `addCanCarInfoCallBack` (27): it switches the CAN
+  app to CarInfo objects (`onDistributeCarInfo`, 2) for every client, and the stock ones only read frames. CAN app
+  v.26 only (v.24 in /system has no gear); filled only by some car protocols (Raise boxes: 1 P, 2 R, 3 N, 4 D).
+  `system/CanGear.kt`, `system/Gear.kt`.
 * The status bar is hidden with the framework's own `Settings.Global policy_control`
   (`immersive.status=*`), which Android 10 still honours (`system/SystemBars.kt`); swiping down from the top shows it.

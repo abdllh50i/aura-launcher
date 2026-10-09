@@ -21,9 +21,11 @@ settings, a boot animation and an **in-app updater that pulls releases from GitH
   and USB sticks, plus the phone's Bluetooth music through the firmware's own Bluetooth module (covers looked up online by
   title and artist); the steering wheel's music button opens it. The volume controls drive the unit's real (MCU) volume,
   and Aura's own volume display replaces the stock bar for the wheel and panel buttons (none for changes made on the
-  screen). The dock holds the apps you pin to it. ZLink (CarPlay) stays off until it is opened, and the Wi-Fi is kept out
-  of power saving, reconnected when it loses its internet, and logged (*Settings → Vehicle & system → Internet*: every drop
-  with its cause — the phone's own data or the Wi-Fi link).
+  screen). The dock holds the apps you pin to it, and the home screen shows the gear (P R N D: R from the reverse wire,
+  the rest from the car's CAN box when it reports it). ZLink (CarPlay) stays off until it is opened, and the Wi-Fi is
+  kept out of power saving, reconnected when it loses its internet, and logged (*Settings → Vehicle & system →
+  Internet*: every drop with its cause — the phone's own data or the Wi-Fi link). *Settings → Vehicle & system → Power*
+  turns the unit fully off now, or at every ignition-off instead of sleeping, through its own power controller.
 * `rom/` — the ROM tooling: overlay files, boot script, workshop that builds the image inside an Android emulator,
   block-patch generator, and the installers (`rom/flash`): **`install-linux.sh` / `aura-install.py` for Ubuntu/Linux**
   (finds the unit on the network by itself, needs only Python 3) and `aura-rom.ps1` + `.bat` files for Windows.

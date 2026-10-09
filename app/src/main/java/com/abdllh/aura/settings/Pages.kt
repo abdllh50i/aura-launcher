@@ -271,6 +271,32 @@ class VehiclePage(private val act: SettingsActivity) : Page(R.string.set_vehicle
         }
         internet = InternetCard(ctx).also { col.addRow(it.view, 8) }
         col.addRow(ctx.hint(ctx.getString(R.string.net_hint)), 10)
+
+        if (com.abdllh.aura.system.Power.available || com.abdllh.aura.BuildConfig.DEBUG) {
+            col.addView(ctx.sectionTitle(ctx.getString(R.string.set_power)), lp(MATCH, WRAP).apply { topMargin = 22.dp })
+            col.addRow(ctx.switchRow(R.drawable.ic_power, ctx.getString(R.string.set_full_off), ctx.getString(R.string.set_full_off_sub),
+                com.abdllh.aura.system.Power.fullOffOnAccOff) { on ->
+                com.abdllh.aura.system.Power.fullOffOnAccOff = on
+                com.abdllh.aura.system.Power.apply(ctx)
+            }, 8)
+            col.addRow(ctx.settingRow(R.drawable.ic_power, ctx.getString(R.string.set_off_now), ctx.getString(R.string.set_off_now_sub),
+                ctx.chevron(), Palette.danger) {
+                com.abdllh.aura.ui.Confirm.show(act, ctx.getString(R.string.off_now_title), ctx.getString(R.string.off_now_text),
+                    ctx.getString(R.string.off_now_action)) {
+                    com.abdllh.aura.system.Power.powerOffNow(ctx) {
+                        Toast.makeText(ctx, R.string.off_now_not_taken, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }, 8)
+            col.addRow(ctx.hint(ctx.getString(R.string.set_power_hint)), 10)
+        }
+
+        col.addView(ctx.sectionTitle(ctx.getString(R.string.set_gear)), lp(MATCH, WRAP).apply { topMargin = 22.dp })
+        col.addRow(ctx.settingRow(R.drawable.ic_car, ctx.getString(R.string.set_gear_row), ctx.getString(when {
+            com.abdllh.aura.system.Gear.canReports -> R.string.set_gear_can
+            com.abdllh.aura.system.CanGear.supported(ctx) -> R.string.set_gear_can_waiting
+            else -> R.string.set_gear_basic
+        })), 8)
         return col
     }
 

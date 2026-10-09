@@ -885,9 +885,10 @@ class Installer:
                       "echo prepared\n")
             expect = "prepared"
         else:
-            # also undo what Aura changed outside the system partition: its music replacing the stock music app, the
-            # hidden status bar, the phone link (ZLink) kept off and the stock volume bar turned off (the stock system
-            # must not inherit any of them)
+            # also undo what Aura changed outside the system partition: the firmware config files it edited (kept as
+            # *.pre-aura: the boot-time registration and the factory ACC-off mode), its music replacing the stock music
+            # app, the hidden status bar, the phone link (ZLink) kept off and the stock volume bar turned off (the stock
+            # system must not inherit any of them)
             follow = ('for f in /data/nwdappconfig/app/*.pre-aura; do\n'
                       '  [ -f "$f" ] || continue\n'
                       '  cat "$f" > "${f%.pre-aura}" && rm -f "$f"\n'

@@ -9,7 +9,9 @@ import com.abdllh.aura.system.SystemProps
 import com.abdllh.aura.system.WifiKeeper
 import com.abdllh.aura.system.ZLinkGuard
 import com.abdllh.aura.system.StockMusic
+import com.abdllh.aura.system.Gear
 import com.abdllh.aura.system.MusicKeys
+import com.abdllh.aura.system.Power
 import com.abdllh.aura.system.VolumeHud
 import com.abdllh.aura.music.BtMusic
 import com.abdllh.aura.music.Player
@@ -43,9 +45,11 @@ class AuraApp : Application() {
         StockMusic.apply(this)
         WifiKeeper.start(this)
         ZLinkGuard.init(this)
+        Power.init(this) // after an "off now": the ACC-off behaviour goes back to the user's choice
         if (!disabled) {
             VolumeHud.init(this)
             MusicKeys.init(this)
+            Gear.init(this)
         }
     }
 }

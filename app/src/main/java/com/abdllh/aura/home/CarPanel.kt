@@ -66,7 +66,11 @@ class CarPanel(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
             addView(ctx.iconView(R.drawable.ic_download, 17, Palette.accent), lp(17.dp, 17.dp))
             addView(updateText, lp(WRAP, WRAP).apply { marginStart = 7.dp })
         }
-        header.addView(updateChip, lp(WRAP, 44.dp).apply { topMargin = 16.dp })
+        // the end side: the gear (P R N D) on top, the update chip under it
+        val end = LinearLayout(ctx).apply { orientation = VERTICAL; gravity = Gravity.END }
+        end.addView(GearView(ctx), lp(WRAP, WRAP).apply { topMargin = 18.dp })
+        end.addView(updateChip, lp(WRAP, 44.dp).apply { topMargin = 10.dp })
+        header.addView(end, lp(WRAP, WRAP))
         addView(header, lp(MATCH, WRAP))
 
         stage.onTap = { host.openControls() }
