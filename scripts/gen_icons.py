@@ -70,6 +70,15 @@ ICONS = {
     "droplet": (["M12,2.69l5.66,5.66a8,8 0,1 1,-11.31,0z"], False),
     "wrench_screw": (["M12,2v4", "M12,18v4", "M4.93,4.93l2.83,2.83", "M16.24,16.24l2.83,2.83", "M2,12h4", "M18,12h4", "M4.93,19.07l2.83,-2.83", "M16.24,7.76l2.83,-2.83"], False),
     "contrast": ([circle(12, 12, 9), "F:M12,3a9,9 0,0 1,0,18z"], False),
+    "plus": (["M12,5v14", "M5,12h14"], False),
+    "minus": (["M5,12h14"], False),
+    "bluetooth_audio": (["M6.5,6.5l11,11L12,23V1l5.5,5.5l-11,11", "M19,9.5a4,4 0,0 1,0,5"], False),
+    "usb": (["M12,22v-12", "M12,3l-2.5,3h5z", "M12,15l-4,-3v-3", "M12,13l4,-3v-2", circle(12, 19.5, 2.5), "M6.5,9h3v-3h-3z", circle(16, 7, 1.5)], False),
+    "shuffle": (["M16,3h5v5", "M4,20L21,3", "M21,16v5h-5", "M15,15l6,6", "M4,4l5,5"], False),
+    "repeat": (["M17,1l4,4 -4,4", "M3,11V9a4,4 0,0 1,4,-4h14", "M7,23l-4,-4 4,-4", "M21,13v2a4,4 0,0 1,-4,4H3"], False),
+    "disc": ([circle(12, 12, 10), circle(12, 12, 3)], False),
+    "user": (["M20,21v-2a4,4 0,0 0,-4,-4H8a4,4 0,0 0,-4,4v2", circle(12, 7, 4)], False),
+    "music_list": (["M3,6h12", "M3,12h12", "M3,18h8", "M17,18V8l4,-1v9", circle(15, 18, 2)], False),
 }
 # A path string starting with "F:" is a plain filled shape inside an outline icon.
 

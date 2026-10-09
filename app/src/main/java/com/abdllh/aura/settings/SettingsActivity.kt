@@ -85,12 +85,12 @@ class SettingsActivity : Activity() {
             isClickable = true
             pressScale(0.97f)
             setOnClickListener { finish() }
-            addView(iconView(R.drawable.ic_chevron_left, 26, Palette.text).also {
+            addView(iconView(R.drawable.ic_chevron_left, 30, Palette.text).also {
                 if (resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL) it.scaleX = -1f
-            }, lp(26.dp, 26.dp))
-            addView(label(22f, Palette.text, Fonts.MEDIUM).apply { setText(R.string.set_title) }, lp(WRAP, WRAP).apply { marginStart = 8.dp })
+            }, lp(30.dp, 30.dp))
+            addView(label(24f, Palette.text, Fonts.MEDIUM).apply { setText(R.string.set_title) }, lp(WRAP, WRAP).apply { marginStart = 8.dp })
         }
-        side.addView(back, lp(MATCH, 52.dp))
+        side.addView(back, lp(MATCH, 60.dp))
         side.addView(View(this), lp(MATCH, 10.dp))
 
         val items = ArrayList<LinearLayout>()
@@ -103,24 +103,24 @@ class SettingsActivity : Activity() {
                 pressScale(0.98f)
                 setOnClickListener { show(i, true) }
             }
-            item.addView(iconView(p.iconRes, 24, Palette.text2), lp(24.dp, 24.dp))
-            item.addView(label(16.5f, Palette.text2, Fonts.MEDIUM).apply { setText(p.titleRes) }, lp(0, WRAP, 1f).apply { marginStart = 14.dp })
+            item.addView(iconView(p.iconRes, 27, Palette.text2), lp(27.dp, 27.dp))
+            item.addView(label(18f, Palette.text2, Fonts.MEDIUM).apply { setText(p.titleRes) }, lp(0, WRAP, 1f).apply { marginStart = 16.dp })
             if (p is UpdatePage) {
                 updateDot = View(this).apply { background = Shapes.oval(Palette.accent); visibility = if (UpdateManager.hasUpdateBadge()) View.VISIBLE else View.GONE }
                 item.addView(updateDot, lp(10.dp, 10.dp))
             }
             items.add(item)
-            side.addView(item, lp(MATCH, 56.dp).apply { topMargin = 4.dp })
+            side.addView(item, lp(MATCH, 64.dp).apply { topMargin = 4.dp })
         }
         navItems = items
-        row.addView(side, lp(264.dp, MATCH))
+        row.addView(side, lp(280.dp, MATCH))
 
         // ---- content
         val right = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPaddingRelative(8.dp, 18.dp, 24.dp, 0)
         }
-        title = label(28f, Palette.text, Fonts.LIGHT)
+        title = label(30f, Palette.text, Fonts.LIGHT)
         right.addView(title, lp(MATCH, WRAP).apply { bottomMargin = 12.dp; marginStart = 6.dp })
         content = FrameLayout(this)
         right.addView(content, lp(MATCH, 0, 1f))

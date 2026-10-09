@@ -48,6 +48,16 @@ object Prefs {
         get() = sp.getString("workAddress", "") ?: ""
         set(v) { sp.edit().putString("workAddress", v).apply() }
 
+    /** Hide Android's top status bar system-wide (swipe down to show it). */
+    var hideStatusBar: Boolean
+        get() = sp.getBoolean("hideStatusBar", true)
+        set(v) { sp.edit().putBoolean("hideStatusBar", v).apply() }
+
+    /** Use Aura's built-in maps for the Maps button and Home/Work (false = an installed navigation app). */
+    var builtInMaps: Boolean
+        get() = sp.getBoolean("builtInMaps", true)
+        set(v) { sp.edit().putBoolean("builtInMaps", v).apply() }
+
     var dockLabels: Boolean
         get() = sp.getBoolean("dockLabels", false)
         set(v) { sp.edit().putBoolean("dockLabels", v).apply() }

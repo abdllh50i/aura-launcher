@@ -26,7 +26,7 @@ fun Context.pageColumn(): LinearLayout = LinearLayout(this).apply {
     setPadding(0, 0, 0, 24.dp)
 }
 
-fun Context.sectionTitle(text: CharSequence): AText = label(13f, Palette.text3, Fonts.MEDIUM).apply {
+fun Context.sectionTitle(text: CharSequence): AText = label(14.5f, Palette.text3, Fonts.MEDIUM).apply {
     this.text = text
     isAllCaps = false
     letterSpacing = 0.04f
@@ -48,13 +48,13 @@ fun Context.settingRow(
 ): LinearLayout = LinearLayout(this).apply {
     orientation = LinearLayout.HORIZONTAL
     gravity = Gravity.CENTER_VERTICAL
-    minimumHeight = 66.dp
+    minimumHeight = 78.dp
     setPadding(20.dp, 10.dp, 20.dp, 10.dp)
     background = if (onClick != null) Shapes.clickableCard(18f) else Shapes.card(18f)
-    if (icon != null) addView(iconView(icon, 24, iconTint), lp(24.dp, 24.dp).apply { marginEnd = 16.dp })
+    if (icon != null) addView(iconView(icon, 27, iconTint), lp(27.dp, 27.dp).apply { marginEnd = 18.dp })
     val t = LinearLayout(this@settingRow).apply { orientation = LinearLayout.VERTICAL }
-    t.addView(label(17f, Palette.text, Fonts.MEDIUM, lines = 2).apply { text = title })
-    if (!subtitle.isNullOrEmpty()) t.addView(label(13.5f, Palette.text2, Fonts.REGULAR, lines = 3).apply { text = subtitle }, lp(MATCH, WRAP).apply { topMargin = 3.dp })
+    t.addView(label(18.5f, Palette.text, Fonts.MEDIUM, lines = 2).apply { text = title })
+    if (!subtitle.isNullOrEmpty()) t.addView(label(14.5f, Palette.text2, Fonts.REGULAR, lines = 3).apply { text = subtitle }, lp(MATCH, WRAP).apply { topMargin = 3.dp })
     addView(t, lp(0, WRAP, 1f))
     if (trailing != null) addView(trailing, lp(WRAP, WRAP).apply { marginStart = 14.dp })
     if (onClick != null) {
@@ -64,11 +64,11 @@ fun Context.settingRow(
     }
 }
 
-fun Context.chevron(): ImageView = iconView(com.abdllh.aura.R.drawable.ic_chevron_right, 22, Palette.text3).also {
+fun Context.chevron(): ImageView = iconView(com.abdllh.aura.R.drawable.ic_chevron_right, 26, Palette.text3).also {
     if (resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL) it.scaleX = -1f
 }
 
-fun Context.valueText(text: CharSequence): AText = label(15f, Palette.text2, Fonts.REGULAR).apply { this.text = text }
+fun Context.valueText(text: CharSequence): AText = label(16.5f, Palette.text2, Fonts.REGULAR).apply { this.text = text }
 
 fun Context.switchRow(icon: Int?, title: CharSequence, subtitle: CharSequence?, checked: Boolean, onChange: (Boolean) -> Unit): LinearLayout {
     val sw = AuraSwitch(this)
@@ -87,15 +87,15 @@ fun Context.sliderRow(icon: Int, title: CharSequence, slider: AuraSlider, valueV
         background = Shapes.card(18f)
     }
     val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-    head.addView(iconView(icon, 22, Palette.text2), lp(22.dp, 22.dp).apply { marginEnd = 12.dp })
-    head.addView(label(16f, Palette.text, Fonts.MEDIUM).apply { text = title }, lp(0, WRAP, 1f))
+    head.addView(iconView(icon, 26, Palette.text2), lp(26.dp, 26.dp).apply { marginEnd = 14.dp })
+    head.addView(label(18f, Palette.text, Fonts.MEDIUM).apply { text = title }, lp(0, WRAP, 1f))
     head.addView(valueView, lp(WRAP, WRAP))
     col.addView(head, lp(MATCH, WRAP))
-    col.addView(slider, lp(MATCH, 46.dp).apply { topMargin = 12.dp })
+    col.addView(slider, lp(MATCH, 60.dp).apply { topMargin = 12.dp })
     return col
 }
 
-fun Context.hint(text: CharSequence): AText = label(13f, Palette.text3, Fonts.REGULAR, lines = 0).apply {
+fun Context.hint(text: CharSequence): AText = label(14.5f, Palette.text3, Fonts.REGULAR, lines = 0).apply {
     this.text = text
     setPadding(8.dp, 0, 8.dp, 0)
     setLineSpacing(0f, 1.15f)

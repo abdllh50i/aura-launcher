@@ -31,7 +31,12 @@ object Actions {
     fun phoneLink(ctx: Context): Boolean =
         AppRepo.launch(ctx, if (AppRepo.isInstalled(ctx, Known.ZLINK)) Known.ZLINK else Known.PHONE)
 
+    /** Opens Aura Maps (default) or the chosen navigation app. */
     fun nav(ctx: Context): Boolean {
+        if (com.abdllh.aura.util.Prefs.builtInMaps) {
+            com.abdllh.aura.nav.MapsActivity.open(ctx)
+            return true
+        }
         val pkg = AppRepo.navPackage(ctx) ?: return false
         return AppRepo.launch(ctx, pkg)
     }

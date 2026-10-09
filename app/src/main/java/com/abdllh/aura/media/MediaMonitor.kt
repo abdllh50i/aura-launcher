@@ -52,13 +52,38 @@ object MediaMonitor {
         listeners.remove(l)
     }
 
+    /** Package marker for music from a phone over Bluetooth (the firmware's BT module, see BtMusic). */
+    const val SOURCE_BT = "bt"
+
+    /** Extra on Aura Music's own send_media_play_info broadcasts (for the cluster), which this monitor skips. */
+    const val EXTRA_SELF = "com.abdllh.aura.extra.SELF"
+
+    private fun btInfo(): NowPlaying? {
+        val b = com.abdllh.aura.music.BtMusic
+        if (!b.available || !b.connected || (b.title.isBlank() && b.artist.isBlank())) return null
+        return NowPlaying(b.title.ifBlank { b.artist }, if (b.title.isBlank()) "" else b.artist, null, b.playing, SOURCE_BT)
+    }
+
+    /** Aura Music's own player (read directly: no session access needed). */
+    private fun auraInfo(): NowPlaying? {
+        val p = com.abdllh.aura.music.Player
+        val t = p.current ?: return null
+        return NowPlaying(t.title, t.artist, p.art, p.playing, app?.packageName)
+    }
+
     private fun publish() {
         val sessionInfo = controller?.let { fromController(it) }
-        // A live MediaSession wins over the last broadcast, unless it is paused and the broadcast says playing.
+        val bt = btInfo()
+        val aura = auraInfo()
+        // What plays wins: Bluetooth music, Aura Music, another app's session or broadcast; then what is paused.
         current = when {
+            bt != null && bt.playing -> bt
+            aura != null && aura.playing -> aura
             sessionInfo != null && (sessionInfo.playing || broadcastInfo?.playing != true) -> sessionInfo
             broadcastInfo != null -> broadcastInfo
-            else -> sessionInfo
+            sessionInfo != null -> sessionInfo
+            aura != null -> aura
+            else -> bt
         }
         val c = current
         main.post { listeners.forEach { it(c) } }
@@ -70,6 +95,9 @@ object MediaMonitor {
         app = ctx.applicationContext
         registerBroadcasts()
         registerSessions()
+        com.abdllh.aura.music.BtMusic.addListener { publish() }
+        com.abdllh.aura.music.Player.addListener { publish() }
+        publish() // what already plays (Aura Music may have started before the home screen)
     }
 
     // ---------------------------------------------------------------- broadcasts
@@ -88,6 +116,7 @@ object MediaMonitor {
 
     private fun handle(intent: Intent) {
         val e = intent.extras
+        if (e?.getBoolean(EXTRA_SELF, false) == true) return // Aura Music's own report: it is read directly (auraInfo)
         fun s(vararg keys: String): String {
             for (k in keys) {
                 val v = e?.get(k)
@@ -160,7 +189,9 @@ object MediaMonitor {
 
     private fun onSessions(list: List<MediaController>?) {
         controller?.unregisterCallback(callback)
-        val pick = list?.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING } ?: list?.firstOrNull()
+        // Aura Music is read directly (auraInfo), so only other apps' sessions count here.
+        val others = list?.filter { it.packageName != app?.packageName }
+        val pick = others?.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING } ?: others?.firstOrNull()
         controller = pick
         pick?.registerCallback(callback, main)
         publish()
@@ -179,6 +210,25 @@ object MediaMonitor {
     enum class Key(val code: Int) { PREV(KeyEvent.KEYCODE_MEDIA_PREVIOUS), PLAY_PAUSE(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE), NEXT(KeyEvent.KEYCODE_MEDIA_NEXT) }
 
     fun send(ctx: Context, key: Key) {
+        if (current?.sourcePkg == SOURCE_BT) {
+            val b = com.abdllh.aura.music.BtMusic
+            b.control(when (key) { Key.PREV -> b.PREVIOUS; Key.NEXT -> b.NEXT; Key.PLAY_PAUSE -> b.TOGGLE })
+            return
+        }
+        if (current?.sourcePkg == ctx.packageName || current == null) {
+            val p = com.abdllh.aura.music.Player
+            if (p.current != null || com.abdllh.aura.music.Library.tracks.isNotEmpty()) {
+                when (key) {
+                    Key.PREV -> p.previous()
+                    Key.NEXT -> p.next()
+                    Key.PLAY_PAUSE -> when {
+                        p.current != null -> p.toggle()
+                        else -> { p.resume(); if (p.current == null) p.play(com.abdllh.aura.music.Library.tracks, 0) }
+                    }
+                }
+                return
+            }
+        }
         val c = controller
         if (c != null) {
             try {

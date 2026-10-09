@@ -48,18 +48,18 @@ class AppDrawer(ctx: Context, private val host: HomeHost) : Sheet(ctx, true) {
             setPadding(26.dp, 6.dp, 26.dp, 0)
         }
         val top = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        top.addView(ctx.label(22f, Palette.text, Fonts.MEDIUM).apply { setText(R.string.drawer_title) }, lp(WRAP, WRAP).apply { marginEnd = 22.dp })
+        top.addView(ctx.label(24f, Palette.text, Fonts.MEDIUM).apply { setText(R.string.drawer_title) }, lp(WRAP, WRAP).apply { marginEnd = 22.dp })
         search = EditText(ctx).apply {
             setHint(R.string.drawer_search)
             setHintTextColor(Palette.text3)
             setTextColor(Palette.text)
-            textSize = 16f
+            textSize = 18f
             typeface = Fonts.get(Fonts.REGULAR)
             maxLines = 1
             isSingleLine = true
             imeOptions = EditorInfo.IME_ACTION_SEARCH or EditorInfo.IME_FLAG_NO_EXTRACT_UI
-            setPaddingRelative(48.dp, 0, 18.dp, 0)
-            background = Shapes.rect(Palette.card2, 24f)
+            setPaddingRelative(54.dp, 0, 18.dp, 0)
+            background = Shapes.rect(Palette.card2, 29f)
             addTextChangedListener(object : TextWatcher {
                 override fun afterTextChanged(s: Editable?) = applyFilter(s?.toString().orEmpty())
                 override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -68,19 +68,19 @@ class AppDrawer(ctx: Context, private val host: HomeHost) : Sheet(ctx, true) {
         }
         val searchBox = FrameLayout(ctx)
         searchBox.addView(search, flp(MATCH, MATCH))
-        searchBox.addView(ctx.iconView(R.drawable.ic_search, 20, Palette.text3).apply {
-            layoutParams = flp(20.dp, 20.dp, Gravity.START or Gravity.CENTER_VERTICAL).apply { marginStart = 17.dp }
+        searchBox.addView(ctx.iconView(R.drawable.ic_search, 23, Palette.text3).apply {
+            layoutParams = flp(23.dp, 23.dp, Gravity.START or Gravity.CENTER_VERTICAL).apply { marginStart = 19.dp }
         })
-        top.addView(searchBox, lp(0, 48.dp, 1f))
+        top.addView(searchBox, lp(0, 58.dp, 1f))
         val closeBtn = FrameLayout(ctx).apply {
             background = Shapes.tonalOval()
             isClickable = true
             contentDescription = ctx.getString(R.string.btn_cancel)
             pressScale(0.9f)
             setOnClickListener { close() }
-            addView(ctx.iconView(R.drawable.ic_close, 20, Palette.text).apply { layoutParams = flp(20.dp, 20.dp, Gravity.CENTER) })
+            addView(ctx.iconView(R.drawable.ic_close, 24, Palette.text).apply { layoutParams = flp(24.dp, 24.dp, Gravity.CENTER) })
         }
-        top.addView(closeBtn, lp(48.dp, 48.dp).apply { marginStart = 14.dp })
+        top.addView(closeBtn, lp(58.dp, 58.dp).apply { marginStart = 14.dp })
         content.addView(top, lp(MATCH, WRAP))
 
         grid.apply {
@@ -106,7 +106,7 @@ class AppDrawer(ctx: Context, private val host: HomeHost) : Sheet(ctx, true) {
 
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
         super.onSizeChanged(w, h, ow, oh)
-        grid.numColumns = ((w - 72.dp) / 112.dp).coerceIn(4, 12)
+        grid.numColumns = ((w - 72.dp) / 126.dp).coerceIn(4, 12)
     }
 
     override fun dragZone(): Int = 30.dp
@@ -152,7 +152,7 @@ class AppDrawer(ctx: Context, private val host: HomeHost) : Sheet(ctx, true) {
 
     private inner class Cell(ctx: Context) : LinearLayout(ctx) {
         private val icon = ImageView(ctx)
-        private val name: AText = ctx.label(12.5f, Palette.text2, Fonts.REGULAR, gravity = Gravity.CENTER)
+        private val name: AText = ctx.label(14f, Palette.text2, Fonts.REGULAR, gravity = Gravity.CENTER)
         private var tag: String? = null
 
         init {
@@ -160,7 +160,7 @@ class AppDrawer(ctx: Context, private val host: HomeHost) : Sheet(ctx, true) {
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(4.dp, 10.dp, 4.dp, 10.dp)
             icon.scaleType = ImageView.ScaleType.FIT_CENTER
-            addView(icon, lp(58.dp, 58.dp))
+            addView(icon, lp(68.dp, 68.dp))
             addView(name, lp(MATCH, WRAP).apply { topMargin = 8.dp })
             background = Shapes.ghost(18f)
             isClickable = true
@@ -171,7 +171,7 @@ class AppDrawer(ctx: Context, private val host: HomeHost) : Sheet(ctx, true) {
             tag = a.pkg
             name.text = a.label
             icon.setImageDrawable(null)
-            IconLoader.get(context, a.pkg, 116) { bmp: Bitmap? -> if (tag == a.pkg && bmp != null) icon.setImageBitmap(bmp) }
+            IconLoader.get(context, a.pkg, 136) { bmp: Bitmap? -> if (tag == a.pkg && bmp != null) icon.setImageBitmap(bmp) }
             setOnClickListener {
                 close()
                 if (!AppRepo.launch(context, a.pkg)) host.toast(context.getString(R.string.err_app_missing))

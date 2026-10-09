@@ -29,18 +29,18 @@ import java.util.Date
 class CarPanel(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
     private val clock: AText = ctx.label(58f, Palette.text, Fonts.LIGHT).apply { typeface = Fonts.thin() }
     private val ampm: AText = ctx.label(16f, Palette.text2, Fonts.MEDIUM)
-    private val date: AText = ctx.label(15f, Palette.text2, Fonts.REGULAR)
-    private val greet: AText = ctx.label(13f, Palette.text3, Fonts.REGULAR)
-    private val updateText: AText = ctx.label(13f, Palette.accent, Fonts.MEDIUM)
+    private val date: AText = ctx.label(16.5f, Palette.text2, Fonts.REGULAR)
+    private val greet: AText = ctx.label(14.5f, Palette.text3, Fonts.REGULAR)
+    private val updateText: AText = ctx.label(14.5f, Palette.accent, Fonts.MEDIUM)
     private val updateChip: LinearLayout
     val stage = CarStage(ctx)
     val header: LinearLayout
     val quick: LinearLayout
 
-    private val wifi = RoundBtn(ctx, R.drawable.ic_wifi, 52)
-    private val link = RoundBtn(ctx, R.drawable.ic_smartphone, 52)
-    private val screenOff = RoundBtn(ctx, R.drawable.ic_power, 52)
-    private val car = RoundBtn(ctx, R.drawable.ic_car, 52)
+    private val wifi = RoundBtn(ctx, R.drawable.ic_wifi, BTN)
+    private val link = RoundBtn(ctx, R.drawable.ic_smartphone, BTN)
+    private val screenOff = RoundBtn(ctx, R.drawable.ic_power, BTN)
+    private val car = RoundBtn(ctx, R.drawable.ic_car, BTN)
 
     init {
         orientation = VERTICAL
@@ -66,7 +66,7 @@ class CarPanel(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
             addView(ctx.iconView(R.drawable.ic_download, 17, Palette.accent), lp(17.dp, 17.dp))
             addView(updateText, lp(WRAP, WRAP).apply { marginStart = 7.dp })
         }
-        header.addView(updateChip, lp(WRAP, 36.dp).apply { topMargin = 16.dp })
+        header.addView(updateChip, lp(WRAP, 44.dp).apply { topMargin = 16.dp })
         addView(header, lp(MATCH, WRAP))
 
         stage.onTap = { host.openControls() }
@@ -74,7 +74,7 @@ class CarPanel(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
 
         quick = LinearLayout(ctx).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER }
         for ((i, b) in listOf(wifi, link, screenOff, car).withIndex()) {
-            quick.addView(b, lp(52.dp, 52.dp).apply { if (i > 0) marginStart = 18.dp })
+            quick.addView(b, lp(BTN.dp, BTN.dp).apply { if (i > 0) marginStart = 22.dp })
         }
         addView(quick, lp(MATCH, WRAP))
 
@@ -112,7 +112,11 @@ class CarPanel(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
         updateChip.visibility = if (has) View.VISIBLE else View.GONE
         if (has) {
             updateText.text = context.getString(R.string.ctl_update_available, Prefs.availableTag.removePrefix("v"))
-            updateChip.background = Shapes.pressable(Shapes.rect(Palette.accentSoft(), 18f), Shapes.rect(Palette.withAlpha(Palette.accent, 0.3f), 18f))
+            updateChip.background = Shapes.pressable(Shapes.rect(Palette.accentSoft(), 22f), Shapes.rect(Palette.withAlpha(Palette.accent, 0.3f), 22f))
         }
+    }
+
+    companion object {
+        private const val BTN = 64 // quick buttons, dp
     }
 }

@@ -67,12 +67,22 @@ android {
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.findByName("release")
+            // the head unit is 32-bit ARM only (-PwithEmulatorAbi adds x86_64, to try a release build on the emulator)
+            ndk { abiFilters += if (project.hasProperty("withEmulatorAbi")) listOf("armeabi-v7a", "x86_64") else listOf("armeabi-v7a") }
         }
         debug {
             // Same package + same key as release, so debug and release builds can replace each other.
             signingConfig = signingConfigs.findByName("release")
             manifestPlaceholders["cleartext"] = "true"
+            // + the x86_64 emulator workshop
+            ndk { abiFilters += listOf("armeabi-v7a", "x86_64") }
         }
+    }
+
+    // Native libraries stay uncompressed in the APK (extractNativeLibs=false): as a preinstalled /system/priv-app the
+    // package manager does not extract them, so they must be loadable straight from the APK.
+    packaging {
+        jniLibs { useLegacyPackaging = false }
     }
 
     buildFeatures {
@@ -92,4 +102,10 @@ android {
         abortOnError = false
         checkReleaseBuilds = false
     }
+}
+
+dependencies {
+    // Vector map rendering for the built-in navigation. The 10.3.x line renders with OpenGL ES 2.0: the unit's
+    // firmware declares ES 2.0 (ro.opengles.version=131072), and 11+ requires ES 3.0.
+    implementation("org.maplibre.gl:android-sdk:10.3.7")
 }

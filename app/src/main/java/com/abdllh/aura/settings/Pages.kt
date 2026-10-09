@@ -124,6 +124,22 @@ class DisplaySoundPage(private val act: SettingsActivity) : Page(R.string.set_di
         }
         col.addRow(ctx.sliderRow(R.drawable.ic_volume, ctx.getString(R.string.ctl_volume), vs, vv))
 
+        col.addRow(ctx.switchRow(R.drawable.ic_eye_off, ctx.getString(R.string.set_hide_status), ctx.getString(R.string.set_hide_status_sub), Prefs.hideStatusBar) {
+            Prefs.hideStatusBar = it
+            if (!com.abdllh.aura.system.SystemBars.apply(ctx)) Toast.makeText(ctx, R.string.set_failed, Toast.LENGTH_SHORT).show()
+        }, 16)
+
+        if (com.abdllh.aura.system.StockMusic.available(ctx)) {
+            col.addView(ctx.sectionTitle(ctx.getString(R.string.set_music)), lp(MATCH, WRAP).apply { topMargin = 22.dp })
+            col.addRow(ctx.switchRow(R.drawable.ic_music, ctx.getString(R.string.set_music_replace), ctx.getString(R.string.set_music_replace_sub),
+                com.abdllh.aura.system.StockMusic.enabled) { on ->
+                com.abdllh.aura.system.StockMusic.enabled = on
+                com.abdllh.aura.system.StockMusic.apply(ctx) { ok ->
+                    if (!ok) act.runOnUiThread { Toast.makeText(ctx, R.string.set_failed, Toast.LENGTH_LONG).show() }
+                }
+            }, 8)
+        }
+
         col.addView(ctx.sectionTitle(ctx.getString(R.string.set_shortcuts)), lp(MATCH, WRAP).apply { topMargin = 22.dp })
         if (AppRepo.isInstalled(ctx, "com.nwd.audioset")) {
             col.addRow(ctx.settingRow(R.drawable.ic_sliders, ctx.getString(R.string.set_equalizer), ctx.getString(R.string.set_equalizer_sub), ctx.chevron()) {
@@ -151,15 +167,24 @@ class NavigationPage(private val act: SettingsActivity) : Page(R.string.set_navi
         val col = ctx.pageColumn()
         col.addView(ctx.sectionTitle(ctx.getString(R.string.set_nav_app)))
 
+        // Aura Maps first, then the installed navigation apps
+        val builtIn = Prefs.builtInMaps
+        col.addRow(ctx.settingRow(R.drawable.ic_compass, ctx.getString(R.string.set_maps_builtin), ctx.getString(R.string.set_maps_builtin_sub),
+            if (builtIn) ctx.iconView(R.drawable.ic_check_circle, 26, Palette.accent) else null,
+            if (builtIn) Palette.accent else Palette.text2) {
+            Prefs.builtInMaps = true
+            act.rebuild()
+        }, 8)
         val choices = ArrayList<Pair<String, String>>() // pkg ("" = automatic) -> label
         choices.add("" to ctx.getString(R.string.set_nav_auto))
         for (a in AppRepo.installedNavApps(ctx)) choices.add(a.pkg to a.label)
         val selected = Prefs.navPackage
         for ((pkg, name) in choices) {
-            val on = pkg == selected || (pkg.isEmpty() && selected.isEmpty())
+            val on = !builtIn && (pkg == selected || (pkg.isEmpty() && selected.isEmpty()))
             col.addRow(ctx.settingRow(R.drawable.ic_nav, name, if (pkg.isEmpty()) ctx.getString(R.string.set_nav_auto_sub) else null,
-                if (on) ctx.iconView(R.drawable.ic_check_circle, 24, Palette.accent) else null,
+                if (on) ctx.iconView(R.drawable.ic_check_circle, 26, Palette.accent) else null,
                 if (on) Palette.accent else Palette.text2) {
+                Prefs.builtInMaps = false
                 Prefs.navPackage = pkg
                 if (pkg.isNotEmpty()) com.abdllh.aura.system.SystemProps.set("persist.sys.navi_set_by_app", pkg)
                 act.rebuild()
@@ -204,11 +229,11 @@ class VehiclePage(private val act: SettingsActivity) : Page(R.string.set_vehicle
                 row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
                 col.addView(row, lp(MATCH, WRAP).apply { topMargin = 12.dp })
             }
-            row!!.addView(tile(ctx, t), lp(0, 108.dp, 1f).apply { if (i % 3 != 0) marginStart = 12.dp })
+            row!!.addView(tile(ctx, t), lp(0, 124.dp, 1f).apply { if (i % 3 != 0) marginStart = 12.dp })
         }
         // pad the last row so tiles keep their width
         val rem = tiles.size % 3
-        if (rem != 0) for (k in 0 until 3 - rem) row!!.addView(View(ctx), lp(0, 108.dp, 1f).apply { marginStart = 12.dp })
+        if (rem != 0) for (k in 0 until 3 - rem) row!!.addView(View(ctx), lp(0, 124.dp, 1f).apply { marginStart = 12.dp })
         col.addRow(ctx.hint(ctx.getString(R.string.v_hint)), 14)
         return col
     }
@@ -222,8 +247,8 @@ class VehiclePage(private val act: SettingsActivity) : Page(R.string.set_vehicle
         setOnClickListener {
             try { t.run(ctx) } catch (_: Throwable) { Toast.makeText(ctx, R.string.err_app_missing, Toast.LENGTH_SHORT).show() }
         }
-        addView(ctx.iconView(t.icon, 32, Palette.text), lp(32.dp, 32.dp))
-        addView(ctx.label(14.5f, Palette.text2, Fonts.MEDIUM, gravity = Gravity.CENTER).apply { setText(t.label) }, lp(WRAP, WRAP).apply { topMargin = 10.dp })
+        addView(ctx.iconView(t.icon, 36, Palette.text), lp(36.dp, 36.dp))
+        addView(ctx.label(16f, Palette.text2, Fonts.MEDIUM, gravity = Gravity.CENTER).apply { setText(t.label) }, lp(WRAP, WRAP).apply { topMargin = 10.dp })
     }
 }
 

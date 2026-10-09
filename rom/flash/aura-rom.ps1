@@ -204,12 +204,17 @@ if ($Action -eq "Install") {
     $follow = "setprop persist.aura.disabled 0`nrm -f /data/aura_disabled /data/data/com.abdllh.aura/files/disable_home`necho prepared`n"
     $expect = "prepared"
 } else {
-    # undo the config edits made at boot and give the home role back to the stock launcher
+    # undo the config edits made at boot, Aura Music replacing the stock music app and the hidden status bar, and give
+    # the home role back to the stock launcher
     $follow = @'
 for f in /data/nwdappconfig/app/*.pre-aura; do
   [ -f "$f" ] || continue
   cat "$f" > "${f%.pre-aura}" && rm -f "$f"
 done
+L=/data/nwdappconfig/app/replace_source_list.xml
+grep -q com.abdllh.aura "$L" 2>/dev/null && rm -f "$L"
+pm enable com.nwd.android.music.ui >/dev/null 2>&1
+case "$(settings get global policy_control 2>/dev/null)" in *immersive.*) settings delete global policy_control >/dev/null 2>&1 ;; esac
 setprop persist.nwd.launcher.default com.android.launcher
 setprop persist.aura.disabled 0
 echo undone

@@ -93,6 +93,8 @@ object CrashGuard {
         }
         sp?.edit()?.putBoolean(KEY_DISABLED, !enabled && why == "crash")?.apply()
         SystemProps.set(Device.DISABLED_PROP, if (enabled) "0" else "1")
+        // the hidden status bar belongs to Aura's home screen: the stock launcher gets it back
+        try { if (enabled) SystemBars.apply(ctx) else SystemBars.release(ctx) } catch (_: Throwable) { }
         return Device.setHome(if (enabled) ctx.packageName else Device.STOCK_LAUNCHER)
     }
 

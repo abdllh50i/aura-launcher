@@ -55,7 +55,7 @@ class AuraSwitch @JvmOverloads constructor(
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        setMeasuredDimension(56.dp, 32.dp)
+        setMeasuredDimension(66.dp, 38.dp)
     }
 
     override fun onDraw(c: Canvas) {

@@ -21,7 +21,9 @@ import android.widget.LinearLayout
 import android.widget.Toast
 import com.abdllh.aura.R
 import com.abdllh.aura.media.MediaMonitor
+import com.abdllh.aura.nav.CarLocation
 import com.abdllh.aura.settings.SettingsActivity
+import com.abdllh.aura.system.CarAudio
 import com.abdllh.aura.system.CrashGuard
 import com.abdllh.aura.system.NwdBridge
 import com.abdllh.aura.ui.BackdropView
@@ -49,6 +51,8 @@ class HomeActivity : Activity(), HomeHost {
     private var builtAccent = 0
     private var builtDark = true
     private var restyling = false
+    private var resumedNow = false
+    private var startedNow = false
     private var toast: Toast? = null
 
     private val tick = object : BroadcastReceiver() {
@@ -62,6 +66,12 @@ class HomeActivity : Activity(), HomeHost {
     private val volume = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
             if (!::dock.isInitialized) return
+            dock.syncVolume()
+            if (controls.isOpen) controls.syncVolume()
+        }
+    }
+    private val carAudio: () -> Unit = {
+        if (::dock.isInitialized) {
             dock.syncVolume()
             if (controls.isOpen) controls.syncVolume()
         }
@@ -92,6 +102,7 @@ class HomeActivity : Activity(), HomeHost {
         Theme.window(this, Palette.dock)
         CarFrames.warmUp(this, resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL)
         setContentView(buildUi())
+        mapPanel.onCreate(savedInstanceState)
         MediaMonitor.start(this)
         NwdBridge.startStockServicesOncePerBoot(this)
         AppRepo.preload(this) // the app grid opens instantly instead of querying the package manager on the UI thread
@@ -113,7 +124,7 @@ class HomeActivity : Activity(), HomeHost {
         content.addView(mapPanel, lp(0, MATCH, 0.60f).apply { topMargin = 12.dp; bottomMargin = 12.dp; marginEnd = 12.dp })
         col.addView(content, lp(MATCH, 0, 1f))
         dock = Dock(this, this)
-        col.addView(dock, lp(MATCH, 76.dp))
+        col.addView(dock, lp(MATCH, DOCK_DP.dp))
         r.addView(col, MATCH, MATCH)
 
         controls = ControlsSheet(this, this)
@@ -127,6 +138,35 @@ class HomeActivity : Activity(), HomeHost {
     override fun onStart() {
         super.onStart()
         NwdBridge.notifyHomeForeground(this)
+        mapPanel.onStart()
+        startedNow = true
+    }
+
+    override fun onStop() {
+        mapPanel.onStop()
+        startedNow = false
+        super.onStop()
+    }
+
+    override fun onDestroy() {
+        if (::mapPanel.isInitialized) mapPanel.onDestroy()
+        super.onDestroy()
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        if (::mapPanel.isInitialized) mapPanel.onLowMemory()
+    }
+
+    /** Asks once for the location (the home map shows the car; Maps needs it anyway). */
+    private fun askLocationOnce() {
+        if (CarLocation.hasPermission(this) || Prefs.raw.getBoolean("askedLocation", false)) return
+        Prefs.raw.edit().putBoolean("askedLocation", true).apply()
+        requestPermissions(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION), 7)
+    }
+
+    override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, grants: IntArray) {
+        if (CarLocation.hasPermission(this)) CarLocation.acquire(this, "home")
     }
 
     override fun onResume() {
@@ -147,12 +187,16 @@ class HomeActivity : Activity(), HomeHost {
             // muting (Mute tile, steering-wheel key) only sends STREAM_MUTE_CHANGED, not VOLUME_CHANGED
             registerReceiver(volume, IntentFilter("android.media.VOLUME_CHANGED_ACTION").apply { addAction("android.media.STREAM_MUTE_CHANGED_ACTION") })
         } catch (_: Throwable) { }
+        CarAudio.addListener(carAudio)
+        mapPanel.onResume()
+        resumedNow = true
         refreshAll()
         UpdateManager.observe(updateObserver)
         UpdateManager.autoCheckIfDue()
         if (!introPlayed) {
             introPlayed = true
             animateIn()
+            root?.postDelayed({ if (!isFinishing) askLocationOnce() }, 2600)
         }
     }
 
@@ -183,7 +227,7 @@ class HomeActivity : Activity(), HomeHost {
         rise(mapPanel.chips, -12, 450)
         rise(mapPanel.media, 22, 540)
 
-        dock.translationY = 76.dp.toFloat()
+        dock.translationY = DOCK_DP.dp.toFloat()
         dock.animate().translationY(0f).setStartDelay(80).setDuration(460).setInterpolator(ease).start()
         for (i in 0 until dock.apps.childCount) {
             val v = dock.apps.getChildAt(i)
@@ -197,6 +241,9 @@ class HomeActivity : Activity(), HomeHost {
     override fun onPause() {
         try { unregisterReceiver(tick) } catch (_: Throwable) { }
         try { unregisterReceiver(volume) } catch (_: Throwable) { }
+        CarAudio.removeListener(carAudio)
+        mapPanel.onPause()
+        resumedNow = false
         UpdateManager.unobserve(updateObserver)
         super.onPause()
     }
@@ -207,6 +254,8 @@ class HomeActivity : Activity(), HomeHost {
             // keep only the resting views of the car while another app is in front
             CarFrames.meta(this)?.let { m -> CarFrames.trim(listOf(m.defaultFrame, m.defaultFrameRtl)) }
         }
+        // the stopped home map keeps its tile caches until told (Maps may be running its own engine meanwhile)
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW && ::mapPanel.isInitialized) mapPanel.onLowMemory()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -277,12 +326,21 @@ class HomeActivity : Activity(), HomeHost {
         restyling = false
         if (isDestroyed) return
         val reopen = ::controls.isInitialized && controls.isOpen
+        // the live map of the old view tree owns a GL surface: shut it down before the views are replaced
+        if (::mapPanel.isInitialized) {
+            if (resumedNow) mapPanel.onPause()
+            if (startedNow) mapPanel.onStop()
+            mapPanel.onDestroy()
+        }
         Theme.refresh()
         builtDark = Palette.dark
         builtAccent = Prefs.accent
         Theme.window(this, Palette.dock)
         val ui = buildUi() as FrameLayout
         setContentView(ui)
+        mapPanel.onCreate(null)
+        if (startedNow) mapPanel.onStart()
+        if (resumedNow) mapPanel.onResume()
         refreshAll()
         if (reopen) controls.open(false)
         if (snap != null) {
@@ -291,5 +349,10 @@ class HomeActivity : Activity(), HomeHost {
             cover.animate().alpha(0f).setDuration(420).setInterpolator(PathInterpolator(0.4f, 0f, 0.2f, 1f))
                 .withEndAction { ui.removeView(cover) }.start()
         }
+    }
+
+    companion object {
+        /** Height of the dock (big touch targets: the unit's 1024x600 panel is about 120 dpi, 1 dp = 1 px). */
+        const val DOCK_DP = 92
     }
 }

@@ -59,11 +59,38 @@ Emulator: AVD "CarUnit" (Android 10 x86_64, 1024×600, 160 dpi) created with `AN
 `/data/local/tmp/ws/system.img` once.
 
 ## Home screen design
-`home/HomeActivity.kt` lays out `CarPanel` (clock, the car, quick buttons), `MapPanel` (decorative map, "Where to?",
-Home/Work, the floating `MediaCard`), the `Dock` and two bottom sheets (`ControlsSheet`, `AppDrawer`, both on `ui/Sheet.kt`).
-Colours are theme tokens in `ui/Palette.kt`; `ui/Theme.kt` resolves dark / light / auto (light between an estimated sunrise
-and sunset) and a theme or accent change rebuilds the views in place behind a `PixelCopy` snapshot that fades out.
-Keep idle frames free: nothing on the home screen animates when untouched except the small `MapPuck`.
+`home/HomeActivity.kt` lays out `CarPanel` (clock, the car, quick buttons), `MapPanel` (live map, "Where to?", Home/Work,
+the floating `MediaCard`, a guidance banner while navigating), the `Dock` and two bottom sheets (`ControlsSheet`, `AppDrawer`,
+both on `ui/Sheet.kt`). Colours are theme tokens in `ui/Palette.kt`; `ui/Theme.kt` resolves dark / light / auto (light between
+an estimated sunrise and sunset) and a theme or accent change rebuilds the views in place behind a `PixelCopy` snapshot that
+fades out. HomeActivity forwards its lifecycle to the embedded map; the map is capped at 30 fps and only draws when it changes.
+
+## Aura Maps (`nav/`)
+MapLibre Native **10.3.7** on purpose: it renders with OpenGL ES 2.0, which is what the unit's firmware declares
+(`ro.opengles.version=131072`); 11.x and later need ES 3.0. `MapStyle.kt` builds the style JSON (OpenFreeMap vector tiles and
+fonts, dark/light colours, 3D buildings, labels in the UI language); `AuraMap.kt` wraps `MapView` (camera modes follow /
+navigate / free / overview; the car and the destination pin are plain Views moved to their projected screen points each
+camera frame — a tilted symbol layer rendered black on the emulator's GPU). `MapGuard` marks each map start on disk: after two
+starts that never drew a frame (a native crash cannot be caught), the home screen falls back to the static `MapBackdropView`.
+Search: Photon (`Places.kt`, type-ahead with a generation counter, Home/Work/recents in prefs). Routing: OSRM (`Router.kt`,
+steps placed on the polyline). `NavSession.kt` snaps fixes to the route, reroutes after three off-route fixes (at most every
+8 s), speaks Arabic/English prompts (TTS) and runs `NavService` (foreground, type location) with the next manoeuvre.
+Debug builds: `MapsActivity --es mock_loc "lat,lon,bearing"` and `--ez simulate true` (drives the route); the CarUnit AVD
+needs `hw.gps = yes` for `adb emu geo fix`. A release build can be tried on the emulator with `-PwithEmulatorAbi`.
+
+## Aura Music (`music/`)
+`Library.kt` reads MediaStore (internal storage, `/mnt/media_rw/udisk*`, SD card) and groups by album / artist / folder;
+`ArtLoader` decodes covers off the main thread into an LRU. `Player.kt` (MediaPlayer, queue, shuffle/repeat, MediaSession,
+audio focus) also does what the stock NWD music app does so the firmware treats it as the music source (app id 2): takes MCU
+source 0, announces the app (`ACTION_APP_IN_OUT`), stops the other media apps, sets bit 1 of `Settings.System
+nwd_arm_volume_type` while it plays (the firmware then sends the panel/steering-wheel media keys as `ACTION_KEY_VALUE`
+broadcasts) and reports the track with `send_media_play_info` / `send_media_play_time`. `BtMusic.kt` talks to the firmware's
+Bluetooth module (`com.bt.bc03`, binder `com.bt.BTFeature`, AVRCP ID3 broadcasts): title/artist, play state, progress and
+transport (no cover art, album or seeking over this module). `media/MediaMonitor.kt` merges Bluetooth, Aura's player, other
+apps' MediaSessions and the NWD broadcasts for the home card.
+`system/StockMusic.kt` (user switch, off by default): `pm disable-user com.nwd.android.music.ui` and
+`/data/nwdappconfig/app/replace_source_list.xml` (app id 2 → `com.abdllh.aura.music.MusicActivity`, re-read on
+`com.nwd.ACTION_REPLACE_SOURCE_LIST_CHANGE`); both need root, so they run through the unit's own adbd (`system/LocalAdb.kt`).
 
 ### The 3D car (`tools/car3d`, debug-only `CarBakerActivity`)
 The car is not rendered live (the source model has ~726k triangles and 8K textures; the unit has a Mali-G31). Instead a
@@ -83,3 +110,8 @@ turns them with drag, fling, snap and a spring back to the resting view (mirrore
   fast-dexopt list; `aura-prepare.sh` registers Aura in all of them at every boot (idempotent).
 * The stock launcher also reports "home in front" (ACTION_APP_IN_OUT, app id 4) and starts the floating volume bar, boot tip and
   assistive touch services; Aura repeats both (`system/NwdBridge.kt`).
+* Volume is the MCU's, not Android's: `com.nwd.setting.service` (binder `com.nwd.setting.service.SettingFeature`,
+  setAudioParam = 6, getAudioParam = 7, setMute = 10, registAudioCallback = 24), parameter 14 = system volume in
+  0..`Settings.System mcu_max_volume`; current values in `mcu_system_volume` / `mcu_mute_state` (`system/CarAudio.kt`).
+* The status bar is hidden with the framework's own `Settings.Global policy_control`
+  (`immersive.status=*`), which Android 10 still honours (`system/SystemBars.kt`); swiping down from the top shows it.

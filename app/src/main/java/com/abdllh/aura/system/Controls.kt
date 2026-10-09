@@ -37,19 +37,14 @@ object Controls {
         }
     }
 
-    private fun am(ctx: Context) = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-
-    fun volumeMax(ctx: Context) = am(ctx).getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
-    fun muted(ctx: Context) = am(ctx).isStreamMute(AudioManager.STREAM_MUSIC)
-    fun volume(ctx: Context) = if (muted(ctx)) 0 else am(ctx).getStreamVolume(AudioManager.STREAM_MUSIC)
-
-    fun setVolume(ctx: Context, v: Int) {
-        val a = am(ctx)
-        a.setStreamVolume(AudioManager.STREAM_MUSIC, v.coerceIn(0, volumeMax(ctx)), 0)
-        if (v > 0 && a.isStreamMute(AudioManager.STREAM_MUSIC)) a.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0)
-    }
-
-    fun toggleMute(ctx: Context) = am(ctx).adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_TOGGLE_MUTE, 0)
+    // Volume is the car's amplifier volume (see CarAudio), not Android's music stream.
+    @Suppress("UNUSED_PARAMETER") fun volumeMax(ctx: Context) = CarAudio.max()
+    @Suppress("UNUSED_PARAMETER") fun muted(ctx: Context) = CarAudio.muted()
+    @Suppress("UNUSED_PARAMETER") fun volume(ctx: Context) = if (CarAudio.muted()) 0 else CarAudio.volume()
+    @Suppress("UNUSED_PARAMETER") fun setVolume(ctx: Context, v: Int) = CarAudio.setVolume(v)
+    @Suppress("UNUSED_PARAMETER") fun toggleMute(ctx: Context) = CarAudio.toggleMute()
+    /** One step from the real level (not the 0 shown while muted), which also turns the sound back on. */
+    @Suppress("UNUSED_PARAMETER") fun stepVolume(ctx: Context, dir: Int) = CarAudio.setVolume(CarAudio.volume() + dir)
 
     fun percentText(ctx: Context, v: Int) = "${(v * 100f / volumeMax(ctx)).toInt()}%"
 }

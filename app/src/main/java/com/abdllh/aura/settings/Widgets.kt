@@ -46,16 +46,16 @@ class Segmented(
         background = Shapes.rect(Palette.card2, 16f)
         setPadding(4.dp, 4.dp, 4.dp, 4.dp)
         for ((i, t) in options.withIndex()) {
-            val c = ctx.label(15f, Palette.text2, Fonts.MEDIUM, gravity = Gravity.CENTER).apply {
+            val c = ctx.label(17f, Palette.text2, Fonts.MEDIUM, gravity = Gravity.CENTER).apply {
                 text = t
-                if (i == arabicIndex) Fonts.arabic()?.let { typeface = it; textSize = 17f }
+                if (i == arabicIndex) Fonts.arabic()?.let { typeface = it; textSize = 19f }
                 isClickable = true
                 setPadding(18.dp, 0, 18.dp, 0)
                 pressScale(0.97f)
                 setOnClickListener { select(i, true) }
             }
             cells.add(c)
-            addView(c, lp(WRAP, 42.dp, 1f).apply { width = 0 })
+            addView(c, lp(WRAP, 52.dp, 1f).apply { width = 0 })
         }
         select(sel, false)
     }
@@ -94,7 +94,7 @@ class Swatches(ctx: Context, private val colors: IntArray, selected: Int, privat
                 background = if (c == sel) Shapes.oval(c, Palette.text, 3) else Shapes.oval(c, Palette.stroke, 1)
                 setOnClickListener { sel = c; build(); onPick(c) }
             }
-            addView(dot, lp(38.dp, 38.dp).apply { if (i > 0) marginStart = 12.dp })
+            addView(dot, lp(46.dp, 46.dp).apply { if (i > 0) marginStart = 14.dp })
         }
     }
 }

@@ -26,8 +26,9 @@ import com.abdllh.aura.util.dp
 class MediaCard(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
     private val art = ImageView(ctx).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
     private val artFallback = ImageView(ctx).apply { setImageResource(R.drawable.ic_music); setColorFilter(Palette.text3); scaleType = ImageView.ScaleType.FIT_CENTER }
-    private val title: AText = ctx.label(16f, Palette.text, Fonts.MEDIUM)
-    private val artist: AText = ctx.label(13f, Palette.text2, Fonts.REGULAR)
+    private val title: AText = ctx.label(18f, Palette.text, Fonts.MEDIUM)
+    // the UI language orders "artist · source" (an English artist must not turn an Arabic line around)
+    private val artist: AText = ctx.label(14.5f, Palette.text2, Fonts.REGULAR).apply { textDirection = TEXT_DIRECTION_LOCALE }
     private val playIcon = ImageView(ctx)
     private var np: NowPlaying? = null
 
@@ -36,7 +37,7 @@ class MediaCard(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
     init {
         orientation = HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        setPaddingRelative(10.dp, 10.dp, 12.dp, 10.dp)
+        setPaddingRelative(12.dp, 12.dp, 12.dp, 12.dp)
         background = Shapes.glassPressable(20f)
         elevate(10f)
         isClickable = true
@@ -47,9 +48,9 @@ class MediaCard(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
             background = Shapes.rect(Palette.card2, 14f)
             roundedClip(14f)
         }
-        artBox.addView(artFallback, flp(26.dp, 26.dp, Gravity.CENTER))
+        artBox.addView(artFallback, flp(30.dp, 30.dp, Gravity.CENTER))
         artBox.addView(art, flp(MATCH, MATCH))
-        addView(artBox, lp(62.dp, 62.dp))
+        addView(artBox, lp(72.dp, 72.dp))
 
         val txt = LinearLayout(ctx).apply { orientation = VERTICAL }
         txt.addView(title, lp(MATCH, WRAP))
@@ -58,17 +59,17 @@ class MediaCard(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
 
         // transport controls keep their left-to-right order in every language (like a physical player)
         val row = LinearLayout(ctx).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; layoutDirection = LAYOUT_DIRECTION_LTR }
-        row.addView(transport(ctx, R.drawable.ic_skip_back, R.string.media_prev) { MediaMonitor.send(context, MediaMonitor.Key.PREV) }, lp(46.dp, 46.dp))
+        row.addView(transport(ctx, R.drawable.ic_skip_back, R.string.media_prev) { MediaMonitor.send(context, MediaMonitor.Key.PREV) }, lp(58.dp, 58.dp))
         val play = FrameLayout(ctx).apply {
             background = Shapes.pressable(Shapes.oval(Palette.text), Shapes.oval(Palette.text2))
             isClickable = true
             contentDescription = ctx.getString(R.string.media_play)
             pressScale(0.9f)
             setOnClickListener { togglePlay() }
-            addView(playIcon.apply { setColorFilter(Palette.card); scaleType = ImageView.ScaleType.FIT_CENTER }, flp(22.dp, 22.dp, Gravity.CENTER))
+            addView(playIcon.apply { setColorFilter(Palette.card); scaleType = ImageView.ScaleType.FIT_CENTER }, flp(27.dp, 27.dp, Gravity.CENTER))
         }
-        row.addView(play, lp(50.dp, 50.dp).apply { marginStart = 6.dp; marginEnd = 6.dp })
-        row.addView(transport(ctx, R.drawable.ic_skip_fwd, R.string.media_next) { MediaMonitor.send(context, MediaMonitor.Key.NEXT) }, lp(46.dp, 46.dp))
+        row.addView(play, lp(64.dp, 64.dp).apply { marginStart = 6.dp; marginEnd = 6.dp })
+        row.addView(transport(ctx, R.drawable.ic_skip_fwd, R.string.media_next) { MediaMonitor.send(context, MediaMonitor.Key.NEXT) }, lp(58.dp, 58.dp))
         addView(row, lp(WRAP, WRAP))
         bind(null)
     }
@@ -79,7 +80,7 @@ class MediaCard(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
         contentDescription = ctx.getString(desc)
         pressScale(0.88f)
         setOnClickListener { onClick() }
-        addView(ImageView(ctx).apply { setImageResource(res); setColorFilter(Palette.text); scaleType = ImageView.ScaleType.FIT_CENTER }, flp(24.dp, 24.dp, Gravity.CENTER))
+        addView(ImageView(ctx).apply { setImageResource(res); setColorFilter(Palette.text); scaleType = ImageView.ScaleType.FIT_CENTER }, flp(29.dp, 29.dp, Gravity.CENTER))
     }
 
     private fun togglePlay() {
@@ -87,9 +88,14 @@ class MediaCard(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
         MediaMonitor.send(context, MediaMonitor.Key.PLAY_PAUSE)
     }
 
+    /** Aura Music for its own playback, Bluetooth music and when nothing plays; otherwise the app that plays. */
     private fun openSource() {
-        val pkg = np?.sourcePkg?.takeIf { AppRepo.isInstalled(context, it) } ?: Known.MUSIC
-        if (!AppRepo.launch(context, pkg)) host.toast(context.getString(R.string.err_app_missing))
+        val pkg = np?.sourcePkg
+        if (pkg == null || pkg == MediaMonitor.SOURCE_BT || pkg == context.packageName || !AppRepo.isInstalled(context, pkg)) {
+            com.abdllh.aura.music.MusicActivity.open(context)
+            return
+        }
+        if (!AppRepo.launch(context, pkg)) com.abdllh.aura.music.MusicActivity.open(context)
     }
 
     private fun bind(n: NowPlaying?) {
@@ -103,8 +109,9 @@ class MediaCard(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
         } else {
             title.text = n.title
             val src = sourceLabel(n.sourcePkg)
+            val bidi = android.text.BidiFormatter.getInstance()
             artist.text = when {
-                n.artist.isNotBlank() && src.isNotBlank() -> "${n.artist}  ·  $src"
+                n.artist.isNotBlank() && src.isNotBlank() -> "${bidi.unicodeWrap(n.artist)}  ·  ${bidi.unicodeWrap(src)}"
                 n.artist.isNotBlank() -> n.artist
                 else -> src
             }
@@ -114,9 +121,9 @@ class MediaCard(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
     }
 
     private fun sourceLabel(pkg: String?): String = when (pkg) {
-        null -> ""
+        null, context.packageName -> "" // Aura Music: the card itself is the music player
         Known.MUSIC -> context.getString(R.string.dock_music)
-        Known.BT_MUSIC -> context.getString(R.string.src_bt)
+        MediaMonitor.SOURCE_BT, Known.BT_MUSIC -> context.getString(R.string.src_bt)
         Known.RADIO -> context.getString(R.string.dock_radio)
         else -> try {
             val pm = context.packageManager

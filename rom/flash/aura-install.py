@@ -885,10 +885,17 @@ class Installer:
                       "echo prepared\n")
             expect = "prepared"
         else:
+            # also undo what Aura changed outside the system partition: its music replacing the stock music app and
+            # the hidden status bar (the stock system must not inherit either)
             follow = ('for f in /data/nwdappconfig/app/*.pre-aura; do\n'
                       '  [ -f "$f" ] || continue\n'
                       '  cat "$f" > "${f%.pre-aura}" && rm -f "$f"\n'
                       'done\n'
+                      'L=/data/nwdappconfig/app/replace_source_list.xml\n'
+                      'grep -q com.abdllh.aura "$L" 2>/dev/null && rm -f "$L"\n'
+                      'pm enable com.nwd.android.music.ui >/dev/null 2>&1\n'
+                      'case "$(settings get global policy_control 2>/dev/null)" in *immersive.*) '
+                      'settings delete global policy_control >/dev/null 2>&1 ;; esac\n'
                       'setprop persist.nwd.launcher.default com.android.launcher\n'
                       'setprop persist.aura.disabled 0\n'
                       'echo undone\n')

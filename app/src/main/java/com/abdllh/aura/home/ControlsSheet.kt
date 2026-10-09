@@ -31,10 +31,10 @@ import com.abdllh.aura.util.dp
 class ControlsSheet(ctx: Context, private val host: HomeHost) : Sheet(ctx, false) {
     private val brightness = AuraSlider(ctx).apply { max = 100; setIcon(R.drawable.ic_sun) }
     private val volume = AuraSlider(ctx).apply { setIcon(R.drawable.ic_volume) }
-    private val brightValue: AText = ctx.label(14f, Palette.text2, Fonts.MEDIUM)
-    private val volValue: AText = ctx.label(14f, Palette.text2, Fonts.MEDIUM)
+    private val brightValue: AText = ctx.label(16f, Palette.text2, Fonts.MEDIUM)
+    private val volValue: AText = ctx.label(16f, Palette.text2, Fonts.MEDIUM)
     private val updatePill: LinearLayout
-    private val updateText: AText = ctx.label(14f, Palette.accent, Fonts.MEDIUM)
+    private val updateText: AText = ctx.label(16f, Palette.accent, Fonts.MEDIUM)
 
     private class Tile(val view: LinearLayout, val icon: ImageView, val text: AText)
 
@@ -49,7 +49,7 @@ class ControlsSheet(ctx: Context, private val host: HomeHost) : Sheet(ctx, false
         }
 
         val head = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        head.addView(ctx.label(22f, Palette.text, Fonts.MEDIUM).apply { setText(R.string.ctl_title) }, lp(0, WRAP, 1f))
+        head.addView(ctx.label(24f, Palette.text, Fonts.MEDIUM).apply { setText(R.string.ctl_title) }, lp(0, WRAP, 1f))
         updatePill = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -58,19 +58,19 @@ class ControlsSheet(ctx: Context, private val host: HomeHost) : Sheet(ctx, false
             pressScale(0.96f)
             background = Shapes.pressable(Shapes.rect(Palette.accentSoft(), 20f), Shapes.rect(Palette.withAlpha(Palette.accent, 0.3f), 20f))
             setOnClickListener { close(); host.openSettings(SettingsActivity.PAGE_UPDATE) }
-            addView(ctx.iconView(R.drawable.ic_download, 19, Palette.accent), lp(19.dp, 19.dp))
+            addView(ctx.iconView(R.drawable.ic_download, 22, Palette.accent), lp(22.dp, 22.dp))
             addView(updateText, lp(WRAP, WRAP).apply { marginStart = 8.dp })
         }
-        head.addView(updatePill, lp(WRAP, 40.dp).apply { marginEnd = 12.dp })
+        head.addView(updatePill, lp(WRAP, 50.dp).apply { marginEnd = 12.dp })
         val closeBtn = FrameLayout(ctx).apply {
             background = Shapes.tonalOval()
             isClickable = true
             contentDescription = ctx.getString(R.string.btn_cancel)
             pressScale(0.9f)
             setOnClickListener { close() }
-            addView(ctx.iconView(R.drawable.ic_close, 20, Palette.text).apply { layoutParams = flp(20.dp, 20.dp, Gravity.CENTER) })
+            addView(ctx.iconView(R.drawable.ic_close, 24, Palette.text).apply { layoutParams = flp(24.dp, 24.dp, Gravity.CENTER) })
         }
-        head.addView(closeBtn, lp(44.dp, 44.dp))
+        head.addView(closeBtn, lp(56.dp, 56.dp))
         content.addView(head, lp(MATCH, WRAP))
 
         val body = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
@@ -98,10 +98,10 @@ class ControlsSheet(ctx: Context, private val host: HomeHost) : Sheet(ctx, false
     private fun sliderBlock(ctx: Context, title: Int, slider: AuraSlider, value: AText): LinearLayout {
         val col = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
         val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        row.addView(ctx.label(15f, Palette.text, Fonts.MEDIUM).apply { setText(title) }, lp(0, WRAP, 1f))
+        row.addView(ctx.label(17f, Palette.text, Fonts.MEDIUM).apply { setText(title) }, lp(0, WRAP, 1f))
         row.addView(value, lp(WRAP, WRAP))
         col.addView(row, lp(MATCH, WRAP))
-        col.addView(slider, lp(MATCH, 56.dp).apply { topMargin = 9.dp })
+        col.addView(slider, lp(MATCH, 66.dp).apply { topMargin = 10.dp })
         return col
     }
 
@@ -128,10 +128,10 @@ class ControlsSheet(ctx: Context, private val host: HomeHost) : Sheet(ctx, false
                 row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
                 grid.addView(row, lp(MATCH, WRAP).apply { if (i > 0) topMargin = 10.dp })
             }
-            row!!.addView(t.view, lp(0, 82.dp, 1f).apply { if (i % cols != 0) marginStart = 10.dp })
+            row!!.addView(t.view, lp(0, 100.dp, 1f).apply { if (i % cols != 0) marginStart = 10.dp })
         }
         val rem = tiles.size % cols
-        if (rem != 0) for (k in 0 until cols - rem) row!!.addView(View(ctx), lp(0, 82.dp, 1f).apply { marginStart = 10.dp })
+        if (rem != 0) for (k in 0 until cols - rem) row!!.addView(View(ctx), lp(0, 100.dp, 1f).apply { marginStart = 10.dp })
         return grid
     }
 
@@ -143,9 +143,9 @@ class ControlsSheet(ctx: Context, private val host: HomeHost) : Sheet(ctx, false
             pressScale(0.94f)
             setOnClickListener { onClick() }
         }
-        val img = ctx.iconView(icon, 26, Palette.text)
-        val txt = ctx.label(12.5f, Palette.text2, Fonts.MEDIUM, gravity = Gravity.CENTER).apply { setText(label) }
-        v.addView(img, lp(26.dp, 26.dp))
+        val img = ctx.iconView(icon, 32, Palette.text)
+        val txt = ctx.label(14.5f, Palette.text2, Fonts.MEDIUM, gravity = Gravity.CENTER).apply { setText(label) }
+        v.addView(img, lp(32.dp, 32.dp))
         v.addView(txt, lp(WRAP, WRAP).apply { topMargin = 8.dp })
         val t = Tile(v, img, txt)
         style(t, false)

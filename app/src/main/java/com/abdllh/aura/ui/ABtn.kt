@@ -19,11 +19,11 @@ class ABtn @JvmOverloads constructor(
     init {
         weight = Fonts.MEDIUM
         gravity = Gravity.CENTER
-        textSize = 15f
+        textSize = 17f
         isClickable = true
         isFocusable = true
-        minHeight = 48.dp
-        setPadding(22.dp, 10.dp, 22.dp, 10.dp)
+        minHeight = 56.dp
+        setPadding(26.dp, 10.dp, 26.dp, 10.dp)
         restyle()
         pressScale(0.96f)
     }
