@@ -6,6 +6,8 @@ param(
     [string]$Pack = "D:\k2501-work\out\testpack2",
     [string]$Serial = "emulator-5570",
     [string]$Adb = "E:\Android\Sdk\platform-tools\adb.exe",
+    [ValidateSet("ps1", "py")][string]$Installer = "ps1",   # which installer to test: aura-rom.ps1 (Windows) or aura-install.py (Linux)
+    [string]$FakeAdbd = "127.0.0.1:15555",                   # py: where scripts\fake_adbd.py listens (it runs the commands on the emulator)
     [switch]$Quick      # only T0 + T1 (install / restore round trip): for checking a freshly unpacked release zip
 )
 $ErrorActionPreference = "Continue"
@@ -25,6 +27,14 @@ function Sh([string]$text) {
     & $Adb -s $Serial shell "sh /data/local/tmp/tf.sh" 2>&1 | ForEach-Object { "$_" }
 }
 function Rom([string]$pack, [string]$action, [string[]]$more) {
+    if ($Installer -eq "py") {
+        $verb = @{ "Status" = "status"; "Install" = "install"; "Restore" = "restore" }[$action]
+        $extra = @()
+        foreach ($m in $more) { if ($m -eq "-Yes") { $extra += "--yes" } elseif ($m -eq "-NoReboot") { $extra += "--no-reboot" } }
+        $env:AURA_TEST = "1"
+        python (Join-Path $pack "aura-install.py") $verb --ip $FakeAdbd --device $script:loop --expect-model "Android SDK built for x86_64" --lang en @extra 2>&1 | ForEach-Object { "$_" }
+        return
+    }
     powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $pack "aura-rom.ps1") -Action $action -Serial $Serial -BlockDevice $script:loop `
         -ExpectModel "Android SDK built for x86_64" -Adb $Adb @more 2>&1 | ForEach-Object { "$_" }
 }

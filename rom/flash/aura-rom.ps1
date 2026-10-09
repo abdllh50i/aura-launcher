@@ -223,7 +223,10 @@ $ftmp = Join-Path $env:TEMP "aura-follow.sh"
 $fo = A shell "sh $remote/follow.sh"
 $fo | ForEach-Object { Say "  $_" }
 if (-not ($fo | Where-Object { $_ -match "^$expect" })) {
-    Say "WARNING: the follow-up step did not report '$expect'. The system partition itself is fine; the unit works, but run this script again after the restart to repeat the step." "Yellow"
+    # Not restarting is the safe answer: the unit still shows the state this step has to fix, so running the script again
+    # takes the "finish what was written" path and repeats the step.
+    Say "The follow-up step did not finish ('$expect' was not reported). The system partition itself is fine, but the unit was NOT restarted: run this script again and it will finish the job." "Red"
+    exit 1
 }
 
 Say ""

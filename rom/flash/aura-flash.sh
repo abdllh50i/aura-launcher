@@ -128,7 +128,8 @@ write_ranges() {
     n=0
     while read -r start count off osha nsha; do
         [ -n "$start" ] || continue
-        dd if="$bin" of="$DEV" bs=$BS skip="$off" seek="$start" count="$count" conv=notrunc,fsync 2>/dev/null || { say "  write failed at block $start"; return 1; }
+        err=$(dd if="$bin" of="$DEV" bs=$BS skip="$off" seek="$start" count="$count" conv=notrunc,fsync 2>&1) \
+            || { say "  write failed at block $start: $(echo "$err" | tail -1)"; return 1; }
         n=$((n + 1))
     done < "$list"
     sync

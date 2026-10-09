@@ -41,6 +41,20 @@ directories are always exactly the old or exactly the new version; the same chec
 against a loop device on the emulator (round trip, interrupted runs, refusals, damaged packs, a run that outlives its adb
 session, finishing after a lost follow-up); `-Quick` runs only the round trip, e.g. on a freshly unzipped release.
 
+### The Linux installer (`rom/flash/aura-install.py`, `install-linux.sh`)
+Python 3.8+, standard library only, so a laptop at the car needs neither `adb` nor internet. It carries a small ADB client
+(CNXN handshake, `exec:`/`shell:` streams, `sync:` push; no AUTH, because the unit has `ro.adb.secure=0`; if a unit ever asks for
+authorisation it tells the user to use `--system-adb`, which drives the system `adb` binary instead). Discovery: it scans the
+laptop's own private /22-or-smaller networks (virtual/VPN interfaces skipped) for TCP 5555, reads the connect banner and only
+opens a shell on hosts whose `ro.product.model` is K2501 (or that do not say); then the same identity check as the Windows
+installer (`ro.product.system.model` / `ro.nwd.platform.name` == K2501) gates everything. All write-safety logic stays in
+`aura-flash.sh` on the unit; the Python side pushes the pack (size **and** SHA-256 checked on the unit), runs the script,
+parses `STATE_CODE=` / `RESULT:`, runs the follow-up step, reboots and waits for the unit to come back.
+Testing: `AURA_TEST=1` unlocks the hidden `--device`/`--expect-model` flags. `scripts/fake_adbd.py` is an adbd test double
+(strict about the protocol rules adbd enforces) that runs the commands on the emulator through the real adb, so
+`scripts/test-flash.ps1 -Installer py -Pack <pack dir>` runs the whole suite through the Linux installer.
+Never scan the LAN while developing if other adb devices (a TV...) live on it: use `--scan 127.0.0.1/32 --port N`.
+
 Emulator: AVD "CarUnit" (Android 10 x86_64, 1024×600, 160 dpi) created with `ANDROID_AVD_HOME` on an ASCII path; the stock image is pushed to
 `/data/local/tmp/ws/system.img` once.
 

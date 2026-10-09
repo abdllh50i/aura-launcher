@@ -62,7 +62,12 @@ $pk = Join-Path $rel "aura-rom-$Version"
 if (Test-Path $pk) { Remove-Item -Recurse -Force $pk }
 New-Item -ItemType Directory -Force -Path "$pk\patch" | Out-Null
 foreach ($f in "forward.bin", "reverse.bin", "ranges.txt", "order-apply.txt", "order-revert.txt", "hashes.txt", "manifest.json") { Copy-Item (Join-Path $patch $f) "$pk\patch\$f" }
-foreach ($f in "aura-flash.sh", "aura-rom.ps1", "install.bat", "restore.bat", "status.bat") { Copy-Item (Join-Path $PSScriptRoot "flash\$f") "$pk\$f" }
+foreach ($f in "aura-flash.sh", "aura-rom.ps1", "aura-install.py", "install-linux.sh", "install.bat", "restore.bat", "status.bat") { Copy-Item (Join-Path $PSScriptRoot "flash\$f") "$pk\$f" }
+# the Linux-side files must have LF line ends whatever the checkout did (a CR in the shebang line breaks ./install-linux.sh)
+foreach ($f in "aura-flash.sh", "aura-install.py", "install-linux.sh") {
+    $t = [IO.File]::ReadAllText("$pk\$f") -replace "`r`n", "`n"
+    [IO.File]::WriteAllText("$pk\$f", $t, (New-Object Text.UTF8Encoding($false)))
+}
 foreach ($f in "README.ar.md", "README.md") { if (Test-Path (Join-Path $proj $f)) { Copy-Item (Join-Path $proj $f) "$pk\$f" } }
 $zip = Join-Path $rel "aura-rom-$Version.zip"
 python (Join-Path $PSScriptRoot "tools\make_zip.py") $pk $zip | Out-Host   # portable entry names (forward slashes)
