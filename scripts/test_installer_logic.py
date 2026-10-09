@@ -217,13 +217,13 @@ class RestartDetection(Base):
     def test_old_system_still_up_is_not_accepted(self):
         u = FakeUnit(rom_ver="1.0.0", uptimes=[520.0, 530.0, 540.0])       # uptime keeps growing: no restart
         out = self.wait(u, 500.0)
-        self.assertNotIn("Aura ROM is running", out)
+        self.assertNotIn("AMRI OS ROM is running", out)
         self.assertIn("does not seem to have restarted", out)
 
     def test_new_boot_is_accepted(self):
         u = FakeUnit(rom_ver="1.0.0", uptimes=[520.0, 12.0])               # first the old system, then a fresh boot
         out = self.wait(u, 500.0)
-        self.assertIn("Aura ROM is running (version 1.0.0)", out)
+        self.assertIn("AMRI OS ROM is running (version 1.0.0)", out)
 
     def test_unit_that_went_away_counts_as_restarted_even_without_uptime(self):
         class Flaky(FakeUnit):
@@ -254,7 +254,7 @@ class RestartDetection(Base):
                 inst.wait_back("install", None)
         finally:
             ai.NativeAdb = real
-        self.assertIn("Aura ROM is running", buf.getvalue())
+        self.assertIn("AMRI OS ROM is running", buf.getvalue())
 
     def test_reachable_old_system_without_uptime_waits_for_timeout(self):
         class NoUptime(FakeUnit):
@@ -263,7 +263,7 @@ class RestartDetection(Base):
                     return "garbage"
                 return super().shell(cmd, **kw)
         out = self.wait(NoUptime(rom_ver="1.0.0"), None)
-        self.assertNotIn("Aura ROM is running", out)
+        self.assertNotIn("AMRI OS ROM is running", out)
 
 
 class Discovery(unittest.TestCase):

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Aura</string>
+    <string name="app_name">عمري</string>
 
     <!-- الرئيسية -->
     <string name="greet_morning">صباح الخير</string>
@@ -14,7 +14,7 @@
     <string name="home_set_address_hint">حدّد عنوان %1$s أولًا</string>
     <string name="err_no_nav">لا يوجد تطبيق ملاحة</string>
     <string name="err_app_missing">هذا التطبيق غير مثبّت</string>
-    <string name="err_write_settings">اسمح لـ Aura بتعديل إعدادات النظام</string>
+    <string name="err_write_settings">اسمح لنظام عمري بتعديل إعدادات النظام</string>
     <string name="media_nothing">لا يوجد تشغيل حاليًا</string>
     <string name="media_tap_music">اضغط لفتح الموسيقى</string>
     <string name="src_bt">بلوتوث</string>
@@ -87,10 +87,10 @@
     <string name="set_gear_can_waiting">R من سلك الريوس، وD وقت المشي. صندوق CAN في السيارة ما أرسل القير للحين: P وN تظهر أول ما يرسله</string>
     <string name="set_gear_basic">R من سلك الريوس، وD وقت المشي. P وN تحتاج وضع القير من صندوق CAN في السيارة، وتطبيق CAN في هالشاشة ما يعطيه</string>
     <string name="vol_muted">مكتوم</string>
-    <string name="set_volume_hud">شريط الصوت من Aura للأزرار</string>
+    <string name="set_volume_hud">شريط الصوت من عمري للأزرار</string>
     <string name="set_volume_hud_sub">شريط صوت أنظف لأزرار الدركسون والجهاز، وما يطلع إذا غيّرت الصوت من الشاشة</string>
-    <string name="set_music_keys">أزرار الموسيقى تفتح موسيقى Aura</string>
-    <string name="set_music_keys_sub">زر الموسيقى في الدركسون (وشاشات الموسيقى الأصلية) يفتح تطبيق موسيقى Aura</string>
+    <string name="set_music_keys">أزرار الموسيقى تفتح موسيقى عمري</string>
+    <string name="set_music_keys_sub">زر الموسيقى في الدركسون (وشاشات الموسيقى الأصلية) يفتح موسيقى عمري</string>
     <string name="net_title">الإنترنت</string>
     <string name="net_check">افحص الآن</string>
     <string name="net_online">شغال</string>
@@ -153,7 +153,7 @@
     <string name="music_library">الجهاز و USB</string>
     <string name="music_bluetooth">بلوتوث</string>
     <string name="music_empty">لا توجد موسيقى بعد. وصّل فلاش USB فيه أغاني، أو شغّل من جوالك عبر البلوتوث.</string>
-    <string name="music_permission">اسمح لـ Aura بقراءة ملفات الموسيقى</string>
+    <string name="music_permission">اسمح لنظام عمري بقراءة ملفات الموسيقى</string>
     <string name="music_allow">سماح</string>
     <string name="music_bt_not_connected">وصّل جوالك عبر البلوتوث</string>
     <string name="music_bt_idle">شغّل أغنية من جوالك</string>
@@ -163,9 +163,9 @@
     <string name="music_tracks_count">%1$d أغنية</string>
     <string name="music_play_all">تشغيل الكل</string>
     <string name="set_music">الموسيقى</string>
-    <string name="set_music_replace">موسيقى Aura بدل تطبيق الموسيقى الأصلي</string>
-    <string name="set_music_replace_sub">زر الموسيقى وزر Mode وتوصيل فلاش USB تفتح موسيقى Aura</string>
-    <string name="set_maps_builtin">خرائط Aura (مدمجة)</string>
+    <string name="set_music_replace">موسيقى عمري بدل تطبيق الموسيقى الأصلي</string>
+    <string name="set_music_replace_sub">زر الموسيقى وزر Mode وتوصيل فلاش USB تفتح موسيقى عمري</string>
+    <string name="set_maps_builtin">خرائط عمري (مدمجة)</string>
     <string name="set_maps_builtin_sub">بحث ومسارات وإرشاد صوتي خطوة بخطوة</string>
     <string name="set_failed">تعذّر تطبيق هذا على الشاشة</string>
     <string name="set_hide_status">إخفاء شريط الحالة العلوي</string>
@@ -173,7 +173,7 @@
     <string name="media_prev">السابق</string>
     <string name="media_play">تشغيل أو إيقاف</string>
     <string name="media_next">التالي</string>
-    <string name="safe_mode_notice">توقف Aura بعد تعطل متكرر — تمت إعادة اللانشر الأصلي</string>
+    <string name="safe_mode_notice">توقف نظام عمري بعد تعطل متكرر — تمت إعادة اللانشر الأصلي</string>
 
     <!-- الإعدادات -->
     <string name="set_title">الإعدادات</string>
@@ -215,7 +215,7 @@
     <string name="about_device">الجهاز</string>
     <string name="about_android">النظام</string>
     <string name="about_build">إصدار البرنامج الثابت</string>
-    <string name="about_aura">إصدار Aura</string>
+    <string name="about_aura">إصدار نظام عمري</string>
     <string name="about_role">نوع التثبيت</string>
     <string name="role_system">تطبيق نظام (صلاحيات كاملة)</string>
     <string name="role_system_basic">تطبيق نظام</string>
@@ -223,12 +223,12 @@
     <string name="about_home_app">الشاشة الرئيسية</string>
     <string name="about_home_now">تطبيق الشاشة الرئيسية الحالي</string>
     <string name="about_use_stock">استخدام اللانشر الأصلي</string>
-    <string name="about_use_aura">استخدام Aura</string>
+    <string name="about_use_aura">استخدام عمري</string>
     <string name="about_home_changed">تم الحفظ — اضغط زر الرئيسية</string>
     <string name="about_home_failed">تعذر تغيير التطبيق الرئيسي</string>
     <string name="about_diag">تشخيص</string>
     <string name="about_last_crash">آخر تعطل</string>
-    <string name="about_credit">Aura تصميم مستقل مستوحى من واجهات السيارات الكهربائية الحديثة، وليس تابعًا لأي شركة سيارات ولا معتمدًا منها.</string>
+    <string name="about_credit">عمري (AMRI: Automotive Modern Responsive Interface) تصميم مستقل مستوحى من واجهات السيارات الكهربائية الحديثة، وليس تابعًا لأي شركة سيارات ولا معتمدًا منها.</string>
     <string name="btn_cancel">إلغاء</string>
     <string name="btn_save">حفظ</string>
 
@@ -255,7 +255,7 @@
     <string name="upd_check_again">فحص مرة أخرى</string>
     <string name="upd_downloading">جاري تنزيل %1$s…</string>
     <string name="upd_verifying">جاري التحقق من الملف…</string>
-    <string name="upd_installing">جاري التثبيت — سيُعاد تشغيل Aura</string>
+    <string name="upd_installing">جاري التثبيت — سيُعاد تشغيل عمري</string>
     <string name="upd_failed">فشل التحديث</string>
     <string name="upd_retry">حاول مرة أخرى</string>
     <string name="upd_check">البحث عن تحديثات</string>

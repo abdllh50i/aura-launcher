@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Aura</string>
+    <string name="app_name">AMRI OS</string>
 
     <!-- home -->
     <string name="greet_morning">Good morning</string>
@@ -14,7 +14,7 @@
     <string name="home_set_address_hint">Set your %1$s address first</string>
     <string name="err_no_nav">No navigation app found</string>
     <string name="err_app_missing">This app is not installed</string>
-    <string name="err_write_settings">Allow “Modify system settings” for Aura</string>
+    <string name="err_write_settings">Allow “Modify system settings” for AMRI OS</string>
     <string name="media_nothing">Nothing playing</string>
     <string name="media_tap_music">Tap to open Music</string>
     <string name="src_bt">Bluetooth</string>
@@ -87,10 +87,10 @@
     <string name="set_gear_can_waiting">R from the reverse wire and D while driving. The car\'s CAN box has not sent the gear yet: P and N show once it does</string>
     <string name="set_gear_basic">R from the reverse wire and D while driving. P and N need the gear from the car\'s CAN box, which this unit\'s CAN app does not give</string>
     <string name="vol_muted">Muted</string>
-    <string name="set_volume_hud">Aura volume display for the buttons</string>
+    <string name="set_volume_hud">AMRI volume display for the buttons</string>
     <string name="set_volume_hud_sub">A cleaner volume bar for the steering-wheel and panel buttons, and none when you change the volume on the screen</string>
-    <string name="set_music_keys">Music buttons open Aura Music</string>
-    <string name="set_music_keys_sub">The steering wheel\'s music button (and the stock music screens) open Aura\'s music app</string>
+    <string name="set_music_keys">Music buttons open AMRI Music</string>
+    <string name="set_music_keys_sub">The steering wheel\'s music button (and the stock music screens) open AMRI Music</string>
     <string name="net_title">Internet</string>
     <string name="net_check">Check now</string>
     <string name="net_online">Working</string>
@@ -153,7 +153,7 @@
     <string name="music_library">Device &amp; USB</string>
     <string name="music_bluetooth">Bluetooth</string>
     <string name="music_empty">No music yet. Plug in a USB drive with songs, or play from your phone over Bluetooth.</string>
-    <string name="music_permission">Allow Aura to read the music files</string>
+    <string name="music_permission">Allow AMRI OS to read the music files</string>
     <string name="music_allow">Allow</string>
     <string name="music_bt_not_connected">Connect your phone over Bluetooth</string>
     <string name="music_bt_idle">Play a song on your phone</string>
@@ -163,9 +163,9 @@
     <string name="music_tracks_count">%1$d songs</string>
     <string name="music_play_all">Play all</string>
     <string name="set_music">Music</string>
-    <string name="set_music_replace">Aura Music instead of the stock music app</string>
-    <string name="set_music_replace_sub">The Music key, the Mode key and inserting a USB drive open Aura Music</string>
-    <string name="set_maps_builtin">Aura Maps (built-in)</string>
+    <string name="set_music_replace">AMRI Music instead of the stock music app</string>
+    <string name="set_music_replace_sub">The Music key, the Mode key and inserting a USB drive open AMRI Music</string>
+    <string name="set_maps_builtin">AMRI Maps (built-in)</string>
     <string name="set_maps_builtin_sub">Search, routes and turn-by-turn guidance</string>
     <string name="set_failed">Couldn\'t apply this on this unit</string>
     <string name="set_hide_status">Hide the status bar</string>
@@ -173,7 +173,7 @@
     <string name="media_prev">Previous</string>
     <string name="media_play">Play or pause</string>
     <string name="media_next">Next</string>
-    <string name="safe_mode_notice">Aura stopped after repeated crashes — the stock launcher was restored</string>
+    <string name="safe_mode_notice">AMRI OS stopped after repeated crashes — the stock launcher was restored</string>
 
     <!-- settings -->
     <string name="set_title">Settings</string>
@@ -215,7 +215,7 @@
     <string name="about_device">Device</string>
     <string name="about_android">System</string>
     <string name="about_build">Firmware build</string>
-    <string name="about_aura">Aura version</string>
+    <string name="about_aura">AMRI OS version</string>
     <string name="about_role">Installed as</string>
     <string name="role_system">System app (full privileges)</string>
     <string name="role_system_basic">System app</string>
@@ -223,12 +223,12 @@
     <string name="about_home_app">Home screen</string>
     <string name="about_home_now">Active home app</string>
     <string name="about_use_stock">Use stock launcher</string>
-    <string name="about_use_aura">Use Aura</string>
+    <string name="about_use_aura">Use AMRI OS</string>
     <string name="about_home_changed">Saved — press Home to see it</string>
     <string name="about_home_failed">Could not change the home app on this device</string>
     <string name="about_diag">Diagnostics</string>
     <string name="about_last_crash">Last crash</string>
-    <string name="about_credit">Aura is an independent design inspired by modern EV interfaces. It is not affiliated with, or endorsed by, any car maker.</string>
+    <string name="about_credit">AMRI OS (Automotive Modern Responsive Interface) is an independent design inspired by modern EV interfaces. It is not affiliated with, or endorsed by, any car maker.</string>
     <string name="btn_cancel">Cancel</string>
     <string name="btn_save">Save</string>
 
@@ -255,7 +255,7 @@
     <string name="upd_check_again">Check again</string>
     <string name="upd_downloading">Downloading %1$s…</string>
     <string name="upd_verifying">Verifying the download…</string>
-    <string name="upd_installing">Installing — Aura will restart</string>
+    <string name="upd_installing">Installing — AMRI OS will restart</string>
     <string name="upd_failed">Update failed</string>
     <string name="upd_retry">Try again</string>
     <string name="upd_check">Check for updates</string>

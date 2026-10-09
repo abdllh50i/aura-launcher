@@ -1,5 +1,5 @@
 <#
-  Aura ROM installer / restorer for the K2501 head unit (NWD firmware, Allwinner T507).
+  AMRI OS ROM installer / restorer for the K2501 head unit (NWD firmware, Allwinner T507).
 
   Usage (PowerShell on the PC, unit and PC on the same network, adb over network enabled on the unit):
       .\aura-rom.ps1 -Action Status  -Ip 192.168.1.50      what is installed right now? (writes nothing)
@@ -7,7 +7,7 @@
       .\aura-rom.ps1 -Action Restore -Ip 192.168.1.50      Aura ROM        ->  stock firmware
 
   What it does: checks the device really is a K2501, reads the hash of the system partition, and only if that is the
-  exact stock (or exact Aura) image - or an interrupted run of this very patch - it writes the small block patch
+  exact stock (or exact AMRI OS) image - or an interrupted run of this very patch - it writes the small block patch
   (a few MB, data first and the structures that point at it last), verifies the result and reboots.
   Anything unexpected = it refuses and writes nothing.
 #>
@@ -87,8 +87,8 @@ if ($model -ne $ExpectModel -and $nwd -ne $ExpectModel) {
 $romVer = Prop "ro.aura.rom.version"
 $homeApp = Prop "persist.nwd.launcher.default"
 $auraPath = ((A shell "pm path com.abdllh.aura 2>&1") -join " ").Trim()
-if ($romVer) { Say "Running: Aura ROM $romVer   home app = $homeApp   $auraPath" "Cyan" }
-else { Say "Running: no Aura ROM in the running system   home app = $homeApp" "Cyan" }
+if ($romVer) { Say "Running: AMRI OS ROM $romVer   home app = $homeApp   $auraPath" "Cyan" }
+else { Say "Running: no AMRI OS ROM in the running system   home app = $homeApp" "Cyan" }
 
 foreach ($f in $packFiles) {
     if (-not (Test-Path (Join-Path $pack $f))) { Die "Patch pack incomplete: $pack\$f is missing." }
@@ -144,7 +144,7 @@ if ($Action -eq "Status") {
     Say ""
     $color = "Green"; if ($code -eq "PARTIAL" -or $code -eq "UNKNOWN") { $color = "Yellow" }
     Say $stateLine $color
-    if ($code -eq "AURA" -and -not $romVer) { Say "The unit has not been restarted since the Aura ROM was written: restart it to start using it." "Yellow" }
+    if ($code -eq "AURA" -and -not $romVer) { Say "The unit has not been restarted since the AMRI OS ROM was written: restart it to start using it." "Yellow" }
     if ($code -eq "STOCK" -and $romVer) { Say "The stock firmware is written but the unit has not been restarted since: restart it to finish the restore." "Yellow" }
     exit 0
 }
@@ -152,14 +152,14 @@ if ($Action -eq "Status") {
 # a finished write whose follow-up (and reboot) never happened, for example because the connection dropped at the end
 $pending = $false
 if ($Action -eq "Install") {
-    if ($code -eq "AURA" -and $romVer) { Say ""; Say "The Aura ROM is already installed and running. Nothing to do." "Green"; exit 0 }
-    if ($code -eq "AURA") { $pending = $true; Say ""; Say "The Aura ROM is already written to the unit but it has not been restarted since. Finishing that." "Yellow" }
+    if ($code -eq "AURA" -and $romVer) { Say ""; Say "The AMRI OS ROM is already installed and running. Nothing to do." "Green"; exit 0 }
+    if ($code -eq "AURA") { $pending = $true; Say ""; Say "The AMRI OS ROM is already written to the unit but it has not been restarted since. Finishing that." "Yellow" }
     elseif ($code -ne "STOCK" -and $code -ne "PARTIAL") { Die "The system partition is neither the expected stock image nor an interrupted run of this patch (another firmware version?). Nothing was written and the unit was not changed." }
 }
 if ($Action -eq "Restore") {
     if ($code -eq "STOCK" -and -not $romVer) { Say ""; Say "The unit already has the stock firmware. Nothing to do." "Green"; exit 0 }
     if ($code -eq "STOCK") { $pending = $true; Say ""; Say "The stock firmware is already written to the unit but it has not been restarted since. Finishing that." "Yellow" }
-    elseif ($code -ne "AURA" -and $code -ne "PARTIAL") { Die "The system partition is neither the Aura image nor an interrupted run of this patch. Nothing was written." }
+    elseif ($code -ne "AURA" -and $code -ne "PARTIAL") { Die "The system partition is neither the AMRI OS image nor an interrupted run of this patch. Nothing was written." }
 }
 if ($code -eq "PARTIAL") { Say ""; Say "$stateLine" "Yellow" }
 
@@ -168,12 +168,12 @@ Say ""
 if ($pending) {
     Say "READY TO FINISH: nothing more is written to the system partition; the follow-up step runs and the unit restarts." "Yellow"
 } elseif ($Action -eq "Install") {
-    Say "READY TO INSTALL the Aura ROM." "Yellow"
+    Say "READY TO INSTALL the AMRI OS ROM." "Yellow"
     Say "  - writes about $packMB MB of changed blocks into the system partition (not the whole system)" "Yellow"
     Say "  - the result is verified against the expected hash; on any problem the old blocks are written back" "Yellow"
     Say "  - your data (apps, settings, paired phones) is not touched" "Yellow"
 } else {
-    Say "READY TO RESTORE the stock firmware (undo the Aura ROM)." "Yellow"
+    Say "READY TO RESTORE the stock firmware (undo the AMRI OS ROM)." "Yellow"
 }
 Say "  - keep the unit powered the whole time (ignition/ACC on, do NOT switch it off) until it reboots" "Yellow"
 if (-not $Yes) {

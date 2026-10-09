@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Aura ROM installer for the K2501 car head unit (NWD firmware, Allwinner T507).
+AMRI OS ROM installer for the K2501 car head unit (NWD firmware, Allwinner T507).
 
 Runs on Linux (Ubuntu), macOS and Windows with Python 3.8+ and nothing else (it carries its own small ADB client, so no
 "apt install adb" and no internet are needed at the car).
 
-    python3 aura-install.py              find the unit on the network, show what it has, install the Aura ROM
+    python3 aura-install.py              find the unit on the network, show what it has, install the AMRI OS ROM
     python3 aura-install.py status       find the unit and show what is installed (writes nothing)
     python3 aura-install.py restore      put the stock firmware back
     python3 aura-install.py scan         only look for the unit
 
 The laptop and the unit must be on the same network (a phone hotspot, or the laptop's own hotspot). The program only ever
-touches a unit that says it is a K2501, writes nothing unless the system partition is exactly the stock (or exact Aura) image
+touches a unit that says it is a K2501, writes nothing unless the system partition is exactly the stock (or exact AMRI OS) image
 or an interrupted run of this very patch, verifies the result and restarts the unit. All the safety checks run on the unit,
 in aura-flash.sh, the same script the Windows installer uses.
 """
@@ -85,10 +85,10 @@ M = {
     "not_model": {"en": "This is not a '{expect}' (found '{model}'). Refusing to touch it. (If this is the TV or another "
                         "device, that is exactly why this check exists.)",
                   "ar": "هذا مو '{expect}' (لقيت '{model}'). أرفض ألمسه. (لو هذا التلفزيون أو جهاز ثاني، فهذا بالضبط سبب هذا الفحص.)"},
-    "run_rom": {"en": "Running: Aura ROM {ver}   home app = {home}   {path}",
-                "ar": "الشغّال الحين: Aura ROM {ver}   التطبيق الرئيسي = {home}   {path}"},
-    "run_none": {"en": "Running: no Aura ROM in the running system   home app = {home}",
-                 "ar": "الشغّال الحين: ما فيه Aura ROM في النظام الشغّال   التطبيق الرئيسي = {home}"},
+    "run_rom": {"en": "Running: AMRI OS ROM {ver}   home app = {home}   {path}",
+                "ar": "الشغّال الحين: نظام عمري {ver}   التطبيق الرئيسي = {home}   {path}"},
+    "run_none": {"en": "Running: no AMRI OS ROM in the running system   home app = {home}",
+                 "ar": "الشغّال الحين: النظام الأصلي (ما فيه عمري)   التطبيق الرئيسي = {home}"},
     "incomplete": {"en": "Patch pack incomplete: {path} is missing.", "ar": "حزمة الرقعة ناقصة: الملف {path} غير موجود."},
     "no_script": {"en": "aura-flash.sh is missing next to this program.", "ar": "الملف aura-flash.sh غير موجود جنب البرنامج."},
     "busy": {"en": "An earlier run (process {pid}) is still working on the unit. Wait until it is finished - "
@@ -101,14 +101,14 @@ M = {
     "reading": {"en": "Reading the system partition (this takes up to a minute) ...",
                 "ar": "أقرأ قسم النظام (يأخذ لين دقيقة) ..."},
     "no_state": {"en": "Could not read the state. Output above.", "ar": "ما قدرت أقرأ الحالة. المخرجات فوق."},
-    "hint_restart": {"en": "The unit has not been restarted since the Aura ROM was written: restart it to start using it.",
-                     "ar": "الشاشة ما انعاد تشغيلها بعد كتابة Aura ROM: أعد تشغيلها عشان تشتغل."},
+    "hint_restart": {"en": "The unit has not been restarted since the AMRI OS ROM was written: restart it to start using it.",
+                     "ar": "الشاشة ما انعاد تشغيلها بعد كتابة نظام عمري: أعد تشغيلها عشان يشتغل."},
     "hint_restart_stock": {"en": "The stock firmware is written but the unit has not been restarted since: restart it to finish the restore.",
                            "ar": "النظام الأصلي انكتب لكن الشاشة ما انعاد تشغيلها: أعد تشغيلها عشان يكتمل الرجوع."},
-    "already_running": {"en": "The Aura ROM is already installed and running. Nothing to do.",
-                        "ar": "Aura ROM مثبّت وشغّال. ما في شي أسويه."},
-    "pending_install": {"en": "The Aura ROM is already written to the unit but it has not been restarted since. Finishing that.",
-                        "ar": "Aura ROM مكتوب على الشاشة بس ما انعاد تشغيلها. أكمل الباقي."},
+    "already_running": {"en": "The AMRI OS ROM is already installed and running. Nothing to do.",
+                        "ar": "نظام عمري مثبّت وشغّال. ما في شي أسويه."},
+    "pending_install": {"en": "The AMRI OS ROM is already written to the unit but it has not been restarted since. Finishing that.",
+                        "ar": "نظام عمري مكتوب على الشاشة بس ما انعاد تشغيلها. أكمل الباقي."},
     "bad_install": {"en": "The system partition is neither the expected stock image nor an interrupted run of this patch "
                           "(another firmware version?). Nothing was written and the unit was not changed.",
                     "ar": "قسم النظام مو الصورة الأصلية المتوقعة ولا تركيب منقطع من هذي الرقعة (نسخة فيرموير ثانية؟). "
@@ -117,19 +117,19 @@ M = {
                       "ar": "الشاشة على النظام الأصلي أصلًا. ما في شي أسويه."},
     "pending_restore": {"en": "The stock firmware is already written to the unit but it has not been restarted since. Finishing that.",
                         "ar": "النظام الأصلي مكتوب على الشاشة بس ما انعاد تشغيلها. أكمل الباقي."},
-    "bad_restore": {"en": "The system partition is neither the Aura image nor an interrupted run of this patch. Nothing was written.",
-                    "ar": "قسم النظام مو صورة Aura ولا تركيب منقطع من هذي الرقعة. ما انكتب شي."},
+    "bad_restore": {"en": "The system partition is neither the AMRI OS image nor an interrupted run of this patch. Nothing was written.",
+                    "ar": "قسم النظام مو صورة عمري ولا تركيب منقطع من هذي الرقعة. ما انكتب شي."},
     "ready_finish": {"en": "READY TO FINISH: nothing more is written to the system partition; the follow-up step runs and the unit restarts.",
                      "ar": "جاهز للإكمال: ما راح يُكتب شي زيادة على قسم النظام؛ تنفّذ الخطوة الأخيرة وتنعاد تشغيل الشاشة."},
-    "ready_install": {"en": "READY TO INSTALL the Aura ROM.", "ar": "جاهز لتثبيت Aura ROM."},
+    "ready_install": {"en": "READY TO INSTALL the AMRI OS ROM.", "ar": "جاهز لتثبيت نظام عمري."},
     "ready_install_1": {"en": "  - writes about {mb} MB of changed blocks into the system partition (not the whole system)",
                         "ar": "  - يكتب حوالي {mb} ميجا من الكتل المتغيّرة في قسم النظام (مو النظام كله)"},
     "ready_install_2": {"en": "  - the result is verified against the expected hash; on any problem the old blocks are written back",
                         "ar": "  - النتيجة تتحقق من بصمتها المتوقعة؛ لو صار أي خلل ترجع الكتل القديمة"},
     "ready_install_3": {"en": "  - your data (apps, settings, paired phones) is not touched",
                         "ar": "  - بياناتك (التطبيقات، الإعدادات، الجوالات المقترنة) ما تتأثر"},
-    "ready_restore": {"en": "READY TO RESTORE the stock firmware (undo the Aura ROM).",
-                      "ar": "جاهز لإرجاع النظام الأصلي (إلغاء Aura ROM)."},
+    "ready_restore": {"en": "READY TO RESTORE the stock firmware (undo the AMRI OS ROM).",
+                      "ar": "جاهز لإرجاع النظام الأصلي (إلغاء نظام عمري)."},
     "keep_power": {"en": "  - keep the unit powered the whole time (ignition/ACC on, do NOT switch it off) until it reboots",
                    "ar": "  - خلّ الشاشة موصولة بالكهرباء طول الوقت (السيارة شغّالة/ACC، لا تطفيها) لين تعيد التشغيل"},
     "type_yes": {"en": "Type YES to continue: ", "ar": "اكتب YES للمتابعة: "},
@@ -158,8 +158,8 @@ M = {
     "rebooting": {"en": "Rebooting the unit ...", "ar": "أعيد تشغيل الشاشة ..."},
     "waiting": {"en": "Waiting for the unit to start again (the first start after installing takes up to 3-4 minutes) ...",
                 "ar": "أنتظر الشاشة تشتغل من جديد (أول تشغيل بعد التثبيت يأخذ لين 3-4 دقايق) ..."},
-    "back_rom": {"en": "The unit is back and the Aura ROM is running (version {ver}).",
-                 "ar": "الشاشة رجعت وAura ROM شغّال (النسخة {ver})."},
+    "back_rom": {"en": "The unit is back and the AMRI OS ROM is running (version {ver}).",
+                 "ar": "الشاشة رجعت ونظام عمري شغّال (النسخة {ver})."},
     "back_stock": {"en": "The unit is back on the stock firmware.", "ar": "الشاشة رجعت على النظام الأصلي."},
     "back_unexpected": {"en": "The unit is back, but it does not report the expected system yet. Run 'status' in a minute.",
                         "ar": "الشاشة رجعت لكن ما أكدت النظام المتوقع بعد. شغّل status بعد دقيقة."},
@@ -989,9 +989,9 @@ class Installer:
 # ------------------------------------------------------------------------------------------------ command line
 def main(argv=None):
     global LANG, EXPECT_MODEL
-    ap = argparse.ArgumentParser(prog="aura-install", description="Aura ROM installer for the K2501 car head unit.")
+    ap = argparse.ArgumentParser(prog="aura-install", description="AMRI OS ROM installer for the K2501 car head unit.")
     ap.add_argument("command", nargs="?", default="install", choices=["install", "status", "restore", "scan"],
-                    help="install (default): stock -> Aura | status | restore: Aura -> stock | scan: only look for the unit")
+                    help="install (default): stock -> AMRI OS | status | restore: AMRI OS -> stock | scan: only look for the unit")
     ap.add_argument("--ip", help="skip the search and use this address (ADDR or ADDR:PORT)")
     ap.add_argument("--scan", action="append", metavar="CIDR", help="search this network instead of the laptop's own (repeatable)")
     ap.add_argument("--port", type=int, default=PORT, help="adb port (default 5555)")

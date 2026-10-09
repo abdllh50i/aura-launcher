@@ -1,4 +1,4 @@
-Aura launcher — third-party notices
+AMRI OS launcher — third-party notices
 
 Noto Sans Arabic (app/src/main/assets/fonts/NotoSansArabic-Regular.ttf)
   Copyright 2015 Google Inc. All Rights Reserved.
@@ -21,4 +21,4 @@ Map data © OpenStreetMap contributors, available under the Open Database Licens
 Car images (app/src/main/assets/car/*.webp) are renders of a 3D model of the owner's car, supplied by the owner of the unit.
   The model itself is not part of this repository.
 
-Aura is an independent design inspired by modern EV interfaces. It is not affiliated with, or endorsed by, any car maker.
+AMRI OS is an independent design inspired by modern EV interfaces. It is not affiliated with, or endorsed by, any car maker.

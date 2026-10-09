@@ -1,4 +1,6 @@
-# Aura — modern EV-style system for the K2501 car head unit
+# AMRI OS — modern EV-style system for the K2501 car head unit
+
+**AMRI** = **A**utomotive **M**odern **R**esponsive **I**nterface (Arabic: **عمري**). Formerly called *Aura*.
 
 An EV-inspired home screen with **the owner's own car in 3D**, **built-in maps with turn-by-turn navigation**, a **music
 player** that also shows and controls **Bluetooth music from the phone**, light / dark / automatic themes, app drawer,
@@ -13,14 +15,14 @@ settings, a boot animation and an **in-app updater that pulls releases from GitH
 | ![Arabic](docs/screenshots/home-ar.png) | ![Controls](docs/screenshots/controls.png) |
 | ![Navigation](docs/screenshots/maps-ar.png) | ![Music](docs/screenshots/music-ar.png) |
 
-* `app/` — the Aura launcher (Kotlin; the only library is [MapLibre Native](https://github.com/maplibre/maplibre-native)
+* `app/` — the AMRI OS launcher (package `com.abdllh.aura`; Kotlin; the only library is [MapLibre Native](https://github.com/maplibre/maplibre-native)
   for the map). The car is a pre-rendered turntable (90 frames) that you can turn with a finger; see
   [docs/DEV.md](docs/DEV.md) for how it is made (`tools/car3d`).
-* Aura Maps: search, route preview, turn-by-turn guidance with Arabic/English voice prompts and rerouting, on free
-  OpenStreetMap services (OpenFreeMap tiles, Photon search, OSRM routing — internet needed). Aura Music: the unit's storage
+* AMRI Maps: search, route preview, turn-by-turn guidance with Arabic/English voice prompts and rerouting, on free
+  OpenStreetMap services (OpenFreeMap tiles, Photon search, OSRM routing — internet needed). AMRI Music: the unit's storage
   and USB sticks, plus the phone's Bluetooth music through the firmware's own Bluetooth module (covers looked up online by
   title and artist); the steering wheel's music button opens it. The volume controls drive the unit's real (MCU) volume,
-  and Aura's own volume display replaces the stock bar for the wheel and panel buttons (none for changes made on the
+  and AMRI's own volume display replaces the stock bar for the wheel and panel buttons (none for changes made on the
   screen). The dock holds the apps you pin to it, and the home screen shows the gear (P R N D: R from the reverse wire,
   the rest from the car's CAN box when it reports it). ZLink (CarPlay) stays off until it is opened, and the Wi-Fi is
   kept out of power saving, reconnected when it loses its internet, and logged (*Settings → Vehicle & system →
@@ -46,5 +48,5 @@ image (or an interrupted run of this patch), writes in a crash-consistent order,
 runs an older pack is updated from the screen (*Settings → Software update*); to move it to a newer *pack*, run `restore`
 with the old pack first. Not tested on a real unit yet: see the notes in [README.ar.md](README.ar.md) and [docs/DEV.md](docs/DEV.md).
 
-Aura is an independent design inspired by modern EV interfaces; it is not affiliated with any car maker.
+AMRI OS is an independent design inspired by modern EV interfaces; it is not affiliated with any car maker.
 See [NOTICE](NOTICE) for third-party notices.

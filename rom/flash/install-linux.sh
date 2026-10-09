@@ -1,5 +1,5 @@
 #!/bin/sh
-# Aura ROM installer for Ubuntu / Linux: finds the car unit on the network and installs the Aura ROM.
+# AMRI OS ROM installer for Ubuntu / Linux: finds the car unit on the network and installs the AMRI OS ROM.
 #   ./install-linux.sh              find the unit, show what it has, install
 #   ./install-linux.sh status       only show what is installed (writes nothing)
 #   ./install-linux.sh restore      put the stock firmware back

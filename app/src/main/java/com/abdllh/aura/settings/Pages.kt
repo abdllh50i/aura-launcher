@@ -346,7 +346,7 @@ class AboutPage(private val act: SettingsActivity) : Page(R.string.set_about, R.
                     act.rebuild()
                 }
             }
-            col.addRow(ctx.settingRow(R.drawable.ic_home, ctx.getString(R.string.about_home_now), if (isAura) "Aura" else cur.ifEmpty { "-" }, btn), 8)
+            col.addRow(ctx.settingRow(R.drawable.ic_home, ctx.getString(R.string.about_home_now), if (isAura) ctx.getString(R.string.app_name) else cur.ifEmpty { "-" }, btn), 8)
         }
 
         CrashGuard.lastCrash(ctx)?.let {

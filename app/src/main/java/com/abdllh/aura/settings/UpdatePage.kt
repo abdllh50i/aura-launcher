@@ -47,7 +47,7 @@ class UpdatePage(private val act: SettingsActivity) : Page(R.string.set_update, 
         badge.addView(ctx.iconView(R.drawable.ic_layers, 28, Palette.accent).apply { layoutParams = FrameLayout.LayoutParams(28.dp, 28.dp, Gravity.CENTER) })
         head.addView(badge, lp(60.dp, 60.dp))
         val t = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-        t.addView(ctx.label(22f, Palette.text, Fonts.MEDIUM).apply { text = "Aura ${BuildConfig.VERSION_NAME}" })
+        t.addView(ctx.label(22f, Palette.text, Fonts.MEDIUM).apply { text = "${ctx.getString(R.string.app_name)} ${BuildConfig.VERSION_NAME}" })
         t.addView(ctx.label(13.5f, Palette.text2, Fonts.REGULAR).apply {
             text = ctx.getString(R.string.upd_build_line, BuildConfig.VERSION_CODE.toString(), ctx.getString(if (Prefs.updateBeta) R.string.upd_channel_beta else R.string.upd_channel_stable))
         }, lp(MATCH, WRAP).apply { topMargin = 4.dp })
