@@ -18,8 +18,9 @@ settings, a boot animation and an **in-app updater that pulls releases from GitH
   [docs/DEV.md](docs/DEV.md) for how it is made (`tools/car3d`).
 * Aura Maps: search, route preview, turn-by-turn guidance with Arabic/English voice prompts and rerouting, on free
   OpenStreetMap services (OpenFreeMap tiles, Photon search, OSRM routing — internet needed). Aura Music: the unit's storage
-  and USB sticks, plus the phone's Bluetooth music through the firmware's own Bluetooth module. The volume controls drive the
-  unit's real (MCU) volume.
+  and USB sticks, plus the phone's Bluetooth music through the firmware's own Bluetooth module (covers looked up online by
+  title and artist). The volume controls drive the unit's real (MCU) volume. ZLink (CarPlay) stays off until it is opened,
+  and the Wi-Fi is kept out of power saving and reconnected when it loses its internet.
 * `rom/` — the ROM tooling: overlay files, boot script, workshop that builds the image inside an Android emulator,
   block-patch generator, and the installers (`rom/flash`): **`install-linux.sh` / `aura-install.py` for Ubuntu/Linux**
   (finds the unit on the network by itself, needs only Python 3) and `aura-rom.ps1` + `.bat` files for Windows.

@@ -61,7 +61,7 @@ object MediaMonitor {
     private fun btInfo(): NowPlaying? {
         val b = com.abdllh.aura.music.BtMusic
         if (!b.available || !b.connected || (b.title.isBlank() && b.artist.isBlank())) return null
-        return NowPlaying(b.title.ifBlank { b.artist }, if (b.title.isBlank()) "" else b.artist, null, b.playing, SOURCE_BT)
+        return NowPlaying(b.title.ifBlank { b.artist }, if (b.title.isBlank()) "" else b.artist, b.art, b.playing, SOURCE_BT)
     }
 
     /** Aura Music's own player (read directly: no session access needed). */

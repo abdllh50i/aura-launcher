@@ -89,6 +89,14 @@ object AppRepo {
             val sys = (ai.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
             out.add(AppInfo(ai.packageName, ai.name, ri.loadLabel(pm).toString(), sys))
         }
+        // ZLink kept off by Aura is disabled, so it has no launcher entry: it stays in the list (opening it turns it on)
+        if (Known.ZLINK !in seen && (includeHidden || Known.ZLINK !in hidden) && com.abdllh.aura.system.ZLinkGuard.available(ctx)) {
+            try {
+                val ai = pm.getApplicationInfo(Known.ZLINK, PackageManager.MATCH_DISABLED_COMPONENTS)
+                out.add(AppInfo(Known.ZLINK, "", ai.loadLabel(pm).toString(), true))
+            } catch (_: Throwable) {
+            }
+        }
         out.sortWith { a, b -> collator.compare(a.label, b.label) }
         return out
     }
@@ -97,8 +105,11 @@ object AppRepo {
         ctx.packageManager.getLaunchIntentForPackage(pkg)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
 
     fun launch(ctx: Context, pkg: String): Boolean = try {
-        val i = launchIntent(ctx, pkg)
-        if (i != null) { ctx.startActivity(i); true } else false
+        if (pkg == Known.ZLINK) com.abdllh.aura.system.ZLinkGuard.open(ctx) // kept off by Aura: turned on first
+        else {
+            val i = launchIntent(ctx, pkg)
+            if (i != null) { ctx.startActivity(i); true } else false
+        }
     } catch (_: Throwable) {
         false
     }

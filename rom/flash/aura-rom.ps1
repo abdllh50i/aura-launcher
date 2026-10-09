@@ -215,6 +215,7 @@ L=/data/nwdappconfig/app/replace_source_list.xml
 grep -q com.abdllh.aura "$L" 2>/dev/null && rm -f "$L"
 pm enable com.nwd.android.music.ui >/dev/null 2>&1
 case "$(settings get global policy_control 2>/dev/null)" in *immersive.*) settings delete global policy_control >/dev/null 2>&1 ;; esac
+[ "$(settings get system phone_connect_style 2>/dev/null)" = "0" ] && settings put system phone_connect_style 3 && settings put system recheck_phone_connect_style 1
 setprop persist.nwd.launcher.default com.android.launcher
 setprop persist.aura.disabled 0
 echo undone

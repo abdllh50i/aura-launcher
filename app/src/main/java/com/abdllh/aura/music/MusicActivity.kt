@@ -76,6 +76,7 @@ class MusicActivity : Activity() {
     private var group: Group? = null
     private var bt = false
     private var lastArtKey = Long.MIN_VALUE
+    private var btCover: Bitmap? = null
     private val arabic get() = Locale.getDefault().language == "ar"
 
     override fun attachBaseContext(base: Context) {
@@ -158,7 +159,9 @@ class MusicActivity : Activity() {
         seek.enabledSeek = !bt
         if (bt) {
             artIcon.setImageResource(R.drawable.ic_bluetooth)
-            if (lastArtKey != BT_ART) setArt(null, BT_ART) // once: Bluetooth updates come every second
+            // once per cover (found online by title + artist): Bluetooth updates come every second
+            val cover = BtMusic.art
+            if (lastArtKey != BT_ART || cover !== btCover) { btCover = cover; setArt(cover, BT_ART) }
             when {
                 !BtMusic.available || !BtMusic.connected -> {
                     title.setText(R.string.music_bt_not_connected)

@@ -6,6 +6,8 @@ import com.abdllh.aura.system.CrashGuard
 import com.abdllh.aura.system.Device
 import com.abdllh.aura.system.SystemBars
 import com.abdllh.aura.system.SystemProps
+import com.abdllh.aura.system.WifiKeeper
+import com.abdllh.aura.system.ZLinkGuard
 import com.abdllh.aura.system.StockMusic
 import com.abdllh.aura.music.BtMusic
 import com.abdllh.aura.music.Player
@@ -30,5 +32,7 @@ class AuraApp : Application() {
         Player.init(this)
         BtMusic.init(this)
         StockMusic.apply(this)
+        WifiKeeper.start(this)
+        ZLinkGuard.init(this)
     }
 }

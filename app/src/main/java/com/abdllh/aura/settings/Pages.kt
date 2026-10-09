@@ -129,8 +129,10 @@ class DisplaySoundPage(private val act: SettingsActivity) : Page(R.string.set_di
             if (!com.abdllh.aura.system.SystemBars.apply(ctx)) Toast.makeText(ctx, R.string.set_failed, Toast.LENGTH_SHORT).show()
         }, 16)
 
+        col.addView(ctx.sectionTitle(ctx.getString(R.string.set_music)), lp(MATCH, WRAP).apply { topMargin = 22.dp })
+        col.addRow(ctx.switchRow(R.drawable.ic_disc, ctx.getString(R.string.set_bt_cover), ctx.getString(R.string.set_bt_cover_sub),
+            com.abdllh.aura.music.CoverSearch.enabled) { on -> com.abdllh.aura.music.CoverSearch.enabled = on }, 8)
         if (com.abdllh.aura.system.StockMusic.available(ctx)) {
-            col.addView(ctx.sectionTitle(ctx.getString(R.string.set_music)), lp(MATCH, WRAP).apply { topMargin = 22.dp })
             col.addRow(ctx.switchRow(R.drawable.ic_music, ctx.getString(R.string.set_music_replace), ctx.getString(R.string.set_music_replace_sub),
                 com.abdllh.aura.system.StockMusic.enabled) { on ->
                 com.abdllh.aura.system.StockMusic.enabled = on
@@ -235,6 +237,20 @@ class VehiclePage(private val act: SettingsActivity) : Page(R.string.set_vehicle
         val rem = tiles.size % 3
         if (rem != 0) for (k in 0 until 3 - rem) row!!.addView(View(ctx), lp(0, 124.dp, 1f).apply { marginStart = 12.dp })
         col.addRow(ctx.hint(ctx.getString(R.string.v_hint)), 14)
+
+        col.addView(ctx.sectionTitle(ctx.getString(R.string.set_connections)), lp(MATCH, WRAP).apply { topMargin = 22.dp })
+        col.addRow(ctx.switchRow(R.drawable.ic_wifi, ctx.getString(R.string.set_wifi_keeper), ctx.getString(R.string.set_wifi_keeper_sub),
+            com.abdllh.aura.system.WifiKeeper.enabled) { on ->
+            com.abdllh.aura.system.WifiKeeper.enabled = on
+            com.abdllh.aura.system.WifiKeeper.apply(ctx)
+        }, 8)
+        if (com.abdllh.aura.system.ZLinkGuard.available(ctx)) {
+            col.addRow(ctx.switchRow(R.drawable.ic_smartphone, ctx.getString(R.string.set_zlink_off), ctx.getString(R.string.set_zlink_off_sub),
+                com.abdllh.aura.system.ZLinkGuard.enabled) { on ->
+                com.abdllh.aura.system.ZLinkGuard.enabled = on
+                com.abdllh.aura.system.ZLinkGuard.apply(ctx)
+            }, 8)
+        }
         return col
     }
 

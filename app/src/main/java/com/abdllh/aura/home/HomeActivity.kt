@@ -176,6 +176,7 @@ class HomeActivity : Activity(), HomeHost {
             return
         }
         if (builtAccent != Prefs.accent || Theme.isDarkNow() != builtDark) restyle() // changed in Settings
+        com.abdllh.aura.system.ZLinkGuard.onHomeShown() // back from ZLink: it is switched off again after a while
         val f = IntentFilter().apply {
             addAction(Intent.ACTION_TIME_TICK)
             addAction(Intent.ACTION_TIME_CHANGED)
@@ -245,6 +246,7 @@ class HomeActivity : Activity(), HomeHost {
         mapPanel.onPause()
         resumedNow = false
         UpdateManager.unobserve(updateObserver)
+        com.abdllh.aura.system.ZLinkGuard.onHomeHidden()
         super.onPause()
     }
 

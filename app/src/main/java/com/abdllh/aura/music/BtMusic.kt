@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.database.ContentObserver
+import android.graphics.Bitmap
 import android.os.Binder
 import android.os.Handler
 import android.os.IBinder
@@ -14,6 +15,7 @@ import android.os.Looper
 import android.os.Parcel
 import android.provider.Settings
 import android.util.Log
+import com.abdllh.aura.BuildConfig
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
@@ -25,7 +27,7 @@ import java.util.concurrent.CopyOnWriteArrayList
  *  - control: playControl(int) code 23: 0 toggle, 1 pause, 2 next, 3 previous, 4 play
  *  - audio:   the service starts muted; setBtMusicMute(false) (code 39) after taking the source (app id 15) unmutes it
  *  - progress: BTPIMCallback.onGetA2dpProgress(totalSec, posSec) (code 4), when the phone reports it
- * No album art, album name or seeking is available from this module.
+ * No album art, album name or seeking is available from this module: the cover is looked up online ([CoverSearch]).
  */
 object BtMusic {
     private const val TAG = "AuraBt"
@@ -70,6 +72,10 @@ object BtMusic {
     var positionSec = 0
         private set
     private var positionAt = 0L
+    /** Cover of the current song (found online by title + artist), or null. */
+    var art: Bitmap? = null
+        private set
+    private var artKey = ""
 
     /** Seconds played, extrapolated between the phone's progress reports. */
     fun position(): Int = if (playing && positionAt > 0) (positionSec + ((System.currentTimeMillis() - positionAt) / 1000).toInt()).coerceAtMost(durationSec.coerceAtLeast(positionSec))
@@ -84,7 +90,7 @@ object BtMusic {
         val c = ctx.applicationContext
         app = c
         available = try { c.packageManager.getApplicationInfo(PKG, 0); true } catch (_: Throwable) { false }
-        if (!available) return
+        if (!available && !BuildConfig.DEBUG) return
         val f = IntentFilter().apply {
             addAction("com.bt.ACTION_AVRCP_MUSIC_ID3")
             addAction("com.bt.ACTION_BT_MUSIC_PLAY")
@@ -96,6 +102,7 @@ object BtMusic {
             addAction("com.bt.ACTION_BT_CONNECTION_CHANGE")
         }
         try { c.registerReceiver(receiver, f) } catch (t: Throwable) { Log.w(TAG, "receiver: $t") }
+        if (!available) return // debug build without the module (the emulator): test broadcasts only
         try {
             c.contentResolver.registerContentObserver(Settings.System.getUriFor("key_bt_a2dp_state"), false, object : ContentObserver(main) {
                 override fun onChange(selfChange: Boolean) = readState()
@@ -111,10 +118,16 @@ object BtMusic {
             try {
                 when (i.action) {
                     "com.bt.ACTION_AVRCP_MUSIC_ID3" -> {
-                        title = i.getStringExtra("extra_avrcp_id3_title").orEmpty()
-                        artist = i.getStringExtra("extra_avrcp_id3_artist").orEmpty()
-                        positionSec = 0
-                        positionAt = System.currentTimeMillis()
+                        if (BuildConfig.DEBUG && i.getBooleanExtra("sim", false)) { available = true; connected = true; playing = true }
+                        val t = i.getStringExtra("extra_avrcp_id3_title").orEmpty()
+                        val a = i.getStringExtra("extra_avrcp_id3_artist").orEmpty()
+                        if (t != title || a != artist) { // (the module repeats the same song's info now and then)
+                            title = t
+                            artist = a
+                            positionSec = 0
+                            positionAt = System.currentTimeMillis()
+                        }
+                        findArt()
                     }
                     "com.bt.ACTION_BT_MUSIC_PLAY" -> { playing = true; positionAt = System.currentTimeMillis() }
                     "com.bt.ACTION_BT_MUSIC_PAUSE" -> { positionSec = position(); playing = false }
@@ -122,13 +135,24 @@ object BtMusic {
                     "com.bt.ACTION_A2DP_ESTABLISHED" -> connected = true
                     "com.bt.ACTION_BT_CONNECTION_CHANGE" -> {
                         if (i.getIntExtra("extra_bt_connection_event", 0) == 1) phone = i.getStringExtra("extra_bt_device_name").orEmpty()
-                        else { connected = false; playing = false; title = ""; artist = "" }
+                        else { connected = false; playing = false; title = ""; artist = ""; findArt() }
                     }
                 }
             } catch (_: Throwable) {
             }
             changed()
         }
+    }
+
+    /** Looks up the current song's cover, once per song (the module itself never sends one). */
+    private fun findArt() {
+        val c = app ?: return
+        val key = "$artist|$title"
+        if (key == artKey) return
+        artKey = key
+        art = null
+        if (title.isBlank()) return
+        CoverSearch.find(c, title, artist) { b -> if (artKey == key) { art = b; changed() } }
     }
 
     private fun readState() {

@@ -68,6 +68,14 @@
     <string name="maps_arrived">You have arrived</string>
     <string name="maps_done">Done</string>
     <string name="maps_voice_missing">Voice guidance needs a speech engine: install “Speech Services by Google” from Play Store</string>
+    <string name="set_connections">Connections</string>
+    <string name="set_wifi_keeper">Keep the Wi-Fi internet working</string>
+    <string name="set_wifi_keeper_sub">Reconnects the Wi-Fi by itself when it stays connected without internet</string>
+    <string name="zlink_failed">ZLink did not start — try again in a moment</string>
+    <string name="set_zlink_off">ZLink (CarPlay) stays off until I open it</string>
+    <string name="set_zlink_off_sub">It no longer comes up by itself when the phone connects over Bluetooth, and leaves the Wi-Fi alone</string>
+    <string name="set_bt_cover">Album art for Bluetooth music</string>
+    <string name="set_bt_cover_sub">Finds the cover online from the song\'s title and artist (Apple Music, Deezer)</string>
     <string name="nav_channel">Navigation</string>
     <string name="nav_starting">Starting navigation…</string>
     <string name="nav_title">Navigation</string>

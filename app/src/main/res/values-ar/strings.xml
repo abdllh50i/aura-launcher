@@ -68,6 +68,14 @@
     <string name="maps_arrived">وصلت إلى وجهتك</string>
     <string name="maps_done">تم</string>
     <string name="maps_voice_missing">للإرشاد الصوتي ثبّت «خدمات النطق من Google» من متجر Play</string>
+    <string name="set_connections">الاتصال</string>
+    <string name="set_wifi_keeper">حافظ على إنترنت الواي فاي</string>
+    <string name="set_wifi_keeper_sub">يعيد اتصال الواي فاي تلقائيًا إذا ظل متصل بدون إنترنت</string>
+    <string name="zlink_failed">ما اشتغل ZLink، جرّب بعد شوي</string>
+    <string name="set_zlink_off">ZLink (كار بلاي) يبقى طافي لين أفتحه بنفسي</string>
+    <string name="set_zlink_off_sub">ما يطلع لحاله لما يتصل الجوال بالبلوتوث، وما يطفّي الواي فاي</string>
+    <string name="set_bt_cover">صور الأغاني لموسيقى البلوتوث</string>
+    <string name="set_bt_cover_sub">تجيب صورة الأغنية من الإنترنت باسمها واسم الفنان (Apple Music وDeezer)</string>
     <string name="nav_channel">الملاحة</string>
     <string name="nav_starting">جاري بدء الملاحة…</string>
     <string name="nav_title">الملاحة</string>
