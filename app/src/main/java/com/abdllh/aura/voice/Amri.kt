@@ -38,9 +38,10 @@ import kotlin.math.sin
 
 /**
  * "عمري", the voice assistant. The owner says the wake word ([AmriService] listens for it, [WakeModel]) or taps the
- * microphone; a chime, and Android's speech recogniser (Google's on the unit, Arabic) hears the request; [Command]
- * tells what it was; it is done and answered with a few spoken words (Arabic text to speech) and a line on screen
- * ([AmriOverlay]). Music playing is paused while it listens and resumed afterwards.
+ * microphone; a chime, and Android's speech recogniser (the Google app's, in Arabic: the unit's firmware has none, the
+ * owner installs it from the Play Store) hears the request; [Command] tells what it was; it is done and answered with a
+ * few spoken words (Arabic text to speech, with Speech Services by Google) and a line on screen ([AmriOverlay]). Music
+ * playing is paused while it listens and resumed afterwards.
  */
 object Amri {
     private const val TAG = "AuraAmri"
@@ -87,7 +88,7 @@ object Amri {
 
     fun hasMicPermission(c: Context) = c.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
-    /** Is there a speech recogniser on this device (Google's on the unit; none on a plain emulator)? */
+    /** Is there a speech recogniser on this device (the Google app's once installed; none in the unit's firmware)? */
     fun canRecognize(c: Context) = try { SpeechRecognizer.isRecognitionAvailable(c) } catch (_: Throwable) { false }
 
     fun init(ctx: Context) {
@@ -187,16 +188,19 @@ object Amri {
         }
     }
 
-    /** Google's recogniser when it is there (a head unit's default may be unset or another engine); else the default. */
+    /**
+     * The recogniser to ask: the Google app's when it is there; else the one the system names (a head unit's setting
+     * may be unset, or name an engine that is gone); else any there is (Speech Services by Google may bring one).
+     */
     private fun recognizerService(c: Context): ComponentName? = try {
-        c.packageManager.queryIntentServices(Intent(RecognitionService.SERVICE_INTERFACE), 0)
-            .firstOrNull { it.serviceInfo.packageName == GOOGLE_APP }?.serviceInfo?.let { ComponentName(it.packageName, it.name) }
+        val all = c.packageManager.queryIntentServices(Intent(RecognitionService.SERVICE_INTERFACE), 0)
+            .map { ComponentName(it.serviceInfo.packageName, it.serviceInfo.name) }
+        val named = android.provider.Settings.Secure.getString(c.contentResolver, "voice_recognition_service")
+            ?.let { ComponentName.unflattenFromString(it) }
+        all.firstOrNull { it.packageName == VoiceSetup.GOOGLE_APP } ?: named?.takeIf { it in all } ?: all.firstOrNull()
     } catch (_: Throwable) {
         null
     }
-
-    private const val GOOGLE_APP = "com.google.android.googlequicksearchbox"
-    private const val GOOGLE_TTS = "com.google.android.tts"
 
     private fun listen(c: Context, s: Int) {
         val r = try { SpeechRecognizer.createSpeechRecognizer(c, recognizerService(c)) } catch (t: Throwable) {
@@ -388,14 +392,14 @@ object Amri {
 
     /** Google's voice when it is there (it speaks Arabic; the unit's default engine may not); else the default. */
     private fun ttsEngine(c: Context): String? = try {
-        c.packageManager.getPackageInfo(GOOGLE_TTS, 0)
-        GOOGLE_TTS
+        c.packageManager.getPackageInfo(VoiceSetup.GOOGLE_TTS, 0)
+        VoiceSetup.GOOGLE_TTS
     } catch (_: Throwable) {
         null
     }
 
     /**
-     * Says [text] in the app's language (an Arabic voice for Arabic, when the device has one; Google's on the unit),
+     * Says [text] in the app's language (an Arabic voice for Arabic, when the device has one: Speech Services by Google),
      * then [then] on the main thread. Without a voice for it the answer is only shown.
      */
     private fun say(c: Context, text: String, then: () -> Unit) {

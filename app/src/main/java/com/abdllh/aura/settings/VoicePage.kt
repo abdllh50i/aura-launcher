@@ -45,7 +45,15 @@ class VoicePage(private val act: SettingsActivity) : Page(R.string.set_voice, R.
         intro.addView(texts, lp(0, WRAP, 1f))
         col.addRow(intro, 0)
 
-        if (!Amri.canRecognize(ctx)) col.addRow(ctx.hint(ctx.getString(R.string.voice_no_recognizer)), 10)
+        // what the unit's firmware lacks, from the Play Store: requests need a speech recogniser, spoken answers a voice
+        if (!Amri.canRecognize(ctx)) {
+            col.addRow(ctx.settingRow(R.drawable.ic_download, ctx.getString(R.string.voice_get_google),
+                ctx.getString(R.string.voice_get_google_sub), ctx.chevron()) { VoiceSetup.openStore(ctx, VoiceSetup.GOOGLE_APP) }, 10)
+        }
+        if (!VoiceSetup.hasVoice(ctx)) {
+            col.addRow(ctx.settingRow(R.drawable.ic_download, ctx.getString(R.string.voice_get_tts),
+                ctx.getString(R.string.voice_get_tts_sub), ctx.chevron()) { VoiceSetup.openStore(ctx, VoiceSetup.GOOGLE_TTS) }, 8)
+        }
 
         // the microphone permission first (asked once; what was asked for goes on when it is given)
         fun withMic(then: () -> Unit) {

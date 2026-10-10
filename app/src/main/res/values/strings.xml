@@ -108,6 +108,7 @@
     <string name="net_cause_link">the phone isn\'t answering over Wi-Fi</string>
     <string name="net_cause_no_data">the phone is connected but no internet comes through it</string>
     <string name="net_cause_dns">the phone stopped answering site names (DNS)</string>
+    <string name="net_cause_v6">the internet over IPv6 stopped, and apps wait on it</string>
     <string name="net_cause_web">websites don\'t open (a sign-in page, or blocked)</string>
     <string name="net_signal">Wi-Fi signal %1$s</string>
     <string name="net_sig_strong">strong</string>
@@ -233,7 +234,7 @@
     <string name="amri_notification">Say “Amri” and ask</string>
     <string name="amri_listening">Go ahead…</string>
     <string name="amri_no_permission">Amri needs the microphone: Settings → Voice assistant</string>
-    <string name="amri_no_recognizer">No speech recognition on this device</string>
+    <string name="amri_no_recognizer">To understand requests: install the “Google” app from the Play Store</string>
     <string name="amri_recognizer_no_mic">The Google app (which understands speech) has no microphone permission</string>
     <string name="amri_no_network">No internet for speech recognition</string>
     <string name="amri_not_heard">I didn\'t hear you</string>
@@ -282,7 +283,10 @@
     <string name="voice_mic_bt">Bluetooth</string>
     <string name="voice_try">Try it now</string>
     <string name="voice_try_sub">It listens for a request right away (the microphone on the home screen does the same)</string>
-    <string name="voice_no_recognizer">This device has no speech recognition (the Google app gives it on the unit): requests cannot be understood here</string>
+    <string name="voice_get_google">Install the Google app</string>
+    <string name="voice_get_google_sub">Amri hears its name without it, but understanding requests needs it (opens the Play Store)</string>
+    <string name="voice_get_tts">Spoken answers: Speech Services by Google</string>
+    <string name="voice_get_tts_sub">Without it the answers are only shown (opens the Play Store)</string>
     <string name="about_role">Installed as</string>
     <string name="role_system">System app (full privileges)</string>
     <string name="role_system_basic">System app</string>

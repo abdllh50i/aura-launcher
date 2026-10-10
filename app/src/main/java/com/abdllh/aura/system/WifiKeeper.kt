@@ -2,6 +2,7 @@ package com.abdllh.aura.system
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
@@ -17,6 +18,7 @@ import java.net.ConnectException
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.Inet4Address
+import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.util.concurrent.ExecutorCompletionService
@@ -33,6 +35,9 @@ import java.util.concurrent.TimeUnit
  *  - NO_DATA: the phone answers but no internet comes through it: the connection is restarted as well. It can be the
  *    phone's coverage, but an iPhone's Personal Hotspot also keeps a client connected (its DNS answering) while it
  *    stops passing that client's traffic, until the client reconnects: what the owner had to do by hand;
+ *  - V6: the web works over IPv4 but not over the IPv6 the phone hands out as well (after it moved to another cell,
+ *    say). Apps try IPv6 first and wait on it, so to the owner the internet is gone while an IPv4-only check passes:
+ *    the connection is restarted, the same remedy the owner used by hand;
  *  - WEB: names and addresses work but websites do not (a sign-in page, a blocked network): logged only.
  * Restarts alternate a re-association and Wi-Fi off/on, with growing pauses and only a few in a row. A drop also
  * logs a root snapshot (address, gateway and internet pings, IPv6) so the next log says where the traffic stops.
@@ -56,7 +61,7 @@ object WifiKeeper {
     )
     private val PUBLIC_IPS = listOf("8.8.8.8", "1.1.1.1")
 
-    enum class Cause { LINK, NO_DATA, DNS, WEB }
+    enum class Cause { LINK, NO_DATA, DNS, V6, WEB }
     enum class State { OFF, NO_WIFI, CHECKING, ONLINE, OFFLINE, PAUSED }
 
     /** A log line: [type] is start / join / leave / online / back / lost / fix, with up to two values. */
@@ -97,8 +102,9 @@ object WifiKeeper {
     /** Something else owns the Wi-Fi right now (ZLink in use): no probing, no restarts. */
     @Volatile var paused = false
 
-    // Keeps the Wi-Fi chip out of power saving (the unit's AIC8800 driver enables it by default, a known cause of
-    // "connected, no internet" stalls). An ordinary high-performance Wi-Fi lock: released when the option is off.
+    // Asks Android to keep the Wi-Fi chip out of power saving. The unit's AIC8800 driver ignores that request (its
+    // power-management handler does nothing and power saving stays on), so on the K2501 this lock changes nothing;
+    // kept for units whose driver honours it. An ordinary high-performance Wi-Fi lock: released when the option is off.
     private var perfLock: WifiManager.WifiLock? = null
 
     fun log(): List<Event> = synchronized(events) { ArrayList(events) }
@@ -229,9 +235,15 @@ object WifiKeeper {
      * by side with deadlines, so a dead network is diagnosed in about 15 s.
      */
     private fun check(n: Network): Check {
-        if (race(PROBES.map { p -> { http(n, p) } }, 10_000L)) return Check(true, null)
         val cm = app?.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
         val lp = try { cm?.getLinkProperties(n) } catch (_: Throwable) { null }
+        if (race(PROBES.map { p -> { http(n, p) == true } }, 10_000L)) {
+            // the IPv6 the phone hands out as well, when it does: a page that has an IPv6 address must answer over it
+            // (a page without one says nothing either way)
+            if (lp == null || !hasGlobalV6(lp)) return Check(true, null)
+            if (race(PROBES.map { p -> { http(n, p, v6 = true) != false } }, 10_000L)) return Check(true, null)
+            return Check(false, Cause.V6)
+        }
         val servers = lp?.dnsServers.orEmpty().take(2)
         // the phone's IPv4 address (an IPv6 router address is link-local: no use for a plain connect)
         val gw = lp?.routes.orEmpty().filter { it.isDefaultRoute && it.hasGateway() }
@@ -273,14 +285,32 @@ object WifiKeeper {
         }
     }
 
+    /** The network has a global IPv6 address and an IPv6 default route (apps will try IPv6 first). */
+    // emulator test: its network has no global IPv6 (so no IPv6 addresses either): one is pretended, which the test
+    // blocks (setprop debug.aura.v6test 1; ip6tables -I OUTPUT -p tcp --dport 80 -j DROP)
+    private fun v6TestOn() = com.abdllh.aura.BuildConfig.DEBUG && SystemProps.get("debug.aura.v6test") == "1"
+    private fun v6Test(): InetAddress? = if (v6TestOn()) InetAddress.getByName("2001:4860:4860::8888") else null
+
+    private fun hasGlobalV6(lp: LinkProperties): Boolean {
+        if (v6TestOn()) return true
+        val addr = lp.linkAddresses.any {
+            val a = it.address
+            a is Inet6Address && !a.isLinkLocalAddress && !a.isSiteLocalAddress && !a.isLoopbackAddress &&
+                (a.address[0].toInt() and 0xFE) != 0xFC // not a unique local fc00::/7 address
+        }
+        return addr && lp.routes.any { it.isDefaultRoute && it.destination.address is Inet6Address }
+    }
+
     /**
-     * One plain HTTP request over a raw socket of this network. Not HttpURLConnection: the release build forbids
-     * cleartext HTTP (usesCleartextTraffic=false), which would fail every probe; raw sockets are not subject to it.
+     * One plain HTTP request over a raw socket of this network: true it answered, false it did not, null the page has
+     * no address of the family asked for ([v6]). Not HttpURLConnection: the release build forbids cleartext HTTP
+     * (usesCleartextTraffic=false), which would fail every probe; raw sockets are not subject to it.
      */
-    private fun http(n: Network, p: Probe): Boolean {
+    private fun http(n: Network, p: Probe, v6: Boolean = false): Boolean? {
         return try {
             val all = n.getAllByName(p.host) // through this network's own DNS
-            val addr = all.firstOrNull { it is Inet4Address } ?: all.firstOrNull() ?: return false
+            val addr = if (v6) all.firstOrNull { it is Inet6Address } ?: v6Test() ?: return null
+                else all.firstOrNull { it is Inet4Address } ?: all.firstOrNull() ?: return false
             n.socketFactory.createSocket().use { s ->
                 s.connect(InetSocketAddress(addr, 80), 5000)
                 s.soTimeout = 5000
@@ -385,7 +415,7 @@ object WifiKeeper {
         if (fails < FAILS_BEFORE_ACTING) { schedule(RECHECK_MS); return }
         if (downSince == 0L) downSince = firstFailAt
         state = State.OFFLINE
-        val fixable = r.cause == Cause.LINK || r.cause == Cause.DNS || r.cause == Cause.NO_DATA
+        val fixable = r.cause == Cause.LINK || r.cause == Cause.DNS || r.cause == Cause.NO_DATA || r.cause == Cause.V6
         if (r.cause != cause) {
             cause = r.cause
             add(Event(System.currentTimeMillis(), "lost", r.cause?.name ?: "", rssi.toString()))
@@ -402,8 +432,9 @@ object WifiKeeper {
     /**
      * Where the traffic stops, logged once per outage (root shell, so the pings go out as the system's own traffic):
      * the car's address, the phone (gateway) answering a ping, the internet answering a ping (through the phone's
-     * NAT) and the number of global IPv6 addresses (the probes already found TCP failing). "gw=1 net=0" is a phone
-     * that is there but passes nothing; "net=1" would be TCP alone being blocked.
+     * NAT), the number of global IPv6 addresses and the internet answering a ping over IPv6 (the probes already found
+     * TCP failing). "gw=1 net=0" is a phone that is there but passes nothing; "net=1" would be TCP alone being blocked;
+     * "v6=1 v6net=0" an IPv6 that stopped.
      */
     private fun snapshot(n: Network, then: () -> Unit) {
         val cm = app?.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
@@ -417,7 +448,8 @@ object WifiKeeper {
                 "g=0; [ -n '$gw' ] && ping -c 1 -W 2 '$gw' >/dev/null 2>&1 && g=1; " +
                 "p=0; ping -c 1 -W 2 1.1.1.1 >/dev/null 2>&1 && p=1; " +
                 "v=\$(ip -6 addr show $iface scope global 2>/dev/null | grep -c inet6); " +
-                "echo \"ip=\$a gw=\$g net=\$p v6=\$v\""
+                "q=-; [ \"\$v\" != 0 ] && { q=0; ping6 -c 1 -W 2 2606:4700:4700::1111 >/dev/null 2>&1 && q=1; }; " +
+                "echo \"ip=\$a gw=\$g net=\$p v6=\$v v6net=\$q\""
             val r = LocalAdb.run(cmd, 12_000)
             val line = r.output.lines().lastOrNull { it.startsWith("ip=") }
             main.post {

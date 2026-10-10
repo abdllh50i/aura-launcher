@@ -108,6 +108,7 @@
     <string name="net_cause_link">الجوال ما يرد عبر الواي فاي</string>
     <string name="net_cause_no_data">الجوال متصل بس الإنترنت ما يمر منه</string>
     <string name="net_cause_dns">الجوال وقف يرد على أسماء المواقع (DNS)</string>
+    <string name="net_cause_v6">الإنترنت عبر IPv6 وقف، والتطبيقات تنتظره</string>
     <string name="net_cause_web">المواقع ما تفتح (صفحة تسجيل دخول أو حجب)</string>
     <string name="net_signal">إشارة الواي فاي %1$s</string>
     <string name="net_sig_strong">قوية</string>
@@ -233,7 +234,7 @@
     <string name="amri_notification">قل «عمري» واطلب اللي تبي</string>
     <string name="amri_listening">تفضّل…</string>
     <string name="amri_no_permission">عمري يحتاج إذن الميكروفون: الإعدادات ← المساعد الصوتي</string>
-    <string name="amri_no_recognizer">ما فيه خدمة تعرّف على الكلام في هالجهاز</string>
+    <string name="amri_no_recognizer">عشان أفهم طلبك: نزّل تطبيق «Google» من متجر Play</string>
     <string name="amri_recognizer_no_mic">تطبيق Google (اللي يفهم الكلام) ما عنده إذن الميكروفون</string>
     <string name="amri_no_network">ما فيه إنترنت عشان أفهم الكلام</string>
     <string name="amri_not_heard">ما سمعتك</string>
@@ -282,7 +283,10 @@
     <string name="voice_mic_bt">البلوتوث</string>
     <string name="voice_try">جرّبه الحين</string>
     <string name="voice_try_sub">يسمع طلبك على طول (زر المايك في الشاشة الرئيسية نفس الشي)</string>
-    <string name="voice_no_recognizer">هالجهاز ما فيه خدمة تعرّف على الكلام (تطبيق Google يعطيها في الشاشة): ما يقدر يفهم الطلبات هنا</string>
+    <string name="voice_get_google">نزّل تطبيق Google</string>
+    <string name="voice_get_google_sub">عمري يسمع اسمه بدونه، بس فهم الطلبات يحتاجه (يفتح متجر Play)</string>
+    <string name="voice_get_tts">للرد بالصوت: Speech Services by Google</string>
+    <string name="voice_get_tts_sub">بدونه الرد يطلع مكتوب بس (يفتح متجر Play)</string>
     <string name="about_role">نوع التثبيت</string>
     <string name="role_system">تطبيق نظام (صلاحيات كاملة)</string>
     <string name="role_system_basic">تطبيق نظام</string>

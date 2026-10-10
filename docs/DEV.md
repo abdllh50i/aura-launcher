@@ -193,9 +193,11 @@ and how fast it turned last time. The model itself is not in the repo.
   whose activity is destroyed never reports its dismissal), asks again for a recording that is unlike the others
   (`WakeModel.outlier`) and says so when saving fails.
 * `Amri`: after the wake word (or the home screen's microphone button) music that plays is paused, a generated chime,
-  then Android's `SpeechRecognizer` in ar-SA (the Google app's on the unit, asked for by component: a head unit's
-  default recogniser setting may be unset; the firmware ships GmsCore, Velvet and Google TTS, and `com.google.android.tts`
-  is asked for by name too; a plain emulator has none, and says so). `Commands` parses Gulf Arabic (normalised: one alef, ه for ة,
+  then Android's `SpeechRecognizer` in ar-SA (the Google app's, asked for by component: a head unit's default
+  recogniser setting may be unset; `com.google.android.tts` is asked for by name for the answers). **The K2501
+  firmware has no recogniser and no TTS engine**: Play Store, GmsCore, GSF, Gboard, Chrome and Maps, but not the
+  Google app or Speech Services by Google — the owner installs "Google" from Play (and Speech Services by Google for
+  spoken answers); until then every request says "no speech recognition on this device", as a plain emulator does. `Commands` parses Gulf Arabic (normalised: one alef, ه for ة,
   western digits; numbers in words incl. "خمسطعش"): next / previous / pause / play, volume up / down / to N / all the
   way / mute / unmute (`CarAudio`, the MCU volume), music / Bluetooth music / map / take me home or to work / home
   screen / time / cancel. The answer is shown (`AmriOverlay`, a pill above the dock; tap = cancel) and said in the
@@ -234,16 +236,27 @@ and how fast it turned last time. The model itself is not in the repo.
   then takes the screen and turns `wlan0` into an access point / P2P group for the phone. The NWD setting service
   derives that property from `Settings.System phone_connect_style` (0 none, 1 HiCar, 2 EasyConnect, 3 CarPlay; with 0 it
   disables the ZLink app too) — `system/ZLinkGuard.kt` keeps it at 0 and turns it back on when the user opens ZLink.
-* Wi-Fi: AIC8800 (`aic8800_fdrv.ko`, power save on by default: `ps_on=1`, `dpsm=1`); no `iw`/`wpa_cli` on the image.
-  `system/WifiKeeper.kt` holds a high-performance Wi-Fi lock (no power save), probes the web every 20 s through the
+* Wi-Fi: AIC8800 (`aic8800_fdrv.ko` 6.4.3.0, loaded by the Wi-Fi HAL without parameters: power save `ps_on=1`,
+  read-only once loaded); no `iw`/`wpa_cli` on the image. The driver's cfg80211 `set_power_mgmt` does nothing (returns
+  0), so Android's "power save off" (a high-performance Wi-Fi lock, `setPowerSave`) is ignored: the chip always dozes,
+  which the owner's PC and TV on the same iPhone hotspot do not. Checked in the firmware and found harmless: NWD's
+  auto-sleep turns airplane mode on and wake-up off (every ACC cycle reloads the Wi-Fi), the BT module's "close Wi-Fi
+  in calls" is for K20/K22 platforms only (this is K25), SystemUI's screen-off Wi-Fi switch is disabled, nothing in
+  /system watches connectivity and toggles the Wi-Fi.
+  `system/WifiKeeper.kt` holds a high-performance Wi-Fi lock (useless on this chip, see above), probes the web every 20 s through the
   Wi-Fi network and, when it fails, tells apart a dead link (the phone/gateway does not answer), a phone that passes
   nothing (its DNS or gateway answers, the internet does not), DNS trouble and blocked web; it restarts the Wi-Fi for
   the first three (root `svc wifi`, detached with `nohup`; the WifiManager calls are refused to an app targeting
   Android 10) with backoff (1, 2, 4, 8, 16 min), asks Android to re-validate when the web is back, and keeps a log
   (`files/wifi-log.txt`) shown in Settings → Vehicle & system. The owner's phone is an iPhone: its Personal Hotspot keeps
   a client associated, DNS answering, while it stops passing that client's traffic until the client reconnects (the
-  owner fixed it by hand by turning the Wi-Fi off and on), so "passes nothing" is restarted too. Each outage first logs
-  a root snapshot `diag`: `ip=… gw=<gateway ping> net=<1.1.1.1 ping> v6=<global IPv6 addresses>`.
+  owner fixed it by hand by turning the Wi-Fi off and on), so "passes nothing" is restarted too. Since 1.5.3 the check
+  also covers IPv6 when the network has a global IPv6 address and default route: the iPhone hands out its cellular
+  prefix, apps try IPv6 first, and an IPv6 that stops (a new cell, a new prefix) left them waiting while the IPv4-only
+  probe passed — no restart, the owner did it by hand. Probe pages without an IPv6 address count as fine; a page with
+  one that does not answer over it is cause V6, restarted like the others (emulator test: `setprop debug.aura.v6test 1`
+  plus `ip6tables -I OUTPUT -p tcp --dport 80 -j DROP`). Each outage first logs a root snapshot `diag`:
+  `ip=… gw=<gateway ping> net=<1.1.1.1 ping> v6=<global IPv6 addresses> v6net=<IPv6 ping, - without IPv6>`.
 * Two floating circles, both drawn in the stock launcher's process (`system/AssistiveBall.kt` turns both off once for the
   owner, marked done only after it went through as root, and offers the switch in Settings → Display & sound; on = the
   CAN menu back):

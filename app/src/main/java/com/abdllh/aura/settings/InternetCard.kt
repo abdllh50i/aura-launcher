@@ -125,6 +125,7 @@ class InternetCard(private val ctx: Context) {
             "LINK" -> R.string.net_cause_link
             "NO_DATA" -> R.string.net_cause_no_data
             "DNS" -> R.string.net_cause_dns
+            "V6" -> R.string.net_cause_v6
             else -> R.string.net_cause_web
         })
 
