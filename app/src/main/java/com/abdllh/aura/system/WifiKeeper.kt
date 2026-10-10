@@ -30,11 +30,14 @@ import java.util.concurrent.TimeUnit
  * (bound to that network). When the web does not answer twice in a row, a quick diagnosis says why:
  *  - LINK: the phone does not answer over Wi-Fi at all (a stalled Wi-Fi link): the connection is restarted;
  *  - DNS: the internet works but the phone stopped answering name lookups: the connection is restarted (new lease);
- *  - NO_DATA: the phone answers but its hotspot has no internet (weak coverage, data off or used up, or a stuck
- *    hotspot): after a minute one reconnect, in case the phone's side is stuck, then only waiting;
+ *  - NO_DATA: the phone answers but no internet comes through it: the connection is restarted as well. It can be the
+ *    phone's coverage, but an iPhone's Personal Hotspot also keeps a client connected (its DNS answering) while it
+ *    stops passing that client's traffic, until the client reconnects: what the owner had to do by hand;
  *  - WEB: names and addresses work but websites do not (a sign-in page, a blocked network): logged only.
- * Restarts alternate a re-association and Wi-Fi off/on, with growing pauses and only a few in a row. Networks that
- * never had internet (a dash cam's Wi-Fi...) are only logged, and nothing is probed while ZLink has the Wi-Fi.
+ * Restarts alternate a re-association and Wi-Fi off/on, with growing pauses and only a few in a row. A drop also
+ * logs a root snapshot (address, gateway and internet pings, IPv6) so the next log says where the traffic stops.
+ * Networks that never had internet (a dash cam's Wi-Fi...) are only logged, and nothing is probed while ZLink has the
+ * Wi-Fi.
  * When the web works again but Android still flags the network "no internet", Android is told to look again at once.
  */
 object WifiKeeper {
@@ -43,7 +46,6 @@ object WifiKeeper {
     private const val RECHECK_MS = 5_000L        // a failed probe is confirmed soon after
     private const val FAILS_BEFORE_ACTING = 2
     private const val MAX_FIXES = 6              // then wait until the network changes or the internet comes back
-    private const val NO_DATA_GRACE_MS = 60_000L
     private const val QUIET_AFTER_FIX_MS = 90_000L // the disconnect/reconnect a restart causes is not logged
     private const val LOG_MAX = 80
     /** A plain-HTTP check page: the answer must be [code] (and start with [body] when set: a sign-in page says 200 too). */
@@ -383,19 +385,46 @@ object WifiKeeper {
         if (fails < FAILS_BEFORE_ACTING) { schedule(RECHECK_MS); return }
         if (downSince == 0L) downSince = firstFailAt
         state = State.OFFLINE
+        val fixable = r.cause == Cause.LINK || r.cause == Cause.DNS || r.cause == Cause.NO_DATA
         if (r.cause != cause) {
             cause = r.cause
             add(Event(System.currentTimeMillis(), "lost", r.cause?.name ?: "", rssi.toString()))
+            // what the outage looks like before anything is restarted, then the restart
+            if (fixes == 0) snapshot(n) { if (fixable && net == n && cause != null) maybeFix(SystemClock.elapsedRealtime()) }
+            else if (fixable) maybeFix(now)
         } else {
             changed()
-        }
-        when (r.cause) {
-            Cause.LINK, Cause.DNS -> maybeFix(now)
-            // the phone itself has no data: one reconnect after a minute (in case its hotspot is stuck), then waiting
-            Cause.NO_DATA -> if (fixes == 0 && now - downSince >= NO_DATA_GRACE_MS) maybeFix(now)
-            else -> Unit
+            if (fixable) maybeFix(now)
         }
         schedule(PROBE_EVERY_MS)
+    }
+
+    /**
+     * Where the traffic stops, logged once per outage (root shell, so the pings go out as the system's own traffic):
+     * the car's address, the phone (gateway) answering a ping, the internet answering a ping (through the phone's
+     * NAT) and the number of global IPv6 addresses (the probes already found TCP failing). "gw=1 net=0" is a phone
+     * that is there but passes nothing; "net=1" would be TCP alone being blocked.
+     */
+    private fun snapshot(n: Network, then: () -> Unit) {
+        val cm = app?.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        val lp = try { cm?.getLinkProperties(n) } catch (_: Throwable) { null }
+        if (lp == null) { then(); return }
+        val iface = lp.interfaceName ?: "wlan0"
+        val gw = lp.routes.filter { it.isDefaultRoute && it.hasGateway() && it.gateway is Inet4Address }
+            .firstOrNull()?.gateway?.hostAddress.orEmpty()
+        io.execute {
+            val cmd = "a=\$(ip -4 addr show $iface | grep -o 'inet [0-9.]*' | head -1 | cut -d' ' -f2); " +
+                "g=0; [ -n '$gw' ] && ping -c 1 -W 2 '$gw' >/dev/null 2>&1 && g=1; " +
+                "p=0; ping -c 1 -W 2 1.1.1.1 >/dev/null 2>&1 && p=1; " +
+                "v=\$(ip -6 addr show $iface scope global 2>/dev/null | grep -c inet6); " +
+                "echo \"ip=\$a gw=\$g net=\$p v6=\$v\""
+            val r = LocalAdb.run(cmd, 12_000)
+            val line = r.output.lines().lastOrNull { it.startsWith("ip=") }
+            main.post {
+                if (r.ok && line != null) add(Event(System.currentTimeMillis(), "diag", line.take(80)))
+                then()
+            }
+        }
     }
 
     /** The web works again: if Android still flags the network "no internet", it re-checks now instead of minutes later. */
@@ -443,10 +472,11 @@ object WifiKeeper {
         } catch (t: Throwable) {
             Log.w(TAG, "fix: $t")
         }
-        // not allowed through the API (an app targeting Android 10): Wi-Fi off and on through the unit's shell
+        // not allowed through the API (an app targeting Android 10): Wi-Fi off and on through the unit's shell, detached
+        // so that nothing (a shell connection the restart itself takes down) can leave the Wi-Fi off
         logged("restart")
         io.execute {
-            val r = LocalAdb.run("svc wifi disable; sleep 3; svc wifi enable")
+            val r = LocalAdb.run("nohup sh -c 'svc wifi disable; sleep 3; svc wifi enable' >/dev/null 2>&1 & echo started")
             if (!r.ok) {
                 Log.w(TAG, "restart through adb failed: ${r.output}")
                 main.post { add(Event(System.currentTimeMillis(), "fixfail", r.output.take(80))) }

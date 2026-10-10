@@ -131,10 +131,20 @@ turns them with drag, fling, snap and a spring back to the resting view (mirrore
   disables the ZLink app too) — `system/ZLinkGuard.kt` keeps it at 0 and turns it back on when the user opens ZLink.
 * Wi-Fi: AIC8800 (`aic8800_fdrv.ko`, power save on by default: `ps_on=1`, `dpsm=1`); no `iw`/`wpa_cli` on the image.
   `system/WifiKeeper.kt` holds a high-performance Wi-Fi lock (no power save), probes the web every 20 s through the
-  Wi-Fi network and, when it fails, tells apart a dead link (the phone/gateway does not answer), a phone without data
-  (its DNS or gateway answers, the internet does not), DNS trouble and blocked web; it restarts the Wi-Fi for the first
-  two (root `svc wifi`; the WifiManager calls are refused to an app targeting Android 10), asks Android to re-validate when
-  the web is back, and keeps a log (`files/wifi-log.txt`) shown in Settings → Vehicle & system.
+  Wi-Fi network and, when it fails, tells apart a dead link (the phone/gateway does not answer), a phone that passes
+  nothing (its DNS or gateway answers, the internet does not), DNS trouble and blocked web; it restarts the Wi-Fi for
+  the first three (root `svc wifi`, detached with `nohup`; the WifiManager calls are refused to an app targeting
+  Android 10) with backoff (1, 2, 4, 8, 16 min), asks Android to re-validate when the web is back, and keeps a log
+  (`files/wifi-log.txt`) shown in Settings → Vehicle & system. The owner's phone is an iPhone: its Personal Hotspot keeps
+  a client associated, DNS answering, while it stops passing that client's traffic until the client reconnects (the
+  owner fixed it by hand by turning the Wi-Fi off and on), so "passes nothing" is restarted too. Each outage first logs
+  a root snapshot `diag`: `ip=… gw=<gateway ping> net=<1.1.1.1 ping> v6=<global IPv6 addresses>`.
+* The floating "assistive touch" circle is the stock launcher's `com.nwd.fushion.assistivetouch.SuspensionService`
+  (started at boot; AMRI starts it too, `NwdBridge`). State: `Settings.System key_white_window_state` (1 shown); the
+  car settings app (`com.android.car.setting`, PublicSetting "Assistive touch", on the page with the CAN settings)
+  switches it with broadcasts `com.nwd.action.suspension.DISPLAY_LISTVIEW` / `HIDE_THE_LISTVIEW` to the launcher, which
+  draw or remove it and store the state. `system/AssistiveBall.kt` turned it off once for the owner and offers the switch
+  in Settings → Display & sound.
 * The stock floating volume bar is `com.android.launcher/com.launcher.FloatBar` (started by KernelService at boot, from
   `UartConfig.ini`); it pops up for every `notifyAudioParam` of the setting service (14 media, 15 navigation, 16 phone),
   Aura's own changes included. `system/VolumeHud.kt` disables that component (root `pm disable`, once; allowed to draw

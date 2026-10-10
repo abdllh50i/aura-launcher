@@ -101,7 +101,7 @@
     <string name="net_paused">The Wi-Fi is with the phone link (ZLink)</string>
     <string name="net_offline">No internet: %1$s</string>
     <string name="net_cause_link">the phone isn\'t answering over Wi-Fi</string>
-    <string name="net_cause_no_data">the phone itself has no internet (its mobile data)</string>
+    <string name="net_cause_no_data">the phone is connected but no internet comes through it</string>
     <string name="net_cause_dns">the phone stopped answering site names (DNS)</string>
     <string name="net_cause_web">websites don\'t open (a sign-in page, or blocked)</string>
     <string name="net_signal">Wi-Fi signal %1$s</string>
@@ -119,8 +119,9 @@
     <string name="net_ev_reconnect">Reconnecting to the hotspot (attempt %1$s)</string>
     <string name="net_ev_restart">Restarting the Wi-Fi (attempt %1$s)</string>
     <string name="net_ev_fixfail">Couldn\'t restart the Wi-Fi</string>
+    <string name="net_ev_diag">Details: %1$s</string>
     <string name="net_log_empty">Nothing yet: drops of the internet and their cause show up here.</string>
-    <string name="net_hint">“The phone itself has no internet” means the phone\'s mobile data or coverage dropped, not the car. “The phone isn\'t answering” is the Wi-Fi link: the car restarts it by itself.</string>
+    <string name="net_hint">When the internet stops while the phone stays connected (an iPhone hotspot does this), the car reconnects by itself within about half a minute, and tries again if it doesn\'t come back. “The phone isn\'t answering” is the Wi-Fi link itself.</string>
     <string name="dur_s">%1$s s</string>
     <string name="dur_min">%1$s min</string>
     <string name="dur_h">%1$s h %2$s min</string>
@@ -170,6 +171,8 @@
     <string name="set_failed">Couldn\'t apply this on this unit</string>
     <string name="set_hide_status">Hide the status bar</string>
     <string name="set_hide_status_sub">Swipe down from the top edge to show it</string>
+    <string name="set_ball">Floating circle</string>
+    <string name="set_ball_sub">The stock system\'s circle that opens shortcuts</string>
     <string name="media_prev">Previous</string>
     <string name="media_play">Play or pause</string>
     <string name="media_next">Next</string>

@@ -117,6 +117,7 @@ class InternetCard(private val ctx: Context) {
                 (e.b.toIntOrNull()?.takeIf { it < 0 }?.let { " · " + signal(c, it) } ?: "")
             "fix" -> c.getString(if (e.b == "restart") R.string.net_ev_restart else R.string.net_ev_reconnect, e.a)
             "fixfail" -> c.getString(R.string.net_ev_fixfail)
+            "diag" -> c.getString(R.string.net_ev_diag, e.a)
             else -> e.type
         }
 

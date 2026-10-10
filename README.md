@@ -33,8 +33,9 @@ file, so it comes with updates from the screen) and an **in-app updater that pul
   and AMRI's own volume display replaces the stock bar for the wheel and panel buttons (none for changes made on the
   screen). The dock holds the apps you pin to it, and the home screen shows the gear (P R N D: R from the reverse wire,
   the rest from the car's CAN box when it reports it). ZLink (CarPlay) stays off until it is opened, and the Wi-Fi is
-  kept out of power saving, reconnected when it loses its internet, and logged (*Settings → Vehicle & system →
-  Internet*: every drop with its cause — the phone's own data or the Wi-Fi link). *Settings → Vehicle & system → Power*
+  kept out of power saving, reconnected within about half a minute when it loses its internet (an iPhone hotspot stops
+  passing traffic until the client reconnects), and logged (*Settings → Vehicle & system → Internet*: every drop with
+  its cause and a short technical snapshot). *Settings → Vehicle & system → Power*
   turns the unit fully off now, or at every ignition-off instead of sleeping, through its own power controller.
 * `rom/` — the ROM tooling: overlay files, boot script, workshop that builds the image inside an Android emulator,
   block-patch generator, and the installers (`rom/flash`): **`install-linux.sh` / `aura-install.py` for Ubuntu/Linux**
@@ -44,7 +45,7 @@ file, so it comes with updates from the screen) and an **in-app updater that pul
 ### Installing from an Ubuntu laptop
 
 ```
-unzip aura-rom-1.4.0.zip -d aura && cd aura
+unzip aura-rom-1.4.1.zip -d aura && cd aura
 # laptop and unit on the same network, e.g. the laptop's own Wi-Fi hotspot
 ./install-linux.sh            # finds the K2501, shows its state, asks for YES, installs, restarts, checks
 ./install-linux.sh status     # only look

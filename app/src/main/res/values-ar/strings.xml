@@ -101,7 +101,7 @@
     <string name="net_paused">الواي فاي مع ربط الجوال (ZLink)</string>
     <string name="net_offline">ما فيه إنترنت: %1$s</string>
     <string name="net_cause_link">الجوال ما يرد عبر الواي فاي</string>
-    <string name="net_cause_no_data">الجوال نفسه ما فيه إنترنت (بيانات الجوال)</string>
+    <string name="net_cause_no_data">الجوال متصل بس الإنترنت ما يمر منه</string>
     <string name="net_cause_dns">الجوال وقف يرد على أسماء المواقع (DNS)</string>
     <string name="net_cause_web">المواقع ما تفتح (صفحة تسجيل دخول أو حجب)</string>
     <string name="net_signal">إشارة الواي فاي %1$s</string>
@@ -119,8 +119,9 @@
     <string name="net_ev_reconnect">إعادة الاتصال بنقطة الاتصال (محاولة %1$s)</string>
     <string name="net_ev_restart">إعادة تشغيل الواي فاي (محاولة %1$s)</string>
     <string name="net_ev_fixfail">تعذّر إعادة تشغيل الواي فاي</string>
+    <string name="net_ev_diag">تفاصيل: %1$s</string>
     <string name="net_log_empty">لا شيء بعد: هنا يظهر كل انقطاع للإنترنت وسببه.</string>
-    <string name="net_hint">«الجوال نفسه ما فيه إنترنت» يعني إن بيانات الجوال أو التغطية هي اللي انقطعت، مو السيارة. «الجوال ما يرد» يعني رابط الواي فاي: والسيارة تعيد تشغيله بنفسها.</string>
+    <string name="net_hint">إذا وقف الإنترنت والجوال متصل (نقطة اتصال الآيفون تسويها)، السيارة تعيد الاتصال بنفسها خلال نص دقيقة تقريبًا، وتعيد المحاولة لو ما رجع. «الجوال ما يرد» يعني رابط الواي فاي نفسه.</string>
     <string name="dur_s">%1$s ث</string>
     <string name="dur_min">%1$s د</string>
     <string name="dur_h">%1$s س %2$s د</string>
@@ -170,6 +171,8 @@
     <string name="set_failed">تعذّر تطبيق هذا على الشاشة</string>
     <string name="set_hide_status">إخفاء شريط الحالة العلوي</string>
     <string name="set_hide_status_sub">اسحب من الحافة العلوية للأسفل لإظهاره</string>
+    <string name="set_ball">الدائرة العائمة</string>
+    <string name="set_ball_sub">دائرة نظام الشاشة الأصلي اللي تفتح أدوات سريعة</string>
     <string name="media_prev">السابق</string>
     <string name="media_play">تشغيل أو إيقاف</string>
     <string name="media_next">التالي</string>

@@ -1,6 +1,7 @@
 package com.abdllh.aura
 
 import android.app.Application
+import com.abdllh.aura.system.AssistiveBall
 import com.abdllh.aura.system.BootAnim
 import com.abdllh.aura.system.CarAudio
 import com.abdllh.aura.system.CrashGuard
@@ -52,6 +53,7 @@ class AuraApp : Application() {
             MusicKeys.init(this)
             Gear.init(this)
             BootAnim.ensure(this) // this build's boot animation, also after an update from the screen
+            AssistiveBall.offOnce(this) // the stock floating circle the owner switched on by accident
         }
     }
 }
