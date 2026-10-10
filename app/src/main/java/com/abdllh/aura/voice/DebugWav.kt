@@ -14,7 +14,7 @@ import java.util.Locale
 internal object DebugWav {
     private const val TAG = "AuraAmri"
 
-    private fun words(path: String): List<Pair<ShortArray, ShortArray>> {
+    private fun words(path: String, maxMs: Int = 1600, endHops: Int = 20): List<Pair<ShortArray, ShortArray>> {
         val b = try { File(path).readBytes() } catch (t: Throwable) { Log.i(TAG, "wav $path: $t"); return emptyList() }
         val bb = ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN)
         // the "data" chunk
@@ -26,7 +26,7 @@ internal object DebugWav {
                 val n = minOf(len, b.size - p - 8) / 2
                 val pcm = ShortArray(n) { bb.getShort(p + 8 + it * 2) }
                 val out = ArrayList<Pair<ShortArray, ShortArray>>()
-                val seg = Segmenter(maxMs = 1600) { w, noise -> out.add(w to noise) }
+                val seg = Segmenter(maxMs = maxMs, endHops = endHops) { w, noise -> out.add(w to noise) }
                 seg.feed(pcm, pcm.size)
                 seg.feed(ShortArray(Features.RATE / 2), Features.RATE / 2) // a pause to end the last word
                 return out
@@ -97,14 +97,37 @@ internal object DebugWav {
         }.start()
     }
 
+    /** A request for use without the internet taught from files ("id:a.wav,b.wav,c.wav"). */
+    fun teach(c: Context, spec: String) {
+        val id = spec.substringBefore(':')
+        val feats = spec.substringAfter(':').split(',').mapNotNull { f ->
+            words(f, 2600, 40).maxByOrNull { it.first.size }?.let { Features.spectrum(it.first, it.second) }
+        }
+        val ok = feats.isNotEmpty() && WakeModel.save(OfflineCommands.file(c, id), feats)
+        Log.i(TAG, "teach $id: ${feats.map { it.frames }} frames, saved=$ok")
+    }
+
+    /** Requests from files matched against the taught ones (as without the internet). */
+    fun offline(c: Context, files: List<String>) {
+        for (f in files) {
+            val w = words(f, 2600, 40).maxByOrNull { it.first.size }
+            val item = w?.let { if (VoiceCheck.isVoice(it.first, it.second)) OfflineCommands.match(c, Features.spectrum(it.first, it.second)) else null }
+            Log.i(TAG, "offline ${File(f).name}: ${w?.first?.size?.times(1000)?.div(Features.RATE) ?: 0} ms -> ${item?.id ?: "none"}")
+        }
+    }
+
     fun detect(c: Context, files: List<String>) {
         val m = WakeModel.load(c) ?: run { Log.i(TAG, "detect: no model"); return }
         for (f in files) {
             val ws = words(f)
             val scores = ws.map { m.score(Features.spectrum(it.first, it.second)) }
             val best = scores.minOrNull()
+            val bestWord = best?.let { ws[scores.indexOf(it)] }
+            val (v, b) = bestWord?.let { VoiceCheck.measure(it.first, it.second) } ?: (0f to 0f)
+            val wake = best != null && best < Amri.threshold() && VoiceCheck.ok(v, b)
             Log.i(TAG, "detect ${File(f).name}: ${ws.size} word(s) ${ws.map { it.first.size * 1000 / Features.RATE }} ms, " +
-                "score ${best?.let { "%.2f".format(Locale.ROOT, it) } ?: "-"} -> ${if (best != null && best < Amri.threshold()) "WAKE" else "no"}")
+                "score ${best?.let { "%.2f".format(Locale.ROOT, it) } ?: "-"}, voiced %.2f band %.2f -> ${if (wake) "WAKE" else "no"}"
+                    .format(Locale.ROOT, v, b))
         }
     }
 }

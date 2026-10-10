@@ -28,14 +28,36 @@ import com.abdllh.aura.ui.lp
 import com.abdllh.aura.util.dp
 
 /**
- * Teaches the assistant the owner's "عمري": said [SAMPLES] times, each a word on its own (a pause before and after),
- * with a level meter that shows the microphone hears. A recording far from the others (a cough, a word cut short)
- * is asked for again. The background listener stays off the microphone meanwhile.
+ * Teaches the assistant the owner's "عمري" (or, for use without the internet, one of the requests): said a few times,
+ * each on its own (a pause before and after), with a level meter that shows the microphone hears. A recording far
+ * from the others (a cough, a word cut short, a bump) is asked for again. The background listener stays off the
+ * microphone meanwhile.
  */
 internal object EnrollDialog {
-    private const val SAMPLES = 4
+    /** What is taught: [prompt] (n, of) says what to say; the recordings go to [file]. */
+    class Spec(
+        val title: String,
+        val prompt: (Int, Int) -> String,
+        val samples: Int,
+        val maxMs: Int,
+        val endHops: Int,
+        val frames: IntRange,
+        val file: (Activity) -> java.io.File,
+        val doneText: Int = R.string.amri_enroll_done
+    )
 
-    fun show(act: Activity, done: (Boolean) -> Unit) {
+    /** The wake word: six times (more of the owner's ways of saying it: a truer "own variation" and fewer misses). */
+    fun show(act: Activity, done: (Boolean) -> Unit) = show(act, Spec(
+        act.getString(R.string.amri_enroll_title), { n, of -> act.getString(R.string.amri_enroll_say, n, of) },
+        samples = 6, maxMs = 1600, endHops = 20, frames = 25..150, file = { WakeModel.file(it) }), done)
+
+    /** A request for use without the internet ([label]: what it does): three times, up to 2.6 s, pauses inside it. */
+    fun teach(act: Activity, label: String, file: java.io.File, done: (Boolean) -> Unit) = show(act, Spec(
+        act.getString(R.string.amri_teach_title, label), { n, of -> act.getString(R.string.amri_teach_say, label, n, of) },
+        samples = 3, maxMs = 2600, endHops = 40, frames = 25..260, file = { file }, doneText = R.string.amri_teach_done), done)
+
+    fun show(act: Activity, spec: Spec, done: (Boolean) -> Unit) {
+        val samples = spec.samples
         val main = Handler(Looper.getMainLooper())
         val d = Dialog(act)
         d.requestWindowFeature(Window.FEATURE_NO_TITLE)
@@ -44,11 +66,11 @@ internal object EnrollDialog {
             setPadding(28.dp, 24.dp, 28.dp, 22.dp)
             background = Shapes.rect(Palette.sheet, 26f, if (Palette.dark) Palette.stroke else 0)
         }
-        card.addView(act.label(22f, Palette.text, Fonts.MEDIUM, lines = 2).apply { setText(R.string.amri_enroll_title) }, lp(MATCH, WRAP))
+        card.addView(act.label(22f, Palette.text, Fonts.MEDIUM, lines = 2).apply { text = spec.title }, lp(MATCH, WRAP))
         val prompt = act.label(18f, Palette.text2, Fonts.REGULAR, lines = 3).apply { setLineSpacing(0f, 1.15f) }
         card.addView(prompt, lp(MATCH, WRAP).apply { topMargin = 10.dp })
         val dots = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        val dotViews = (0 until SAMPLES).map { View(act).also { v -> dots.addView(v, lp(18.dp, 18.dp).apply { marginEnd = 10.dp }) } }
+        val dotViews = (0 until samples).map { View(act).also { v -> dots.addView(v, lp(18.dp, 18.dp).apply { marginEnd = 10.dp }) } }
         card.addView(dots, lp(MATCH, WRAP).apply { topMargin = 18.dp })
         val meter = Meter(act)
         card.addView(meter, lp(MATCH, 14.dp).apply { topMargin = 18.dp })
@@ -68,18 +90,20 @@ internal object EnrollDialog {
         var ended = false
         fun paint() {
             for ((i, v) in dotViews.withIndex()) v.background = Shapes.oval(if (i < words.size) Palette.accent else Palette.withAlpha(Palette.text3, 0.35f))
-            prompt.text = act.getString(R.string.amri_enroll_say, words.size + 1, SAMPLES)
+            prompt.text = spec.prompt(words.size + 1, samples)
         }
         paint()
 
         Amri.enrolling = true
         AmriService.pauseMic()
-        val seg = Segmenter(maxMs = 1600, onLevel = { l -> main.post { meter.level = l } }) { pcm, noise ->
+        val seg = Segmenter(maxMs = spec.maxMs, onLevel = { l -> main.post { meter.level = l } }, endHops = spec.endHops) { pcm, noise ->
             val f = Features.spectrum(pcm, noise)
+            val voice = VoiceCheck.isVoice(pcm, noise)
             main.post {
                 if (saved || ended) return@post
-                // 0.25 s to 1.5 s: a single word (a word cut short or a whole sentence is not it)
-                if (f.frames !in 25..150) { status.setText(R.string.amri_enroll_again); return@post }
+                // 0.25 s to 1.5 s: a single word (a word cut short or a whole sentence is not it), and a voice (not
+                // a bump, a door, a cough)
+                if (f.frames !in spec.frames || !voice) { status.setText(R.string.amri_enroll_again); return@post }
                 if (words.size >= 2) {
                     // far from all the others: probably not the same word (a cough, a different word)
                     val m = WakeModel(words)
@@ -87,7 +111,7 @@ internal object EnrollDialog {
                 }
                 words.add(f)
                 status.setText(R.string.amri_enroll_good)
-                if (words.size == SAMPLES) {
+                if (words.size == samples) {
                     // one of the first two may be the odd one out (they were not checked against others)
                     val odd = WakeModel(words).outlier()
                     if (odd >= 0) {
@@ -96,7 +120,7 @@ internal object EnrollDialog {
                         paint()
                         return@post
                     }
-                    if (!WakeModel.save(act, words)) {
+                    if (!WakeModel.save(spec.file(act), words)) {
                         words.clear()
                         status.setText(R.string.amri_enroll_save_failed)
                         paint()
@@ -104,7 +128,7 @@ internal object EnrollDialog {
                     }
                     saved = true
                     paint()
-                    prompt.setText(R.string.amri_enroll_done)
+                    prompt.setText(spec.doneText)
                     main.postDelayed({ if (!act.isFinishing && !act.isDestroyed && d.isShowing) try { d.dismiss() } catch (_: Throwable) { } }, 1200)
                     return@post
                 }

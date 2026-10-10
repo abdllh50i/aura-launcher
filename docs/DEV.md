@@ -136,6 +136,18 @@ they come to the front (wheel button, CAN box, app list). Not through the replac
 starts `com.nwd.bt.music` directly. The stock screens' `onResume` sends `com.music.action.STOP_QQ_MUSIC` (BT music) /
 `com.bt.ACTION_A2DP_MUTE` (music) right before `com.nwd.ACTION_MEDIA_PLAY` (15 / 2); the firmware also sends MEDIA_PLAY 15
 alone for phone-projection apps, and Aura marks its own with `MediaMonitor.EXTRA_SELF`.
+Lyrics (1.5.4): `Lyrics.kt` asks LRCLIB (lrclib.net, free and open, no key; many Gulf / Arabic songs) by title, artist
+and length (`/api/get`, then `/api/search?q=` and by field), takes the result whose name, artist and length (±8 s)
+match, prefers timed (LRC) lyrics, keeps them in `cacheDir/lyrics` (a "none" for 3 days, only when every question
+got its answer). The server often answers 503: each kind of question gets one more try 1.5 s later, then the next
+kind; a question left unanswered makes it "failed" (not kept; the screen asks again 20 s later, one retry at a time,
+none after the screen stops), and a song skipped while its lookup waited in line is not looked up. Bluetooth songs
+are looked up again once the phone tells their length (it is reset on a new song, not the one before's). Spaces must go as `%20` (URLEncoder's `+` reached LRCLIB as a plus:
+Arabic titles were never found). No album: a file's album is often its folder ("Music"), which misses the exact
+match. `LyricsView` lights the line being sung and keeps it in the middle (4 s after a hand scroll it follows again);
+the music screen's lyrics button puts it in the library's panel (with Bluetooth the song gives the panel back for
+it); the progress tick runs every 200 ms while it shows. Position: `Player.position()`, `BtMusic.positionMs()`
+(extrapolated between the phone's progress reports).
 
 ### The 3D car (`tools/car3d`, debug-only `CarBakerActivity`)
 The car is not rendered live (the source model has ~726k triangles and 8K textures; the unit has a Mali-G31). Instead a
@@ -182,6 +194,26 @@ and how fast it turned last time. The model itself is not in the repo.
   near-homophone "حمري" 1.19 in road noise. An offline copy of the matcher (Python, not kept) agreed, and showed
   every pairing of quiet / road / loud-road recordings and words keeping "عمري" ≤ 0.93 and the others ≥ 1.40 (the
   earlier per-word noise subtraction alone failed noisy words recorded in quiet: 1.31–1.69).
+* `VoiceCheck` (1.5.4): a word close to the recordings must also be a voice: at least 15% of its voiced frames' own
+  energy in 250 Hz-4 kHz (own: the background of the 0.3 s before the word taken off three times over, since a
+  rumble's spectrum swings around its mean) and at least 25% of its loud 25 ms frames voiced (normalised
+  autocorrelation > 0.45 at a lag of 70-400 Hz). The owner's car woke on bumps: against the owner's own model,
+  simulated bumps in road noise scored 0.67-0.72 (a wake). Measured: thumps, double bumps and ringing panels 0-2% in
+  the band whatever the background; "عمري" (TTS) 67-78% quiet or in road noise and still 24-54% under a low rumble
+  louder than the voice (where it is only 45-58% voiced, hence the low voicing bar: bangs and clicks are 0%, rattles
+  up to 30% in that rumble, and rattles score 1.65-2.49 against the recordings anyway). Also applied to the enrolment
+  samples, now six, and in requests without the internet (a bump before the request is skipped, not taken as it).
+  A review found the first version (no background taken off, 50%/30%) would have refused the owner's voice in a
+  loud rumble (checked with synthetic rumble: 30-200 Hz noise at -18 dBFS under the recordings).
+* Requests without the internet (1.5.4, `OfflineCommands`): fourteen fixed requests (next, previous, pause, play,
+  volume up / down / all the way, mute, unmute, music, map, home, work, time), each taught in Settings in the owner's
+  voice (three times, any phrase: `EnrollDialog.teach`, files `amri-cmd-<id>.bin`, segmenter up to 2.6 s with 0.4 s
+  pauses inside), matched like the wake word: the best request under 1.6 and 1.15 times better than the next. With
+  Windows' Arabic voice (six requests taught with three quiet recordings): the request 0.59-1.31 quiet and in road
+  noise (35 of 36), the closest other request 1.81+, other phrases 2.34+ (none taken). After the chime: Google when
+  there is a recogniser and a validated network that WifiKeeper does not know to be down, else the taught requests;
+  a recogniser network error falls back to them ("say it once more"). Debug: `--es teach id:a.wav,b.wav,c.wav`,
+  `--es offline x.wav,...`.
 * `AmriService`: a foreground service (the microphone from the background needs one) that runs the matcher; off the
   microphone while the assistant listens or answers, while Settings records, while reversing (`Gear` R: nothing may
   cover the camera) and in calls: the unit's Bluetooth calls are `com.bt.ACTION_BT_*` broadcasts (the audio mode does
@@ -253,10 +285,21 @@ and how fast it turned last time. The model itself is not in the repo.
   owner fixed it by hand by turning the Wi-Fi off and on), so "passes nothing" is restarted too. Since 1.5.3 the check
   also covers IPv6 when the network has a global IPv6 address and default route: the iPhone hands out its cellular
   prefix, apps try IPv6 first, and an IPv6 that stops (a new cell, a new prefix) left them waiting while the IPv4-only
-  probe passed — no restart, the owner did it by hand. Probe pages without an IPv6 address count as fine; a page with
-  one that does not answer over it is cause V6, restarted like the others (emulator test: `setprop debug.aura.v6test 1`
+  probe passed — no restart, the owner did it by hand. Both probe pages are asked over IPv6 and judged together (one
+  of them, msftconnecttest, has no IPv6 address: taken alone as "fine", it hid every failure in the first version):
+  fine when one answers over IPv6 or none has an IPv6 address; else cause V6, restarted like the others (emulator test: `setprop debug.aura.v6test 1`
   plus `ip6tables -I OUTPUT -p tcp --dport 80 -j DROP`). Each outage first logs a root snapshot `diag`:
   `ip=… gw=<gateway ping> net=<1.1.1.1 ping> v6=<global IPv6 addresses> v6net=<IPv6 ping, - without IPv6>`.
+  The owner's log (1.5.3) then showed the real pattern: about once a minute `LINK` with `gw=0 net=0 v6=0` (the iPhone
+  itself silent, a strong signal), cured each time by the re-association. Since 1.5.4 a heartbeat thread connects
+  every 1.5 s to port 53 of the gateway or the DNS server on the same subnet (whichever answered first on that
+  network: it only "arms" then, so a router that ignores it is never touched, and an outside DNS server such as
+  8.8.8.8 never makes it an internet check); three silences in a row (~5-8 s) reconnect at once: a re-association,
+  or Wi-Fi off/on when the one before did not hold two minutes; at most every 15 s and six times in ten minutes
+  (then the 20 s probes and their pauses decide), instead of waiting for two failed 20 s probes; the steady traffic may also keep the chip's power
+  saving from letting the link freeze. `nextFixAt` is reset when the web is back (one outage's pause held back the
+  next one's cure by 31 s in that log). Emulator test: `iptables -I OUTPUT -o wlan0 -j DROP` until the reconnect
+  (caught after 8 s, against 23 s by the probes).
 * Two floating circles, both drawn in the stock launcher's process (`system/AssistiveBall.kt` turns both off once for the
   owner, marked done only after it went through as root, and offers the switch in Settings → Display & sound; on = the
   CAN menu back):

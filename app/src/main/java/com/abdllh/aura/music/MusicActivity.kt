@@ -86,6 +86,12 @@ class MusicActivity : Activity() {
     private lateinit var artSlot: FrameLayout
     private lateinit var info: LinearLayout
     private lateinit var btSettings: AText
+    // the lyrics take the library's place (and, with Bluetooth, the song makes room for them)
+    private lateinit var lyricsView: LyricsView
+    private lateinit var lyricsBtn: FrameLayout
+    private lateinit var lyricsIcon: ImageView
+    private var lyricsOn = false
+    private var lyricsKey: String? = null
 
     private var tab = Tab.SONGS
     private var group: Group? = null
@@ -108,6 +114,7 @@ class MusicActivity : Activity() {
         Player.init(this)
         BtMusic.init(this)
         bt = Prefs.raw.getString("musicSource", "local") == "bt" || (BtMusic.playing && !Player.playing)
+        lyricsOn = Prefs.raw.getBoolean("musicLyrics", false)
         setContentView(buildUi())
         if (!Library.hasPermission(this)) requestPermissions(arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE), 3)
         else Library.load(this)
@@ -159,6 +166,8 @@ class MusicActivity : Activity() {
         Library.removeListener(libraryListener)
         BtMusic.removeListener(btListener)
         seek.removeCallbacks(progressTick)
+        if (::lyricsView.isInitialized) lyricsView.removeCallbacks(lyricsRetry)
+        lyricsKey = null // looked up again when the screen comes back
         super.onStop()
     }
 
@@ -173,6 +182,7 @@ class MusicActivity : Activity() {
 
     private val progressTick = object : Runnable {
         override fun run() {
+            if (lyricsOn) lyricsView.at(if (bt) BtMusic.positionMs() else Player.position())
             if (bt) {
                 val d = BtMusic.durationSec * 1000L
                 val p = BtMusic.position() * 1000L
@@ -186,7 +196,49 @@ class MusicActivity : Activity() {
                 tNow.text = time(p)
                 tTotal.text = time(d)
             }
-            seek.postDelayed(this, 500)
+            seek.postDelayed(this, if (lyricsOn) 200L else 500L) // the lyrics follow the song closely
+        }
+    }
+
+    // ------------------------------------------------------------------------------------------ lyrics
+    private fun toggleLyrics() {
+        lyricsOn = !lyricsOn
+        Prefs.raw.edit().putBoolean("musicLyrics", lyricsOn).apply()
+        lyricsKey = null
+        showList()
+        showNowPlaying()
+    }
+
+    private var lyricsRetryKey: String? = null
+    private val lyricsRetry = Runnable { if (lyricsKey == lyricsRetryKey) { lyricsKey = null; refreshLyrics() } }
+
+    /** The lyrics of what plays now, looked up once per song while they are shown. */
+    private fun refreshLyrics() {
+        if (!lyricsOn || !::lyricsView.isInitialized) return
+        class Song(val key: String, val title: String, val artist: String, val sec: Int)
+        val s = if (bt) {
+            if (!BtMusic.connected || BtMusic.title.isBlank()) null
+            // (its length in the key: looked up again once the phone tells it, for the right recording's timing)
+            else Song("bt:${BtMusic.title}|${BtMusic.artist}|${BtMusic.durationSec}", BtMusic.title, BtMusic.artist, BtMusic.durationSec)
+        } else Player.current?.let { Song("lib:${it.id}", it.title, it.artist, (it.durationMs / 1000).toInt()) }
+        if (s?.key == lyricsKey && lyricsKey != null) return
+        lyricsKey = s?.key
+        if (s == null) { lyricsView.showStatus(getString(R.string.lyrics_nothing)); return }
+        lyricsView.showStatus(getString(R.string.lyrics_loading))
+        Lyrics.get(this, s.title, s.artist, s.sec) { r, failed ->
+            if (lyricsKey != s.key || isDestroyed) return@get
+            when {
+                r == null && failed -> {
+                    lyricsView.showStatus(getString(R.string.lyrics_failed))
+                    // asked again in a while (the internet, or the server, may be back): one retry at a time
+                    lyricsView.removeCallbacks(lyricsRetry)
+                    lyricsRetryKey = s.key
+                    lyricsView.postDelayed(lyricsRetry, 20_000L)
+                }
+                r == null -> lyricsView.showStatus(getString(R.string.lyrics_none))
+                r.instrumental -> lyricsView.showStatus(getString(R.string.lyrics_instrumental))
+                else -> { lyricsView.show(r); lyricsView.at(if (bt) BtMusic.positionMs() else Player.position()) }
+            }
         }
     }
 
@@ -223,6 +275,7 @@ class MusicActivity : Activity() {
                 }
             }
             playIcon.setImageResource(if (BtMusic.playing) R.drawable.ic_pause else R.drawable.ic_play)
+            refreshLyrics()
             return
         }
         artIcon.setImageResource(R.drawable.ic_music)
@@ -245,6 +298,7 @@ class MusicActivity : Activity() {
         paintAccents()
         repeatBtn.alpha = if (Player.repeat == Player.Repeat.ONE) 1f else 0.9f
         repeatBtn.contentDescription = Player.repeat.name
+        refreshLyrics()
     }
 
     private fun setArt(b: Bitmap?, key: Long) {
@@ -292,6 +346,10 @@ class MusicActivity : Activity() {
         repeatBtn.setColorFilter(if (Player.repeat != Player.Repeat.OFF) coverAccent else Palette.text2)
         btBadge.background = Shapes.oval(Palette.withAlpha(coverAccent, 0.18f))
         btBadgeIcon.setColorFilter(coverAccent)
+        if (::lyricsBtn.isInitialized) {
+            lyricsBtn.background = if (lyricsOn) Shapes.oval(coverAccent) else Shapes.ghostOval()
+            lyricsIcon.setColorFilter(if (lyricsOn) Palette.onColor(coverAccent) else Palette.text)
+        }
     }
 
     private fun paintTabs() {
@@ -370,7 +428,7 @@ class MusicActivity : Activity() {
      */
     private fun applyLayout() {
         if (!::stage.isInitialized) return
-        val wide = bt
+        val wide = bt && !lyricsOn // (the lyrics need the panel)
         panel.visibility = if (wide) View.GONE else View.VISIBLE
         (left.layoutParams as LinearLayout.LayoutParams).apply {
             weight = if (wide) 1f else 0.46f
@@ -392,9 +450,10 @@ class MusicActivity : Activity() {
     private fun showList() {
         if (!::listHolder.isInitialized) return
         applyLayout()
-        // Bluetooth: the library makes way for the song (see applyLayout)
-        libraryBox.visibility = if (bt) View.GONE else View.VISIBLE
-        btBox.visibility = if (bt) View.VISIBLE else View.GONE
+        // Bluetooth: the library makes way for the song (see applyLayout); the lyrics, when shown, take the panel
+        libraryBox.visibility = if (bt || lyricsOn) View.GONE else View.VISIBLE
+        btBox.visibility = if (bt && !lyricsOn) View.VISIBLE else View.GONE
+        lyricsView.visibility = if (lyricsOn) View.VISIBLE else View.GONE
         paintTabs()
         crumb.visibility = if (group != null) View.VISIBLE else View.GONE
         crumbText.text = group?.title.orEmpty()
@@ -643,6 +702,15 @@ class MusicActivity : Activity() {
         seg.addView(srcLocal, lp(WRAP, 50.dp))
         seg.addView(srcBt, lp(WRAP, 50.dp))
         top.addView(View(this), lp(0, 1, 1f))
+        lyricsIcon = iconView(R.drawable.ic_lyrics, 26, Palette.text)
+        lyricsBtn = FrameLayout(this).apply {
+            isClickable = true
+            pressScale(0.9f)
+            contentDescription = getString(R.string.lyrics_toggle)
+            setOnClickListener { toggleLyrics() }
+            addView(lyricsIcon, flp(26.dp, 26.dp, Gravity.CENTER))
+        }
+        top.addView(lyricsBtn, lp(58.dp, 58.dp).apply { marginEnd = 10.dp })
         top.addView(seg, lp(WRAP, WRAP))
         left.addView(top, lp(MATCH, WRAP))
 
@@ -784,6 +852,8 @@ class MusicActivity : Activity() {
             setOnClickListener { openBluetooth(this@MusicActivity) }
         }, lp(WRAP, 60.dp).apply { topMargin = 24.dp })
         panel.addView(btBox, flp(MATCH, MATCH))
+        lyricsView = LyricsView(this).apply { visibility = View.GONE }
+        panel.addView(lyricsView, flp(MATCH, MATCH))
 
         row.addView(panel, lp(0, MATCH, 0.54f))
         root.addView(row, MATCH, MATCH)

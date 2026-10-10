@@ -40,6 +40,10 @@ object VoiceSetup {
     /** Records the wake word ([done] true when all recordings were taken). */
     fun enroll(act: Activity, done: (Boolean) -> Unit) = EnrollDialog.show(act, done)
 
+    /** Records a request for use without the internet. */
+    internal fun teach(act: Activity, item: OfflineCommands.Item, done: (Boolean) -> Unit) =
+        EnrollDialog.teach(act, act.getString(item.label), OfflineCommands.file(act, item.id), done)
+
     /** A microphone's name for the owner. */
     fun name(c: Context, d: AudioDeviceInfo): String = when (d.type) {
         AudioDeviceInfo.TYPE_BUILTIN_MIC -> c.getString(R.string.voice_mic_builtin)

@@ -136,7 +136,7 @@ internal object Features {
     }
 
     /** In-place radix-2 FFT ([re] and [im] of power-of-two length). */
-    private fun fft(re: FloatArray, im: FloatArray) {
+    internal fun fft(re: FloatArray, im: FloatArray) {
         val n = re.size
         var j = 0
         for (i in 1 until n) {
@@ -173,6 +173,100 @@ internal object Features {
             len = len shl 1
         }
     }
+}
+
+/**
+ * Is a sound a voice: mostly voiced (a pitch between 70 and 400 Hz: the vocal cords) and with its energy in the
+ * voice's band (250 Hz - 4 kHz: the vowels' resonances)? A bump in the road is a low thump or a ringing panel (all
+ * below 250 Hz) or a rattle or a bang (no pitch); "عمري" is voiced from end to end. Tried on recordings and synthetic
+ * bumps: "عمري" 0.87-1.0 voiced with 0.66-0.80 of its energy in the band, quiet or in road noise; thumps, double bumps
+ * and panel rings 0.00-0.02 in the band; rattles and bangs 0.00-0.21 voiced.
+ */
+internal object VoiceCheck {
+    private const val WIN = 400        // 25 ms
+    private const val HOP = 160
+    private const val LAG_MIN = 40     // 400 Hz
+    private const val LAG_MAX = 228    // 70 Hz
+    private const val NFFT = 512
+    private val hann = FloatArray(WIN) { (0.5 - 0.5 * kotlin.math.cos(2 * PI * it / (WIN - 1))).toFloat() }
+
+    /** The power spectrum of the frame [x], Hann-windowed, into [out] (bins 0..128: up to 4 kHz). */
+    private fun power(x: DoubleArray, re: FloatArray, im: FloatArray, out: DoubleArray) {
+        for (i in 0 until NFFT) { re[i] = if (i < WIN) (x[i] * hann[i]).toFloat() else 0f; im[i] = 0f }
+        Features.fft(re, im)
+        for (k in 0..128) out[k] = re[k].toDouble() * re[k] + im[k].toDouble() * im[k]
+    }
+
+    /**
+     * The share of voiced frames in the word's body, and the share of the voiced frames' own energy (the road's, from
+     * [noise] just before the word, taken off: a car's rumble sits right below 250 Hz) in 250 Hz-4 kHz.
+     */
+    fun measure(pcm: ShortArray, noise: ShortArray? = null): Pair<Float, Float> {
+        val n = if (pcm.size < WIN) 0 else 1 + (pcm.size - WIN) / HOP
+        if (n == 0) return 0f to 0f
+        val re = FloatArray(NFFT)
+        val im = FloatArray(NFFT)
+        val p = DoubleArray(129)
+        // the background's spectrum
+        val bg = DoubleArray(129)
+        val nz = noise?.takeIf { it.size >= WIN }
+        if (nz != null) {
+            val nf = 1 + (nz.size - WIN) / HOP
+            val y = DoubleArray(WIN)
+            for (f in 0 until nf) {
+                var mean = 0.0
+                for (i in 0 until WIN) { y[i] = nz[f * HOP + i].toDouble(); mean += y[i] }
+                mean /= WIN
+                for (i in 0 until WIN) y[i] -= mean
+                power(y, re, im, p)
+                for (k in 0..128) bg[k] += p[k] / nf
+            }
+        }
+        val energy = DoubleArray(n) { f -> var e = 0.0; for (i in 0 until WIN) { val v = pcm[f * HOP + i].toDouble(); e += v * v }; e }
+        val loud = energy.maxOrNull()!! * 0.25 // the word's body, not its fading edges
+        val x = DoubleArray(WIN)
+        var body = 0
+        var voiced = 0
+        var band = 0.0
+        var all = 0.0
+        for (f in 0 until n) {
+            if (energy[f] < loud) continue
+            body++
+            var mean = 0.0
+            for (i in 0 until WIN) { x[i] = pcm[f * HOP + i].toDouble(); mean += x[i] }
+            mean /= WIN
+            for (i in 0 until WIN) x[i] -= mean
+            // the strongest normalised autocorrelation over the pitch lags
+            var best = 0.0
+            for (k in LAG_MIN..LAG_MAX) {
+                var xy = 0.0; var xx = 0.0; var yy = 0.0
+                for (i in 0 until WIN - k) { val a = x[i]; val b = x[i + k]; xy += a * b; xx += a * a; yy += b * b }
+                val r = xy / (sqrt(xx * yy) + 1e-9)
+                if (r > best) best = r
+            }
+            if (best <= 0.45) continue
+            voiced++
+            power(x, re, im, p)
+            for (k in 2..128) { // 62.5 Hz .. 4 kHz (31.25 Hz a bin)
+                // the background three times over: a rumble's spectrum swings around its mean from frame to frame,
+                // and what is left of it once is still far more than a voice's lows
+                val own = (p[k] - 3.0 * bg[k]).coerceAtLeast(0.0)
+                all += own
+                if (k >= 8) band += own // from 250 Hz
+            }
+        }
+        return (if (body == 0) 0f else voiced.toFloat() / body) to (if (all <= 0.0) 0f else (band / all).toFloat())
+    }
+
+    /**
+     * A voice: at least 15% of its own energy in the band (the bumps' gate: thumps, double bumps and ringing panels
+     * measured 0-2% quiet, in road noise and in a loud low rumble; "عمري" 66% and more, and still 28-63% under a rumble
+     * louder than the voice), and at least 25% voiced (bangs and clicks 0%; rattles reach 30% in a loud rumble, and are
+     * refused by the comparison with the recordings anyway: 1.65-2.49). A voice in a loud rumble is 38-50% voiced.
+     */
+    fun isVoice(pcm: ShortArray, noise: ShortArray? = null): Boolean = measure(pcm, noise).let { (v, b) -> ok(v, b) }
+
+    fun ok(voiced: Float, band: Float) = voiced >= 0.25f && band >= 0.15f
 }
 
 /** Distance between two words: the cheapest alignment of their frames (Sakoe-Chiba band), per frame. */
@@ -214,6 +308,8 @@ internal object Dtw {
 internal class Segmenter(
     private val maxMs: Int = 1600,
     private val onLevel: ((Float) -> Unit)? = null,
+    /** Hops of quiet that end a word (a request of two words takes longer pauses than the wake word). */
+    private val endHops: Int = END_HOPS,
     /** A word, and the background just before it (for [Features.spectrum]'s noise). */
     private val onWord: (word: ShortArray, noise: ShortArray) -> Unit
 ) {
@@ -272,7 +368,7 @@ internal class Segmenter(
         peak = max(peak, db)
         if (db < max(floor + 6f, peak - 24f)) below++ else below = 0
         val len = written - start
-        if (below >= END_HOPS) {
+        if (below >= endHops) {
             inWord = false
             above = 0
             val end = written - (below - POST_HOPS) * Features.HOP
@@ -286,7 +382,7 @@ internal class Segmenter(
                 for (i in noise.indices) noise[i] = ring[((from + i) % ring.size).toInt()]
                 onWord(word, noise)
             }
-        } else if (len > maxMs * Features.RATE / 1000 + END_HOPS * Features.HOP) {
+        } else if (len > maxMs * Features.RATE / 1000 + endHops * Features.HOP) {
             // longer than a word can be (a sentence, music): not passed on; listen again from here
             inWord = false
             above = 0
@@ -338,7 +434,7 @@ internal class WakeModel(val words: List<Spectrum>) {
      */
     fun outlier(): Int {
         val n = words.size
-        if (n < 4) return -1
+        if (n < 3) return -1 // (three: the odd one is far from both others, which are close to each other)
         var worst = -1
         var worstRatio = 1.6f
         for (k in 0 until n) {
@@ -381,8 +477,10 @@ internal class WakeModel(val words: List<Spectrum>) {
 
         fun file(ctx: Context) = File(ctx.filesDir, "amri-wake.bin")
 
-        fun load(ctx: Context): WakeModel? = try {
-            val f = file(ctx)
+        fun load(ctx: Context): WakeModel? = load(file(ctx))
+
+        /** The owner's recordings in [f] (the wake word's, or a request's taught for use without the internet). */
+        fun load(f: File): WakeModel? = try {
             if (!f.isFile) null else DataInputStream(f.inputStream().buffered()).use { inp ->
                 if (inp.readInt() != MAGIC) { f.delete(); return null } // an older kind: to be recorded again
                 val count = inp.readInt()
@@ -400,8 +498,9 @@ internal class WakeModel(val words: List<Spectrum>) {
         }
 
         /** Saved (false: not, e.g. the storage is full). */
-        fun save(ctx: Context, words: List<Spectrum>): Boolean = try {
-            val f = file(ctx)
+        fun save(ctx: Context, words: List<Spectrum>): Boolean = save(file(ctx), words)
+
+        fun save(f: File, words: List<Spectrum>): Boolean = try {
             val tmp = File(f.path + ".tmp")
             DataOutputStream(tmp.outputStream().buffered()).use { out ->
                 out.writeInt(MAGIC)
@@ -416,7 +515,7 @@ internal class WakeModel(val words: List<Spectrum>) {
             tmp.renameTo(f).also { if (!it) tmp.delete() }
         } catch (t: Throwable) {
             Log.w(TAG, "wake model save: $t")
-            try { File(file(ctx).path + ".tmp").delete() } catch (_: Throwable) { }
+            try { File(f.path + ".tmp").delete() } catch (_: Throwable) { }
             false
         }
 

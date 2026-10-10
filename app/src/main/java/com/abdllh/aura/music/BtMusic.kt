@@ -81,6 +81,11 @@ object BtMusic {
     fun position(): Int = if (playing && positionAt > 0) (positionSec + ((System.currentTimeMillis() - positionAt) / 1000).toInt()).coerceAtMost(durationSec.coerceAtLeast(positionSec))
         else positionSec
 
+    /** The same in milliseconds (the lyrics follow the song closer than a second). */
+    fun positionMs(): Long = if (playing && positionAt > 0)
+        (positionSec * 1000L + (System.currentTimeMillis() - positionAt)).coerceAtMost(durationSec.coerceAtLeast(positionSec) * 1000L)
+        else positionSec * 1000L
+
     fun addListener(l: () -> Unit) { listeners.add(l) }
     fun removeListener(l: () -> Unit) { listeners.remove(l) }
     private fun changed() = main.post { for (l in listeners) l() }
@@ -125,6 +130,7 @@ object BtMusic {
                             title = t
                             artist = a
                             positionSec = 0
+                            durationSec = 0 // unknown until the phone reports it (not the song before's)
                             positionAt = System.currentTimeMillis()
                         }
                         findArt()

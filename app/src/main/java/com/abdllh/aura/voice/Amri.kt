@@ -124,6 +124,9 @@ object Amri {
                     // the wake word from files (16 kHz mono WAV): --es enroll a.wav,b.wav,...  --es detect x.wav,y.wav
                     i.getStringExtra("enroll")?.let { files -> DebugWav.enroll(c.applicationContext, files.split(',')) }
                     i.getStringExtra("detect")?.let { files -> DebugWav.detect(c.applicationContext, files.split(',')) }
+                    // requests without the internet: --es teach next:a.wav,b.wav,c.wav   --es offline x.wav,y.wav
+                    i.getStringExtra("teach")?.let { spec -> DebugWav.teach(c.applicationContext, spec) }
+                    i.getStringExtra("offline")?.let { files -> DebugWav.offline(c.applicationContext, files.split(',')) }
                     if (i.getBooleanExtra("miclevel", false)) DebugWav.micLevel(c.applicationContext)
                     // what the microphone gives the app: --es rec name --ei ms 10000 -> files/name.wav
                     i.getStringExtra("rec")?.let { name -> DebugWav.record(c.applicationContext, name, i.getIntExtra("ms", 10_000)) }
@@ -180,12 +183,60 @@ object Amri {
         AmriOverlay.show(c, AmriOverlay.Mode.LISTEN, c.getString(R.string.amri_listening))
         Chime.play {
             if (session != s || state != State.LISTENING) return@play
-            if (!canRecognize(c)) {
-                finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_no_recognizer), null)
-                return@play
+            // Google with the internet (it understands anything); the requests the owner taught without it
+            val google = canRecognize(c)
+            when {
+                google && online(c) -> listen(c, s)
+                OfflineCommands.anyTaught(c) -> listenOffline(c, s)
+                !google -> finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_no_recognizer), null)
+                else -> finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_offline_none), null)
             }
-            listen(c, s)
         }
+    }
+
+    /** Is there internet now (a validated network that the car's Wi-Fi watchdog does not know to be down)? */
+    private fun online(c: Context): Boolean = try {
+        val cm = c.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        val caps = cm.activeNetwork?.let { cm.getNetworkCapabilities(it) }
+        caps?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true &&
+            com.abdllh.aura.system.WifiKeeper.state != com.abdllh.aura.system.WifiKeeper.State.OFFLINE
+    } catch (_: Throwable) {
+        true
+    }
+
+    // ------------------------------------------------------------------------------------------ without the internet
+    private var offline: MicLoop? = null
+
+    /** A request said after the chime, matched against the ones the owner taught ([OfflineCommands]). */
+    private fun listenOffline(c: Context, s: Int) {
+        var heard = false
+        val seg = Segmenter(maxMs = 2600, onLevel = { l -> main.post { if (session == s) AmriOverlay.level(l) } }, endHops = 40) { pcm, noise ->
+            // a bump, a door, a cough before the request: not the request, keep listening (the 8 s still apply)
+            if (heard || !VoiceCheck.isVoice(pcm, noise)) return@Segmenter
+            heard = true
+            val item = OfflineCommands.match(c, Features.spectrum(pcm, noise))
+            main.post {
+                stopOffline()
+                if (session != s || state != State.LISTENING) return@post
+                if (item == null) finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_not_understood), null)
+                else act(c, item.command, c.getString(item.label))
+            }
+        }
+        offline = MicLoop(AmriService.device(c, micId), seg) { err ->
+            Log.w(TAG, "offline mic: $err")
+            main.post { if (session == s && state == State.LISTENING) { stopOffline(); finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_not_heard), null) } }
+        }.also { it.start() }
+        main.postDelayed({
+            if (session == s && state == State.LISTENING && offline != null) {
+                stopOffline()
+                finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_not_heard), null)
+            }
+        }, 8_000L)
+    }
+
+    private fun stopOffline() {
+        offline?.quit()
+        offline = null
     }
 
     /**
@@ -227,6 +278,14 @@ object Amri {
                 if (session != s) return
                 release()
                 Log.i(TAG, "recogniser error $error")
+                // no internet after all: the taught requests, said once more
+                val net = error == SpeechRecognizer.ERROR_NETWORK || error == SpeechRecognizer.ERROR_NETWORK_TIMEOUT ||
+                    error == SpeechRecognizer.ERROR_SERVER
+                if (net && OfflineCommands.anyTaught(c) && state == State.LISTENING) {
+                    AmriOverlay.show(c, AmriOverlay.Mode.LISTEN, c.getString(R.string.amri_offline_again))
+                    Chime.play { if (session == s && state == State.LISTENING) listenOffline(c, s) }
+                    return
+                }
                 val msg = when (error) {
                     SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT, SpeechRecognizer.ERROR_SERVER -> R.string.amri_no_network
                     SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> R.string.amri_not_heard
@@ -252,7 +311,8 @@ object Amri {
         }
         // a recogniser that never answers must not keep the assistant (and the music) waiting
         main.postDelayed({
-            if (session == s && state == State.LISTENING) {
+            // (the recogniser still listening: not when it gave way to the taught requests)
+            if (session == s && state == State.LISTENING && recognizer === r) {
                 release()
                 finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_not_heard), null)
             }
@@ -272,6 +332,7 @@ object Amri {
     }
 
     private fun release() {
+        stopOffline()
         val r = recognizer ?: return
         recognizer = null
         try { r.cancel() } catch (_: Throwable) { }
@@ -288,6 +349,11 @@ object Amri {
             finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_not_understood), said.ifBlank { null })
             return
         }
+        act(c, cmd, said)
+    }
+
+    /** Does a request (heard by Google, or matched without the internet) and answers it; [said]: shown under it. */
+    private fun act(c: Context, cmd: Command, said: String?) {
         state = State.ANSWERING
         val answer = run(c, cmd)
         val what = if (cmd is Command.VolumeSet || cmd is Command.VolumeStep || cmd is Command.Navigate) cmd.toString() else cmd::class.java.simpleName

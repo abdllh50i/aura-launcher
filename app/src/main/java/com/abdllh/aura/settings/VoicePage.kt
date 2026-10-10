@@ -18,6 +18,7 @@ import com.abdllh.aura.ui.label
 import com.abdllh.aura.ui.lp
 import com.abdllh.aura.util.dp
 import com.abdllh.aura.voice.Amri
+import com.abdllh.aura.voice.OfflineCommands
 import com.abdllh.aura.voice.VoiceSetup
 
 /** "عمري": the wake word (on/off, the owner's recordings, sensitivity), the answers, the microphone, a try. */
@@ -104,6 +105,21 @@ class VoicePage(private val act: SettingsActivity) : Page(R.string.set_voice, R.
         col.addRow(ctx.settingRow(R.drawable.ic_zap, ctx.getString(R.string.voice_try), ctx.getString(R.string.voice_try_sub), ctx.chevron()) {
             withMic { Amri.wake(ctx) }
         }, 8)
+
+        // requests without the internet: each taught in the owner's voice (a tick once it is)
+        col.addRow(ctx.sectionTitle(ctx.getString(R.string.voice_offline_title)), 26)
+        col.addRow(ctx.hint(ctx.getString(R.string.voice_offline_sub)), 6)
+        for (item in OfflineCommands.items) {
+            val taught = OfflineCommands.taught(ctx, item.id)
+            val tick = ctx.iconView(if (taught) R.drawable.ic_check else R.drawable.ic_chevron_right, 24,
+                if (taught) Palette.accent else Palette.text3).also {
+                if (!taught && ctx.resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL) it.scaleX = -1f
+            }
+            col.addRow(ctx.settingRow(null, "«${ctx.getString(item.label)}»",
+                ctx.getString(if (taught) R.string.voice_cmd_taught else R.string.voice_cmd_untaught), tick) {
+                withMic { VoiceSetup.teach(act, item) { act.rebuild() } }
+            }, 8)
+        }
         return col
     }
 }

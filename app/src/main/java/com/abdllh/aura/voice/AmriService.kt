@@ -122,6 +122,12 @@ class AmriService : Service() {
         lastScore = score
         Log.d(TAG, "word ${pcm.size * 1000 / Features.RATE} ms, score ${"%.2f".format(java.util.Locale.ROOT, score)}")
         if (score < Amri.threshold()) {
+            // close to the recordings, but is it a voice at all (a bump in the road can come close)?
+            val (v, b) = VoiceCheck.measure(pcm, noise)
+            if (!VoiceCheck.ok(v, b)) {
+                Log.d(TAG, "not a voice: voiced %.2f, voice band %.2f".format(java.util.Locale.ROOT, v, b))
+                return
+            }
             lastWake = now
             main.post { Amri.wake(this) }
         }

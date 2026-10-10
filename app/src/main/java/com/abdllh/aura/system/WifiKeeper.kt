@@ -39,6 +39,8 @@ import java.util.concurrent.TimeUnit
  *    say). Apps try IPv6 first and wait on it, so to the owner the internet is gone while an IPv4-only check passes:
  *    the connection is restarted, the same remedy the owner used by hand;
  *  - WEB: names and addresses work but websites do not (a sign-in page, a blocked network): logged only.
+ * Besides, a heartbeat to the phone every 1.5 s (a connect to its DNS port) keeps the link busy and catches a link
+ * that froze (the phone silent with a strong signal: about once a minute in the owner's car) within ~5 s: re-associate.
  * Restarts alternate a re-association and Wi-Fi off/on, with growing pauses and only a few in a row. A drop also
  * logs a root snapshot (address, gateway and internet pings, IPv6) so the next log says where the traffic stops.
  * Networks that never had internet (a dash cam's Wi-Fi...) are only logged, and nothing is probed while ZLink has the
@@ -53,6 +55,14 @@ object WifiKeeper {
     private const val MAX_FIXES = 6              // then wait until the network changes or the internet comes back
     private const val QUIET_AFTER_FIX_MS = 90_000L // the disconnect/reconnect a restart causes is not logged
     private const val LOG_MAX = 80
+    // The heartbeat to the phone (a TCP connect to its DNS port: answered at once, even refused, while the link
+    // works). The owner's log showed the link to the iPhone freezing about once a minute (the phone itself silent,
+    // a strong signal) and a reconnect curing it each time: the heartbeat keeps the link busy, and notices a freeze in
+    // seconds instead of the 20 s probes (and their pauses).
+    private const val BEAT_MS = 1_500L
+    private const val BEAT_TIMEOUT_MS = 1_200
+    private const val BEAT_MISSES = 3              // ~5 s of silence: frozen
+    private const val BEAT_MIN_GAP_MS = 15_000L    // a reconnect from the heartbeat at most this often
     /** A plain-HTTP check page: the answer must be [code] (and start with [body] when set: a sign-in page says 200 too). */
     private class Probe(val host: String, val path: String, val code: Int, val body: String? = null)
     private val PROBES = listOf(
@@ -71,7 +81,7 @@ object WifiKeeper {
     private val io = Executors.newSingleThreadExecutor()
     private val pool = Executors.newCachedThreadPool() // the probes of one check, side by side
     private var app: Context? = null
-    private var net: Network? = null
+    @Volatile private var net: Network? = null
     private var hadInternet = false // on the current network
     private var fails = 0
     private var firstFailAt = 0L
@@ -169,6 +179,81 @@ object WifiKeeper {
             return
         }
         schedule(PROBE_EVERY_MS)
+        Thread(::heartbeat, "aura-wifi-beat").apply { isDaemon = true; priority = Thread.MIN_PRIORITY }.start()
+    }
+
+    /**
+     * Every [BEAT_MS], while a Wi-Fi network is up: is the phone (the gateway) answering? It arms only once the phone
+     * has answered it on this network (a router that ignores it never gets reconnected by it), and [BEAT_MISSES]
+     * silences in a row are a frozen link: [frozen].
+     */
+    private fun heartbeat() {
+        var on: Network? = null
+        var candidates: List<InetAddress> = emptyList()
+        var to: InetAddress? = null // the one that answered: armed
+        var misses = 0
+        while (true) {
+            try { Thread.sleep(BEAT_MS) } catch (_: InterruptedException) { return }
+            val n = net
+            if (n == null || !enabled || paused) { on = null; misses = 0; continue }
+            if (n != on) { // a new network: the phone's addresses (gateway, DNS: one on a hotspot), not armed yet
+                on = n; to = null; misses = 0
+                candidates = try {
+                    val lp = (app?.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager)?.getLinkProperties(n)
+                    // only what is on this very link: an outside DNS server (8.8.8.8) would make it an internet check
+                    (lp?.routes.orEmpty().filter { it.isDefaultRoute && it.hasGateway() }.mapNotNull { it.gateway }
+                        .filterIsInstance<Inet4Address>() + lp?.dnsServers.orEmpty().filterIsInstance<Inet4Address>())
+                        .distinct().filter { lp != null && onLink(lp, it) }
+                } catch (_: Throwable) { emptyList() }
+            }
+            val armed = to
+            if (armed == null) {
+                // arm on the first that answers (a gateway may ignore it while the DNS server answers, or the other way)
+                to = candidates.firstOrNull { connect(n, it, 53, BEAT_TIMEOUT_MS) != false }
+                continue
+            }
+            if (connect(n, armed, 53, BEAT_TIMEOUT_MS) != false) { misses = 0; continue }
+            if (++misses >= BEAT_MISSES) {
+                misses = 0
+                main.post { frozen(n) }
+            }
+        }
+    }
+
+    /** [a] is on one of this network's own IPv4 subnets. */
+    private fun onLink(lp: LinkProperties, a: Inet4Address): Boolean = lp.linkAddresses.any { la ->
+        val mine = la.address as? Inet4Address ?: return@any false
+        val bits = la.prefixLength.coerceIn(0, 32)
+        val mask = if (bits == 0) 0 else -1 shl (32 - bits)
+        fun int(x: Inet4Address) = x.address.fold(0) { acc, b -> (acc shl 8) or (b.toInt() and 0xFF) }
+        (int(mine) and mask) == (int(a) and mask)
+    }
+
+    private val beatFixes = ArrayDeque<Long>() // the heartbeat's reconnects (main thread)
+
+    /**
+     * The phone went silent on a link that worked: reconnect now (what cured it in the owner's log every time). A
+     * re-association first; when the one before did not hold two minutes, Wi-Fi off and on. At most six in ten
+     * minutes: beyond that the 20 s probes and their growing pauses decide.
+     */
+    private fun frozen(n: Network) {
+        if (n != net || !enabled || paused || !hadInternet) return
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastFixAt < BEAT_MIN_GAP_MS) return
+        while (beatFixes.isNotEmpty() && now - beatFixes.first() > 10 * 60_000L) beatFixes.removeFirst()
+        if (beatFixes.size >= 6 || fixes >= MAX_FIXES) return
+        if (downSince == 0L) downSince = now - BEAT_MS * BEAT_MISSES
+        state = State.OFFLINE
+        if (cause != Cause.LINK) {
+            cause = Cause.LINK
+            add(Event(System.currentTimeMillis(), "lost", Cause.LINK.name, rssi.toString()))
+        }
+        // fix() re-associates on odd attempts and switches the Wi-Fi off and on on even ones
+        val lastHeld = beatFixes.isEmpty() || now - beatFixes.last() >= 2 * 60_000L
+        if (lastHeld) { if (fixes % 2 == 1) fixes++ } else { if (fixes % 2 == 0) fixes++ }
+        beatFixes.addLast(now)
+        fix()
+        schedule(4_000L) // "back after ..." as soon as it is
     }
 
     private val callback = object : ConnectivityManager.NetworkCallback() {
@@ -241,8 +326,7 @@ object WifiKeeper {
             // the IPv6 the phone hands out as well, when it does: a page that has an IPv6 address must answer over it
             // (a page without one says nothing either way)
             if (lp == null || !hasGlobalV6(lp)) return Check(true, null)
-            if (race(PROBES.map { p -> { http(n, p, v6 = true) != false } }, 10_000L)) return Check(true, null)
-            return Check(false, Cause.V6)
+            return if (v6Works(n)) Check(true, null) else Check(false, Cause.V6)
         }
         val servers = lp?.dnsServers.orEmpty().take(2)
         // the phone's IPv4 address (an IPv6 router address is link-local: no use for a plain connect)
@@ -283,6 +367,19 @@ object WifiKeeper {
         } finally {
             for (f in futures) f.cancel(true)
         }
+    }
+
+    /**
+     * The probe pages over IPv6, all of them (not the first answer: a page without an IPv6 address says nothing, and
+     * one of the two has none): fine when one answered over IPv6, or when none has an IPv6 address at all.
+     */
+    private fun v6Works(n: Network): Boolean {
+        val futures = PROBES.map { p -> pool.submit<Boolean?> { http(n, p, v6 = true) } }
+        val until = SystemClock.elapsedRealtime() + 10_000L
+        val results = futures.map { f ->
+            try { f.get((until - SystemClock.elapsedRealtime()).coerceAtLeast(1L), TimeUnit.MILLISECONDS) } catch (_: Throwable) { f.cancel(true); false }
+        }
+        return results.any { it == true } || results.all { it == null }
     }
 
     /** The network has a global IPv6 address and an IPv6 default route (apps will try IPv6 first). */
@@ -399,7 +496,9 @@ object WifiKeeper {
         val now = SystemClock.elapsedRealtime()
         if (r.web) {
             val wasDown = downSince
-            fails = 0; fixes = 0; downSince = 0L; cause = null
+            // (nextFixAt too: the pause after one outage's restart must not hold back the cure of the next one, as it
+            // did in the owner's log: a freeze waited 31 s for the pause left by the one before)
+            fails = 0; fixes = 0; nextFixAt = 0L; downSince = 0L; cause = null
             state = State.ONLINE
             when {
                 wasDown > 0 -> add(Event(System.currentTimeMillis(), "back", ((now - wasDown) / 1000).toString()))
