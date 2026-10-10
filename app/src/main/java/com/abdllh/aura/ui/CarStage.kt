@@ -36,10 +36,18 @@ class CarStage(context: Context) : View(context) {
 
     private val meta = CarFrames.meta(context)
     private val n = meta?.count ?: 1
+    // the feel is set in degrees; the frames' step turns it into frames
+    private val step = meta?.yawStep ?: 4f
+    private val framesPerPx = DEG_PER_PX / step
+    private val maxVel = MAX_DEG_S / step
+    private val minVel = MIN_DEG_S / step
+    private val lookAhead = (24f / step).roundToInt().coerceAtLeast(2)
+    private val standIn = (32f / step).roundToInt().coerceAtLeast(2)
 
     private var home = 0f            // resting frame (depends on the layout direction)
     private var homeResolved = false
     private var pos = 0f             // current position in frames (not wrapped)
+    private var dragTo = 0f          // where the finger has turned the car to: [pos] follows it on every display frame
     private var vel = 0f             // frames per second
     private var zoom = 0f            // 0 = hero framing of the resting view, 1 = framing of the whole turntable
     private var zoomTarget = 0f
@@ -147,7 +155,7 @@ class CarStage(context: Context) : View(context) {
         vel = 0f
         val dir = CarFrames.introDirection(isRtl())
         motionDir = dir
-        val start = home - dir * CarFrames.INTRO_FRAMES
+        val start = home - dir * CarFrames.introFrames()
         pos = start
         shown = 0f
         zoom = 1f
@@ -220,7 +228,7 @@ class CarStage(context: Context) : View(context) {
         zoomTarget = 0f
         kick()
         if (dist < 0.01f) { pos = Math.floorMod(home.roundToInt(), n).toFloat(); return }
-        animatePos(target, (520 + dist * 22).toLong().coerceAtMost(1500), PathInterpolator(0.45f, 0f, 0.2f, 1f)) {
+        animatePos(target, (520 + dist * step * 5.5f).toLong().coerceAtMost(1500), PathInterpolator(0.45f, 0f, 0.2f, 1f)) {
             pos = Math.floorMod(home.roundToInt(), n).toFloat()
         }
     }
@@ -237,10 +245,21 @@ class CarStage(context: Context) : View(context) {
         val dt = if (lastFrameNs == 0L) 1f / 60f else ((now - lastFrameNs) / 1e9f).coerceIn(0.001f, 0.05f)
         lastFrameNs = now
         var more = false
+        // Touch panels report unevenly (some well below the display rate): the car eases towards the finger every
+        // display frame instead of jumping with each report.
+        if (dragging && moved) {
+            val d = dragTo - pos
+            if (abs(d) > 0.004f) {
+                pos += d * (1f - exp(-dt * FOLLOW))
+                more = true
+            } else {
+                pos = dragTo
+            }
+        }
         if (!dragging && anim == null && vel != 0f) {
             pos += vel * dt
             vel *= exp(-dt * FRICTION)
-            if (abs(vel) < MIN_VEL) {
+            if (abs(vel) < minVel) {
                 vel = 0f
                 // come to rest exactly on a frame (a static cross-fade would look soft), then wait before going home
                 animatePos(pos.roundToInt().toFloat(), 220, DecelerateInterpolator()) { scheduleHome() }
@@ -279,6 +298,7 @@ class CarStage(context: Context) : View(context) {
                 wasMoving = vel != 0f || anim != null
                 if (anim != null) { stopAnim(); shown = 1f; kick() }
                 vel = 0f
+                dragTo = pos
                 dragging = true
                 moved = false
                 downX = e.x; downY = e.y; lastX = e.x
@@ -299,9 +319,9 @@ class CarStage(context: Context) : View(context) {
                 if (moved) {
                     val dx = e.x - lastX
                     if (dx != 0f) motionDir = sign(dx).toInt()
-                    pos += dx * FRAMES_PER_PX
+                    dragTo += dx * framesPerPx
                     lastX = e.x
-                    invalidate()
+                    kick()
                 }
             }
             MotionEvent.ACTION_UP -> {
@@ -310,11 +330,12 @@ class CarStage(context: Context) : View(context) {
                     vt?.let {
                         it.addMovement(e)
                         it.computeCurrentVelocity(1000)
-                        vel = (it.xVelocity * FRAMES_PER_PX).coerceIn(-MAX_VEL, MAX_VEL)
+                        vel = (it.xVelocity * framesPerPx).coerceIn(-maxVel, maxVel)
                     }
-                    if (abs(vel) < MIN_VEL) {
+                    if (abs(vel) < minVel) {
                         vel = 0f
-                        animatePos(pos.roundToInt().toFloat(), 200, DecelerateInterpolator()) { scheduleHome() }
+                        // rest where the finger left it
+                        animatePos(dragTo.roundToInt().toFloat(), 200, DecelerateInterpolator()) { scheduleHome() }
                     }
                     kick()
                 } else if (wasMoving) {
@@ -328,7 +349,7 @@ class CarStage(context: Context) : View(context) {
             MotionEvent.ACTION_CANCEL -> {
                 dragging = false
                 vt?.recycle(); vt = null
-                if (moved || wasMoving) animatePos(pos.roundToInt().toFloat(), 200, DecelerateInterpolator()) { scheduleHome() }
+                if (moved || wasMoving) animatePos(dragTo.roundToInt().toFloat(), 200, DecelerateInterpolator()) { scheduleHome() }
                 else scheduleHome()
             }
         }
@@ -350,14 +371,16 @@ class CarStage(context: Context) : View(context) {
         val t = p - base
         val a = Math.floorMod(base.toInt(), n)
         val b = (a + 1) % n
-        // Requests are decoded last-in-first-out: queue the look-ahead in the direction of motion farthest first,
-        // then the frame being left, then the frame on screen (decoded first).
-        CarFrames.setFocus(a)
-        val dir = if (vel != 0f) sign(vel).toInt() else motionDir
-        if (dir != 0) for (k in 6 downTo 1) CarFrames.request(Math.floorMod(a + dir * k, n))
-        else CarFrames.request(Math.floorMod(a - 1, n))
-        CarFrames.request(b)
-        CarFrames.request(a)
+        // Until the raw frame file is there, frames are decoded: requests go last-in-first-out, so the look-ahead in
+        // the direction of motion is queued farthest first, then the frame being left, then the frame on screen.
+        if (!CarFrames.instant) {
+            CarFrames.setFocus(a)
+            val dir = if (vel != 0f) sign(vel).toInt() else motionDir
+            if (dir != 0) for (k in lookAhead downTo 1) CarFrames.request(Math.floorMod(a + dir * k, n))
+            else CarFrames.request(Math.floorMod(a - 1, n))
+            CarFrames.request(b)
+            CarFrames.request(a)
+        }
 
         // framing
         val s = heroScale + (fitScale - heroScale) * zoom
@@ -369,9 +392,9 @@ class CarStage(context: Context) : View(context) {
         mat.postTranslate(cx - fx * s, cy - fy * s)
 
         // floor light under the turntable
-        pt[0] = m.width / 2f; pt[1] = FLOOR_Y
+        pt[0] = m.width / 2f; pt[1] = m.height * FLOOR_Y
         mat.mapPoints(pt)
-        val r = minOf(300f * s, width * 0.46f) // fades out before the view edges
+        val r = minOf(m.width * FLOOR_R * s, width * 0.46f) // fades out before the view edges
         val fs = floorShader ?: RadialGradient(0f, 0f, 1f, intArrayOf(floorColor(1f), floorColor(0.45f), floorColor(0f)),
             floatArrayOf(0f, 0.45f, 1f), Shader.TileMode.CLAMP).also { floorShader = it; floorPaint.shader = it }
         floorMat.setScale(r, r)
@@ -383,13 +406,13 @@ class CarStage(context: Context) : View(context) {
         c.drawCircle(pt[0], pt[1], r, floorPaint)
         c.restore()
 
-        // the car: frame a, cross-faded into frame b while moving
-        val ba: Bitmap? = CarFrames.peek(a) ?: CarFrames.nearest(if (t >= 0.5f) b else a, 8)
+        // the car: frame a, cross-faded into frame b while moving (exact frames once the raw file is there)
+        val ba: Bitmap? = CarFrames.frameNow(a) ?: CarFrames.nearest(if (t >= 0.5f) b else a, standIn)
         if (ba != null) {
             bmpPaint.alpha = (255 * shown).toInt()
             c.drawBitmap(ba, mat, bmpPaint)
             if (t > 0.02f) {
-                CarFrames.peek(b)?.let { bb ->
+                CarFrames.frameNow(b)?.let { bb ->
                     if (bb !== ba) {
                         bmpPaint.alpha = (255 * shown * t).toInt()
                         c.drawBitmap(bb, mat, bmpPaint)
@@ -409,12 +432,14 @@ class CarStage(context: Context) : View(context) {
         if (Palette.dark) Palette.withAlpha(0xFFFFFFFF.toInt(), 0.085f * k) else Palette.withAlpha(0xFFFFFFFF.toInt(), 0.95f * k)
 
     companion object {
-        private const val FRAMES_PER_PX = 0.11f   // 0.44 degrees per pixel of drag
-        private const val MAX_VEL = 110f          // frames per second
-        private const val MIN_VEL = 1.6f
+        private const val DEG_PER_PX = 0.44f      // turn per pixel of drag
+        private const val MAX_DEG_S = 440f        // fastest spin, degrees per second
+        private const val MIN_DEG_S = 6.4f        // slower than this the spin stops
         private const val FRICTION = 2.4f         // per second (exponential decay of the spin)
         private const val IDLE_MS = 3200L
-        private const val FLOOR_Y = 262f          // where the turntable floor's centre is in frame pixels
+        private const val FOLLOW = 24f            // per second: how fast the car catches up with the finger
+        private const val FLOOR_Y = 262f / 360f   // the turntable floor's centre, as a fraction of the frame height
+        private const val FLOOR_R = 300f / 640f   // radius of the floor light, as a fraction of the frame width
         private const val EDGE = 20f              // width of the edge fades, dp
     }
 }

@@ -134,14 +134,22 @@ alone for phone-projection apps, and Aura marks its own with `MediaMonitor.EXTRA
 
 ### The 3D car (`tools/car3d`, debug-only `CarBakerActivity`)
 The car is not rendered live (the source model has ~726k triangles and 8K textures; the unit has a Mali-G31). Instead a
-turntable is pre-rendered once on the emulator's GPU and shipped as 90 WebP frames (4° apart, 640×360 with alpha, ~1.7 MB):
+turntable is pre-rendered once on the emulator's GPU and shipped as 180 WebP frames (2° apart, 512×288 with alpha, ~2.6 MB):
 1. `fbx2mesh.py model.fbx OUT --front -x` → `mesh.bin` (positions, normals, GL UVs, indices; binary FBX parsed by `fbx_binary.py`),
 2. `prep_textures.py` → `basecolor.jpg` + `rm.png` (roughness/metalness), `find_plates.py OUT` blanks the licence plates,
-3. `bake.ps1 -Out DIR -Params "frames=90`nss=4..." -Install -PushMesh` runs `app/src/debug/.../CarBakerActivity` (GLES2:
-   studio environment, GGX specular, clear coat, ambient occlusion from 64 depth maps, soft floor shadow, 4× supersampling),
-4. `pack_frames.py DIR app/src/main/assets/car --default 80` → `f_NNN.webp` + `car.json` (frame size, resting frame, boxes).
-At runtime `ui/CarFrames.kt` decodes frames on two worker threads into a small LRU (bitmaps are reused), and `ui/CarStage.kt`
-turns them with drag, fling, snap and a spring back to the resting view (mirrored in RTL). The model itself is not in the repo.
+3. `bake.ps1 -Out DIR -Params "frames=180`nwidth=640`nheight=360`nss=4..." -Install -PushMesh` runs
+   `app/src/debug/.../CarBakerActivity` (GLES2: studio environment, GGX specular, clear coat, ambient occlusion from 64
+   depth maps, soft floor shadow, 4× supersampling); `only=a-b` bakes part of the frames (long bakes in two halves),
+4. `pack_frames.py DIR app/src/main/assets/car --size 512x288 --default 160 --yaw-step 2` → `f_NNN.webp` + `car.json`
+   (frame size, step, resting frame, boxes).
+At runtime `ui/CarFrames.kt` decodes every frame once, in the background, into one file of raw premultiplied pixels
+(`no_backup/car-<hash of car.json and the frames' sizes>.raw`, ~100 MB, memory-mapped; not in the cache, whose cleaner
+would delete it while it is mapped and free nothing), so a frame is a ~1 ms copy when it is drawn and the car always
+shows the exact angle. After a start the intro's frames are read in before the file is used and the rest after the
+start-up rush; until then frames are decoded on two worker threads into a small LRU. `ui/CarStage.kt` turns them with drag, fling, snap and a spring back to the resting view
+(mirrored in RTL); the car eases towards the finger on every display frame (touch panels report unevenly) and adjacent
+frames are cross-faded. The feel is set in degrees, so another frame step needs no retuning. The model itself is not in
+the repo.
 
 ## Facts about the firmware (from the dump)
 * No `avb` flag in the vendor fstab → no dm-verity on system/vendor/product; vbmeta uses the public AOSP test keys.
@@ -169,12 +177,25 @@ turns them with drag, fling, snap and a spring back to the resting view (mirrore
   a client associated, DNS answering, while it stops passing that client's traffic until the client reconnects (the
   owner fixed it by hand by turning the Wi-Fi off and on), so "passes nothing" is restarted too. Each outage first logs
   a root snapshot `diag`: `ip=… gw=<gateway ping> net=<1.1.1.1 ping> v6=<global IPv6 addresses>`.
-* The floating "assistive touch" circle is the stock launcher's `com.nwd.fushion.assistivetouch.SuspensionService`
-  (started at boot; AMRI starts it too, `NwdBridge`). State: `Settings.System key_white_window_state` (1 shown); the
-  car settings app (`com.android.car.setting`, PublicSetting "Assistive touch", on the page with the CAN settings)
-  switches it with broadcasts `com.nwd.action.suspension.DISPLAY_LISTVIEW` / `HIDE_THE_LISTVIEW` to the launcher, which
-  draw or remove it and store the state. `system/AssistiveBall.kt` turned it off once for the owner and offers the switch
-  in Settings → Display & sound.
+* Two floating circles, both drawn in the stock launcher's process (`system/AssistiveBall.kt` turns both off once for the
+  owner, marked done only after it went through as root, and offers the switch in Settings → Display & sound; on = the
+  CAN menu back):
+  - The CAN float menu, a circle with the car's controls: `com.nwd.can.setting.service.CanService` →
+    `CanUiOperationManager.initCanFloatMenu` → `CanFloatMenu`. Shown while `Settings.System
+    car_config_can_float_menu_display` is 1; choosing or resetting the car in the CAN settings sets it to 1
+    (`CanConfigUtil.resetCarConfig`), which is how it appeared for the owner. Broadcast
+    `com.nwd.action.CAN_FLOAT_MENU_SHOW_ACTION` (dynamic receiver, no extras) makes the menu read the setting again and
+    show or close itself.
+  - The assistive touch, `com.nwd.fushion.assistivetouch.SuspensionService` (started at boot; AMRI starts it too,
+    `NwdBridge`): reads `key_white_window_state` once in `onCreate` and adds its dot only when it is 1. The car settings'
+    "Assistive touch" option sends `com.nwd.action.suspension.HIDE_THE_LISTVIEW` (removes the dot, writes 0) or
+    `DISPLAY_LISTVIEW` (opens the side panel). Stopping the service removes the dot and both panels (`onDestroy`).
+    1.4.1 switched only this one, so the owner's circle (the CAN menu) stayed.
+* Apps a dealer installed on `/data` may make themselves device administrators, which blocks their uninstall
+  (`DELETE_FAILED_DEVICE_POLICY_MANAGER`). `system/AppRemover.kt` disables the admin receiver (`pm disable '<component>'`,
+  quoted: an inner class's `$` would be expanded by the shell; disabling it drops the admin) and uninstalls again; then
+  `--user 0`, then `disable-user`. The app list's long press offers it for apps
+  that are not part of the firmware; a launcher called "Vivid" that the owner asked to be removed goes once, by itself.
 * The stock floating volume bar is `com.android.launcher/com.launcher.FloatBar` (started by KernelService at boot, from
   `UartConfig.ini`); it pops up for every `notifyAudioParam` of the setting service (14 media, 15 navigation, 16 phone),
   Aura's own changes included. `system/VolumeHud.kt` disables that component (root `pm disable`, once; allowed to draw

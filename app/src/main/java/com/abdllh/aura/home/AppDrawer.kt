@@ -193,6 +193,23 @@ class AppDrawer(ctx: Context, private val host: HomeHost) : Sheet(ctx, true) {
                         close()
                     } catch (_: Throwable) { }
                 })
+                // apps installed on the unit (a dealer's launcher...): removed as root, the unit's own manager cannot
+                if (!a.pkg.startsWith("aura:") && com.abdllh.aura.system.AppRemover.removable(context, a.pkg)) {
+                    items.add(Menu.Item(R.drawable.ic_trash, context.getString(R.string.drawer_uninstall)) {
+                        com.abdllh.aura.ui.Confirm.show(context, context.getString(R.string.uninstall_title, a.label),
+                            context.getString(R.string.uninstall_text), context.getString(R.string.drawer_uninstall), true) {
+                            com.abdllh.aura.system.AppRemover.uninstall(context, a.pkg) { ok ->
+                                host.toast(context.getString(if (ok) R.string.uninstall_done else R.string.uninstall_failed, a.label))
+                                if (ok) {
+                                    DockPins.remove(a.pkg)
+                                    AppRepo.forget(a.pkg)
+                                    all = all.filter { it.pkg != a.pkg }
+                                    applyFilter(search.text.toString())
+                                }
+                            }
+                        }
+                    })
+                }
                 Menu.show(v, items)
                 true
             }

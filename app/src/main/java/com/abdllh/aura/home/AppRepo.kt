@@ -68,6 +68,9 @@ object AppRepo {
 
     fun preload(ctx: Context) = loadAsync(ctx) { }
 
+    /** Drops an uninstalled [pkg] from [cached], so the grid does not show it again before the next load. */
+    fun forget(pkg: String) { cached = cached?.filter { it.pkg != pkg } }
+
     fun isInstalled(ctx: Context, pkg: String): Boolean = try {
         ctx.packageManager.getApplicationInfo(pkg, 0)
         true

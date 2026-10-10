@@ -9,22 +9,36 @@ import android.os.Process
 import android.util.Log
 import android.util.LruCache
 import org.json.JSONObject
+import java.io.File
+import java.io.RandomAccessFile
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.nio.MappedByteBuffer
+import java.nio.channels.FileChannel
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.LinkedBlockingDeque
+import kotlin.math.roundToInt
 
 /**
  * The pre-rendered turntable of the user's car: assets/car/f_000.webp ... (one frame every [Meta.yawStep] degrees,
  * with alpha and a soft floor shadow) and car.json (frame size, default frame, per-frame bounding boxes).
  *
- * Frames are decoded off the main thread into a small LRU of bitmaps; the most recent request is decoded first
- * (the view asks for the frames around the current angle on every draw), stale requests far from the current
- * angle are skipped, and evicted bitmaps are reused as decode targets so spinning does not churn memory.
+ * Decoding a WebP frame takes tens of milliseconds on the unit's processor: too slow for a car that follows a finger.
+ * So the frames are decoded once, in the background, into one file of raw pixels (cache dir, memory-mapped); from then
+ * on a frame is a plain copy of about a millisecond, done right when it is drawn ([frameNow]), and the car always shows
+ * the exact angle. Until that file exists the frames are decoded off the main thread into a small LRU of bitmaps: the
+ * most recent request first, stale requests far from the current angle skipped, evicted bitmaps reused.
  * All public functions are main-thread only.
  */
 object CarFrames {
     private const val TAG = "AuraCar"
-    private const val CACHE_FRAMES = 26
-    private const val SKIP_DISTANCE = 12
+    private const val CACHE_FRAMES = 40
+    private const val RAW_CACHE_FRAMES = 12
+    private const val SKIP_DEG = 48f
+    private const val INTRO_DEG = 88f
+    private const val RAW_MAGIC = 0x41435246 // "ACRF"
+    private const val RAW_HEADER = 32
+    private const val QUIET_MS = 6000L       // the start-up rush
 
     class Meta(
         val count: Int,
@@ -41,13 +55,16 @@ object CarFrames {
 
         /** Default frame for right-to-left layouts: the mirror image of [defaultFrame] (yaw' = 180 - yaw). */
         val defaultFrameRtl: Int get() = Math.floorMod(Math.round(180f / yawStep) - defaultFrame, count)
+
+        /** An angle in degrees as a number of frames. */
+        fun frames(deg: Float): Int = (deg / yawStep).roundToInt().coerceAtLeast(1)
     }
 
     private val main = Handler(Looper.getMainLooper())
     private var app: Context? = null
     @Volatile private var meta: Meta? = null
     private var metaTried = false
-    private var raw: Array<ByteArray?> = emptyArray()
+    private var encoded: Array<ByteArray?> = emptyArray()
     private val queued = HashSet<Int>()
     private val queue = LinkedBlockingDeque<Int>()
     private val pool = ArrayList<Bitmap>()          // evicted bitmaps waiting to be decoded into (guarded by itself)
@@ -55,6 +72,9 @@ object CarFrames {
 
     @Volatile private var focus = 0
     private var workersStarted = false
+    @Volatile private var raw: MappedByteBuffer? = null
+    private var rawStarted = false
+    @Volatile private var introSet = IntArray(0)    // the frames of the intro spin, read in before the file is used
 
     private val cache = object : LruCache<Int, Bitmap>(CACHE_FRAMES) {
         override fun entryRemoved(evicted: Boolean, key: Int, oldValue: Bitmap, newValue: Bitmap?) {
@@ -76,28 +96,60 @@ object CarFrames {
                 Log.w(TAG, "no car frames: $t")
                 null
             }
-            meta?.let { raw = arrayOfNulls(it.count) }
+            meta?.let { encoded = arrayOfNulls(it.count) }
         }
         return meta
     }
 
-    /** Starts decoding the frames the home screen shows first: the intro spin, which ends on the default view. */
+    /** Starts decoding the frames the home screen shows first (the intro spin), and the raw frame file. */
     fun warmUp(ctx: Context, rtl: Boolean) {
         val m = meta(ctx) ?: return
         val d = if (rtl) m.defaultFrameRtl else m.defaultFrame
         val dir = introDirection(rtl)
-        focus = Math.floorMod(d - dir * INTRO_FRAMES / 2, m.count)
+        val intro = introFrames()
+        focus = Math.floorMod(d - dir * intro / 2, m.count)
         // the queue is last-in-first-out, so the intro frames decode in playback order and the default one last
-        for (k in 0..INTRO_FRAMES) request(Math.floorMod(d - dir * k, m.count))
+        for (k in 0..intro) request(Math.floorMod(d - dir * k, m.count))
+        introSet = IntArray(intro + 2) { k -> Math.floorMod(d - dir * k, m.count) }
+        if (!rawStarted) {
+            rawStarted = true
+            Thread({ prepareRaw() }, "car-raw").apply { isDaemon = true; start() }
+        }
     }
 
-    /** Length of the intro spin in frames. */
-    const val INTRO_FRAMES = 22
+    /** Length of the intro spin in frames (88 degrees). */
+    fun introFrames(): Int = meta?.frames(INTRO_DEG) ?: 22
 
     /** The intro turns the car's face towards the screen centre: forwards in LTR, backwards (mirrored) in RTL. */
     fun introDirection(rtl: Boolean) = if (rtl) -1 else 1
 
     fun peek(i: Int): Bitmap? = cache.get(i)
+
+    /**
+     * Frame [i] for drawing now: the cached bitmap, else copied from the raw frame file (about a millisecond), else
+     * null (the file is not there yet: the frame is requested and [nearest] stands in).
+     */
+    fun frameNow(i: Int): Bitmap? {
+        cache.get(i)?.let { return it }
+        val r = raw ?: return null
+        val m = meta ?: return null
+        if (i < 0 || i >= m.count) return null
+        return try {
+            val bmp = synchronized(pool) { if (pool.isEmpty()) null else pool.removeAt(pool.size - 1) }
+                ?.takeIf { it.width == m.width && it.height == m.height }
+                ?: Bitmap.createBitmap(m.width, m.height, Bitmap.Config.ARGB_8888)
+            val bytes = m.width * m.height * 4
+            val b = r.duplicate()
+            b.position(RAW_HEADER + i * bytes)
+            b.limit(RAW_HEADER + (i + 1) * bytes)
+            bmp.copyPixelsFromBuffer(b)
+            cache.put(i, bmp)
+            bmp
+        } catch (t: Throwable) {
+            Log.w(TAG, "raw frame $i: $t")
+            null
+        }
+    }
 
     /** Nearest decoded frame to [i] within [radius] frames (used while the exact one is still decoding). */
     fun nearest(i: Int, radius: Int): Bitmap? {
@@ -110,10 +162,14 @@ object CarFrames {
         return null
     }
 
+    /** True once frames come from the raw file (no decoding any more). */
+    val instant: Boolean get() = raw != null
+
     fun setFocus(i: Int) { focus = i }
 
     fun request(i: Int) {
         val m = meta ?: return
+        if (raw != null) return // copied when drawn
         if (i < 0 || i >= m.count || cache.get(i) != null || !queued.add(i)) return
         startWorkers()
         queue.offerFirst(i)
@@ -146,9 +202,10 @@ object CarFrames {
         Process.setThreadPriority(Process.THREAD_PRIORITY_DISPLAY + 2)
         while (true) {
             val i = try { queue.takeFirst() } catch (_: InterruptedException) { return }
-            val n = meta?.count ?: continue
+            val m = meta ?: continue
+            val n = m.count
             val dist = Math.floorMod(i - focus, n).let { minOf(it, n - it) }
-            val bmp = if (dist > SKIP_DISTANCE) null else decode(i)
+            val bmp = if (raw != null || dist > m.frames(SKIP_DEG)) null else decode(i)
             main.post {
                 queued.remove(i)
                 if (bmp != null) {
@@ -159,14 +216,16 @@ object CarFrames {
         }
     }
 
+    private fun bytesOf(ctx: Context, i: Int): ByteArray? = encoded[i] ?: try {
+        ctx.assets.open(frameAsset(i)).use { it.readBytes() }.also { if (raw == null) encoded[i] = it }
+    } catch (t: Throwable) {
+        Log.w(TAG, "frame $i: $t")
+        null
+    }
+
     private fun decode(i: Int): Bitmap? {
         val ctx = app ?: return null
-        val bytes = raw[i] ?: try {
-            ctx.assets.open("car/f_%03d.webp".format(java.util.Locale.ROOT, i)).use { it.readBytes() }.also { raw[i] = it }
-        } catch (t: Throwable) {
-            Log.w(TAG, "frame $i: $t")
-            return null
-        }
+        val bytes = bytesOf(ctx, i) ?: return null
         val reuse = synchronized(pool) { if (pool.isEmpty()) null else pool.removeAt(pool.size - 1) }
         val o = BitmapFactory.Options().apply {
             inMutable = true
@@ -181,6 +240,112 @@ object CarFrames {
         } catch (t: Throwable) {
             Log.w(TAG, "decode $i: $t")
             null
+        }
+    }
+
+    // ------------------------------------------------------------------------------------------ the raw frame file
+    /**
+     * Opens the raw frame file, building it first if this set of frames has none yet (background thread): a header
+     * (magic, frames, width, height) and every frame's premultiplied ARGB pixels as Android keeps them in a bitmap.
+     * Named after car.json and the frames' sizes, so new frames in an update build a new file (the old one is
+     * deleted). It lives with the app's files, not in the cache: the system's cache cleaner would delete it while it
+     * is mapped, which frees nothing until the process ends.
+     * An existing file is used once the intro's frames are read in; building one, and reading in the rest, wait for
+     * the start-up rush.
+     */
+    private fun prepareRaw() {
+        Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
+        val ctx = app ?: return
+        val m = meta ?: return
+        var tmp: File? = null
+        try {
+            // 1.5.1 test builds kept it in the cache
+            ctx.cacheDir.listFiles()?.filter { it.name.startsWith("car-") }?.forEach { it.delete() }
+            var hash = ctx.assets.open("car/car.json").use { it.readBytes() }.contentHashCode()
+            for (i in 0 until m.count) hash = 31 * hash + ctx.assets.open(frameAsset(i)).use { it.available() }
+            val dir = ctx.noBackupFilesDir
+            val f = File(dir, "car-%08x.raw".format(java.util.Locale.ROOT, hash))
+            val bytes = m.width * m.height * 4
+            val size = RAW_HEADER + bytes.toLong() * m.count
+            val build = !valid(f, m, size)
+            if (build) {
+                Thread.sleep(QUIET_MS)
+                dir.listFiles()?.filter { it.name.startsWith("car-") && (it.name.endsWith(".raw") || it.name.endsWith(".raw.tmp")) }?.forEach { it.delete() }
+                if (dir.usableSpace < size + 64L * 1024 * 1024) { Log.w(TAG, "no room for the raw frames"); return }
+                tmp = File(f.path + ".tmp")
+                val t0 = System.currentTimeMillis()
+                RandomAccessFile(tmp, "rw").use { out ->
+                    out.setLength(size)
+                    val ch = out.channel
+                    val buf = ByteBuffer.allocateDirect(bytes)
+                    val o = BitmapFactory.Options().apply { inMutable = true; inPreferredConfig = Bitmap.Config.ARGB_8888 }
+                    var reuse: Bitmap? = null
+                    for (i in 0 until m.count) {
+                        val enc = bytesOf(ctx, i) ?: throw IllegalStateException("frame $i")
+                        o.inBitmap = reuse
+                        val bmp = BitmapFactory.decodeByteArray(enc, 0, enc.size, o) ?: throw IllegalStateException("decode $i")
+                        if (bmp.width != m.width || bmp.height != m.height || bmp.rowBytes != m.width * 4) throw IllegalStateException("frame $i size")
+                        reuse = bmp
+                        buf.clear()
+                        bmp.copyPixelsToBuffer(buf)
+                        buf.flip()
+                        var at = RAW_HEADER + i.toLong() * bytes
+                        while (buf.hasRemaining()) at += ch.write(buf, at)
+                    }
+                    val head = ByteBuffer.allocate(RAW_HEADER).order(ByteOrder.LITTLE_ENDIAN)
+                    head.putInt(RAW_MAGIC).putInt(m.count).putInt(m.width).putInt(m.height)
+                    head.rewind()
+                    ch.write(head, 0)
+                    ch.force(false)
+                }
+                if (!tmp.renameTo(f)) throw IllegalStateException("rename")
+                tmp = null
+                Log.i(TAG, "raw frames built in ${System.currentTimeMillis() - t0} ms (${size / 1_048_576} MB)")
+            }
+            val mapped = RandomAccessFile(f, "r").use { r ->
+                // Just written, the pages are in memory; after a start they are on the storage: read the intro's frames
+                // in here, so the main thread never waits for the storage (decoded frames stand in meanwhile).
+                if (!build) {
+                    val t0 = System.currentTimeMillis()
+                    val buf = ByteBuffer.allocateDirect(bytes)
+                    for (i in introSet) {
+                        buf.clear()
+                        var at = RAW_HEADER + i.toLong() * bytes
+                        while (buf.hasRemaining()) { val n = r.channel.read(buf, at); if (n <= 0) break; at += n }
+                    }
+                    Log.i(TAG, "intro frames read in ${System.currentTimeMillis() - t0} ms")
+                }
+                r.channel.map(FileChannel.MapMode.READ_ONLY, 0, size)
+            }
+            main.post {
+                raw = mapped
+                encoded = arrayOfNulls(m.count) // the encoded frames are not needed any more
+                cache.resize(RAW_CACHE_FRAMES)  // a frame is a copy away now: keep only the ones around the car's angle
+                for (l in listeners) l()
+            }
+            // read it all in, at low priority: the first spin after a start must not wait for the storage either
+            // (the pages are file cache: the system takes them back when it needs the memory)
+            if (!build) Thread.sleep(QUIET_MS)
+            mapped.load()
+        } catch (t: Throwable) {
+            Log.w(TAG, "raw frames: $t")
+            tmp?.delete() // a half-built file (no room, a frame that did not decode...)
+        }
+    }
+
+    private fun frameAsset(i: Int) = "car/f_%03d.webp".format(java.util.Locale.ROOT, i)
+
+    private fun valid(f: File, m: Meta, size: Long): Boolean {
+        if (!f.isFile || f.length() != size) return false
+        return try {
+            RandomAccessFile(f, "r").use { r ->
+                val h = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN)
+                r.channel.read(h, 0)
+                h.flip()
+                h.int == RAW_MAGIC && h.int == m.count && h.int == m.width && h.int == m.height
+            }
+        } catch (_: Throwable) {
+            false
         }
     }
 }

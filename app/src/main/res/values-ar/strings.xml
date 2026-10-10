@@ -172,7 +172,7 @@
     <string name="set_hide_status">إخفاء شريط الحالة العلوي</string>
     <string name="set_hide_status_sub">اسحب من الحافة العلوية للأسفل لإظهاره</string>
     <string name="set_ball">الدائرة العائمة</string>
-    <string name="set_ball_sub">دائرة نظام الشاشة الأصلي اللي تفتح أدوات سريعة</string>
+    <string name="set_ball_sub">دائرة النظام الأصلي اللي فيها أزرار التحكم بالسيارة</string>
     <string name="media_prev">السابق</string>
     <string name="media_play">تشغيل أو إيقاف</string>
     <string name="media_next">التالي</string>
@@ -279,6 +279,14 @@
     <string name="upd_err_cancelled">تم إلغاء التثبيت.</string>
     <string name="upd_err_timeout">لم يكتمل التثبيت في الوقت المناسب. حاول مرة أخرى.</string>
     <string name="upd_err_install">فشل التثبيت: %1$s</string>
+
+    <!-- حذف التطبيقات (الضغط المطوّل في قائمة التطبيقات) -->
+    <string name="drawer_uninstall">حذف التطبيق</string>
+    <string name="uninstall_title">تحذف %1$s؟</string>
+    <string name="uninstall_text">ينحذف من الشاشة.</string>
+    <string name="uninstall_done">انحذف %1$s</string>
+    <string name="uninstall_failed">ما قدرت أحذف %1$s</string>
+    <string name="removed_apps">انحذف: %1$s</string>
 
     <!-- الخريطة بدون إنترنت (الإعدادات ← الملاحة) -->
     <string name="off_section">الخريطة بدون إنترنت</string>

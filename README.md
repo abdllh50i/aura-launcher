@@ -24,8 +24,9 @@ file, so it comes with updates from the screen) and an **in-app updater that pul
 | ![Navigation](docs/screenshots/maps-ar.png) | ![Music](docs/screenshots/music-ar.png) |
 
 * `app/` — the AMRI OS launcher (package `com.abdllh.aura`; Kotlin; the only library is [MapLibre Native](https://github.com/maplibre/maplibre-native)
-  for the map). The car is a pre-rendered turntable (90 frames) that you can turn with a finger; see
-  [docs/DEV.md](docs/DEV.md) for how it is made (`tools/car3d`).
+  for the map). The car is a pre-rendered turntable (180 frames, one every 2°) that you can turn with a finger; see
+  [docs/DEV.md](docs/DEV.md) for how it is made (`tools/car3d`). Long-press an app in the app list to uninstall apps a
+  dealer installed on the unit (even ones that made themselves device administrators).
 * AMRI Maps: search, route preview, turn-by-turn guidance with Arabic/English voice prompts and rerouting, on free
   OpenStreetMap services (OpenFreeMap tiles, Photon search, OSRM routing), and **offline in the Eastern Province**: one
   download (*Settings → Navigation → Offline map*, ~150 MB) brings the map, search (indexed on the unit) and routing

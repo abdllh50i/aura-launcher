@@ -172,7 +172,7 @@
     <string name="set_hide_status">Hide the status bar</string>
     <string name="set_hide_status_sub">Swipe down from the top edge to show it</string>
     <string name="set_ball">Floating circle</string>
-    <string name="set_ball_sub">The stock system\'s circle that opens shortcuts</string>
+    <string name="set_ball_sub">The stock system\'s circle with the car controls</string>
     <string name="media_prev">Previous</string>
     <string name="media_play">Play or pause</string>
     <string name="media_next">Next</string>
@@ -279,6 +279,14 @@
     <string name="upd_err_cancelled">Installation was cancelled.</string>
     <string name="upd_err_timeout">The installation did not finish in time. Please try again.</string>
     <string name="upd_err_install">Installation failed: %1$s</string>
+
+    <!-- removing apps (app list long-press) -->
+    <string name="drawer_uninstall">Uninstall</string>
+    <string name="uninstall_title">Uninstall %1$s?</string>
+    <string name="uninstall_text">It is removed from the unit.</string>
+    <string name="uninstall_done">%1$s was removed</string>
+    <string name="uninstall_failed">Couldn\'t remove %1$s</string>
+    <string name="removed_apps">Removed: %1$s</string>
 
     <!-- offline map (Settings › Navigation) -->
     <string name="off_section">Offline map</string>
