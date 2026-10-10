@@ -205,14 +205,23 @@ if ($Action -eq "Install") {
     $expect = "prepared"
 } else {
     # undo the config edits made at boot, Aura Music replacing the stock music app, the hidden status bar and the stock
-    # volume bar turned off, and give the home role back to the stock launcher. An Aura updated from the screen lives in
-    # /data/app and would stay on as an ordinary app once its system copy is gone: it is uninstalled (a system-only copy
-    # refuses, and goes away at the restart), and the kill switch keeps anything left of it inert.
+    # volume bar turned off, the boot animation Aura put in the firmware's "dynamic logo" file (only while it is still
+    # Aura's; the one from before comes back), and give the home role back to the stock launcher. An Aura updated from
+    # the screen lives in /data/app and would stay on as an ordinary app once its system copy is gone: it is uninstalled
+    # (a system-only copy refuses, and goes away at the restart), and the kill switch keeps anything left of it inert.
     $follow = @'
 for f in /data/nwdappconfig/app/*.pre-aura; do
   [ -f "$f" ] || continue
   cat "$f" > "${f%.pre-aura}" && rm -f "$f"
 done
+M=/cache/.aura-bootanim; B=/cache/bootanimation.zip
+if [ -f $M ]; then
+  if [ "$(md5sum $B 2>/dev/null | cut -d' ' -f1)" = "$(cat $M)" ]; then
+    rm -f $B
+    [ -f $B.pre-aura ] && mv -f $B.pre-aura $B
+  fi
+  rm -f $M $B.pre-aura
+fi
 L=/data/nwdappconfig/app/replace_source_list.xml
 grep -q com.abdllh.aura "$L" 2>/dev/null && rm -f "$L"
 pm enable com.nwd.android.music.ui >/dev/null 2>&1

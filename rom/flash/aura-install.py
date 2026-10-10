@@ -886,13 +886,22 @@ class Installer:
             expect = "prepared"
         else:
             # also undo what Aura changed outside the system partition: the firmware config files it edited (kept as
-            # *.pre-aura: the boot-time registration and the factory ACC-off mode), its music replacing the stock music
-            # app, the hidden status bar, the phone link (ZLink) kept off and the stock volume bar turned off (the stock
-            # system must not inherit any of them)
+            # *.pre-aura: the boot-time registration and the factory ACC-off mode), the boot animation it put in the
+            # firmware's "dynamic logo" file (only while it is still Aura's; the one from before comes back), its music
+            # replacing the stock music app, the hidden status bar, the phone link (ZLink) kept off and the stock volume
+            # bar turned off (the stock system must not inherit any of them)
             follow = ('for f in /data/nwdappconfig/app/*.pre-aura; do\n'
                       '  [ -f "$f" ] || continue\n'
                       '  cat "$f" > "${f%.pre-aura}" && rm -f "$f"\n'
                       'done\n'
+                      'M=/cache/.aura-bootanim; B=/cache/bootanimation.zip\n'
+                      'if [ -f $M ]; then\n'
+                      '  if [ "$(md5sum $B 2>/dev/null | cut -d\' \' -f1)" = "$(cat $M)" ]; then\n'
+                      '    rm -f $B\n'
+                      '    [ -f $B.pre-aura ] && mv -f $B.pre-aura $B\n'
+                      '  fi\n'
+                      '  rm -f $M $B.pre-aura\n'
+                      'fi\n'
                       'L=/data/nwdappconfig/app/replace_source_list.xml\n'
                       'grep -q com.abdllh.aura "$L" 2>/dev/null && rm -f "$L"\n'
                       'pm enable com.nwd.android.music.ui >/dev/null 2>&1\n'

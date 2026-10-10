@@ -26,7 +26,10 @@ The stock `system.img` (ext4, from the dump) is edited inside an Android 10 emul
 partition (never beyond), mounts it, copies `rom/system/**`, patches the NWD config with `rom/system/bin/aura-prepare.sh --image`
 and the `build.prop` default-launcher line, runs `e2fsck -fn`. `rom/tools/imgdiff.py` then proves, file by file, that only the
 intended paths changed; `rom/tools/make_patch.py` turns the difference into a block patch (forward + reverse), which
-`rom/flash/aura-flash.sh` applies with full hash verification on the unit. The pack also carries per-range hashes and a hash of
+`rom/flash/aura-flash.sh` applies with full hash verification on the unit. Room: the system partition has 8417 free 4K
+blocks after the grow; a writable ext4 mount keeps up to 4096 of them back from every writer, root included (the
+kernel's runtime `reserved_clusters`), so `apply.sh` sets that to 0 for the workshop mount (the unit mounts system
+read-only). 1.4.0 leaves about 2600 blocks (~10 MB) free. The pack also carries per-range hashes and a hash of
 every block *outside* the ranges (`rest`): if a run is ever interrupted, a partition that matches neither image but whose
 `rest` still matches is reported as an interrupted patch and `install`/`restore` simply finish it (rewriting all ranges leads
 to a known image again); anything else is refused. `rom/tools/make_zip.py` writes the release zip (forward-slash entries).
@@ -160,3 +163,27 @@ turns them with drag, fling, snap and a spring back to the resting view (mirrore
   `system/CanGear.kt`, `system/Gear.kt`.
 * The status bar is hidden with the framework's own `Settings.Global policy_control`
   (`immersive.status=*`), which Android 10 still honours (`system/SystemBars.kt`); swiping down from the top shows it.
+* Boot animation: NWD's player (`libbootanimation.so`, `findBootAnimationFile`) checks `/cache/bootanimation.zip` first,
+  then `/system/config/app/bootanimation.zip`, then the stock AOSP places (`/apex`, `/product`, `/oem`,
+  `/data/local`, `/system/media`). The `/cache` file is the firmware's "dynamic logo": the factory setting and the
+  broadcast `com.nwd.ACTION_THIRD_APP_SET_DYNAMIC_LOGO` (`extra_path`) copy a zip there, its factory reset deletes it,
+  and `bootanim.rc` runs the player with the `cache` group. The cache partition is 1.37 GB and held no animation in the
+  owner's dump (only the static `boot_logo.bmp`, which is left alone). So the ROM puts AMRI's animation in `/system/media`
+  and `/system/config/app`, and the app (`system/BootAnim.kt`) copies the one in its assets to `/cache` as root once
+  per animation (MD5), keeping a file that was there as `bootanimation.zip.pre-aura` and its own MD5 in
+  `/cache/.aura-bootanim`; the installers' restore deletes Aura's file (only while it still has that MD5) and puts the
+  old one back. Zips must be STORED; `rom/tools/gen_bootanim.py` makes it (the car turning in, then the AMRI OS logo
+  from `design/logo/`, palette PNGs with 16 entries kept for the logo blue).
+
+## Arabic font (`design/fonts/`)
+Arabic UI text is Readex Pro (OFL), a variable font: `ui/Fonts.kt` takes real weights from the one file
+(`Typeface.Builder` + `'wght'` 300 / 400 / 500 / 650); Latin text stays on the system Roboto. Upstream declares ascent
+1000 / descent 250 while the Arabic reaches about −550…1150, and the app's labels use `includeFontPadding = false`, so
+Android cut the bottom off (ي lost its dots). `design/fonts/make_arabic_font.py` writes the asset from the Google Fonts
+file with ascent 1150 / descent 560 (nothing else changed; renamed "Readex Pro AMRI" as the OFL asks).
+
+## Logo and icon (`design/logo/`)
+`amri-os-en-source.png` / `amri-ar-source.png` are the owner's artwork (white and blue on black). `make_assets.py` takes
+them off the black (alpha = brightest channel), writes the transparent logos, the app's `drawable-nodpi/logo_amri_*`
+(white for the dark theme, `_ink` for the light one) and traces the "A" with its blue dot for the vector launcher icon
+(`ic_launcher_foreground.xml`, from `a_glyph.txt`).

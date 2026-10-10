@@ -15,7 +15,7 @@
     <string name="err_no_nav">لا يوجد تطبيق ملاحة</string>
     <string name="err_app_missing">هذا التطبيق غير مثبّت</string>
     <string name="err_write_settings">اسمح لنظام عمري بتعديل إعدادات النظام</string>
-    <string name="media_nothing">لا يوجد تشغيل حاليًا</string>
+    <string name="media_nothing">لا يوجد تشغيل</string>
     <string name="media_tap_music">اضغط لفتح الموسيقى</string>
     <string name="src_bt">بلوتوث</string>
     <string name="ctl_brightness">السطوع</string>

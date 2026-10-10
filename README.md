@@ -1,10 +1,18 @@
 # AMRI OS — modern EV-style system for the K2501 car head unit
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="app/src/main/res/drawable-nodpi/logo_amri_en.png">
+    <img alt="AMRI OS" src="app/src/main/res/drawable-nodpi/logo_amri_en_ink.png" width="360">
+  </picture>
+</p>
+
 **AMRI** = **A**utomotive **M**odern **R**esponsive **I**nterface (Arabic: **عمري**). Formerly called *Aura*.
 
 An EV-inspired home screen with **the owner's own car in 3D**, **built-in maps with turn-by-turn navigation**, a **music
 player** that also shows and controls **Bluetooth music from the phone**, light / dark / automatic themes, app drawer,
-settings, a boot animation and an **in-app updater that pulls releases from GitHub**, packaged as a minimal ROM patch for the
+settings, a boot animation (the car, then the AMRI OS logo; the app installs it into the firmware's own "dynamic logo"
+file, so it comes with updates from the screen) and an **in-app updater that pulls releases from GitHub**, packaged as a minimal ROM patch for the
 **K2501** head unit (NWD firmware, Allwinner T507, Android 10, 1024×600). Arabic-first docs: [README.ar.md](README.ar.md).
 
 ![Home, dark](docs/screenshots/home-dark.png)
@@ -36,7 +44,7 @@ settings, a boot animation and an **in-app updater that pulls releases from GitH
 ### Installing from an Ubuntu laptop
 
 ```
-unzip aura-rom-1.3.0.zip -d aura && cd aura
+unzip aura-rom-1.4.0.zip -d aura && cd aura
 # laptop and unit on the same network, e.g. the laptop's own Wi-Fi hotspot
 ./install-linux.sh            # finds the K2501, shows its state, asks for YES, installs, restarts, checks
 ./install-linux.sh status     # only look

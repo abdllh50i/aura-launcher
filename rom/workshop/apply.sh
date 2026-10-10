@@ -42,6 +42,11 @@ mkdir -p $MNT
 LOOP=$(losetup -f --show $IMG) || fail "losetup"
 mount -t ext4 -o rw,noatime $LOOP $MNT || fail "mount"
 R=$MNT/system
+# A writable ext4 mount keeps up to 4096 clusters (16 MB) back from every writer, root included (the kernel's
+# s_resv_clusters, a runtime reserve for its own metadata, not stored in the image). The unit mounts system read-only,
+# so the workshop may use them.
+RC=/sys/fs/ext4/$(basename $LOOP)/reserved_clusters
+[ -w $RC ] && echo 0 > $RC && echo "kernel reserve off ($RC)"
 
 # put_file SRC DEST MODE OWNER:GROUP
 put_file() {
@@ -84,6 +89,7 @@ grep -n 'abdllh' $R/config/app/AppConfig.xml $R/config/app/TaskWhitelist.xml $R/
 
 step "unmount, final filesystem check"
 sync
+echo "space after install (KB):"; df -k $MNT | tail -1
 umount $MNT || fail "umount"
 losetup -d $LOOP 2>/dev/null; LOOP=""
 e2fsck -fn $IMG > $WS/fsck_final.log 2>&1; rc=$?

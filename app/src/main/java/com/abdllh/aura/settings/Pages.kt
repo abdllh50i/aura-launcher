@@ -320,6 +320,31 @@ class AboutPage(private val act: SettingsActivity) : Page(R.string.set_about, R.
         val col = ctx.pageColumn()
         fun info(icon: Int, title: Int, value: String) = col.addRow(ctx.settingRow(icon, ctx.getString(title), null, ctx.valueText(value)), 8)
 
+        // the logo: Arabic or English with the interface, white letters on dark, ink letters on light
+        val arabic = ctx.resources.configuration.locales.get(0).language == "ar"
+        val logo = when {
+            arabic && Palette.dark -> R.drawable.logo_amri_ar
+            arabic -> R.drawable.logo_amri_ar_ink
+            Palette.dark -> R.drawable.logo_amri_en
+            else -> R.drawable.logo_amri_en_ink
+        }
+        val brand = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(24.dp, 30.dp, 24.dp, 24.dp)
+            background = Shapes.card(22f)
+        }
+        brand.addView(android.widget.ImageView(ctx).apply {
+            setImageResource(logo)
+            scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            adjustViewBounds = true
+        }, lp(if (arabic) 230.dp else 300.dp, WRAP))
+        brand.addView(ctx.label(14.5f, Palette.text3, Fonts.REGULAR, gravity = Gravity.CENTER).apply {
+            text = "Automotive Modern Responsive Interface"
+            letterSpacing = 0.04f
+        }, lp(MATCH, WRAP).apply { topMargin = 16.dp })
+        col.addView(brand, lp(MATCH, WRAP))
+
         info(R.drawable.ic_car, R.string.about_device, Device.model)
         info(R.drawable.ic_cpu, R.string.about_android, "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
         info(R.drawable.ic_layers, R.string.about_build, Device.buildId)

@@ -1,6 +1,7 @@
 package com.abdllh.aura
 
 import android.app.Application
+import com.abdllh.aura.system.BootAnim
 import com.abdllh.aura.system.CarAudio
 import com.abdllh.aura.system.CrashGuard
 import com.abdllh.aura.system.Device
@@ -50,6 +51,7 @@ class AuraApp : Application() {
             VolumeHud.init(this)
             MusicKeys.init(this)
             Gear.init(this)
+            BootAnim.ensure(this) // this build's boot animation, also after an update from the screen
         }
     }
 }

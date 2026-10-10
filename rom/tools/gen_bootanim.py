@@ -1,11 +1,12 @@
-"""Generates the Aura boot animation (bootanimation.zip, 1024x600).
+"""Generates the AMRI OS boot animation (bootanimation.zip, 1024x600).
 Default (--car DIR, the full-size turntable bake of the owner's car, frame_NNN.png with alpha):
-   part0: a floor light comes up, the car turns into its showroom angle, the wordmark fades in (plays once)
+   part0: a floor light comes up, the car turns into its showroom angle, the logo fades in (plays once)
    part1: a soft light sweeps over the car now and then (loops until the system has booted)
 Without --car (the 1.0 design):
-   part0: the ring draws itself, the core and the wordmark fade in (plays once)
+   part0: the ring draws itself, the core and the logo fade in (plays once)
    part1: calm glow pulse (loops until the system has booted)
-Usage: python gen_bootanim.py OUT.zip [--car DIR [--frames FROM,TO]] [--preview DIR]
+The logo is the owner's artwork on transparency (design/logo/amri-os-en.png, made by design/logo/make_assets.py).
+Usage: python gen_bootanim.py OUT.zip [--car DIR [--frames FROM,TO]] [--logo PNG] [--preview DIR]
    --frames: the bake frames of the turn (default 58,80 for the 90-frame bake; the release uses a 180-frame bake of
    frames 116..160 = the same 232..320 degrees in 2-degree steps: tools/car3d/bake.ps1 ... frames=180, only=116..160)
 Needs Pillow + numpy. The zip is written STORED (no compression), as the platform requires.
@@ -22,6 +23,30 @@ WHITE = (244, 246, 248)
 SS = 2                     # supersampling for the sharp layers
 
 FONT_PATHS = [r"C:\Windows\Fonts\segoeuil.ttf", r"C:\Windows\Fonts\segoeui.ttf", r"C:\Windows\Fonts\arial.ttf"]
+LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "design", "logo", "amri-os-en.png")
+LOGO_W = 300                # on-screen width of the logo, px
+_logo = None
+
+
+def logo_image():
+    """The logo, scaled to LOGO_W, as RGBA (loaded once)."""
+    global _logo
+    if _logo is None:
+        im = Image.open(LOGO_PATH).convert("RGBA")
+        _logo = im.resize((LOGO_W, int(im.height * LOGO_W / im.width + 0.5)), Image.LANCZOS)
+    return _logo
+
+
+def logo_layer(t, top):
+    """The logo centred under the car with its top at `top`, faded in by t in 0..1."""
+    im = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    if t <= 0:
+        return im
+    lg = logo_image()
+    a = np.asarray(lg).astype(np.float32)
+    a[..., 3] *= 0.96 * ease(t)
+    im.alpha_composite(Image.fromarray(np.clip(a, 0, 255).astype(np.uint8)), (CX - lg.width // 2, top))
+    return im
 
 
 def font(size):
@@ -73,15 +98,7 @@ def core_layer(t):
 
 
 def text_layer(t):
-    im = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    if t <= 0:
-        return im
-    d = ImageDraw.Draw(im)
-    f = font(34)
-    text = "A U R A"
-    wd = d.textlength(text, font=f)
-    d.text((CX - wd / 2, CY + R + 58), text, font=f, fill=(WHITE[0], WHITE[1], WHITE[2], int(235 * ease(t))))
-    return im
+    return logo_layer(t, CY + R + 52)
 
 
 def compose(sweep, glow_k, core_t, text_t):
@@ -146,14 +163,7 @@ def sweep_mask(shape, pos):
 
 
 def text_rgba(t):
-    im = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    if t > 0:
-        d = ImageDraw.Draw(im)
-        f = font(30)
-        text = "A U R A"
-        wd = d.textlength(text, font=f)
-        d.text((CX - wd / 2, TEXT_Y), text, font=f, fill=(WHITE[0], WHITE[1], WHITE[2], int(230 * ease(t))))
-    return np.asarray(im).astype(np.float32) / 255.0
+    return np.asarray(logo_layer(t, TEXT_Y)).astype(np.float32) / 255.0
 
 
 def car_frame(car, light_k, car_k, text_t, sweep=None):
@@ -214,6 +224,9 @@ def main():
     out = sys.argv[1]
     prev = sys.argv[sys.argv.index("--preview") + 1] if "--preview" in sys.argv else None
     car_dir = sys.argv[sys.argv.index("--car") + 1] if "--car" in sys.argv else None
+    if "--logo" in sys.argv:
+        global LOGO_PATH
+        LOGO_PATH = sys.argv[sys.argv.index("--logo") + 1]
     if "--frames" in sys.argv:
         global CAR_FROM, CAR_TO
         CAR_FROM, CAR_TO = (int(v) for v in sys.argv[sys.argv.index("--frames") + 1].split(","))
@@ -237,9 +250,19 @@ def main():
     write(out, part0, part1, prev, (0, 10, 20, 30, 37))
 
 
+LOGO_BLUE = (46, 99, 249)  # the dot of the logo's A
+
+
 def to_palette(im):
-    """256-colour PNG with error diffusion: about a third of the size, no visible banding on dark gradients."""
-    return im.quantize(colors=256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.FLOYDSTEINBERG)
+    """256-colour PNG with error diffusion: about a third of the size, no visible banding on dark gradients. 16 of
+    the colours are the logo's blue faded to black: the dot is too small for median cut to keep its colour."""
+    base = im.quantize(colors=240, method=Image.Quantize.MEDIANCUT)
+    pal = base.getpalette()[:240 * 3]
+    for k in range(1, 17):
+        pal += [int(c * k / 16 + 0.5) for c in LOGO_BLUE]
+    p = Image.new("P", (1, 1))
+    p.putpalette(pal)
+    return im.quantize(palette=p, dither=Image.Dither.FLOYDSTEINBERG)
 
 
 def write(out, part0, part1, prev, samples, pause1=0, palette=False):

@@ -1,24 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- The "A" of the AMRI OS logo with its blue dot (traced from design/logo/amri-os-en-source.png by
+     design/logo/make_assets.py, a_glyph.txt; scaled to 36 units high around the centre). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- soft ring -->
-    <path
-        android:fillColor="#00000000"
-        android:pathData="M54,54m-24,0a24,24 0,1 1,48 0a24,24 0,1 1,-48 0"
-        android:strokeColor="#FFF4F6F8"
-        android:strokeWidth="3" />
-    <!-- accent arc -->
-    <path
-        android:fillColor="#00000000"
-        android:pathData="M54,30A24,24 0,0 1,78,54"
-        android:strokeColor="#FF3E6AE1"
-        android:strokeLineCap="round"
-        android:strokeWidth="6" />
-    <!-- core -->
     <path
         android:fillColor="#FFF4F6F8"
-        android:pathData="M54,54m-6,0a6,6 0,1 1,12,0a6,6 0,1 1,-12,0" />
+        android:pathData="M31.88,71L54,35L76.12,71L69.59,71L54,45.07L38.41,71Z" />
+    <path
+        android:fillColor="#FF2E63F9"
+        android:pathData="M54,62.77m-4.44,0a4.44,4.44 0,1 1,8.88 0a4.44,4.44 0,1 1,-8.88 0" />
 </vector>
