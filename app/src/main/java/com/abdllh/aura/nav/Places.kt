@@ -26,9 +26,13 @@ data class Place(val name: String, val detail: String, val pos: LatLon) {
     }
 }
 
-/** Place search (Photon, OpenStreetMap data), and the saved places: Home, Work and recent destinations. */
+/**
+ * Place search (Photon, OpenStreetMap data), with the offline map's own index ([com.abdllh.aura.nav.offline.PlaceIndex])
+ * beside it when there is one, and the saved places: Home, Work and recent destinations.
+ */
 object Places {
     private val io = Executors.newSingleThreadExecutor()
+    private val offlineIo = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
     private val generation = AtomicInteger()
     const val USER_AGENT = "Aura/${BuildConfig.VERSION_NAME} (car head unit; github.com/abdllh50i/aura-launcher)"
@@ -36,9 +40,32 @@ object Places {
     /**
      * Searches places by text, biased to [near]. Older searches still running are dropped (type-ahead). An Arabic
      * query is also searched in Latin letters ([ArabicQuery]): many places only have a Latin name in the map data.
+     * With the offline map, its results come at once and Photon's join them when they arrive ([done] may run twice);
+     * without internet the offline ones stay. null = no answer at all (no internet and nothing offline).
      */
     fun search(query: String, near: LatLon?, arabic: Boolean, done: (List<Place>?) -> Unit) {
         val gen = generation.incrementAndGet()
+        val store = com.abdllh.aura.nav.offline.OfflineMaps.searchStore()
+        // main thread state of this search
+        var offline: List<Place>? = null
+        var offlineDone = store == null
+        var online: List<Place>? = null
+        var onlineDone = false
+        fun show() {
+            if (gen != generation.get()) return
+            val on = online
+            val off = offline.orEmpty()
+            when {
+                on != null -> done(merge(on, off))
+                onlineDone && offlineDone -> done(if (store != null) off else null)
+                off.isNotEmpty() -> done(off)
+            }
+        }
+        if (store != null) offlineIo.execute {
+            if (gen != generation.get()) return@execute
+            val r = try { com.abdllh.aura.nav.offline.PlaceIndex.search(store, query, near, arabic) } catch (_: Throwable) { emptyList() }
+            main.post { offline = r; offlineDone = true; show() }
+        }
         io.execute {
             if (gen != generation.get()) return@execute // typed further meanwhile: only the newest search goes out
             val variants = listOfNotNull(query.trim(), ArabicQuery.latin(query)).distinct()
@@ -49,8 +76,18 @@ object Places {
                 try { found += photon(q, near, arabic) } catch (_: Throwable) { failed++ }
             }
             val result = if (failed == variants.size) null else rank(found, query, variants.getOrNull(1))
-            if (gen == generation.get()) main.post { if (gen == generation.get()) done(result) }
+            main.post { online = result; onlineDone = true; show() }
         }
+    }
+
+    /** Photon's results first, then the offline ones it did not have (the same name within 200 m is the same place). */
+    private fun merge(on: List<Place>, off: List<Place>): List<Place> {
+        val out = ArrayList(on)
+        for (p in off) {
+            if (out.size >= 14) break
+            if (out.none { TextMatch.norm(it.name) == TextMatch.norm(p.name) && Geo.distance(it.pos, p.pos) < 200 }) out.add(p)
+        }
+        return out
     }
 
     private fun photon(q: String, near: LatLon?, arabic: Boolean): List<Place> {
@@ -81,7 +118,7 @@ object Places {
 
     fun cancelSearch() { generation.incrementAndGet() }
 
-    /** Turns a free-text address (the 1.0 Home/Work setting) into a place. */
+    /** Turns a free-text address (the 1.0 Home/Work setting) into a place (the offline index when Photon fails). */
     fun geocode(text: String, near: LatLon?, arabic: Boolean, done: (Place?) -> Unit) {
         io.execute {
             val p = try {
@@ -89,14 +126,25 @@ object Places {
                 parse(get("https://photon.komoot.io/api/?q=$q&limit=1&lang=${if (arabic) "default" else "en"}" +
                     (near?.let { "&lat=${it.lat}&lon=${it.lon}" } ?: "")), near).firstOrNull()
             } catch (_: Throwable) {
-                null
+                com.abdllh.aura.nav.offline.OfflineMaps.searchStore()?.let {
+                    try { com.abdllh.aura.nav.offline.PlaceIndex.search(it, text, near, arabic, 1).firstOrNull() } catch (_: Throwable) { null }
+                }
             }
             main.post { done(p) }
         }
     }
 
-    /** What is at a point (a dropped pin): the nearest named place or address, or null. */
+    /**
+     * What is at a point (a dropped pin): the nearest named place or address, or null. With the offline map its answer
+     * comes first, and Photon's replaces it when it arrives ([done] may run twice).
+     */
     fun reverse(pos: LatLon, arabic: Boolean, done: (Place?) -> Unit) {
+        val store = com.abdllh.aura.nav.offline.OfflineMaps.searchStore()
+        var onlineShown = false
+        if (store != null) offlineIo.execute {
+            val p = try { com.abdllh.aura.nav.offline.PlaceIndex.reverse(store, pos, arabic) } catch (_: Throwable) { null }
+            if (p != null) main.post { if (!onlineShown) done(p) }
+        }
         io.execute {
             val p = try {
                 parse(get("https://photon.komoot.io/reverse?lat=${pos.lat}&lon=${pos.lon}&limit=1&lang=${if (arabic) "default" else "en"}"), null)
@@ -104,7 +152,10 @@ object Places {
             } catch (_: Throwable) {
                 null
             }
-            main.post { done(p) }
+            main.post {
+                if (p != null) { onlineShown = true; done(p) }
+                else if (store == null) done(null)
+            }
         }
     }
 

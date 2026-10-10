@@ -279,4 +279,23 @@
     <string name="upd_err_cancelled">Installation was cancelled.</string>
     <string name="upd_err_timeout">The installation did not finish in time. Please try again.</string>
     <string name="upd_err_install">Installation failed: %1$s</string>
+
+    <!-- offline map (Settings › Navigation) -->
+    <string name="off_section">Offline map</string>
+    <string name="off_title">Eastern Province</string>
+    <string name="off_none">Not on the unit yet · about 150 MB</string>
+    <string name="off_downloading">Downloading… %1$s%% · %2$s MB</string>
+    <string name="off_waiting">Waiting for the internet…</string>
+    <string name="off_indexing">Preparing search… %1$s%%</string>
+    <string name="off_ready">Ready · %1$s MB · downloaded %2$s</string>
+    <string name="off_paused">Paused · %1$s MB so far</string>
+    <string name="off_failed_net">Stopped: no internet. Resume once it is back</string>
+    <string name="off_failed_space">Stopped: not enough free space</string>
+    <string name="off_download">Download</string>
+    <string name="off_pause">Pause</string>
+    <string name="off_resume">Resume</string>
+    <string name="off_delete">Delete</string>
+    <string name="off_delete_title">Delete the offline map?</string>
+    <string name="off_delete_text">The map, routes and search will need the internet again.</string>
+    <string name="off_hint">The map, routes and search keep working without internet in the Eastern Province (Jubail, Dammam, Khobar, Qatif, Al-Ahsa, Hafr Al-Batin, Khafji…). One download of about 150 MB: best on good Wi-Fi or a big data plan. With internet, a route still comes from the internet first (it has the road names).</string>
 </resources>

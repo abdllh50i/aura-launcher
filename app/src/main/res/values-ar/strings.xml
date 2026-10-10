@@ -279,4 +279,23 @@
     <string name="upd_err_cancelled">تم إلغاء التثبيت.</string>
     <string name="upd_err_timeout">لم يكتمل التثبيت في الوقت المناسب. حاول مرة أخرى.</string>
     <string name="upd_err_install">فشل التثبيت: %1$s</string>
+
+    <!-- الخريطة بدون إنترنت (الإعدادات ← الملاحة) -->
+    <string name="off_section">الخريطة بدون إنترنت</string>
+    <string name="off_title">المنطقة الشرقية</string>
+    <string name="off_none">مو محمّلة · حوالي 150 ميجا</string>
+    <string name="off_downloading">يحمّل… %1$s%% · %2$s ميجا</string>
+    <string name="off_waiting">ينتظر الإنترنت…</string>
+    <string name="off_indexing">يجهّز البحث… %1$s%%</string>
+    <string name="off_ready">جاهزة · %1$s ميجا · حُمّلت %2$s</string>
+    <string name="off_paused">متوقفة مؤقتًا · %1$s ميجا لين الحين</string>
+    <string name="off_failed_net">توقفت: ما فيه إنترنت. كمّل لما يرجع</string>
+    <string name="off_failed_space">توقفت: المساحة ما تكفي</string>
+    <string name="off_download">تحميل</string>
+    <string name="off_pause">إيقاف مؤقت</string>
+    <string name="off_resume">كمّل</string>
+    <string name="off_delete">حذف</string>
+    <string name="off_delete_title">تحذف الخريطة؟</string>
+    <string name="off_delete_text">الخريطة والمسارات والبحث بيحتاجون الإنترنت من جديد.</string>
+    <string name="off_hint">الخريطة والمسارات والبحث تشتغل بدون إنترنت داخل الشرقية (الجبيل، الدمام، الخبر، القطيف، الأحساء، حفر الباطن، الخفجي…). تحميل مرة وحدة حوالي 150 ميجا: الأفضل على واي فاي قوي أو باقة كافية. ومع الإنترنت المسار يجي من الإنترنت أول (فيه أسماء الشوارع).</string>
 </resources>

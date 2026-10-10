@@ -92,6 +92,9 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
 
     init {
         Mapbox.getInstance(ctx.applicationContext)
+        // Every request goes to the unit's own tile server (offline map, else the internet): without a network Android
+        // reports "disconnected" and MapLibre would stop asking at all, so its connectivity check is overridden
+        if (com.abdllh.aura.nav.offline.TileServer.running) Mapbox.setConnected(true)
         val opts = MapboxMapOptions.createFromAttributes(ctx)
             .textureMode(texture)
             .logoEnabled(false)

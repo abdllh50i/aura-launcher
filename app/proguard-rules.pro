@@ -7,3 +7,8 @@
 
 # Notification listener is bound by the system
 -keep class com.abdllh.aura.media.AuraNotificationListener { *; }
+
+# BRouter (offline routing): a profile names its path model class ("---model:btools.router.KinematicModel"),
+# which the engine creates by name; the engine is kept whole (it is small)
+-keep class btools.** { *; }
+-dontwarn btools.**

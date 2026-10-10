@@ -35,25 +35,62 @@ class Route(val line: Polyline, val steps: List<Step>, val distance: Double, val
     }
 }
 
-/** Driving directions from the public OSRM server (OpenStreetMap data). */
+/**
+ * Driving directions: the public OSRM server (OpenStreetMap data, with road names) and, where the offline map has
+ * routing data, BRouter on the unit ([com.abdllh.aura.nav.offline.OfflineRouter]) at the same time. OSRM's route is
+ * taken when it comes within [ONLINE_HEAD_START_MS]; else the offline one, so a route shows at once also without
+ * internet or with a hotspot that stopped passing traffic (where OSRM would only time out).
+ */
 object Router {
+    private const val ONLINE_HEAD_START_MS = 2500L
     private val io = Executors.newSingleThreadExecutor()
+    private val offlineIo = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
 
     /** [heading] (degrees) helps the router start in the direction the car is already moving. */
     fun route(from: LatLon, to: LatLon, heading: Double?, done: (Route?, String?) -> Unit) {
-        io.execute {
-            var err: String? = null
-            val r = try {
-                val coords = String.format(Locale.ROOT, "%.6f,%.6f;%.6f,%.6f", from.lon, from.lat, to.lon, to.lat)
-                val bearings = heading?.let { String.format(Locale.ROOT, "&bearings=%d,60;", it.toInt().coerceIn(0, 359)) } ?: ""
-                parse(Places.get("https://router.project-osrm.org/route/v1/driving/$coords?overview=full&geometries=geojson&steps=true$bearings"))
-            } catch (t: Throwable) {
-                err = t.message
-                null
-            }
-            main.post { done(r, err) }
+        val ctx = com.abdllh.aura.nav.offline.OfflineMaps.context
+        val offline = ctx != null && com.abdllh.aura.nav.offline.OfflineRouter.canRoute(ctx, from, to)
+        if (!offline) {
+            io.execute { val (r, err) = online(from, to, heading); main.post { done(r, err) } }
+            return
         }
+        // both, on the main thread from here: the first good answer within the rules above is the one
+        var delivered = false
+        var onlineDone = false
+        var onlineRoute: Route? = null
+        var onlineErr: String? = null
+        var offlineDone = false
+        var offlineRoute: Route? = null
+        var headStartOver = false
+        fun decide() {
+            if (delivered) return
+            val r: Route? = when {
+                onlineDone && onlineRoute != null -> onlineRoute
+                offlineDone && offlineRoute != null && (headStartOver || onlineDone) -> offlineRoute
+                onlineDone && offlineDone -> null
+                else -> return
+            }
+            delivered = true
+            done(r, if (r == null) onlineErr else null)
+        }
+        io.execute {
+            val (r, err) = online(from, to, heading)
+            main.post { onlineDone = true; onlineRoute = r; onlineErr = err; decide() }
+        }
+        offlineIo.execute {
+            val r = com.abdllh.aura.nav.offline.OfflineRouter.route(ctx!!, from, to, heading)
+            main.post { offlineDone = true; offlineRoute = r; decide() }
+        }
+        main.postDelayed({ headStartOver = true; decide() }, ONLINE_HEAD_START_MS)
+    }
+
+    private fun online(from: LatLon, to: LatLon, heading: Double?): Pair<Route?, String?> = try {
+        val coords = String.format(Locale.ROOT, "%.6f,%.6f;%.6f,%.6f", from.lon, from.lat, to.lon, to.lat)
+        val bearings = heading?.let { String.format(Locale.ROOT, "&bearings=%d,60;", it.toInt().coerceIn(0, 359)) } ?: ""
+        parse(Places.get("https://router.project-osrm.org/route/v1/driving/$coords?overview=full&geometries=geojson&steps=true$bearings")) to null
+    } catch (t: Throwable) {
+        null to t.message
     }
 
     private fun parse(body: String): Route? {

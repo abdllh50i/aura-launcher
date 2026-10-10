@@ -178,6 +178,11 @@ class DisplaySoundPage(private val act: SettingsActivity) : Page(R.string.set_di
 
 // ---------------------------------------------------------------------------------------------- Navigation
 class NavigationPage(private val act: SettingsActivity) : Page(R.string.set_navigation, R.drawable.ic_nav) {
+    private var offline: OfflineCard? = null
+
+    override fun onShow() { offline?.attach() }
+    override fun onHide() { offline?.detach() }
+
     override fun build(ctx: Context): View {
         val col = ctx.pageColumn()
         col.addView(ctx.sectionTitle(ctx.getString(R.string.set_nav_app)))
@@ -210,6 +215,12 @@ class NavigationPage(private val act: SettingsActivity) : Page(R.string.set_navi
         col.addRow(placeRow(ctx, R.drawable.ic_home, R.string.home_home, "home"))
         col.addRow(placeRow(ctx, R.drawable.ic_briefcase, R.string.home_work, "work"))
         col.addRow(ctx.hint(ctx.getString(R.string.set_places_hint)), 12)
+
+        col.addView(ctx.sectionTitle(ctx.getString(R.string.off_section)), lp(MATCH, WRAP).apply { topMargin = 22.dp })
+        val card = OfflineCard(act, ctx).also { offline = it }
+        col.addRow(card.view, 8)
+        col.addRow(ctx.hint(ctx.getString(R.string.off_hint)), 10)
+        card.attach()
         return col
     }
 

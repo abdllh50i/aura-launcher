@@ -17,9 +17,15 @@ MapLibre Native for Android 10.3.7 (org.maplibre.gl:android-sdk)
   OkHttp 4 and Okio 3 (Square, Apache License 2.0),
   Gson 2.8 (Google, Apache License 2.0), Timber 5 (Jake Wharton, Apache License 2.0), AndroidX and Kotlin (Apache License 2.0).
 
+BRouter 1.7.10 routing engine (brouter/: the util, codec, expressions, mapaccess and core modules, unmodified) and its
+  car-vario profile and lookups.dat (app/src/main/assets/offline/profiles2/)
+  Copyright (c) 2019 BRouter contributors — MIT License — https://github.com/abrensch/brouter (licence: brouter/LICENSE)
+
 Map data © OpenStreetMap contributors, available under the Open Database License (ODbL) — https://www.openstreetmap.org/copyright
   Vector tiles and fonts: OpenFreeMap (https://openfreemap.org). Place search: Photon by komoot (https://photon.komoot.io).
   Routing: OSRM (https://project-osrm.org). The map shows the OpenStreetMap / OpenFreeMap attribution.
+  The offline map is downloaded on the unit itself: OpenFreeMap tiles and fonts, and BRouter's routing data
+  (segments4, built from OpenStreetMap, https://brouter.de); its search index is built on the unit from those tiles.
 
 Car images (app/src/main/assets/car/*.webp) are renders of a 3D model of the owner's car, supplied by the owner of the unit.
   The model itself is not part of this repository.

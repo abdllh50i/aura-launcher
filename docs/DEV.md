@@ -81,6 +81,36 @@ steps placed on the polyline). `NavSession.kt` snaps fixes to the route, reroute
 Debug builds: `MapsActivity --es mock_loc "lat,lon,bearing"` and `--ez simulate true` (drives the route); the CarUnit AVD
 needs `hw.gps = yes` for `adb emu geo fix`. A release build can be tried on the emulator with `-PwithEmulatorAbi`.
 
+### Offline map (`nav/offline/`)
+Settings → Navigation → Offline map downloads the Eastern Province once (`OfflineMaps.kt`, resumable, waits out internet
+drops, resumes after a restart): BRouter's routing data `segments4/E45_N25, E50_N25, E45_N20, E50_N20.rd5` (brouter.de,
+~26 MB, lon 45–55 / lat 20–30), the Noto Sans glyph ranges of the labels, and every OpenFreeMap tile of `Region.kt` (street
+level, zoom 14, over the populated band Jubail–Dammam–Khobar–Qatif–Abqaiq–Al-Ahsa and Hafr Al-Batin, Khafji, Qaryat
+Al-Ulya; zoom 11–12 over the roads to Kuwait, Riyadh and Salwa; zoom ≤10 over the whole province: ~20 800 tiles), then
+zoom 13–14 tiles along the motorways/trunk/primary/secondary roads of those zoom-12 areas (`Region.roadTiles`, found in the
+tiles themselves), then builds the search index. All in `files/offline/map.db` (SQLite, WAL: tiles as sent (gzip), glyphs,
+`places`). About 150 MB.
+* `TileServer.kt`: http://127.0.0.1:47821 (fixed port: MapLibre's cache keys stay valid across restarts) serves
+  `/t/z/x/y.pbf` and `/f/{fontstack}/{range}.pbf` from the store, else from OpenFreeMap (503 when neither: not cached;
+  a missing glyph range answers 204 so labels never hold a tile up). A thread per connection (a stored tile never waits
+  behind an online one), upstream not asked again for 30 s after a failure, the TileJSON refreshed in the background,
+  upstream tiles streamed. `AuraMap` calls `Mapbox.setConnected(true)`: without any network Android reports
+  "disconnected" and MapLibre would otherwise stop requesting, even from 127.0.0.1.
+  `MapStyle` points the `omt` source and the glyphs there, always: OpenFreeMap's TileJSON names a new planet version
+  every week (`.../planet/<version>/{z}/{x}/{y}.pbf`), so MapLibre offline regions (keyed by URL) would stop matching a
+  week after the download. Release builds allow cleartext only to 127.0.0.1/localhost (`res/xml/network_security.xml`).
+* `PlaceIndex.kt` + `Mvt.kt` (a small MVT reader): names of the `poi`, `place`, `transportation_name`, `aerodrome_label`
+  and `park` layers at zoom 14 (+ towns at 12), with `TextMatch.norm` keys and consonant skeletons (Arabic query ↔ Latin
+  name) and the nearest town. `Places.search` shows the offline results at once and merges Photon's when they come;
+  `Places.reverse` names a pin offline first.
+* `OfflineRouter.kt`: BRouter (`brouter/` module, `car-vario.brf`, vmax 120) → GeoJSON → OSRM-like `Step`s (no road
+  names; U-turns, keep left/right, roundabout exits, ramps). `Router.route` runs OSRM and BRouter side by side and takes
+  OSRM when it answers within 2.5 s. R8 keeps `btools.**` (the profile loads `btools.router.KinematicModel` by name).
+  Emulator: 84 km Dammam → Jubail in 2.4 s.
+* Debug: `setprop debug.aura.offline small` downloads only a test area (Jubail + a stretch of the Dammam highway, two
+  routing squares, ~27 MB). Offline tests on the emulator: `svc data disable` + an iptables REJECT on every interface
+  except DNS and 10.0.2.2, and delete `files/mbgl-offline.db` (MapLibre's own cache) with the app stopped.
+
 ## Aura Music (`music/`)
 `Library.kt` reads MediaStore (internal storage, `/mnt/media_rw/udisk*`, SD card) and groups by album / artist / folder;
 `ArtLoader` decodes covers off the main thread into an LRU. `Player.kt` (MediaPlayer, queue, shuffle/repeat, MediaSession,

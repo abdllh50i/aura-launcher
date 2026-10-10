@@ -27,7 +27,9 @@ file, so it comes with updates from the screen) and an **in-app updater that pul
   for the map). The car is a pre-rendered turntable (90 frames) that you can turn with a finger; see
   [docs/DEV.md](docs/DEV.md) for how it is made (`tools/car3d`).
 * AMRI Maps: search, route preview, turn-by-turn guidance with Arabic/English voice prompts and rerouting, on free
-  OpenStreetMap services (OpenFreeMap tiles, Photon search, OSRM routing — internet needed). AMRI Music: the unit's storage
+  OpenStreetMap services (OpenFreeMap tiles, Photon search, OSRM routing), and **offline in the Eastern Province**: one
+  download (*Settings → Navigation → Offline map*, ~150 MB) brings the map, search (indexed on the unit) and routing
+  (BRouter running on the unit) without internet. AMRI Music: the unit's storage
   and USB sticks, plus the phone's Bluetooth music through the firmware's own Bluetooth module (covers looked up online by
   title and artist); the steering wheel's music button opens it. The volume controls drive the unit's real (MCU) volume,
   and AMRI's own volume display replaces the stock bar for the wheel and panel buttons (none for changes made on the
@@ -45,7 +47,7 @@ file, so it comes with updates from the screen) and an **in-app updater that pul
 ### Installing from an Ubuntu laptop
 
 ```
-unzip aura-rom-1.4.1.zip -d aura && cd aura
+unzip aura-rom-1.5.0.zip -d aura && cd aura
 # laptop and unit on the same network, e.g. the laptop's own Wi-Fi hotspot
 ./install-linux.sh            # finds the K2501, shows its state, asks for YES, installs, restarts, checks
 ./install-linux.sh status     # only look

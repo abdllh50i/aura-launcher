@@ -108,4 +108,6 @@ dependencies {
     // Vector map rendering for the built-in navigation. The 10.3.x line renders with OpenGL ES 2.0: the unit's
     // firmware declares ES 2.0 (ro.opengles.version=131072), and 11+ requires ES 3.0.
     implementation("org.maplibre.gl:android-sdk:10.3.7")
+    // Routing without internet (offline Eastern Province map): BRouter's engine, vendored in ../brouter
+    implementation(project(":brouter"))
 }

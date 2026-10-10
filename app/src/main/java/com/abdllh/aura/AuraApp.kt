@@ -37,6 +37,8 @@ class AuraApp : Application() {
         Prefs.init(this)
         Theme.refresh()
         Fonts.init(this)
+        // the map's own tile server and the offline map (before any map style is built)
+        com.abdllh.aura.nav.offline.OfflineMaps.init(this)
         UpdateManager.init(this)
         CarAudio.init(this)
         // the status bar and the volume display are Aura's to change only while Aura is the home screen

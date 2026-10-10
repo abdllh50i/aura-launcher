@@ -32,6 +32,7 @@
         android:requestLegacyExternalStorage="true"
         android:supportsRtl="true"
         android:theme="@style/Theme.Aura"
+        android:networkSecurityConfig="@xml/network_security"
         android:usesCleartextTraffic="${cleartext}">
 
         <!-- The launcher (Home). Also listed in the app list (LAUNCHER) so it can be opened before it is activated. -->

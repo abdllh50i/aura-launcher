@@ -153,8 +153,14 @@ object MapStyle {
                "paint":{"text-color":"${c.minorPlace}","text-halo-color":"${c.placeHalo}","text-halo-width":1.6}}"""
         )
         val empty ="""{"type":"geojson","data":{"type":"FeatureCollection","features":[]}}"""
-        return """{"version":8,"name":"Aura","glyphs":"$GLYPHS",
-          "sources":{"omt":{"type":"vector","url":"$TILES","attribution":"$ATTRIBUTION"},
+        // tiles and glyphs through the unit's own tile server (the offline map, else OpenFreeMap), OpenFreeMap directly
+        // only if that server could not start
+        val local = com.abdllh.aura.nav.offline.TileServer.running
+        val source = if (local) """"tiles":["${com.abdllh.aura.nav.offline.TileServer.tilesUrl}"],"minzoom":0,"maxzoom":14"""
+            else """"url":"$TILES""""
+        val glyphs = if (local) com.abdllh.aura.nav.offline.TileServer.glyphsUrl else GLYPHS
+        return """{"version":8,"name":"Aura","glyphs":"$glyphs",
+          "sources":{"omt":{"type":"vector",$source,"attribution":"$ATTRIBUTION"},
             "$SRC_ROUTE":$empty},
           "layers":[${layers.joinToString(",")}]}"""
     }
