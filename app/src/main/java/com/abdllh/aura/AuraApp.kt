@@ -57,6 +57,7 @@ class AuraApp : Application() {
             BootAnim.ensure(this) // this build's boot animation, also after an update from the screen
             AssistiveBall.offOnce(this) // the stock floating circle the owner switched on by accident
             com.abdllh.aura.system.AppRemover.removeRequestedOnce(this) // the "Vivid" launcher the owner asked to remove
+            com.abdllh.aura.voice.Amri.init(this) // the voice assistant (its wake word listener when switched on)
         }
     }
 }

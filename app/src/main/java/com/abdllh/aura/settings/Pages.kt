@@ -312,6 +312,15 @@ class VehiclePage(private val act: SettingsActivity) : Page(R.string.set_vehicle
             com.abdllh.aura.system.CanGear.supported(ctx) -> R.string.set_gear_can_waiting
             else -> R.string.set_gear_basic
         })), 8)
+        // which CAN box the CAN app is set up for, and whether a gear came from it (P and N need one)
+        com.abdllh.aura.system.CanGear.boxInfo(ctx)?.let { box ->
+            val sent = when {
+                com.abdllh.aura.system.CanGear.raw >= 0 -> ctx.getString(R.string.set_gear_box_yes, com.abdllh.aura.system.CanGear.raw)
+                com.abdllh.aura.system.CanGear.messages > 0 -> ctx.getString(R.string.set_gear_box_no)
+                else -> ctx.getString(R.string.set_gear_box_silent)
+            }
+            col.addRow(ctx.settingRow(R.drawable.ic_info, ctx.getString(R.string.set_gear_box), ctx.getString(R.string.set_gear_box_sub, box, sent)), 8)
+        }
         return col
     }
 
@@ -364,6 +373,11 @@ class AboutPage(private val act: SettingsActivity) : Page(R.string.set_about, R.
         info(R.drawable.ic_cpu, R.string.about_android, "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
         info(R.drawable.ic_layers, R.string.about_build, Device.buildId)
         info(R.drawable.ic_star, R.string.about_aura, "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+        // how the 3D car is drawn, and how fast it turned last time (for reports from the unit)
+        val fps = com.abdllh.aura.ui.CarStage.lastFps
+        info(R.drawable.ic_car, R.string.about_car_view, ctx.getString(
+            if (com.abdllh.aura.ui.CarStage.gpuDrawing) R.string.about_car_gpu else R.string.about_car_cpu) +
+            if (fps > 0f) " · ${Math.round(fps)} fps" else "")
         info(R.drawable.ic_shield, R.string.about_role, ctx.getString(
             when {
                 Device.isSystemApp(ctx) && Device.isPrivileged(ctx) -> R.string.role_system

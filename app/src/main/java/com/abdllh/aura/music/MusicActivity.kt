@@ -79,6 +79,13 @@ class MusicActivity : Activity() {
     private lateinit var btState: AText
     private lateinit var btBadge: FrameLayout
     private lateinit var btBadgeIcon: ImageView
+    // the layout: in Bluetooth mode the song takes the whole screen (cover beside the title and the controls)
+    private lateinit var left: LinearLayout
+    private lateinit var panel: FrameLayout
+    private lateinit var stage: LinearLayout
+    private lateinit var artSlot: FrameLayout
+    private lateinit var info: LinearLayout
+    private lateinit var btSettings: AText
 
     private var tab = Tab.SONGS
     private var group: Group? = null
@@ -189,6 +196,7 @@ class MusicActivity : Activity() {
         shuffleBtn.visibility = if (bt) View.INVISIBLE else View.VISIBLE
         repeatBtn.visibility = if (bt) View.INVISIBLE else View.VISIBLE
         seek.enabledSeek = !bt
+        btSettings.visibility = if (bt && (!BtMusic.available || !BtMusic.connected)) View.VISIBLE else View.GONE
         if (bt) {
             artIcon.setImageResource(R.drawable.ic_bluetooth)
             // once per cover (found online by title + artist): Bluetooth updates come every second
@@ -356,9 +364,35 @@ class MusicActivity : Activity() {
     // ------------------------------------------------------------------------------------------ library
     private var listView: ListView? = null
 
+    /**
+     * Bluetooth mode has no library to show: the song takes the whole screen, the cover beside its title and controls.
+     * The unit's own music keeps the cover above them, beside the library.
+     */
+    private fun applyLayout() {
+        if (!::stage.isInitialized) return
+        val wide = bt
+        panel.visibility = if (wide) View.GONE else View.VISIBLE
+        (left.layoutParams as LinearLayout.LayoutParams).apply {
+            weight = if (wide) 1f else 0.46f
+            marginEnd = if (wide) 0 else 18.dp
+        }
+        stage.orientation = if (wide) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+        stage.gravity = if (wide) Gravity.CENTER_VERTICAL else Gravity.NO_GRAVITY
+        artSlot.layoutParams = if (wide) LinearLayout.LayoutParams(0, MATCH, 0.44f).apply { topMargin = 18.dp; bottomMargin = 18.dp }
+            else LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = 12.dp; bottomMargin = 14.dp }
+        info.layoutParams = if (wide) LinearLayout.LayoutParams(0, WRAP, 0.56f).apply { marginStart = 40.dp; marginEnd = 16.dp }
+            else LinearLayout.LayoutParams(MATCH, WRAP)
+        title.textSize = if (wide) 34f else 28f
+        title.maxLines = if (wide) 2 else 1
+        artist.textSize = if (wide) 22f else 19f
+        album.textSize = if (wide) 17f else 15f
+        left.requestLayout()
+    }
+
     private fun showList() {
         if (!::listHolder.isInitialized) return
-        // Bluetooth: the library makes way for the phone's status
+        applyLayout()
+        // Bluetooth: the library makes way for the song (see applyLayout)
         libraryBox.visibility = if (bt) View.GONE else View.VISIBLE
         btBox.visibility = if (bt) View.VISIBLE else View.GONE
         paintTabs()
@@ -583,7 +617,7 @@ class MusicActivity : Activity() {
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(18.dp, 14.dp, 18.dp, 16.dp) }
 
         // ---- now playing
-        val left = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
+        left = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
         val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         top.addView(FrameLayout(this).apply {
             background = Shapes.ghostOval()
@@ -617,7 +651,7 @@ class MusicActivity : Activity() {
         artBox.addView(artIcon, flp(72.dp, 72.dp, Gravity.CENTER))
         art = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
         artBox.addView(art, flp(MATCH, MATCH))
-        val artSlot = object : FrameLayout(this) {
+        artSlot = object : FrameLayout(this) {
             override fun onMeasure(w: Int, h: Int) {
                 // the cover is the largest square that fits the space left between the header and the title
                 val s = minOf(MeasureSpec.getSize(w), MeasureSpec.getSize(h))
@@ -626,23 +660,28 @@ class MusicActivity : Activity() {
             }
         }
         artSlot.addView(artBox, flp(1, 1, Gravity.CENTER))
-        left.addView(artSlot, lp(MATCH, 0, 1f).apply { topMargin = 12.dp; bottomMargin = 14.dp })
+        // the cover and the song's info: one above the other beside the library, side by side in Bluetooth mode
+        stage = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        stage.addView(artSlot, lp(MATCH, 0, 1f))
+        info = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
+        stage.addView(info, lp(MATCH, WRAP))
+        left.addView(stage, lp(MATCH, 0, 1f))
 
         title = label(28f, Palette.text, Fonts.MEDIUM, gravity = Gravity.CENTER)
         artist = label(19f, Palette.text2, Fonts.REGULAR, gravity = Gravity.CENTER)
         album = label(15f, Palette.text3, Fonts.REGULAR, gravity = Gravity.CENTER)
-        left.addView(title, lp(MATCH, WRAP))
-        left.addView(artist, lp(MATCH, WRAP).apply { topMargin = 4.dp })
-        left.addView(album, lp(MATCH, WRAP).apply { topMargin = 2.dp })
+        info.addView(title, lp(MATCH, WRAP))
+        info.addView(artist, lp(MATCH, WRAP).apply { topMargin = 4.dp })
+        info.addView(album, lp(MATCH, WRAP).apply { topMargin = 2.dp })
 
         seek = SeekView(this).apply { onSeek = { f -> Player.seekTo((Player.duration() * f).toLong()) } }
-        left.addView(seek, lp(MATCH, 34.dp).apply { topMargin = 12.dp })
+        info.addView(seek, lp(MATCH, 34.dp).apply { topMargin = 12.dp })
         val times = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; layoutDirection = View.LAYOUT_DIRECTION_LTR }
         tNow = label(14f, Palette.text2, Fonts.MEDIUM)
         tTotal = label(14f, Palette.text2, Fonts.MEDIUM)
         times.addView(tNow, lp(0, WRAP, 1f))
         times.addView(tTotal, lp(WRAP, WRAP))
-        left.addView(times, lp(MATCH, WRAP).apply { setMargins(6.dp, 0, 6.dp, 0) })
+        info.addView(times, lp(MATCH, WRAP).apply { setMargins(6.dp, 0, 6.dp, 0) })
 
         val ctl = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; layoutDirection = View.LAYOUT_DIRECTION_LTR }
         shuffleBtn = ImageView(this)
@@ -660,11 +699,22 @@ class MusicActivity : Activity() {
         ctl.addView(playBtn, lp(104.dp, 104.dp).apply { marginStart = 14.dp; marginEnd = 14.dp })
         ctl.addView(ctlButton(R.drawable.ic_skip_fwd, 36, null) { transport(2) }, lp(82.dp, 82.dp).apply { marginEnd = 12.dp })
         ctl.addView(ctlButton(R.drawable.ic_repeat, 28, repeatBtn) { Player.cycleRepeat() }, lp(64.dp, 64.dp))
-        left.addView(ctl, lp(MATCH, WRAP).apply { topMargin = 8.dp })
+        info.addView(ctl, lp(MATCH, WRAP).apply { topMargin = 8.dp })
+        // Bluetooth mode without a phone: the way to pair or connect one
+        btSettings = label(17f, Palette.text, Fonts.MEDIUM, gravity = Gravity.CENTER).apply {
+            setText(R.string.music_bt_settings)
+            background = Shapes.tonal(20f)
+            setPadding(28.dp, 0, 28.dp, 0)
+            isClickable = true
+            pressScale(0.95f)
+            visibility = View.GONE
+            setOnClickListener { openBluetooth(this@MusicActivity) }
+        }
+        info.addView(btSettings, lp(WRAP, 58.dp).apply { topMargin = 18.dp })
         row.addView(left, lp(0, MATCH, 0.46f).apply { marginEnd = 18.dp })
 
-        // ---- library (frosted panel over the blurred cover) / the phone's status in Bluetooth mode
-        val panel = FrameLayout(this).apply {
+        // ---- library (frosted panel over the blurred cover); Bluetooth mode hides it
+        panel = FrameLayout(this).apply {
             background = Shapes.rect(Palette.withAlpha(Palette.card, if (Palette.dark) 0.72f else 0.82f), 28f, if (Palette.dark) 0x14FFFFFF else 0)
         }
         libraryBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(14.dp, 14.dp, 14.dp, 0) }

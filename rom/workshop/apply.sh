@@ -57,13 +57,29 @@ put_file() {
     echo "  + $2"
 }
 
+# keep_stock FILE: a big stock file that is replaced stays in place as FILE.aura-stock. Rewritten in place, it gives
+# its blocks to the new data at once (this file system has no journal), and the block patch cannot write new data over
+# blocks the stock image still uses in a crash-safe order (1.5.2's bigger APK made the allocator do exactly that);
+# deleted, its inode is freed while the old directory entry still points at it in the middle of the patch. Kept,
+# nothing of the stock image is overwritten or freed.
+keep_stock() {
+    [ -f "$1" ] || return 0
+    [ -e "$1.aura-stock" ] && fail "$1.aura-stock exists"
+    mv "$1" "$1.aura-stock" || fail "keep $1"
+    echo "  = $1.aura-stock"
+}
+
 step "install files"
 put_file $SRC/system/priv-app/Aura/Aura.apk              $R/priv-app/Aura/Aura.apk                 644
 put_file $SRC/system/etc/permissions/privapp-permissions-aura.xml $R/etc/permissions/privapp-permissions-aura.xml 644
 put_file $SRC/system/etc/init/aura.rc                     $R/etc/init/aura.rc                       644
 put_file $SRC/system/bin/aura-prepare.sh                  $R/bin/aura-prepare.sh                    755 0:2000
-[ -f $SRC/system/media/bootanimation.zip ] && put_file $SRC/system/media/bootanimation.zip $R/media/bootanimation.zip 644
-[ -f $SRC/system/media/bootanimation.zip ] && put_file $SRC/system/media/bootanimation.zip $R/config/app/bootanimation.zip 644
+if [ -f $SRC/system/media/bootanimation.zip ]; then
+    keep_stock $R/media/bootanimation.zip
+    put_file $SRC/system/media/bootanimation.zip $R/media/bootanimation.zip 644
+    keep_stock $R/config/app/bootanimation.zip
+    put_file $SRC/system/media/bootanimation.zip $R/config/app/bootanimation.zip 644
+fi
 touch -t $STAMP $R/priv-app $R/etc/permissions $R/etc/init $R/bin $R/media $R/config/app
 
 step "patch NWD default config (same logic the car runs at boot)"

@@ -52,6 +52,25 @@ object CanGear {
     /** The last raw gear value the CAN app sent (-1: none), for the settings page. */
     @Volatile var raw = -1; private set
 
+    /** Car-info messages from the CAN app so far (diagnostics: does it talk to us at all?). */
+    @Volatile var messages = 0; private set
+
+    /**
+     * The CAN box and the car the CAN app is set up for ("Raise · Changan Eado 2018"), from its configuration
+     * (Settings.System can_config_app_cartype_json, its CanConfig as JSON), or null.
+     */
+    fun boxInfo(c: Context): String? = try {
+        val s = android.provider.Settings.System.getString(c.contentResolver, "can_config_app_cartype_json")
+        if (s.isNullOrBlank()) null else {
+            val j = org.json.JSONObject(s)
+            fun f(k: String) = j.optString(k).trim().takeIf { it.isNotEmpty() && it != "null" }
+            val car = listOfNotNull(f("carBandName"), f("carTypeName"), f("carYearName")).joinToString(" ")
+            listOfNotNull(f("canProviderName"), car.ifBlank { null }).joinToString(" · ").ifBlank { null }
+        }
+    } catch (_: Throwable) {
+        null
+    }
+
     /** Is a CAN app with a gear in its car info installed (v.26 or later)? */
     fun supported(c: Context): Boolean = try {
         val v = c.packageManager.getPackageInfo(PKG, 0).versionName.orEmpty() // "v.26.04.09A_..."
@@ -128,6 +147,7 @@ object CanGear {
             if (code < FIRST_CALL_TRANSACTION || code > LAST_CALL_TRANSACTION) return super.onTransact(code, data, reply, flags)
             try {
                 data.enforceInterface(CALLBACK)
+                messages++
                 val g = when (code) {
                     TX_ON_CAN_DATA -> fromFrame(data.createByteArray())
                     TX_ON_CAR_INFO -> if (data.readInt() != 0) fromCarInfo(data) else null

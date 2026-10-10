@@ -35,7 +35,20 @@ class SettingsActivity : Activity() {
         const val PAGE_DISPLAY = 2
         const val PAGE_NAVIGATION = 3
         const val PAGE_VEHICLE = 4
-        const val PAGE_ABOUT = 5
+        const val PAGE_VOICE = 5
+        const val PAGE_ABOUT = 6
+        const val REQ_MIC = 21
+    }
+
+    /** Goes on once the microphone permission is given (the voice page asked for it on the owner's way somewhere). */
+    var afterMic: (() -> Unit)? = null
+
+    override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, grants: IntArray) {
+        if (code != REQ_MIC) return
+        val then = afterMic
+        afterMic = null
+        com.abdllh.aura.voice.Amri.refresh(this)
+        if (grants.isNotEmpty() && grants[0] == android.content.pm.PackageManager.PERMISSION_GRANTED && then != null) then() else rebuild()
     }
 
     private lateinit var pages: List<Page>
@@ -62,7 +75,7 @@ class SettingsActivity : Activity() {
             intent.getStringExtra("theme")?.let { com.abdllh.aura.util.Prefs.theme = it; Theme.refresh(); Theme.window(this) }
             intent.getStringExtra("lang")?.let { com.abdllh.aura.util.Prefs.lang = it }
         }
-        pages = listOf(GeneralPage(this), UpdatePage(this), DisplaySoundPage(this), NavigationPage(this), VehiclePage(this), AboutPage(this))
+        pages = listOf(GeneralPage(this), UpdatePage(this), DisplaySoundPage(this), NavigationPage(this), VehiclePage(this), VoicePage(this), AboutPage(this))
         setContentView(buildFrame())
         show(intent.getIntExtra(EXTRA_PAGE, PAGE_GENERAL).coerceIn(0, pages.size - 1), false)
     }
@@ -110,7 +123,7 @@ class SettingsActivity : Activity() {
                 item.addView(updateDot, lp(10.dp, 10.dp))
             }
             items.add(item)
-            side.addView(item, lp(MATCH, 64.dp).apply { topMargin = 4.dp })
+            side.addView(item, lp(MATCH, 56.dp).apply { topMargin = 3.dp }) // seven pages fit the 600 px screen
         }
         navItems = items
         row.addView(side, lp(280.dp, MATCH))

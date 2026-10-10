@@ -14,7 +14,8 @@ import com.abdllh.aura.util.dp
 
 /**
  * P R N D, like the gear lever: the current gear lit (R in the warning colour), the others dim; nothing lit while the
- * gear is unknown. Always left to right, also in Arabic (the letters are the lever's).
+ * gear is unknown. A D only assumed (the car stopped after driving forward, [Gear.Source.HELD]) is lit without its
+ * highlight. Always left to right, also in Arabic (the letters are the lever's).
  */
 class GearView(ctx: Context) : LinearLayout(ctx) {
     private val letters: List<AText> = Gear.Pos.values().map { p ->
@@ -43,13 +44,14 @@ class GearView(ctx: Context) : LinearLayout(ctx) {
 
     private fun show() {
         val g = Gear.current
+        val sure = Gear.source != Gear.Source.HELD
         for ((i, t) in letters.withIndex()) {
             val on = g != null && i == g.ordinal
             val lit = if (g == Gear.Pos.R) Palette.warn else Palette.text
             t.setTextColor(if (on) lit else Palette.text3)
-            t.weight = if (on) Fonts.BOLD else Fonts.MEDIUM
-            t.alpha = if (on) 1f else 0.55f
-            t.background = if (on) Shapes.rect(Palette.withAlpha(lit, if (Palette.dark) 0.16f else 0.12f), 11f) else null
+            t.weight = if (on && sure) Fonts.BOLD else Fonts.MEDIUM
+            t.alpha = if (on) (if (sure) 1f else 0.85f) else 0.55f
+            t.background = if (on && sure) Shapes.rect(Palette.withAlpha(lit, if (Palette.dark) 0.16f else 0.12f), 11f) else null
         }
         contentDescription = g?.name ?: ""
     }

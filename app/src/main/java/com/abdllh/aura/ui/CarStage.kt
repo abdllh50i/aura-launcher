@@ -19,6 +19,7 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.animation.DecelerateInterpolator
 import android.view.animation.PathInterpolator
+import android.widget.FrameLayout
 import com.abdllh.aura.util.dp
 import kotlin.math.abs
 import kotlin.math.exp
@@ -30,8 +31,10 @@ import kotlin.math.sign
  * The user's car on a turntable (frames from [CarFrames]). Drag sideways to turn it, flick to spin it; it comes to
  * rest with inertia and, after a few idle seconds, swings back to its showroom angle. While it turns the view eases
  * out to frame the whole turntable, and back in when it returns. Adjacent frames are cross-faded during motion.
+ * The GPU draws it ([CarGlView], under this view's own drawing) once its frames are in; until then, or if it fails,
+ * this view draws the frames on its canvas.
  */
-class CarStage(context: Context) : View(context) {
+class CarStage(context: Context) : FrameLayout(context) {
     var onTap: (() -> Unit)? = null
 
     private val meta = CarFrames.meta(context)
@@ -88,9 +91,42 @@ class CarStage(context: Context) : View(context) {
     private val goHome = Runnable { settleHome() }
     private val frameCallback = Choreographer.FrameCallback { t -> tick(t) }
 
+    // the GPU path
+    private val glView: CarGlView? = meta?.let { CarGlView(context, Palette.dark) }
+    private var glOn = false          // the GPU draws the car
+    private val glState = CarGlView.State()
+    private var restAsked = -1        // frame whose crisp copy was asked for (resting there)
+    private var restFor = -1          // frame whose crisp copy is in the GPU
+    private var restMix = 0f
+    private var restAnim: ValueAnimator? = null
+
     init {
         isClickable = true
+        setWillNotDraw(false)
         contentDescription = context.getString(com.abdllh.aura.R.string.home_car)
+        glView?.let { g ->
+            g.onReady = {
+                glOn = true
+                gpuDrawing = true
+                CarFrames.dropRawFiles(context)
+                CarFrames.trim(emptyList()) // the CPU's decoded frames are not drawn any more (tens of MB)
+                invalidate()
+            }
+            g.onLost = { glOn = false; restAsked = -1; restFor = -1; invalidate() }
+            g.onFailed = { glOn = false; gpuDrawing = false; CarFrames.startRawFallback(); invalidate() }
+            g.onRestReady = { i ->
+                if (restAsked == i) {
+                    restFor = i
+                    restAnim?.cancel()
+                    restAnim = ValueAnimator.ofFloat(0f, 1f).apply {
+                        duration = 180
+                        addUpdateListener { restMix = it.animatedValue as Float; redraw() }
+                        start()
+                    }
+                }
+            }
+            addView(g, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        }
     }
 
     private fun resolveHome() {
@@ -113,6 +149,7 @@ class CarStage(context: Context) : View(context) {
 
     override fun onDetachedFromWindow() {
         stopAnim()
+        restAnim?.cancel()
         CarFrames.removeListener(onFrameReady)
         removeCallbacks(goHome)
         Choreographer.getInstance().removeFrameCallback(frameCallback)
@@ -160,7 +197,7 @@ class CarStage(context: Context) : View(context) {
         shown = 0f
         zoom = 1f
         zoomTarget = 0f
-        invalidate()
+        redraw()
         anim = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 1900
             startDelay = delayMs
@@ -170,7 +207,7 @@ class CarStage(context: Context) : View(context) {
                 pos = start + (home - start) * f
                 shown = (f * 3.2f).coerceAtMost(1f)
                 zoom = 1f - f
-                invalidate()
+                redraw()
             }
             addListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(a: Animator) {
@@ -179,7 +216,7 @@ class CarStage(context: Context) : View(context) {
                     pos = home
                     shown = 1f
                     zoom = 0f
-                    invalidate()
+                    redraw()
                 }
             })
             start()
@@ -205,14 +242,14 @@ class CarStage(context: Context) : View(context) {
             interpolator = interp
             addUpdateListener {
                 pos = from + (target - from) * (it.animatedValue as Float)
-                invalidate()
+                redraw()
             }
             addListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(a: Animator) {
                     if (anim !== a) return
                     anim = null
                     pos = target
-                    invalidate()
+                    redraw()
                     then?.invoke()
                 }
             })
@@ -274,7 +311,7 @@ class CarStage(context: Context) : View(context) {
         } else {
             zoom = zoomTarget
         }
-        invalidate()
+        redraw()
         if (more) {
             ticking = true
             Choreographer.getInstance().postFrameCallback(frameCallback)
@@ -371,16 +408,6 @@ class CarStage(context: Context) : View(context) {
         val t = p - base
         val a = Math.floorMod(base.toInt(), n)
         val b = (a + 1) % n
-        // Until the raw frame file is there, frames are decoded: requests go last-in-first-out, so the look-ahead in
-        // the direction of motion is queued farthest first, then the frame being left, then the frame on screen.
-        if (!CarFrames.instant) {
-            CarFrames.setFocus(a)
-            val dir = if (vel != 0f) sign(vel).toInt() else motionDir
-            if (dir != 0) for (k in lookAhead downTo 1) CarFrames.request(Math.floorMod(a + dir * k, n))
-            else CarFrames.request(Math.floorMod(a - 1, n))
-            CarFrames.request(b)
-            CarFrames.request(a)
-        }
 
         // framing
         val s = heroScale + (fitScale - heroScale) * zoom
@@ -390,6 +417,23 @@ class CarStage(context: Context) : View(context) {
         val cy = height * 0.53f
         mat.setScale(s, s)
         mat.postTranslate(cx - fx * s, cy - fy * s)
+
+        // the GPU gets the state at every frame, also while its frames are loading (its first frame is then right)
+        if (glView != null) {
+            pushGl()
+            if (glOn) return
+        }
+
+        // the CPU path: until the raw frame file is there, frames are decoded: requests go last-in-first-out, so the
+        // look-ahead in the direction of motion is queued farthest first, then the frame being left, then the frame on screen
+        if (!CarFrames.instant) {
+            CarFrames.setFocus(a)
+            val dir = if (vel != 0f) sign(vel).toInt() else motionDir
+            if (dir != 0) for (k in lookAhead downTo 1) CarFrames.request(Math.floorMod(a + dir * k, n))
+            else CarFrames.request(Math.floorMod(a - 1, n))
+            CarFrames.request(b)
+            CarFrames.request(a)
+        }
 
         // floor light under the turntable
         pt[0] = m.width / 2f; pt[1] = m.height * FLOOR_Y
@@ -402,7 +446,7 @@ class CarStage(context: Context) : View(context) {
         fs.setLocalMatrix(floorMat)
         floorPaint.alpha = (255 * shown).toInt()
         c.save()
-        c.scale(1f, 0.22f, pt[0], pt[1])
+        c.scale(1f, FLOOR_SQUASH, pt[0], pt[1])
         c.drawCircle(pt[0], pt[1], r, floorPaint)
         c.restore()
 
@@ -428,6 +472,38 @@ class CarStage(context: Context) : View(context) {
         c.drawRect(0f, height - 22.dp.toFloat(), width.toFloat(), height.toFloat(), fadeBottom)
     }
 
+    /** Shows the current state: the GPU draws it straight away (no redraw of the view tree), else this view redraws. */
+    private fun redraw() {
+        if (glOn) pushGl() else invalidate()
+    }
+
+    /** The current state to the GPU: frames, blend, framing, fade-in, and the crisp copy of a resting frame. */
+    private fun pushGl() {
+        val g = glView ?: return
+        if (meta == null || width == 0 || height == 0) return
+        val p = pos
+        val base = floor(p)
+        val t = p - base
+        val a = Math.floorMod(base.toInt(), n)
+        val s = heroScale + (fitScale - heroScale) * zoom
+        val fx = heroCx + (fitCx - heroCx) * zoom
+        val fy = heroCy + (fitCy - heroCy) * zoom
+        // resting exactly on a frame: its crisp (uncompressed) copy fades in
+        val atRest = anim == null && vel == 0f && !dragging && t < 0.001f
+        if (atRest && glOn) {
+            if (restAsked != a) { restAsked = a; restFor = -1; restMix = 0f; restAnim?.cancel(); g.prepareRest(a) }
+        } else if (restAsked != -1) {
+            restAsked = -1; restFor = -1; restMix = 0f; restAnim?.cancel()
+        }
+        glState.a = a; glState.b = (a + 1) % n; glState.t = t
+        glState.scale = s; glState.tx = width / 2f - fx * s; glState.ty = height * 0.53f - fy * s
+        glState.shown = shown
+        glState.rest = restFor == a; glState.restMix = restMix
+        glState.edge = EDGE.dp.toFloat(); glState.edgeBottom = 22.dp.toFloat()
+        g.render(glState)
+        lastFps = g.fps
+    }
+
     private fun floorColor(k: Float): Int =
         if (Palette.dark) Palette.withAlpha(0xFFFFFFFF.toInt(), 0.085f * k) else Palette.withAlpha(0xFFFFFFFF.toInt(), 0.95f * k)
 
@@ -438,8 +514,14 @@ class CarStage(context: Context) : View(context) {
         private const val FRICTION = 2.4f         // per second (exponential decay of the spin)
         private const val IDLE_MS = 3200L
         private const val FOLLOW = 24f            // per second: how fast the car catches up with the finger
-        private const val FLOOR_Y = 262f / 360f   // the turntable floor's centre, as a fraction of the frame height
-        private const val FLOOR_R = 300f / 640f   // radius of the floor light, as a fraction of the frame width
+        const val FLOOR_Y = 262f / 360f           // the turntable floor's centre, as a fraction of the frame height
+        const val FLOOR_R = 0.34f                 // radius of the floor light, as a fraction of the frame width
+                                                  // (what the stage showed at rest: the same in the GPU's frames)
+        const val FLOOR_SQUASH = 0.22f            // the floor light's height to its width (seen from above the car)
         private const val EDGE = 20f              // width of the edge fades, dp
+
+        /** Diagnostics: is the GPU drawing the car, and how fast it drew while the car last turned. */
+        @Volatile var gpuDrawing = false
+        @Volatile var lastFps = 0f
     }
 }

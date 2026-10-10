@@ -23,11 +23,12 @@ import kotlin.math.roundToInt
  * The pre-rendered turntable of the user's car: assets/car/f_000.webp ... (one frame every [Meta.yawStep] degrees,
  * with alpha and a soft floor shadow) and car.json (frame size, default frame, per-frame bounding boxes).
  *
- * Decoding a WebP frame takes tens of milliseconds on the unit's processor: too slow for a car that follows a finger.
- * So the frames are decoded once, in the background, into one file of raw pixels (cache dir, memory-mapped); from then
- * on a frame is a plain copy of about a millisecond, done right when it is drawn ([frameNow]), and the car always shows
- * the exact angle. Until that file exists the frames are decoded off the main thread into a small LRU of bitmaps: the
- * most recent request first, stale requests far from the current angle skipped, evicted bitmaps reused.
+ * The GPU draws the car ([CarGlView], from [CarEtc]'s compressed frames). What is here draws it on the CPU (the
+ * stage's own canvas): while the GPU frames are being built at the first start, and for good if the GPU path fails.
+ * Decoding a WebP frame takes tens of milliseconds on the unit's processor, too slow for a car that follows a finger:
+ * frames are decoded off the main thread into a small LRU of bitmaps (the most recent request first, stale requests
+ * far from the current angle skipped, evicted bitmaps reused). Only if the GPU path fails for good, all frames are
+ * also decoded once into a file of raw pixels ([startRawFallback]; memory-mapped, a frame is then a ~1 ms copy).
  * All public functions are main-thread only.
  */
 object CarFrames {
@@ -101,7 +102,7 @@ object CarFrames {
         return meta
     }
 
-    /** Starts decoding the frames the home screen shows first (the intro spin), and the raw frame file. */
+    /** Starts decoding the frames the home screen shows first (the intro spin), for drawing them on the CPU. */
     fun warmUp(ctx: Context, rtl: Boolean) {
         val m = meta(ctx) ?: return
         val d = if (rtl) m.defaultFrameRtl else m.defaultFrame
@@ -111,11 +112,27 @@ object CarFrames {
         // the queue is last-in-first-out, so the intro frames decode in playback order and the default one last
         for (k in 0..intro) request(Math.floorMod(d - dir * k, m.count))
         introSet = IntArray(intro + 2) { k -> Math.floorMod(d - dir * k, m.count) }
-        if (!rawStarted) {
-            rawStarted = true
-            Thread({ prepareRaw() }, "car-raw").apply { isDaemon = true; start() }
-        }
     }
+
+    /** The GPU path failed: frames come from a raw frame file from now on (built once, in the background). */
+    fun startRawFallback() {
+        if (rawStarted || meta == null) return
+        rawStarted = true
+        Thread({ prepareRaw() }, "car-raw").apply { isDaemon = true; start() }
+    }
+
+    /** The GPU draws the car: the raw frame file of the CPU path (~100 MB, from 1.5.1) is not needed. */
+    fun dropRawFiles(ctx: Context) {
+        if (rawStarted) return
+        val c = ctx.applicationContext
+        Thread({
+            c.noBackupFilesDir.listFiles()?.filter { it.name.startsWith("car-") && (it.name.endsWith(".raw") || it.name.endsWith(".raw.tmp")) }
+                ?.forEach { if (it.delete()) Log.i(TAG, "dropped ${it.name}") }
+            c.cacheDir.listFiles()?.filter { it.name.startsWith("car-") }?.forEach { it.delete() }
+        }, "car-drop").apply { isDaemon = true; start() }
+    }
+
+    fun frameAsset(i: Int) = "car/f_%03d.webp".format(java.util.Locale.ROOT, i)
 
     /** Length of the intro spin in frames (88 degrees). */
     fun introFrames(): Int = meta?.frames(INTRO_DEG) ?: 22
@@ -332,8 +349,6 @@ object CarFrames {
             tmp?.delete() // a half-built file (no room, a frame that did not decode...)
         }
     }
-
-    private fun frameAsset(i: Int) = "car/f_%03d.webp".format(java.util.Locale.ROOT, i)
 
     private fun valid(f: File, m: Meta, size: Long): Boolean {
         if (!f.isFile || f.length() != size) return false

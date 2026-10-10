@@ -29,7 +29,12 @@ intended paths changed; `rom/tools/make_patch.py` turns the difference into a bl
 `rom/flash/aura-flash.sh` applies with full hash verification on the unit. Room: the system partition has 8417 free 4K
 blocks after the grow; a writable ext4 mount keeps up to 4096 of them back from every writer, root included (the
 kernel's runtime `reserved_clusters`), so `apply.sh` sets that to 0 for the workshop mount (the unit mounts system
-read-only). 1.4.0 leaves about 2600 blocks (~10 MB) free. The pack also carries per-range hashes and a hash of
+read-only). 1.4.0 leaves about 2600 blocks (~10 MB) free; 1.5.2's new data takes 6755 of the 8417. The file system
+has no journal, so a stock file rewritten in place gives its blocks back at once and the allocator may hand them to
+the new data, which the block patch cannot write crash-safely (make_patch stops: "live file data in the old image";
+1.5.2's bigger APK hit it); deleting the stock file instead fails the write-order proof (a directory entry briefly
+points at a freed inode). So the two stock boot animations are kept, renamed `bootanimation.zip.aura-stock`, and
+nothing of the stock image is overwritten or freed. The pack also carries per-range hashes and a hash of
 every block *outside* the ranges (`rest`): if a run is ever interrupted, a partition that matches neither image but whose
 `rest` still matches is reported as an interrupted patch and `install`/`restore` simply finish it (rewriting all ranges leads
 to a known image again); anything else is refused. `rom/tools/make_zip.py` writes the release zip (forward-slash entries).
@@ -134,22 +139,84 @@ alone for phone-projection apps, and Aura marks its own with `MediaMonitor.EXTRA
 
 ### The 3D car (`tools/car3d`, debug-only `CarBakerActivity`)
 The car is not rendered live (the source model has ~726k triangles and 8K textures; the unit has a Mali-G31). Instead a
-turntable is pre-rendered once on the emulator's GPU and shipped as 180 WebP frames (2° apart, 512×288 with alpha, ~2.6 MB):
+turntable is pre-rendered once on the emulator's GPU and shipped as 180 WebP frames (2° apart, 640×360 with alpha, ~3.4 MB;
+the 2560×1440 bake masters stay in `D:\k2501-work\car3d\final180`, outside the repo):
 1. `fbx2mesh.py model.fbx OUT --front -x` → `mesh.bin` (positions, normals, GL UVs, indices; binary FBX parsed by `fbx_binary.py`),
 2. `prep_textures.py` → `basecolor.jpg` + `rm.png` (roughness/metalness), `find_plates.py OUT` blanks the licence plates,
 3. `bake.ps1 -Out DIR -Params "frames=180`nwidth=640`nheight=360`nss=4..." -Install -PushMesh` runs
    `app/src/debug/.../CarBakerActivity` (GLES2: studio environment, GGX specular, clear coat, ambient occlusion from 64
    depth maps, soft floor shadow, 4× supersampling); `only=a-b` bakes part of the frames (long bakes in two halves),
-4. `pack_frames.py DIR app/src/main/assets/car --size 512x288 --default 160 --yaw-step 2` → `f_NNN.webp` + `car.json`
+4. `pack_frames.py DIR app/src/main/assets/car --size 640x360 --default 160 --yaw-step 2` → `f_NNN.webp` + `car.json`
    (frame size, step, resting frame, boxes).
-At runtime `ui/CarFrames.kt` decodes every frame once, in the background, into one file of raw premultiplied pixels
-(`no_backup/car-<hash of car.json and the frames' sizes>.raw`, ~100 MB, memory-mapped; not in the cache, whose cleaner
-would delete it while it is mapped and free nothing), so a frame is a ~1 ms copy when it is drawn and the car always
-shows the exact angle. After a start the intro's frames are read in before the file is used and the rest after the
-start-up rush; until then frames are decoded on two worker threads into a small LRU. `ui/CarStage.kt` turns them with drag, fling, snap and a spring back to the resting view
-(mirrored in RTL); the car eases towards the finger on every display frame (touch panels report unevenly) and adjacent
-frames are cross-faded. The feel is set in degrees, so another frame step needs no retuning. The model itself is not in
-the repo.
+At runtime the GPU draws it (`ui/CarGl.kt`). `CarEtc` lays every frame over the stage's background and its floor light
+(the home backdrop is one flat colour, so the frames need no alpha then) and compresses it to ETC1 (decoded in hardware by
+every GLES 2 device): one file per theme, `no_backup/car-etc-<hash>.bin`, 180 × 115 KB ≈ 21 MB, built once in the
+background on two threads (4 s on the emulator; the other theme's file follows). `CarGlView` (a TextureView with its own
+EGL context and thread) keeps all 180 textures in the GPU, so turning the car costs no copies and no uploads: per frame
+the shader blends two frames and fades the frame border, the view's edges and the intro into the background. A car at
+rest gets its frame uncompressed (decoded and composed again, uploaded as RGB) and blends over to it, so compression
+only ever shows while it turns. `ui/CarStage.kt` (a FrameLayout over that view) owns the motion: drag, fling, snap and a
+spring back to the resting view (mirrored in RTL); the car eases towards the finger on every display frame (touch panels
+report unevenly); with the GPU drawing, motion goes straight to it without redrawing the view tree. Until the frames are
+in the GPU (the first start builds them), and for good if the GPU path fails, the stage draws on its own canvas
+(`ui/CarFrames.kt`: frames decoded on two threads into a small LRU; after a GPU failure also a memory-mapped raw frame
+file). The feel is set in degrees, so another frame step needs no retuning. Settings → About shows how the car is drawn
+and how fast it turned last time. The model itself is not in the repo.
+
+### The voice assistant "عمري" (`voice/`)
+* Wake word, offline and without a model to download: a personal template matcher. The owner says "عمري" 4 times
+  (Settings → Voice assistant; best in the car with the engine running); each later word is compared with those.
+  `WakeWord.kt`: `Segmenter` splits the microphone into words (background = the 4th quietest 10 ms of the last 1.5 s,
+  measured after a first difference that takes away road rumble; up to 2 s of near silence while a recording starts
+  are skipped, and the 3 quietest hops ignored: a recording's start and a stream's dropouts otherwise held the
+  background too low and the next noise looked like a word; a word starts 10 dB over it and ends 0.2 s near it or
+  24 dB under its own peak; 0.2–1.5 s only). `Features.spectrum` keeps a word's mel spectrum with the noise of the
+  0.3 s before it subtracted (over-subtraction 1.5, floor 0.1) and that noise; `Features.cepstra` gives MFCC c1..c12 +
+  deltas (cepstral mean normalisation) of a spectrum seen through a given background (no band under it). `WakeModel`
+  keeps the recordings as spectra (`amri-wake.bin`, "AMR2") and compares a word with each through the louder of the two
+  backgrounds (`Dtw`, Sakoe-Chiba band): what noise hides in one is hidden in both, so a "عمري" said on the motorway
+  matches one recorded in a quiet garage. Score = (mean of the two nearest) / (the recordings' own mean distance
+  through their background); wakes under 1.15 (strict 1.05, relaxed 1.30). Tried with Windows' Arabic voice (Naayf)
+  played into the emulator's microphone (VB-Cable, below): recorded in quiet, "عمري" scored 0.56–0.92 quiet and in
+  road noise (6/6 each); "عمر", "عمرو", "مرحبا", "شغل", "الصوت", "طيب", "عمرين", "سمري", "أحمد" 1.4+; the
+  near-homophone "حمري" 1.19 in road noise. An offline copy of the matcher (Python, not kept) agreed, and showed
+  every pairing of quiet / road / loud-road recordings and words keeping "عمري" ≤ 0.93 and the others ≥ 1.40 (the
+  earlier per-word noise subtraction alone failed noisy words recorded in quiet: 1.31–1.69).
+* `AmriService`: a foreground service (the microphone from the background needs one) that runs the matcher; off the
+  microphone while the assistant listens or answers, while Settings records, while reversing (`Gear` R: nothing may
+  cover the camera) and in calls: the unit's Bluetooth calls are `com.bt.ACTION_BT_*` broadcasts (the audio mode does
+  not change for them; capped at 2 min of ringing / 1 h of talking if the end is never announced), plus the audio
+  mode, looked at every 2 s. It checks `Amri.shouldRun` (on, microphone, recordings, `persist.aura.disabled` not 1) at
+  every start, also when Android brings it back (START_STICKY) in a process where it is no longer wanted; a failing
+  microphone is retried less and less often (2 s .. 1 min). `MicLoop.quit` stops the AudioRecord (a blocked read
+  returns), so two recordings never overlap. The enrolment dialog ends with Settings (lifecycle callbacks: a dialog
+  whose activity is destroyed never reports its dismissal), asks again for a recording that is unlike the others
+  (`WakeModel.outlier`) and says so when saving fails.
+* `Amri`: after the wake word (or the home screen's microphone button) music that plays is paused, a generated chime,
+  then Android's `SpeechRecognizer` in ar-SA (the Google app's on the unit, asked for by component: a head unit's
+  default recogniser setting may be unset; the firmware ships GmsCore, Velvet and Google TTS, and `com.google.android.tts`
+  is asked for by name too; a plain emulator has none, and says so). `Commands` parses Gulf Arabic (normalised: one alef, ه for ة,
+  western digits; numbers in words incl. "خمسطعش"): next / previous / pause / play, volume up / down / to N / all the
+  way / mute / unmute (`CarAudio`, the MCU volume), music / Bluetooth music / map / take me home or to work / home
+  screen / time / cancel. The answer is shown (`AmriOverlay`, a pill above the dock; tap = cancel) and said in the
+  app's language (`TextToSpeech`, USAGE_ASSISTANT); the music plays on unless it was paused or muted on purpose.
+* Debug hooks: `am broadcast -a com.abdllh.aura.debug.AMRI --es say "ارفع الصوت الى 20"` (as if heard; push a script
+  with adb and run it on the device: emu-run.ps1 re-encodes Arabic), `--ez wake true`, `--ez miclevel true` (1.5 s of
+  the microphone's level: all zeros = no sound reaches the emulator), `--es rec name --ei ms 10000` (what the
+  microphone gives the app, saved as files/name.wav, the listener paused meanwhile).
+* The emulator with the PC's sound: the AVD needs `hw.audioInput = yes` (it was `no`: the app got pure zeros whatever
+  Windows did) and `-allow-host-audio`; `scripts/emu-audio.ps1` sets both and restarts it (it then records Windows'
+  default input and plays on the default output). `scripts/emu-mic.bat` (`emu-mic.ps1` + `emu-mic.cs`) opens a small
+  window to choose the PC microphone the emulator hears and the speaker it is heard on, with a level meter: when
+  Windows' default input is VB-Audio's "CABLE Output" it passes the chosen microphone into "CABLE Input"; when the
+  default is a microphone it shows that one (the emulator hears it directly); a chosen speaker gets what plays on the
+  default output (WASAPI loopback). `-Mic name -Seconds n` runs it without the window. Tests that play recordings into
+  the cable must stay under full scale: clipped input reached the app 25 dB quieter and broken up.
+* Requests need Google's speech recognition, which the workshop image lacks: `scripts/emu-google.ps1` starts a second
+  AVD, `CarUnitGoogle` (Google Play image `system-images;android-29;google_apis_playstore;x86_64` r9, installed from
+  dl.google.com's `x86_64-29_r09.zip`; Google app 9.91 = `GoogleRecognitionService`, Google TTS; no `adb root`), on
+  port 5572 (`emulator-5572`) with the PC's microphone, stops the workshop emulator so only one listens, installs the
+  debug build and opens Settings → Voice assistant. Checked there: wake → chime → "تفضّل…" → Google listening in ar-SA.
 
 ## Facts about the firmware (from the dump)
 * No `avb` flag in the vendor fstab → no dm-verity on system/vendor/product; vbmeta uses the public AOSP test keys.
@@ -219,9 +286,17 @@ the repo.
   CanService binder `com.nwd.can.sdk.outer.adil.ICanRemote4OuterFeature` — `initSdkCfg` (2: "nwdapp" + the CAN app's
   key for NWD apps) then `addCarInfoCallBack` (17); car info then comes as `onDistributeCanData` (1), the frame
   `6E 02 71 <113 bytes> FF` with the gear at byte 74. Never register `addCanCarInfoCallBack` (27): it switches the CAN
-  app to CarInfo objects (`onDistributeCarInfo`, 2) for every client, and the stock ones only read frames. CAN app
-  v.26 only (v.24 in /system has no gear); filled only by some car protocols (Raise boxes: 1 P, 2 R, 3 N, 4 D).
-  `system/CanGear.kt`, `system/Gear.kt`.
+  app to CarInfo objects (`onDistributeCarInfo`, 2) for every client, and the stock ones only read frames. The CAN app's
+  version names are build dates: "v.24…" in /system has no gear; "v.26.04.09A" ships in the `carconfig` partition
+  (`app/.app/CanAllInOne.apk`, installed over it by the firmware). Its parsers fill the gear only for some boxes:
+  `RaiseCommonCanProtocalUtil` (Raise: 1 P, 2 R, 3 N, 4 D; reached through the generic Raise protocols 2E / FD that
+  `AbsCanFactory` builds), Hiworld for Haval / Dongfeng / Hyundai / WUE, bba_general (BMW, Benz, Audi boxes), VinFast.
+  The Changan managers (binary, daojun, hiworld, oudi, raise, xinbas, …) do not call them directly; which path a car
+  takes is only certain on the unit. Raw box frames are not handed out (`addCallBack4Outerface`'s list is never broadcast; `addCanDataCallBack` gets
+  only the CAN app's own non-6E messages). The CAN app's setup is `Settings.System can_config_app_cartype_json` (its
+  CanConfig as JSON: `canProviderName`, `carBandName`, `carTypeName`, `carYearName`, `canManagerClassName`); Settings →
+  Vehicle & system shows the box, the car and whether a gear came. Without the CAN gear: D while driving (GPS) and held
+  at a stop after it for up to 3 minutes (drawn lighter) unless R. `system/CanGear.kt`, `system/Gear.kt`.
 * The status bar is hidden with the framework's own `Settings.Global policy_control`
   (`immersive.status=*`), which Android 10 still honours (`system/SystemBars.kt`); swiping down from the top shows it.
 * Boot animation: NWD's player (`libbootanimation.so`, `findBootAnimationFile`) checks `/cache/bootanimation.zip` first,

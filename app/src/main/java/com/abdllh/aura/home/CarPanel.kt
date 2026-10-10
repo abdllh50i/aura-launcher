@@ -41,6 +41,7 @@ class CarPanel(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
     private val link = RoundBtn(ctx, R.drawable.ic_smartphone, BTN)
     private val screenOff = RoundBtn(ctx, R.drawable.ic_power, BTN)
     private val car = RoundBtn(ctx, R.drawable.ic_car, BTN)
+    private val voice = RoundBtn(ctx, R.drawable.ic_mic, BTN)
 
     init {
         orientation = VERTICAL
@@ -77,8 +78,8 @@ class CarPanel(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
         addView(stage, lp(MATCH, 0, 1f))
 
         quick = LinearLayout(ctx).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER }
-        for ((i, b) in listOf(wifi, link, screenOff, car).withIndex()) {
-            quick.addView(b, lp(BTN.dp, BTN.dp).apply { if (i > 0) marginStart = 22.dp })
+        for ((i, b) in listOf(voice, wifi, link, screenOff, car).withIndex()) {
+            quick.addView(b, lp(BTN.dp, BTN.dp).apply { if (i > 0) marginStart = 14.dp })
         }
         addView(quick, lp(MATCH, WRAP))
 
@@ -90,6 +91,12 @@ class CarPanel(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
         link.setOnClickListener { if (!Actions.phoneLink(context)) host.toast(context.getString(R.string.err_app_missing)) }
         screenOff.setOnClickListener { Actions.screenOff(context) }
         car.setOnClickListener { if (!Actions.car(context)) host.toast(context.getString(R.string.err_app_missing)) }
+        // "عمري" without its name: listens for a request right away (its settings until the microphone is allowed)
+        voice.contentDescription = ctx.getString(R.string.set_voice)
+        voice.setOnClickListener {
+            if (com.abdllh.aura.voice.Amri.hasMicPermission(context)) com.abdllh.aura.voice.Amri.wake(context)
+            else host.openSettings(SettingsActivity.PAGE_VOICE)
+        }
         refresh()
     }
 
