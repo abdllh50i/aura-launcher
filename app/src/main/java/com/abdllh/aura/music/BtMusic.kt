@@ -30,9 +30,9 @@ import java.util.concurrent.CopyOnWriteArrayList
  *  - progress: BTPIMCallback.onGetA2dpProgress(totalSec, posSec) (code 4), from the module's "MQ" report
  * No album art, album name or seeking is available from this module: the cover is looked up online ([CoverSearch]).
  *
- * Where the song is: this unit's stack (the GOC one for the AIC8800, UartConfig bt_module=0) does not report it — the
- * stock BT music app shows its progress bar only with an RTL8761 module (persist.sys.bt.rtl8761, false here). So a
- * clock of its own: a song that follows another starts at 0 when its title arrives; pause and play stop and restart
+ * [BtTiming] enables GetPlayStatus queries on the reviewed AIC8800 driver and forwards its reply through the existing
+ * BC03 callback. Without a valid phone report, the fallback clock follows a song from its observed start; pause/play
+ * stop and restart
  * the clock; "previous" after a few seconds restarts the same song (no new title then). The first song after
  * connecting (or after this process started) may already be half way: its position is unknown until the owner taps
  * the line being sung in the lyrics ([syncTo]) or the next song starts. Its length comes from the phone when the
@@ -102,6 +102,7 @@ object BtMusic {
     /** The song before in this connection: "" right after connecting or starting (the next title is no seen start). */
     private var lastSong = ""
     private var prevSentAt = 0L
+    private var phoneProgressAt = 0L
     private var prevSong = ""
     /** Cover of the current song (found online by title + artist), or null. */
     var art: Bitmap? = null
@@ -204,6 +205,7 @@ object BtMusic {
         }
         readState()
         bind()
+        BtTiming.init(c)
     }
 
     private val receiver = object : BroadcastReceiver() {
@@ -311,7 +313,7 @@ object BtMusic {
     }
 
     private val prevCheck = Runnable {
-        if (song != prevSong || title.isBlank()) return@Runnable // another song came: its start was seen
+        if (song != prevSong || title.isBlank() || phoneProgressAt > prevSentAt) return@Runnable
         val since = SystemClock.elapsedRealtime() - prevSentAt
         clockSet(if (running) (since - PREV_LAG_MS).coerceAtLeast(0L) else 0L, true)
         changed()
@@ -322,11 +324,17 @@ object BtMusic {
      * half keeps running as it is: reports every second would make the lines jitter by half a second.
      */
     private fun progress(totalSec: Int, posSec: Int) {
-        if (totalSec > 0) { durationSec = totalSec; durationFromPhone = true }
+        // AVRCP's 0xffffffff means unknown; the stock parser returns negative numbers for it.
+        if (!connected || totalSec !in 1..86400 || posSec !in 0..totalSec) return
+        phoneProgressAt = SystemClock.elapsedRealtime()
+        durationSec = totalSec
+        durationFromPhone = true
         val reported = posSec * 1000L + 500L // (somewhere in that second: its middle)
         if (!positionKnown || kotlin.math.abs(positionMs() - reported) > 1500L) clockSet(reported, true)
         changed()
     }
+
+    internal fun timingChanged() = changed()
 
     /** The phone's music is the source AMRI chose (the panel's and the wheel's keys then go to the module). */
     private var sourceActive = false

@@ -1,0 +1,23 @@
+{
+  "stockSha256": "8e2fbf23d24021e5b57ef0dc5df851570ccad621b0f8cb82433d3090ce010ce7",
+  "patchedSha256": "0c7d4e596615420254ad94bc23511270b349d6221e0f77102da506b2e8e52dbf",
+  "size": 1421484,
+  "records": [
+    {
+      "offset": 308,
+      "data": "AQAAAACwFQAAABgAAAAYAKwAAACsAAAABQAAAAAQAAA="
+    },
+    {
+      "offset": 1421312,
+      "data": "sLWIsBlIeEQAeDizGEh4RABoGLOw+KBBCCAC96H4BUYVSSlgMCFpYAkgAJAAIAGQBJAIIAKQA5UgRgEhQfIOEgEjN/cU+gJGCkh4RACIQPIbEQL3Jf0oRgL32PgIsL3osECAtW9GCfdTvgC/PlD+/36w/v8sq/3/AAAZWCBoATAG0GBoATAD0AJJeUQH9w64B/cmuAoAAABNUVtwbGF5c3RhdHVzX2RhdGFdAA=="
+    },
+    {
+      "offset": 564492,
+      "data": "9vB4uQ=="
+    },
+    {
+      "offset": 553116,
+      "data": "+PDuvw=="
+    }
+  ]
+}

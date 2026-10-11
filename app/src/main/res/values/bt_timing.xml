@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="bt_timing_title">Song time from the phone (beta)</string>
+    <string name="bt_timing_sub">Ask the phone for the song duration and position over Bluetooth. Switching this restarts Bluetooth once.</string>
+    <string name="upd_rollback">Return to %1$s</string>
+    <string name="upd_rollback_sub">The previous version (%1$s) is saved on this device. You can return to it without internet.</string>
+    <string name="upd_rollback_confirm">Return to %1$s and restore the original Bluetooth driver? Your settings and downloaded maps are kept. Bluetooth reconnects once.</string>
+    <string name="upd_rollback_action">Return to previous version</string>
+    <string name="upd_rolling_back">Returning to previous version…</string>
+</resources>

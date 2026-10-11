@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="bt_timing_title">توقيت الأغنية من الجوال (تجريبي)</string>
+    <string name="bt_timing_sub">يسأل الجوال عن مدة الأغنية ووين وصلت عبر البلوتوث. تغيير هذا الخيار يعيد اتصال البلوتوث مرة.</string>
+    <string name="upd_rollback">الرجوع إلى %1$s</string>
+    <string name="upd_rollback_sub">الإصدار السابق (%1$s) محفوظ في الجهاز، وتقدر ترجع له بدون إنترنت.</string>
+    <string name="upd_rollback_confirm">ترجع إلى %1$s وتعيد برنامج البلوتوث الأصلي؟ إعداداتك والخرائط المحملة تبقى محفوظة، ويعيد البلوتوث الاتصال مرة.</string>
+    <string name="upd_rollback_action">الرجوع للإصدار السابق</string>
+    <string name="upd_rolling_back">جاري الرجوع للإصدار السابق…</string>
+</resources>

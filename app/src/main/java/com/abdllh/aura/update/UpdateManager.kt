@@ -27,6 +27,7 @@ object UpdateManager {
         data class Downloading(val release: Release, val done: Long, val total: Long, val bytesPerSec: Long) : State()
         data class Verifying(val release: Release) : State()
         data class Installing(val release: Release) : State()
+        data class RollingBack(val version: String) : State()
         data class Failed(val message: String, val release: Release?) : State()
     }
 
@@ -76,7 +77,7 @@ object UpdateManager {
 
     val busy: Boolean
         get() = when (state) {
-            is State.Checking, is State.Downloading, is State.Verifying, is State.Installing -> true
+            is State.Checking, is State.Downloading, is State.Verifying, is State.Installing, is State.RollingBack -> true
             else -> false
         }
 
@@ -239,7 +240,7 @@ object UpdateManager {
         return d.joinToString("") { "%02x".format(it) }.take(24) + ".part"
     }
 
-    private fun verify(rel: Release, file: File) {
+    private fun verify(rel: Release, file: File, rollback: Boolean = false) {
         // 1) integrity: the digest GitHub published for the asset, else the companion .sha256 file (an error if it cannot be read)
         var expected = rel.sha256
         if (expected == null && rel.sha256Url != null) expected = GitHub.fetchDigest(rel.sha256Url)
@@ -263,7 +264,33 @@ object UpdateManager {
         val newCode = if (android.os.Build.VERSION.SDK_INT >= 28) archive.longVersionCode else archive.versionCode.toLong()
         @Suppress("DEPRECATION")
         val curCode = if (android.os.Build.VERSION.SDK_INT >= 28) mine.longVersionCode else mine.versionCode.toLong()
-        if (newCode <= curCode) throw UpdateException(UpdateException.Kind.VERSION, "Not newer ($newCode <= $curCode)")
+        if (rollback) {
+            if (archive.versionName != Rollback.VERSION || newCode != 1060099L || newCode >= curCode) {
+                throw UpdateException(UpdateException.Kind.VERSION, "Not the previous signed build")
+            }
+        } else if (newCode <= curCode) throw UpdateException(UpdateException.Kind.VERSION, "Not newer ($newCode <= $curCode)")
+    }
+
+    fun rollBack() {
+        if (!Rollback.available(app) || !begin(State.RollingBack(Rollback.VERSION))) return
+        io.execute {
+            val beta = Prefs.updateBeta
+            try {
+                val apk = Rollback.extract(app)
+                val rel = Release("v${Rollback.VERSION}", "", "", false, "", apk.name, "", apk.length(), Rollback.SHA256, null)
+                verify(rel, apk, rollback = true)
+                // The preceding app must stay on the stable channel after it starts.
+                Prefs.updateBeta = false
+                Prefs.availableTag = ""
+                Prefs.releaseCache = ""
+                Rollback.install(app, apk)
+                onInstalled()
+            } catch (t: Throwable) {
+                Prefs.updateBeta = beta
+                com.abdllh.aura.music.BtTiming.resumeAfterFailedRollback()
+                post(State.Failed(if (t is UpdateException) messageFor(t) else app.getString(R.string.upd_err_install, t.message.orEmpty()), null))
+            }
+        }
     }
 
     @Suppress("DEPRECATION")

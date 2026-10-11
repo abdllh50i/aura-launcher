@@ -31,6 +31,8 @@ class UpdatePage(private val act: SettingsActivity) : Page(R.string.set_update, 
     private lateinit var ctx: Context
     private var observer: ((UpdateManager.State) -> Unit)? = null
     private var lastKind: Class<*>? = null
+    private var rollbackButton: ABtn? = null
+    private var timingSwitch: View? = null
 
     override fun build(ctx: Context): View {
         this.ctx = ctx
@@ -77,6 +79,28 @@ class UpdatePage(private val act: SettingsActivity) : Page(R.string.set_update, 
             }
         }, 10)
         col.addRow(ctx.hint(ctx.getString(R.string.upd_footer)), 14)
+        if (com.abdllh.aura.music.BtTiming.supported() || BuildConfig.DEBUG) {
+            timingSwitch = ctx.switchRow(R.drawable.ic_bluetooth, ctx.getString(R.string.bt_timing_title),
+                ctx.getString(R.string.bt_timing_sub), com.abdllh.aura.music.BtTiming.enabled) {
+                com.abdllh.aura.music.BtTiming.enabled = it
+                com.abdllh.aura.music.BtTiming.applyChoice()
+            }.also { col.addRow(it, 12) }
+        }
+        if (com.abdllh.aura.update.Rollback.available(ctx)) {
+            val version = com.abdllh.aura.update.Rollback.VERSION
+            col.addRow(ctx.hint(ctx.getString(R.string.upd_rollback_sub, version)), 14)
+            rollbackButton = ABtn(ctx).apply {
+                kind = ABtn.Kind.TONAL
+                text = ctx.getString(R.string.upd_rollback, version)
+                setOnClickListener {
+                    if (UpdateManager.busy) return@setOnClickListener
+                    com.abdllh.aura.ui.Confirm.show(ctx, ctx.getString(R.string.upd_rollback, version),
+                        ctx.getString(R.string.upd_rollback_confirm, version), ctx.getString(R.string.upd_rollback_action)) {
+                        UpdateManager.rollBack()
+                    }
+                }
+            }.also { col.addRow(it, 8) }
+        }
         return col
     }
 
@@ -96,6 +120,12 @@ class UpdatePage(private val act: SettingsActivity) : Page(R.string.set_update, 
         if (!::holder.isInitialized) return
         val kind = s.javaClass
         holder.removeAllViews()
+        rollbackButton?.isEnabled = !UpdateManager.busy
+        fun enableTree(v: View) {
+            v.isEnabled = !UpdateManager.busy
+            if (v is android.view.ViewGroup) for (i in 0 until v.childCount) enableTree(v.getChildAt(i))
+        }
+        timingSwitch?.let { enableTree(it) }
         when (s) {
             is UpdateManager.State.Idle -> idle(null)
             is UpdateManager.State.Checking -> busy(ctx.getString(R.string.upd_checking), null, indeterminate = true)
@@ -104,6 +134,7 @@ class UpdatePage(private val act: SettingsActivity) : Page(R.string.set_update, 
             is UpdateManager.State.Downloading -> downloading(s)
             is UpdateManager.State.Verifying -> busy(ctx.getString(R.string.upd_verifying), s.release.tag, indeterminate = true)
             is UpdateManager.State.Installing -> busy(ctx.getString(R.string.upd_installing), s.release.tag, indeterminate = true)
+            is UpdateManager.State.RollingBack -> busy(ctx.getString(R.string.upd_rolling_back), s.version, indeterminate = true)
             is UpdateManager.State.Failed -> failed(s)
         }
         if (lastKind != kind) {
