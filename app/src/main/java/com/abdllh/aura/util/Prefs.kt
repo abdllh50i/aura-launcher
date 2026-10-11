@@ -53,6 +53,11 @@ object Prefs {
         get() = sp.getBoolean("hideStatusBar", true)
         set(v) { sp.edit().putBoolean("hideStatusBar", v).apply() }
 
+    /** Screen changes animate (the firmware ships with Android's animation scales at 0: see system/Animations). */
+    var screenAnimations: Boolean
+        get() = sp.getBoolean("screenAnimations", true)
+        set(v) { sp.edit().putBoolean("screenAnimations", v).apply() }
+
     /** Use Aura's built-in maps for the Maps button and Home/Work (false = an installed navigation app). */
     var builtInMaps: Boolean
         get() = sp.getBoolean("builtInMaps", true)

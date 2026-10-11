@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- a screen opening: it grows out of the middle while it fades in, above the one it covers -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shareInterpolator="false"
+    android:zAdjustment="top">
+    <alpha
+        android:duration="220"
+        android:fromAlpha="0"
+        android:interpolator="@android:interpolator/decelerate_quad"
+        android:toAlpha="1" />
+    <scale
+        android:duration="380"
+        android:fromXScale="0.9"
+        android:fromYScale="0.9"
+        android:interpolator="@interpolator/aura_emphasized"
+        android:pivotX="50%"
+        android:pivotY="50%"
+        android:toXScale="1"
+        android:toYScale="1" />
+</set>

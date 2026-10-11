@@ -73,6 +73,18 @@ both on `ui/Sheet.kt`). Colours are theme tokens in `ui/Palette.kt`; `ui/Theme.k
 an estimated sunrise and sunset) and a theme or accent change rebuilds the views in place behind a `PixelCopy` snapshot that
 fades out. HomeActivity forwards its lifecycle to the embedded map; the map is capped at 30 fps and only draws when it changes.
 
+Motion (1.6): `ui/Motion.kt` has the curves (emphasized in / exit / standard), a `Spring` (Choreographer frames, keeps its
+speed when the target changes: presses, sheets, sliding indicators) and `pressScale` on it. `ui/Segmented.kt` (sliding
+indicator, its two edges on springs), `ui/PlayPauseView.kt` (the triangle's halves morph into the bars), `GearView`'s lit
+circle slides between P R N D. **The firmware ships with Android's window and transition animation scales at 0**
+(SettingsProvider `def_window_animation_scale` / `def_window_transition_scale` = 0 %), so every screen change was a cut:
+`system/Animations.kt` sets them to 1 where it finds 0 or nothing (switch in Settings → Display & sound, on by default),
+keeps what it found in `files/anim-scales` and puts it back when switched off, when AMRI stops being the home screen and
+in the installers' restore. The screens open and close with `res/anim/aura_*` (zoom 0.9 ↔ 1 with a fade; the screen
+below steps back to 0.95 and dims) through the theme's `windowAnimationStyle`. In-process, `ensureAnimators()` sets
+ValueAnimator's scale back to 1 when the system says 0 (reflection on `setDurationScale`, greylisted = allowed on 10),
+as the stock launcher's `AnimationDriver.resetAnimatorDurationScale` does.
+
 ## Aura Maps (`nav/`)
 MapLibre Native **10.3.7** on purpose: it renders with OpenGL ES 2.0, which is what the unit's firmware declares
 (`ro.opengles.version=131072`); 11.x and later need ES 3.0. `MapStyle.kt` builds the style JSON (OpenFreeMap vector tiles and
@@ -141,13 +153,31 @@ and length (`/api/get`, then `/api/search?q=` and by field), takes the result wh
 match, prefers timed (LRC) lyrics, keeps them in `cacheDir/lyrics` (a "none" for 3 days, only when every question
 got its answer). The server often answers 503: each kind of question gets one more try 1.5 s later, then the next
 kind; a question left unanswered makes it "failed" (not kept; the screen asks again 20 s later, one retry at a time,
-none after the screen stops), and a song skipped while its lookup waited in line is not looked up. Bluetooth songs
-are looked up again once the phone tells their length (it is reset on a new song, not the one before's). Spaces must go as `%20` (URLEncoder's `+` reached LRCLIB as a plus:
+none after the screen stops), and a song skipped while its lookup waited in line is not looked up. A Bluetooth song is
+looked up once, with the length the phone told (none on this unit) — never a catalogue's, which may be a live recording
+and would filter the right lines out. Without a length (1.6), the recording most timed entries agree on (within 3 s)
+wins: a song is on LRCLIB many times, mostly as its album recording, sometimes as a video with a long intro (Thunder:
+261 s vs 187 s); the cache key carries `|2` so 1.5.4's picks are looked up again. Spaces must go as `%20` (URLEncoder's `+` reached LRCLIB as a plus:
 Arabic titles were never found). No album: a file's album is often its folder ("Music"), which misses the exact
-match. `LyricsView` lights the line being sung and keeps it in the middle (4 s after a hand scroll it follows again);
-the music screen's lyrics button puts it in the library's panel (with Bluetooth the song gives the panel back for
-it); the progress tick runs every 200 ms while it shows. Position: `Player.position()`, `BtMusic.positionMs()`
-(extrapolated between the phone's progress reports).
+match. `LyricsView` lights the line being sung (others dimmed and at 95 %) and glides it to the middle (4 s after a hand
+scroll it follows again); a tapped line is where the song goes: the unit's songs seek there, a Bluetooth song sets its
+clock (the line's time + 450 ms, the owner taps what is being sung); while a Bluetooth song's position is unknown no line
+is lit and a hint asks for that tap. The lyrics button puts it in the library's panel (with Bluetooth the song gives the
+panel back for it); the progress tick runs every 200 ms while it shows.
+
+Where a Bluetooth song is (1.6): this unit's stack never says. UartConfig.ini `bt_module=0` → the AT# ("atpound") driver
+over `/dev/goc_serial` (the GOC stack for the AIC8800, `persist.sys.bt.aic8800=true`); its progress report is the
+unsolicited `MQ` indication (`responseA2dpProgress` → `onGetA2dpProgress(total, pos)`, which needs three fields and is
+dropped otherwise) and there is no command to ask for it; the stock BT music app shows its progress bar only with
+`persist.sys.bt.rtl8761=true` (false here). So `BtMusic` keeps a clock (elapsedRealtime; pause/play stop and restart it):
+a title that follows another one in the same connection is a seen start (position 250 ms); the first one after
+connecting (or after the process started) is unknown (`positionKnown` false) until the owner taps a lyric line
+(`syncTo`) or the next song starts; "previous" with the same title still there 2.5 s later = the phone restarted the
+song. A module report (if a phone ever sends one) re-bases the clock when it is more than 1.5 s off, and its length
+allows a repeat-one wrap. Length: the phone's, else the lyrics' recording, else the cover catalogue's (`CoverSearch`
+keeps iTunes `trackTimeMillis` / Deezer `duration` beside the cover as `<hash>.len`). Debug: `am broadcast -a
+com.bt.ACTION_AVRCP_MUSIC_ID3 --es extra_avrcp_id3_title T --es extra_avrcp_id3_artist A --ez sim true [--ez sim_first
+true]`, `com.bt.ACTION_BT_MUSIC_PAUSE/PLAY`, `com.abdllh.aura.debug.BT_PROGRESS --ei total S --ei pos S`.
 
 ### The 3D car (`tools/car3d`, debug-only `CarBakerActivity`)
 The car is not rendered live (the source model has ~726k triangles and 8K textures; the unit has a Mali-G31). Instead a

@@ -14,6 +14,7 @@ import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.RoundBtn
 import com.abdllh.aura.ui.Shapes
 import com.abdllh.aura.ui.WRAP
+import com.abdllh.aura.ui.elevate
 import com.abdllh.aura.ui.iconView
 import com.abdllh.aura.ui.label
 import com.abdllh.aura.ui.lp
@@ -37,11 +38,11 @@ class CarPanel(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
     val header: LinearLayout
     val quick: LinearLayout
 
-    private val wifi = RoundBtn(ctx, R.drawable.ic_wifi, BTN)
-    private val link = RoundBtn(ctx, R.drawable.ic_smartphone, BTN)
-    private val screenOff = RoundBtn(ctx, R.drawable.ic_power, BTN)
-    private val car = RoundBtn(ctx, R.drawable.ic_car, BTN)
-    private val voice = RoundBtn(ctx, R.drawable.ic_mic, BTN)
+    private val wifi = RoundBtn(ctx, R.drawable.ic_wifi, BTN, flat = true)
+    private val link = RoundBtn(ctx, R.drawable.ic_smartphone, BTN, flat = true)
+    private val screenOff = RoundBtn(ctx, R.drawable.ic_power, BTN, flat = true)
+    private val car = RoundBtn(ctx, R.drawable.ic_car, BTN, flat = true)
+    private val voice = RoundBtn(ctx, R.drawable.ic_mic, BTN, flat = true)
 
     init {
         orientation = VERTICAL
@@ -77,10 +78,19 @@ class CarPanel(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
         stage.onTap = { host.openControls() }
         addView(stage, lp(MATCH, 0, 1f))
 
+        // the quick buttons share one capsule (a strip, like a car's switch bank) under the car
         quick = LinearLayout(ctx).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER }
-        for ((i, b) in listOf(voice, wifi, link, screenOff, car).withIndex()) {
-            quick.addView(b, lp(BTN.dp, BTN.dp).apply { if (i > 0) marginStart = 14.dp })
+        val strip = LinearLayout(ctx).apply {
+            orientation = HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(6.dp, 6.dp, 6.dp, 6.dp)
+            background = Shapes.rect(Palette.card, BTN / 2f + 6f, if (Palette.dark) Palette.stroke else 0)
+            if (!Palette.dark) elevate(4f)
         }
+        for ((i, b) in listOf(voice, wifi, link, screenOff, car).withIndex()) {
+            strip.addView(b, lp(BTN.dp, BTN.dp).apply { if (i > 0) marginStart = 6.dp })
+        }
+        quick.addView(strip, lp(WRAP, WRAP))
         addView(quick, lp(MATCH, WRAP))
 
         wifi.contentDescription = ctx.getString(R.string.ctl_wifi)
@@ -128,6 +138,6 @@ class CarPanel(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
     }
 
     companion object {
-        private const val BTN = 64 // quick buttons, dp
+        private const val BTN = 58 // quick buttons, dp
     }
 }

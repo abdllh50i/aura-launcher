@@ -15,6 +15,7 @@ import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Shapes
 import com.abdllh.aura.ui.WRAP
+import com.abdllh.aura.ui.elevate
 import com.abdllh.aura.ui.flp
 import com.abdllh.aura.ui.iconView
 import com.abdllh.aura.ui.label
@@ -42,47 +43,57 @@ class Dock(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
 
     init {
         setBackgroundColor(Palette.dock)
-        addView(View(ctx).apply { setBackgroundColor(if (Palette.dark) 0xFF17191C.toInt() else Palette.stroke) }, flp(MATCH, 1.dp.coerceAtLeast(1), Gravity.TOP))
-        setPaddingRelative(14.dp, 0, 10.dp, 0)
+        // the light dock floats on a soft shadow; the dark one is set off by a hairline (a shadow does not show there)
+        if (Palette.dark) addView(View(ctx).apply { setBackgroundColor(0xFF17191C.toInt()) }, flp(MATCH, 1.dp.coerceAtLeast(1), Gravity.TOP))
+        else elevate(10f)
+        setPaddingRelative(16.dp, 0, 14.dp, 0)
 
         // start: controls
-        val controls = button(ctx, R.drawable.ic_sliders, R.string.ctl_title) { host.openControls() }
-        addView(controls, flp(68.dp, 68.dp, Gravity.START or Gravity.CENTER_VERTICAL))
+        val controls = button(ctx, R.drawable.ic_sliders, R.string.ctl_title, round = true) { host.openControls() }
+        addView(controls, flp(60.dp, 60.dp, Gravity.START or Gravity.CENTER_VERTICAL))
 
         addView(apps, flp(WRAP, MATCH, Gravity.CENTER))
 
-        // end: volume ‹ level › (always left = quieter, like a physical knob) and settings
+        // end: volume ‹ level › in one capsule (always left = quieter, like a physical knob) and settings
         val end = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        val vol = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; layoutDirection = LAYOUT_DIRECTION_LTR }
-        vol.addView(button(ctx, R.drawable.ic_chevron_left, R.string.ctl_vol_down) { step(-1) }, lp(60.dp, 68.dp))
+        val vol = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutDirection = LAYOUT_DIRECTION_LTR
+            background = Shapes.rect(Palette.card2, 30f)
+        }
+        vol.addView(button(ctx, R.drawable.ic_chevron_left, R.string.ctl_vol_down) { step(-1) }, lp(56.dp, 60.dp))
         val level = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             isClickable = true
+            pressScale(0.92f)
             setOnClickListener { Controls.toggleMute(context); syncVolume() }
         }
-        level.addView(volIcon.apply { setColorFilter(Palette.text) }, lp(28.dp, 28.dp))
-        level.addView(volText, lp(40.dp, WRAP).apply { marginStart = 4.dp })
-        vol.addView(level, lp(WRAP, 68.dp))
-        vol.addView(button(ctx, R.drawable.ic_chevron_right, R.string.ctl_vol_up) { step(+1) }, lp(60.dp, 68.dp))
+        level.addView(volIcon.apply { setColorFilter(Palette.text) }, lp(26.dp, 26.dp))
+        level.addView(volText, lp(38.dp, WRAP).apply { marginStart = 4.dp })
+        vol.addView(level, lp(WRAP, 60.dp))
+        vol.addView(button(ctx, R.drawable.ic_chevron_right, R.string.ctl_vol_up) { step(+1) }, lp(56.dp, 60.dp))
         end.addView(vol, lp(WRAP, WRAP))
 
         val settingsWrap = FrameLayout(ctx)
-        settingsWrap.addView(button(ctx, R.drawable.ic_settings, R.string.dock_settings) { host.openSettings(0) }, flp(68.dp, 68.dp, Gravity.CENTER))
+        settingsWrap.addView(button(ctx, R.drawable.ic_settings, R.string.dock_settings, round = true) { host.openSettings(0) }, flp(60.dp, 60.dp, Gravity.CENTER))
         badge = View(ctx).apply { background = Shapes.oval(Palette.accent, Palette.dock, 2) }
-        settingsWrap.addView(badge, flp(13.dp, 13.dp, Gravity.TOP or Gravity.END).apply { setMargins(0, 12.dp, 12.dp, 0); marginEnd = 12.dp })
-        end.addView(settingsWrap, lp(68.dp, 68.dp).apply { marginStart = 6.dp })
+        settingsWrap.addView(badge, flp(14.dp, 14.dp, Gravity.TOP or Gravity.END).apply { setMargins(0, 2.dp, 2.dp, 0); marginEnd = 2.dp })
+        end.addView(settingsWrap, lp(64.dp, 64.dp).apply { marginStart = 12.dp })
         addView(end, flp(WRAP, MATCH, Gravity.END or Gravity.CENTER_VERTICAL))
         rebuild()
     }
 
-    private fun button(ctx: Context, icon: Int, desc: Int, onClick: () -> Unit): FrameLayout = FrameLayout(ctx).apply {
-        background = Shapes.ghost(16f)
+    /** [round]: a button of its own (a tonal circle); otherwise a bare icon inside a capsule that has the surface. */
+    private fun button(ctx: Context, icon: Int, desc: Int, round: Boolean = false, onClick: () -> Unit): FrameLayout = FrameLayout(ctx).apply {
+        background = if (round) Shapes.tonalOval() else Shapes.ghost(30f)
         isClickable = true
         contentDescription = ctx.getString(desc)
         pressScale(0.88f)
         setOnClickListener { onClick() }
-        addView(ctx.iconView(icon, 31, Palette.text).apply { layoutParams = flp(31.dp, 31.dp, Gravity.CENTER) })
+        val s = if (round) 28 else 26
+        addView(ctx.iconView(icon, s, Palette.text).apply { layoutParams = flp(s.dp, s.dp, Gravity.CENTER) })
     }
 
     private fun step(dir: Int) {
@@ -167,6 +178,11 @@ class Dock(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
         val s = item.style
         val icon: View = if (s != null) FrameLayout(ctx).apply {
             background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(s.from, s.to)).apply { cornerRadius = (size * 0.3f).dp }
+            // lifted on a shadow of its own colour (light theme)
+            if (!Palette.dark) {
+                elevate(5f)
+                if (android.os.Build.VERSION.SDK_INT >= 28) { outlineSpotShadowColor = s.to; outlineAmbientShadowColor = s.to }
+            }
             addView(ctx.iconView(s.icon, if (labels) 28 else 33, 0xFFFFFFFF.toInt()).apply {
                 layoutParams = flp((if (labels) 28 else 33).dp, (if (labels) 28 else 33).dp, Gravity.CENTER)
             })

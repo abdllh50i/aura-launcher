@@ -888,9 +888,11 @@ class Installer:
             # also undo what Aura changed outside the system partition: the firmware config files it edited (kept as
             # *.pre-aura: the boot-time registration and the factory ACC-off mode), the boot animation it put in the
             # firmware's "dynamic logo" file (only while it is still Aura's; the one from before comes back), its music
-            # replacing the stock music app, the hidden status bar, the phone link (ZLink) kept off and the stock volume
-            # bar turned off (the stock system must not inherit any of them)
-            follow = ('for f in /data/nwdappconfig/app/*.pre-aura; do\n'
+            # replacing the stock music app, the hidden status bar, the screen-change animations it turned on, the phone
+            # link (ZLink) kept off and the stock volume bar turned off (the stock system must not inherit any of them)
+            # the kill switch first: an Aura that starts while this runs must give things back, not take them again
+            follow = ('setprop persist.aura.disabled 1\n'
+                      'for f in /data/nwdappconfig/app/*.pre-aura; do\n'
                       '  [ -f "$f" ] || continue\n'
                       '  cat "$f" > "${f%.pre-aura}" && rm -f "$f"\n'
                       'done\n'
@@ -908,6 +910,16 @@ class Installer:
                       'pm enable com.android.launcher/com.launcher.FloatBar >/dev/null 2>&1\n'
                       'case "$(settings get global policy_control 2>/dev/null)" in *immersive.*) '
                       'settings delete global policy_control >/dev/null 2>&1 ;; esac\n'
+                      # the firmware's animation scales (0 on this firmware), kept by Aura when it turned them on
+                      'A=/data/data/com.abdllh.aura/files/anim-scales\n'
+                      'if [ -f $A ]; then\n'
+                      '  while read k v; do\n'
+                      '    case "$k" in window_animation_scale|transition_animation_scale) ;; *) continue ;; esac\n'
+                      '    if [ "$v" = null ]; then settings delete global $k >/dev/null 2>&1; '
+                      'else settings put global $k $v >/dev/null 2>&1; fi\n'
+                      '  done < $A\n'
+                      '  rm -f $A\n'
+                      'fi\n'
                       '[ "$(settings get system phone_connect_style 2>/dev/null)" = "0" ] && '
                       'settings put system phone_connect_style 3 && settings put system recheck_phone_connect_style 1\n'
                       'setprop persist.nwd.launcher.default com.android.launcher\n'
@@ -915,7 +927,6 @@ class Installer:
                       # its system copy is gone: drop it (a system-only copy refuses, and goes away at the restart);
                       # should anything of it survive, the kill switch keeps it from touching the stock system
                       'pm uninstall com.abdllh.aura >/dev/null 2>&1\n'
-                      'setprop persist.aura.disabled 1\n'
                       'echo undone\n')
             expect = "undone"
         try:

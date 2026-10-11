@@ -140,6 +140,8 @@
     <string name="lyrics_failed">Couldn\'t get the lyrics (internet?). Trying again shortly</string>
     <string name="lyrics_instrumental">Instrumental</string>
     <string name="lyrics_nothing">Play a song to see its lyrics here</string>
+    <string name="lyrics_tap_sync">Tap the line being sung now to sync the lyrics</string>
+    <string name="lyrics_synced">Lyrics synced ✓</string>
     <string name="maps_dropped_pin">Dropped pin</string>
     <string name="maps_pick_home_short">Long-press your home on the map</string>
     <string name="maps_pick_work_short">Long-press your work on the map</string>
@@ -183,6 +185,8 @@
     <string name="set_failed">Couldn\'t apply this on this unit</string>
     <string name="set_hide_status">Hide the status bar</string>
     <string name="set_hide_status_sub">Swipe down from the top edge to show it</string>
+    <string name="set_screen_anim">Animated screen changes</string>
+    <string name="set_screen_anim_sub">Screens open and close with a smooth zoom (the original system has them off)</string>
     <string name="set_ball">Floating circle</string>
     <string name="set_ball_sub">The stock system\'s circle with the car controls</string>
     <string name="media_prev">Previous</string>

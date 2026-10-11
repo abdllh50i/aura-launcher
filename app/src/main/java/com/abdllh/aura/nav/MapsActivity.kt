@@ -202,7 +202,7 @@ class MapsActivity : Activity() {
         syncNav()
     }
 
-    override fun onResume() { super.onResume(); map.onResume() }
+    override fun onResume() { super.onResume(); com.abdllh.aura.system.Animations.ensureAnimators(); map.onResume() }
     override fun onPause() { map.onPause(); super.onPause() }
 
     override fun onStop() {

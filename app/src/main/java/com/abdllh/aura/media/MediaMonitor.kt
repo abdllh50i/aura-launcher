@@ -206,6 +206,37 @@ object MediaMonitor {
         return NowPlaying(title, artist, art, playing, c.packageName)
     }
 
+    /**
+     * Where the current song is and its length (ms), or null when its source does not tell (a Bluetooth song whose
+     * position is not known yet, a broadcast-only app, a session without a length).
+     */
+    fun progress(): Pair<Long, Long>? {
+        val c = current ?: return null
+        return when (c.sourcePkg) {
+            SOURCE_BT -> {
+                val b = com.abdllh.aura.music.BtMusic
+                if (b.positionKnown && b.durationSec > 0) b.positionMs() to b.durationSec * 1000L else null
+            }
+            app?.packageName -> {
+                val p = com.abdllh.aura.music.Player
+                val d = p.duration()
+                if (p.current != null && d > 0) p.position().coerceIn(0L, d) to d else null
+            }
+            null -> null
+            else -> {
+                val ctl = controller?.takeIf { it.packageName == c.sourcePkg } ?: return null
+                val st = ctl.playbackState ?: return null
+                val d = ctl.metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L
+                if (d <= 0L || st.position < 0L) return null
+                var pos = st.position
+                if (st.state == PlaybackState.STATE_PLAYING) {
+                    pos += ((android.os.SystemClock.elapsedRealtime() - st.lastPositionUpdateTime) * st.playbackSpeed).toLong()
+                }
+                pos.coerceIn(0L, d) to d
+            }
+        }
+    }
+
     // ---------------------------------------------------------------- transport
     enum class Key(val code: Int) { PREV(KeyEvent.KEYCODE_MEDIA_PREVIOUS), PLAY_PAUSE(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE), NEXT(KeyEvent.KEYCODE_MEDIA_NEXT) }
 

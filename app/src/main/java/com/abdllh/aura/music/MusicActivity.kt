@@ -26,7 +26,10 @@ import com.abdllh.aura.home.AppRepo
 import com.abdllh.aura.ui.AText
 import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.MATCH
+import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
+import com.abdllh.aura.ui.PlayPauseView
+import com.abdllh.aura.ui.Segmented
 import com.abdllh.aura.ui.Shapes
 import com.abdllh.aura.ui.Theme
 import com.abdllh.aura.ui.WRAP
@@ -36,6 +39,7 @@ import com.abdllh.aura.ui.iconView
 import com.abdllh.aura.ui.label
 import com.abdllh.aura.ui.lp
 import com.abdllh.aura.ui.pressScale
+import com.abdllh.aura.ui.riseIn
 import com.abdllh.aura.ui.roundedClip
 import com.abdllh.aura.util.LocaleHelper
 import com.abdllh.aura.util.Prefs
@@ -58,13 +62,11 @@ class MusicActivity : Activity() {
     private lateinit var seek: SeekView
     private lateinit var tNow: AText
     private lateinit var tTotal: AText
-    private lateinit var playIcon: ImageView
+    private lateinit var playIcon: PlayPauseView
     private lateinit var shuffleBtn: ImageView
     private lateinit var repeatBtn: ImageView
-    private lateinit var srcLocal: AText
-    private lateinit var srcBt: AText
-    private lateinit var tabsRow: LinearLayout
-    private val tabViews = HashMap<Tab, AText>()
+    private lateinit var source: Segmented
+    private lateinit var tabs: Segmented
     private lateinit var listHolder: FrameLayout
     private lateinit var crumb: LinearLayout
     private lateinit var crumbText: AText
@@ -73,6 +75,7 @@ class MusicActivity : Activity() {
     private lateinit var emptyBtn: AText
 
     private lateinit var bgArt: ImageView
+    private lateinit var artBox: FrameLayout
     private lateinit var playBtn: FrameLayout
     private lateinit var libraryBox: LinearLayout
     private lateinit var btBox: LinearLayout
@@ -98,6 +101,11 @@ class MusicActivity : Activity() {
     private var bt = false
     private var lastArtKey = Long.MIN_VALUE
     private var btCover: Bitmap? = null
+    /** The song shown (its title comes in with a little movement when it changes). */
+    private var shownSong: String? = null
+    /** The cover shown, and whether one was set yet (the first comes without the fade). */
+    private var shownCover: Bitmap? = null
+    private var coverShown = false
     /** The colour of the current cover (progress, play button, the playing row); the theme accent without one. */
     private var coverAccent = Palette.accent
     private val arabic get() = Locale.getDefault().language == "ar"
@@ -173,7 +181,12 @@ class MusicActivity : Activity() {
 
     @Deprecated("back leaves an album/artist first")
     override fun onBackPressed() {
-        if (group != null) { group = null; showList() } else close()
+        if (group != null) { group = null; showList(fade = true) } else close()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        com.abdllh.aura.system.Animations.ensureAnimators()
     }
 
     private val playerListener: () -> Unit = { if (!bt) showNowPlaying(); (listView?.adapter as? BaseAdapter)?.notifyDataSetChanged() }
@@ -182,14 +195,22 @@ class MusicActivity : Activity() {
 
     private val progressTick = object : Runnable {
         override fun run() {
-            if (lyricsOn) lyricsView.at(if (bt) BtMusic.positionMs() else Player.position())
+            if (lyricsOn) {
+                lyricsView.needSync = bt && !BtMusic.positionKnown
+                lyricsView.at(if (bt) BtMusic.positionMs() else Player.position())
+            }
             if (bt) {
+                // the phone does not say where a song is (BtMusic keeps a clock): unknown parts are left as dashes
+                val song = BtMusic.connected && BtMusic.title.isNotBlank()
                 val d = BtMusic.durationSec * 1000L
-                val p = BtMusic.position() * 1000L
-                seek.progress = if (d > 0) p.toFloat() / d else 0f
-                tNow.text = if (d > 0) time(p) else ""
-                tTotal.text = if (d > 0) time(d) else ""
+                val known = BtMusic.positionKnown
+                val p = BtMusic.positionMs()
+                seek.progress = if (d > 0 && known) p.toFloat() / d else 0f
+                seek.visibility = if (song) View.VISIBLE else View.INVISIBLE // (no song: no empty bar either)
+                tNow.text = if (!song) "" else if (known) time(p) else UNKNOWN_TIME
+                tTotal.text = if (!song) "" else if (d > 0) time(d) else UNKNOWN_TIME
             } else if (!seek.dragging) {
+                seek.visibility = View.VISIBLE
                 val d = Player.duration()
                 val p = Player.position()
                 seek.progress = if (d > 0) p.toFloat() / d else 0f
@@ -218,8 +239,8 @@ class MusicActivity : Activity() {
         class Song(val key: String, val title: String, val artist: String, val sec: Int)
         val s = if (bt) {
             if (!BtMusic.connected || BtMusic.title.isBlank()) null
-            // (its length in the key: looked up again once the phone tells it, for the right recording's timing)
-            else Song("bt:${BtMusic.title}|${BtMusic.artist}|${BtMusic.durationSec}", BtMusic.title, BtMusic.artist, BtMusic.durationSec)
+            // (once per song: the phone's own length, when it told one, helps to pick the right recording)
+            else Song("bt:${BtMusic.title}|${BtMusic.artist}", BtMusic.title, BtMusic.artist, BtMusic.phoneDurationSec)
         } else Player.current?.let { Song("lib:${it.id}", it.title, it.artist, (it.durationMs / 1000).toInt()) }
         if (s?.key == lyricsKey && lyricsKey != null) return
         lyricsKey = s?.key
@@ -227,6 +248,9 @@ class MusicActivity : Activity() {
         lyricsView.showStatus(getString(R.string.lyrics_loading))
         Lyrics.get(this, s.title, s.artist, s.sec) { r, failed ->
             if (lyricsKey != s.key || isDestroyed) return@get
+            // the length of the recording the lines were timed on: the Bluetooth song's, while the phone tells none
+            // (timed lines only: an untimed record's length says no more than a catalogue's)
+            if (bt && r != null && r.synced && r.durationSec > 0) BtMusic.offerDuration(r.durationSec, s.title, s.artist, fromLyrics = true)
             when {
                 r == null && failed -> {
                     lyricsView.showStatus(getString(R.string.lyrics_failed))
@@ -237,8 +261,29 @@ class MusicActivity : Activity() {
                 }
                 r == null -> lyricsView.showStatus(getString(R.string.lyrics_none))
                 r.instrumental -> lyricsView.showStatus(getString(R.string.lyrics_instrumental))
-                else -> { lyricsView.show(r); lyricsView.at(if (bt) BtMusic.positionMs() else Player.position()) }
+                else -> {
+                    lyricsView.show(r)
+                    lyricsView.needSync = bt && !BtMusic.positionKnown
+                    lyricsView.at(if (bt) BtMusic.positionMs() else Player.position())
+                }
             }
+        }
+    }
+
+    /**
+     * A tapped line: the unit's own song jumps there; a Bluetooth song cannot be moved from here, so the line tells
+     * where it is (the owner taps what is being sung: a moment after the line started).
+     */
+    private fun onLineTap(l: Lyrics.Line) {
+        if (bt) {
+            BtMusic.syncTo(l.ms + TAP_REACTION_MS)
+            lyricsView.needSync = false
+            lyricsView.at(BtMusic.positionMs())
+            lyricsView.flashSynced()
+        } else if (Player.current != null) {
+            Player.seekTo(l.ms)
+            if (!Player.playing) Player.toggle()
+            lyricsView.at(l.ms)
         }
     }
 
@@ -274,7 +319,8 @@ class MusicActivity : Activity() {
                     album.text = phone
                 }
             }
-            playIcon.setImageResource(if (BtMusic.playing) R.drawable.ic_pause else R.drawable.ic_play)
+            songChanged("bt:${BtMusic.title}|${BtMusic.artist}")
+            playIcon.setPlaying(BtMusic.playing)
             refreshLyrics()
             return
         }
@@ -294,25 +340,62 @@ class MusicActivity : Activity() {
                 ArtLoader.get(this, t, 600) { b -> if (Player.current?.albumId == t.albumId && !bt) setArt(b, t.albumId) }
             }
         }
-        playIcon.setImageResource(if (Player.playing) R.drawable.ic_pause else R.drawable.ic_play)
+        songChanged("lib:${t?.id}")
+        playIcon.setPlaying(Player.playing)
         paintAccents()
         repeatBtn.alpha = if (Player.repeat == Player.Repeat.ONE) 1f else 0.9f
         repeatBtn.contentDescription = Player.repeat.name
         refreshLyrics()
     }
 
+    /** A new song: its title and names come in with a little movement (not on every refresh of the same song). */
+    private fun songChanged(key: String) {
+        val first = shownSong == null
+        if (key == shownSong) return
+        shownSong = key
+        if (first) return
+        title.riseIn(10f, 0L, Motion.MEDIUM)
+        artist.riseIn(10f, 50L, Motion.MEDIUM)
+        album.riseIn(10f, 90L, Motion.MEDIUM)
+    }
+
     private fun setArt(b: Bitmap?, key: Long) {
+        // a new picture on a screen that already showed one (the keys are set before a cover loads: not those)
+        val changed = b !== shownCover && coverShown
+        shownCover = b
+        coverShown = true
         lastArtKey = key
-        art.setImageBitmap(b)
+        // the new cover fades in over the old one, and the box breathes in a little
+        val shown = art.drawable
+        // (the cover a fade ended on, not the fade itself: no chain of old covers kept alive)
+        val old = (shown as? android.graphics.drawable.TransitionDrawable)?.getDrawable(1) ?: shown
+        val next = b?.let { android.graphics.drawable.BitmapDrawable(resources, it) }
+        if (changed && old != null && next != null) {
+            val fade = android.graphics.drawable.TransitionDrawable(arrayOf(old, next)).apply {
+                isCrossFadeEnabled = true
+                startTransition(Motion.MEDIUM.toInt())
+            }
+            art.setImageDrawable(fade)
+            // then the cover alone (the fade's layers share one size: a cover that is not square would be stretched)
+            art.postDelayed({ if (art.drawable === fade) art.setImageDrawable(next) }, Motion.MEDIUM + 40)
+        } else art.setImageDrawable(next)
+        if (changed) { artBox.scaleX = 0.95f; artBox.scaleY = 0.95f; artBox.animate().scaleX(1f).scaleY(1f).setDuration(Motion.LONG).setInterpolator(Motion.EMPHASIZED).start() }
         artIcon.visibility = if (b == null) View.VISIBLE else View.GONE
         coverAccent = b?.let { vivid(dominantColor(it)) } ?: Palette.accent
+        // the cover's colour in its shadow: it glows on the background
+        if (android.os.Build.VERSION.SDK_INT >= 28) {
+            artBox.outlineSpotShadowColor = if (b != null) coverAccent else Palette.shadow
+            artBox.outlineAmbientShadowColor = if (b != null) coverAccent else Palette.shadow
+            playBtn.outlineSpotShadowColor = coverAccent
+            playBtn.outlineAmbientShadowColor = coverAccent
+        }
         // The cover, blurred, fills the screen behind everything: a tiny copy scaled up with filtering is blur enough
         // (and costs nothing on this GPU).
         if (b != null) {
             val small = Bitmap.createScaledBitmap(b, 18, 18, true)
             bgArt.setImageDrawable(android.graphics.drawable.BitmapDrawable(resources, small).apply { isFilterBitmap = true })
             bgArt.alpha = 0f
-            bgArt.animate().alpha(if (Palette.dark) 0.9f else 0.55f).setDuration(500).start()
+            bgArt.animate().alpha(if (Palette.dark) 0.9f else 0.55f).setDuration(600).setInterpolator(Motion.STANDARD).start()
         } else {
             bgArt.animate().alpha(0f).setDuration(300).start()
         }
@@ -320,7 +403,7 @@ class MusicActivity : Activity() {
             intArrayOf(Palette.mix(Palette.bg, coverAccent, if (Palette.dark) 0.30f else 0.22f), Palette.bg, Palette.bg))
         seek.color = coverAccent
         playBtn.background = Shapes.pressable(Shapes.oval(coverAccent), Shapes.oval(Palette.mix(coverAccent, 0xFF000000.toInt(), 0.2f)))
-        playIcon.setColorFilter(Palette.onColor(coverAccent))
+        playIcon.color = Palette.onColor(coverAccent)
         (listView?.adapter as? BaseAdapter)?.notifyDataSetChanged()
         paintTabs()
         paintAccents()
@@ -338,10 +421,8 @@ class MusicActivity : Activity() {
 
     /** Everything that takes the cover's colour: the source switch, shuffle and repeat. */
     private fun paintAccents() {
-        srcLocal.background = if (!bt) Shapes.rect(coverAccent, 22f) else null
-        srcLocal.setTextColor(if (!bt) Palette.onColor(coverAccent) else Palette.text2)
-        srcBt.background = if (bt) Shapes.rect(coverAccent, 22f) else null
-        srcBt.setTextColor(if (bt) Palette.onColor(coverAccent) else Palette.text2)
+        source.indicator = coverAccent
+        if (source.selected != (if (bt) 1 else 0)) source.select(if (bt) 1 else 0)
         shuffleBtn.setColorFilter(if (Player.shuffle) coverAccent else Palette.text2)
         repeatBtn.setColorFilter(if (Player.repeat != Player.Repeat.OFF) coverAccent else Palette.text2)
         btBadge.background = Shapes.oval(Palette.withAlpha(coverAccent, 0.18f))
@@ -353,10 +434,9 @@ class MusicActivity : Activity() {
     }
 
     private fun paintTabs() {
-        for ((t, v) in tabViews) {
-            v.background = if (t == tab) Shapes.rect(Palette.withAlpha(coverAccent, 0.22f), 20f) else null
-            v.setTextColor(if (t == tab) Palette.text else Palette.text2)
-        }
+        tabs.indicator = Palette.withAlpha(coverAccent, if (Palette.dark) 0.32f else 0.24f)
+        tabs.onIndicator = Palette.text
+        if (tabs.selected != tab.ordinal) tabs.select(tab.ordinal)
     }
 
     /**
@@ -447,8 +527,14 @@ class MusicActivity : Activity() {
         left.requestLayout()
     }
 
-    private fun showList() {
+    /** [fade]: another tab or group, the new list comes in with a short fade. */
+    private fun showList(fade: Boolean = false) {
         if (!::listHolder.isInitialized) return
+        if (fade) {
+            listHolder.alpha = 0.2f
+            listHolder.translationY = 8.dp.toFloat()
+            listHolder.animate().alpha(1f).translationY(0f).setDuration(Motion.MEDIUM).setInterpolator(Motion.EMPHASIZED).start()
+        }
         applyLayout()
         // Bluetooth: the library makes way for the song (see applyLayout); the lyrics, when shown, take the panel
         libraryBox.visibility = if (bt || lyricsOn) View.GONE else View.VISIBLE
@@ -524,7 +610,7 @@ class MusicActivity : Activity() {
                 val g = groups[i]
                 val r = (convert as? GroupRow) ?: GroupRow(this@MusicActivity, icon)
                 r.bind(g)
-                r.setOnClickListener { group = g; showList() }
+                r.setOnClickListener { group = g; showList(fade = true) }
                 return r
             }
         }
@@ -549,7 +635,7 @@ class MusicActivity : Activity() {
                 val g = groups[i]
                 val cell = (convert as? AlbumCell) ?: AlbumCell(this@MusicActivity)
                 cell.bind(g, ((parent.width - 2 * 14.dp - 12.dp) / 3).coerceAtLeast(80.dp))
-                cell.setOnClickListener { group = g; showList() }
+                cell.setOnClickListener { group = g; showList(fade = true) }
                 return cell
             }
         }
@@ -679,7 +765,7 @@ class MusicActivity : Activity() {
         left = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
         val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         top.addView(FrameLayout(this).apply {
-            background = Shapes.ghostOval()
+            background = Shapes.pressable(Shapes.oval(Palette.withAlpha(Palette.card, if (Palette.dark) 0.55f else 0.75f)), Shapes.oval(Palette.card3))
             isClickable = true
             pressScale(0.9f)
             setOnClickListener { close() }
@@ -687,20 +773,10 @@ class MusicActivity : Activity() {
                 layoutParams = flp(28.dp, 28.dp, Gravity.CENTER)
                 if (resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL) scaleX = -1f
             })
-        }, lp(58.dp, 58.dp))
-        val seg = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            background = Shapes.rect(Palette.withAlpha(Palette.card2, 0.8f), 26f)
-            setPadding(4.dp, 4.dp, 4.dp, 4.dp)
-        }
-        srcLocal = label(16f, Palette.text2, Fonts.MEDIUM, gravity = Gravity.CENTER).apply {
-            setText(R.string.music_library); setPadding(18.dp, 0, 18.dp, 0); isClickable = true; setOnClickListener { selectSource(false) }
-        }
-        srcBt = label(16f, Palette.text2, Fonts.MEDIUM, gravity = Gravity.CENTER).apply {
-            setText(R.string.music_bluetooth); setPadding(18.dp, 0, 18.dp, 0); isClickable = true; setOnClickListener { selectSource(true) }
-        }
-        seg.addView(srcLocal, lp(WRAP, 50.dp))
-        seg.addView(srcBt, lp(WRAP, 50.dp))
+        }, lp(56.dp, 56.dp))
+        source = Segmented(this, listOf(getString(R.string.music_library), getString(R.string.music_bluetooth)), equal = false) { i ->
+            selectSource(i == 1)
+        }.apply { trackColor = Palette.withAlpha(Palette.card, if (Palette.dark) 0.55f else 0.75f) }
         top.addView(View(this), lp(0, 1, 1f))
         lyricsIcon = iconView(R.drawable.ic_lyrics, 26, Palette.text)
         lyricsBtn = FrameLayout(this).apply {
@@ -710,11 +786,11 @@ class MusicActivity : Activity() {
             setOnClickListener { toggleLyrics() }
             addView(lyricsIcon, flp(26.dp, 26.dp, Gravity.CENTER))
         }
-        top.addView(lyricsBtn, lp(58.dp, 58.dp).apply { marginEnd = 10.dp })
-        top.addView(seg, lp(WRAP, WRAP))
+        top.addView(lyricsBtn, lp(56.dp, 56.dp).apply { marginEnd = 10.dp })
+        top.addView(source, lp(WRAP, 56.dp))
         left.addView(top, lp(MATCH, WRAP))
 
-        val artBox = FrameLayout(this).apply { background = Shapes.rect(Palette.card2, 28f); roundedClip(28f); elevate(20f) }
+        artBox = FrameLayout(this).apply { background = Shapes.rect(Palette.card2, 26f); roundedClip(26f); elevate(24f) }
         artIcon = iconView(R.drawable.ic_music, 72, Palette.text3)
         artBox.addView(artIcon, flp(72.dp, 72.dp, Gravity.CENTER))
         art = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
@@ -743,28 +819,30 @@ class MusicActivity : Activity() {
         info.addView(album, lp(MATCH, WRAP).apply { topMargin = 2.dp })
 
         seek = SeekView(this).apply { onSeek = { f -> Player.seekTo((Player.duration() * f).toLong()) } }
-        info.addView(seek, lp(MATCH, 34.dp).apply { topMargin = 12.dp })
+        info.addView(seek, lp(MATCH, 36.dp).apply { topMargin = 12.dp })
         val times = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; layoutDirection = View.LAYOUT_DIRECTION_LTR }
-        tNow = label(14f, Palette.text2, Fonts.MEDIUM)
-        tTotal = label(14f, Palette.text2, Fonts.MEDIUM)
+        // (digits of one width: the times do not wobble as they count)
+        tNow = label(13.5f, Palette.text2, Fonts.MEDIUM).apply { fontFeatureSettings = "tnum" }
+        tTotal = label(13.5f, Palette.text2, Fonts.MEDIUM).apply { fontFeatureSettings = "tnum" }
         times.addView(tNow, lp(0, WRAP, 1f))
         times.addView(tTotal, lp(WRAP, WRAP))
-        info.addView(times, lp(MATCH, WRAP).apply { setMargins(6.dp, 0, 6.dp, 0) })
+        info.addView(times, lp(MATCH, WRAP).apply { setMargins(12.dp, 0, 12.dp, 0) })
 
         val ctl = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; layoutDirection = View.LAYOUT_DIRECTION_LTR }
         shuffleBtn = ImageView(this)
         repeatBtn = ImageView(this)
         ctl.addView(ctlButton(R.drawable.ic_shuffle, 28, shuffleBtn) { Player.setShuffle(!Player.shuffle) }, lp(64.dp, 64.dp))
         ctl.addView(ctlButton(R.drawable.ic_skip_back, 36, null) { transport(0) }, lp(82.dp, 82.dp).apply { marginStart = 12.dp })
-        playIcon = ImageView(this)
+        playIcon = PlayPauseView(this)
         playBtn = FrameLayout(this).apply {
             isClickable = true
-            pressScale(0.92f)
-            elevate(12f)
+            pressScale(0.9f)
+            elevate(16f)
+            contentDescription = getString(R.string.media_play)
             setOnClickListener { transport(1) }
-            addView(playIcon.apply { scaleType = ImageView.ScaleType.FIT_CENTER }, flp(40.dp, 40.dp, Gravity.CENTER))
+            addView(playIcon, flp(44.dp, 44.dp, Gravity.CENTER))
         }
-        ctl.addView(playBtn, lp(104.dp, 104.dp).apply { marginStart = 14.dp; marginEnd = 14.dp })
+        ctl.addView(playBtn, lp(100.dp, 100.dp).apply { marginStart = 14.dp; marginEnd = 14.dp })
         ctl.addView(ctlButton(R.drawable.ic_skip_fwd, 36, null) { transport(2) }, lp(82.dp, 82.dp).apply { marginEnd = 12.dp })
         ctl.addView(ctlButton(R.drawable.ic_repeat, 28, repeatBtn) { Player.cycleRepeat() }, lp(64.dp, 64.dp))
         info.addView(ctl, lp(MATCH, WRAP).apply { topMargin = 8.dp })
@@ -788,25 +866,19 @@ class MusicActivity : Activity() {
         libraryBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(14.dp, 14.dp, 14.dp, 0) }
         panel.addView(libraryBox, flp(MATCH, MATCH))
         val libPanel = libraryBox
-        tabsRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            background = Shapes.rect(Palette.withAlpha(Palette.card3, 0.75f), 24f)
-            setPadding(4.dp, 4.dp, 4.dp, 4.dp)
-        }
-        for ((t, res) in listOf(Tab.SONGS to R.string.music_songs, Tab.ALBUMS to R.string.music_albums, Tab.ARTISTS to R.string.music_artists, Tab.FOLDERS to R.string.music_folders)) {
-            val v = label(16f, Palette.text2, Fonts.MEDIUM, gravity = Gravity.CENTER).apply {
-                setText(res); isClickable = true; setOnClickListener { tab = t; group = null; showList() }
-            }
-            tabViews[t] = v
-            tabsRow.addView(v, lp(0, 52.dp, 1f))
-        }
-        libPanel.addView(tabsRow, lp(MATCH, WRAP))
+        tabs = Segmented(this, listOf(getString(R.string.music_songs), getString(R.string.music_albums),
+            getString(R.string.music_artists), getString(R.string.music_folders)), equal = true) { i ->
+            tab = Tab.values()[i]
+            group = null
+            showList(fade = true)
+        }.apply { trackColor = Palette.withAlpha(Palette.card3, 0.75f) }
+        libPanel.addView(tabs, lp(MATCH, 56.dp))
         crumb = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             visibility = View.GONE
             isClickable = true
-            setOnClickListener { group = null; showList() }
+            setOnClickListener { group = null; showList(fade = true) }
             setPaddingRelative(6.dp, 10.dp, 6.dp, 4.dp)
         }
         crumb.addView(iconView(R.drawable.ic_chevron_left, 24, Palette.accent).apply {
@@ -852,7 +924,7 @@ class MusicActivity : Activity() {
             setOnClickListener { openBluetooth(this@MusicActivity) }
         }, lp(WRAP, 60.dp).apply { topMargin = 24.dp })
         panel.addView(btBox, flp(MATCH, MATCH))
-        lyricsView = LyricsView(this).apply { visibility = View.GONE }
+        lyricsView = LyricsView(this).apply { visibility = View.GONE; onLineTap = { l -> onLineTap(l) } }
         panel.addView(lyricsView, flp(MATCH, MATCH))
 
         row.addView(panel, lp(0, MATCH, 0.54f))
@@ -883,6 +955,10 @@ class MusicActivity : Activity() {
         // art keys for "no cover" states (album ids are >= 0)
         private const val BT_ART = Long.MIN_VALUE + 1
         private const val NO_ART = -2L
+        /** A time the phone does not tell (Bluetooth). */
+        private const val UNKNOWN_TIME = "–:––"
+        /** How long after a line starts the owner, hearing it, taps it. */
+        private const val TAP_REACTION_MS = 450L
 
         fun open(ctx: Context) {
             try { ctx.startActivity(Intent(ctx, MusicActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Throwable) { }
@@ -926,21 +1002,23 @@ class SeekView(ctx: Context) : View(ctx) {
     init { layoutDirection = LAYOUT_DIRECTION_LTR }
 
     override fun onDraw(c: Canvas) {
-        val h = (if (dragging) 9f else 7f).dp
+        val h = (if (dragging) 10f else 6f).dp // (thicker under the finger)
         val y = height / 2f
         val pad = 12f.dp
         val w = width - 2 * pad
         r.set(pad, y - h / 2, pad + w, y + h / 2)
         p.color = if (Palette.dark) 0x2EFFFFFF else 0x22000000
         c.drawRoundRect(r, h / 2, h / 2, p)
-        r.set(pad, y - h / 2, pad + w * progress, y + h / 2)
-        p.color = color
-        c.drawRoundRect(r, h / 2, h / 2, p)
+        if (progress > 0f) {
+            r.set(pad, y - h / 2, pad + (w * progress).coerceAtLeast(h), y + h / 2)
+            p.color = color
+            c.drawRoundRect(r, h / 2, h / 2, p)
+        }
         if (enabledSeek) {
-            p.color = 0x33000000
-            c.drawCircle(pad + w * progress, y + 1f.dp, (if (dragging) 13f else 10f).dp, p)
+            p.color = 0x30000000
+            c.drawCircle(pad + w * progress, y + 1f.dp, (if (dragging) 14f else 9f).dp, p)
             p.color = 0xFFFFFFFF.toInt()
-            c.drawCircle(pad + w * progress, y, (if (dragging) 12f else 9f).dp, p)
+            c.drawCircle(pad + w * progress, y, (if (dragging) 13f else 8f).dp, p)
         }
     }
 

@@ -13,6 +13,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.Parcel
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import com.abdllh.aura.BuildConfig
@@ -26,8 +27,16 @@ import java.util.concurrent.CopyOnWriteArrayList
  *  - state:   com.bt.ACTION_BT_MUSIC_PLAY / _PAUSE, Settings.System key_bt_a2dp_state (0 off .. 2 connected, 3 streaming)
  *  - control: playControl(int) code 23: 0 toggle, 1 pause, 2 next, 3 previous, 4 play
  *  - audio:   the service starts muted; setBtMusicMute(false) (code 39) after taking the source (app id 15) unmutes it
- *  - progress: BTPIMCallback.onGetA2dpProgress(totalSec, posSec) (code 4), when the phone reports it
+ *  - progress: BTPIMCallback.onGetA2dpProgress(totalSec, posSec) (code 4), from the module's "MQ" report
  * No album art, album name or seeking is available from this module: the cover is looked up online ([CoverSearch]).
+ *
+ * Where the song is: this unit's stack (the GOC one for the AIC8800, UartConfig bt_module=0) does not report it — the
+ * stock BT music app shows its progress bar only with an RTL8761 module (persist.sys.bt.rtl8761, false here). So a
+ * clock of its own: a song that follows another starts at 0 when its title arrives; pause and play stop and restart
+ * the clock; "previous" after a few seconds restarts the same song (no new title then). The first song after
+ * connecting (or after this process started) may already be half way: its position is unknown until the owner taps
+ * the line being sung in the lyrics ([syncTo]) or the next song starts. Its length comes from the phone when the
+ * module reports one, else from the catalogue the cover was found in or from the lyrics ([offerDuration]).
  */
 object BtMusic {
     private const val TAG = "AuraBt"
@@ -42,6 +51,15 @@ object BtMusic {
     private const val TX_SET_MUTE = 39
     private const val TX_QUERY_ID3 = 60
     private const val BT_MUSIC_APP_ID = 15
+    /** Where a song that just started is when its title arrives (the module asks the phone for it after the change). */
+    private const val START_MS = 250L
+    private const val REPEAT_SLACK_MS = 3000L
+    /** "Previous" pressed: no new title within this long means the phone restarted the same song... */
+    private const val PREV_CHECK_MS = 2500L
+    /** ...about this long after the press. */
+    private const val PREV_LAG_MS = 300L
+    /** Debug builds: a progress report as the module would send it (the emulator has no module). */
+    private const val ACTION_DEBUG_PROGRESS = "com.abdllh.aura.debug.BT_PROGRESS"
 
     const val TOGGLE = 0
     const val PAUSE = 1
@@ -67,24 +85,90 @@ object BtMusic {
         private set
     var phone = ""
         private set
+    /** The song's length, 0 while unknown. */
     var durationSec = 0
         private set
-    var positionSec = 0
+    /** The length came from the phone (believed over a catalogue's or the lyrics'). */
+    private var durationFromPhone = false
+    /** Where a length not from the phone came from: the lyrics' recording is believed over a catalogue's match. */
+    private var durationFromLyrics = false
+    /** The clock follows the song: its start was seen, the phone said where it is, or the owner set it ([syncTo]). */
+    var positionKnown = false
         private set
-    private var positionAt = 0L
+    // the clock: the song was at [basePosMs] at [baseAt] (elapsedRealtime: a wall clock set by GPS would jump)
+    private var basePosMs = 0L
+    private var baseAt = 0L
+    private var running = false
+    /** The song before in this connection: "" right after connecting or starting (the next title is no seen start). */
+    private var lastSong = ""
+    private var prevSentAt = 0L
+    private var prevSong = ""
     /** Cover of the current song (found online by title + artist), or null. */
     var art: Bitmap? = null
         private set
     private var artKey = ""
 
-    /** Seconds played, extrapolated between the phone's progress reports. */
-    fun position(): Int = if (playing && positionAt > 0) (positionSec + ((System.currentTimeMillis() - positionAt) / 1000).toInt()).coerceAtMost(durationSec.coerceAtLeast(positionSec))
-        else positionSec
+    private val song get() = "$title|$artist"
 
-    /** The same in milliseconds (the lyrics follow the song closer than a second). */
-    fun positionMs(): Long = if (playing && positionAt > 0)
-        (positionSec * 1000L + (System.currentTimeMillis() - positionAt)).coerceAtMost(durationSec.coerceAtLeast(positionSec) * 1000L)
-        else positionSec * 1000L
+    /** The length the phone itself told (0 when none): a catalogue's guess must not steer the lyrics' search. */
+    val phoneDurationSec get() = if (durationFromPhone) durationSec else 0
+
+    /** Where the song is, in milliseconds (meaningful while [positionKnown]). */
+    fun positionMs(): Long {
+        val now = SystemClock.elapsedRealtime()
+        var p = if (running) basePosMs + (now - baseAt) else basePosMs
+        val d = durationSec * 1000L
+        if (d > 0 && p > d) {
+            if (durationFromPhone && running && p > d + REPEAT_SLACK_MS) {
+                // played on past the phone's own length with no new title: the same song again (repeat one)
+                basePosMs = p - d
+                baseAt = now
+                p = basePosMs
+            } else p = d
+        }
+        return p.coerceAtLeast(0L)
+    }
+
+    private fun clockSet(ms: Long, known: Boolean) {
+        basePosMs = ms
+        baseAt = SystemClock.elapsedRealtime()
+        positionKnown = known
+    }
+
+    /** Playing or not: the clock stops and goes on with it. */
+    private fun setPlaying(p: Boolean) {
+        if (p != running) {
+            val now = SystemClock.elapsedRealtime()
+            if (p) baseAt = now else basePosMs += now - baseAt
+            running = p
+        }
+        playing = p
+    }
+
+    /** A new connection (or none): the next song's start is not seen, nor is where the current one is. */
+    private fun forgetClock() {
+        lastSong = ""
+        positionKnown = false
+    }
+
+    /** The owner tapped the line sung at [ms]: that is where the song is now. */
+    fun syncTo(ms: Long) {
+        clockSet(ms.coerceAtLeast(0L), true)
+        changed()
+    }
+
+    /**
+     * A length for the song [title]/[artist], used while the phone tells none: [fromLyrics] the recording the lyrics
+     * were timed on (what the lines follow), else a catalogue's match (it may be another recording, a live one...).
+     */
+    fun offerDuration(sec: Int, forTitle: String, forArtist: String, fromLyrics: Boolean) {
+        if (durationFromPhone || sec !in 20..3600 || forTitle != title || forArtist != artist) return
+        if (durationFromLyrics && !fromLyrics) return
+        durationFromLyrics = fromLyrics
+        if (sec == durationSec) return
+        durationSec = sec
+        changed()
+    }
 
     fun addListener(l: () -> Unit) { listeners.add(l) }
     fun removeListener(l: () -> Unit) { listeners.remove(l) }
@@ -94,6 +178,8 @@ object BtMusic {
         if (app != null) return
         val c = ctx.applicationContext
         app = c
+        // (the firmware keeps the source across a restart: so does the music screen's choice)
+        sourceActive = com.abdllh.aura.util.Prefs.raw.getString("musicSource", "local") == "bt"
         available = try { c.packageManager.getApplicationInfo(PKG, 0); true } catch (_: Throwable) { false }
         if (!available && !BuildConfig.DEBUG) return
         val f = IntentFilter().apply {
@@ -105,6 +191,8 @@ object BtMusic {
             addAction("com.bt.ACTION_AVRCP_ESTABLISHED")
             addAction("com.bt.ACTION_AVRCP_RELEASE")
             addAction("com.bt.ACTION_BT_CONNECTION_CHANGE")
+            addAction("com.nwd.action.ACTION_KEY_VALUE")
+            if (BuildConfig.DEBUG) addAction(ACTION_DEBUG_PROGRESS)
         }
         try { c.registerReceiver(receiver, f) } catch (t: Throwable) { Log.w(TAG, "receiver: $t") }
         if (!available) return // debug build without the module (the emulator): test broadcasts only
@@ -123,25 +211,47 @@ object BtMusic {
             try {
                 when (i.action) {
                     "com.bt.ACTION_AVRCP_MUSIC_ID3" -> {
-                        if (BuildConfig.DEBUG && i.getBooleanExtra("sim", false)) { available = true; connected = true; playing = true }
+                        if (BuildConfig.DEBUG && i.getBooleanExtra("sim", false)) {
+                            available = true; connected = true
+                            if (i.getBooleanExtra("sim_first", false)) forgetClock() // as if just connected
+                            setPlaying(true)
+                        }
                         val t = i.getStringExtra("extra_avrcp_id3_title").orEmpty()
                         val a = i.getStringExtra("extra_avrcp_id3_artist").orEmpty()
                         if (t != title || a != artist) { // (the module repeats the same song's info now and then)
+                            // a song that follows another one starts now; the first one after connecting may be half way
+                            val start = lastSong.isNotEmpty() && t.isNotBlank()
                             title = t
                             artist = a
-                            positionSec = 0
-                            durationSec = 0 // unknown until the phone reports it (not the song before's)
-                            positionAt = System.currentTimeMillis()
+                            durationSec = 0 // unknown until told (not the song before's)
+                            durationFromPhone = false
+                            durationFromLyrics = false
+                            clockSet(if (start) START_MS else 0L, start)
+                            if (t.isNotBlank()) lastSong = song
+                        } else if (t.isNotBlank() && lastSong.isEmpty()) {
+                            // the same song again after reconnecting: not its start, but the next title will be one
+                            lastSong = song
                         }
                         findArt()
                     }
-                    "com.bt.ACTION_BT_MUSIC_PLAY" -> { playing = true; positionAt = System.currentTimeMillis() }
-                    "com.bt.ACTION_BT_MUSIC_PAUSE" -> { positionSec = position(); playing = false }
-                    "com.bt.ACTION_A2DP_RELEASE" -> { connected = false; playing = false }
-                    "com.bt.ACTION_A2DP_ESTABLISHED" -> connected = true
+                    "com.nwd.action.ACTION_KEY_VALUE" -> {
+                        // the steering wheel's or the panel's "previous" while the phone's music is the source goes
+                        // straight to the module (its A2DPManager: keys 6 and 17): the same check as our own button
+                        val k = (i.extras?.get("extra_key_value") as? Number)?.toInt() ?: return // (a byte; any number)
+                        if ((k == 6 || k == 17) && sourceActive && connected) armPrevCheck()
+                        return
+                    }
+                    "com.bt.ACTION_BT_MUSIC_PLAY" -> setPlaying(true)
+                    "com.bt.ACTION_BT_MUSIC_PAUSE" -> setPlaying(false)
+                    "com.bt.ACTION_A2DP_RELEASE" -> { connected = false; setPlaying(false); forgetClock() }
+                    "com.bt.ACTION_A2DP_ESTABLISHED" -> { if (!connected) forgetClock(); connected = true }
                     "com.bt.ACTION_BT_CONNECTION_CHANGE" -> {
                         if (i.getIntExtra("extra_bt_connection_event", 0) == 1) phone = i.getStringExtra("extra_bt_device_name").orEmpty()
-                        else { connected = false; playing = false; title = ""; artist = ""; findArt() }
+                        else { connected = false; setPlaying(false); forgetClock(); title = ""; artist = ""; findArt() }
+                    }
+                    ACTION_DEBUG_PROGRESS -> if (BuildConfig.DEBUG) { // (the emulator: a progress report as the module would send)
+                        progress(i.getIntExtra("total", 0), i.getIntExtra("pos", 0))
+                        return
                     }
                 }
             } catch (_: Throwable) {
@@ -158,20 +268,41 @@ object BtMusic {
         artKey = key
         art = null
         if (title.isBlank()) return
-        CoverSearch.find(c, title, artist) { b -> if (artKey == key) { art = b; changed() } }
+        val t = title
+        val a = artist
+        CoverSearch.find(c, t, a) { b, sec ->
+            if (artKey != key) return@find
+            art = b
+            if (sec > 0) offerDuration(sec, t, a, fromLyrics = false) // (the catalogue's length, while nothing better)
+            changed()
+        }
     }
 
     private fun readState() {
         val cr = app?.contentResolver ?: return
         val st = try { Settings.System.getInt(cr, "key_bt_a2dp_state", 0) } catch (_: Throwable) { 0 }
+        if (st < 2 && connected) forgetClock()
         connected = st >= 2
-        if (st == 3) playing = true else if (st < 2) playing = false
+        if (st == 3) setPlaying(true) else if (st < 2) setPlaying(false)
         phone = try { Settings.System.getString(cr, "bt_phone_name") } catch (_: Throwable) { null } ?: phone
         changed()
     }
 
     // ------------------------------------------------------------------------------------------ control
+    /**
+     * "Previous" was pressed: a phone restarts the song when it has played a few seconds (the same title: no news from
+     * the module), else it goes to the song before (a new title: a seen start). Checked [PREV_CHECK_MS] later.
+     */
+    private fun armPrevCheck() {
+        if (title.isBlank()) return
+        prevSentAt = SystemClock.elapsedRealtime()
+        prevSong = song
+        main.removeCallbacks(prevCheck)
+        main.postDelayed(prevCheck, PREV_CHECK_MS)
+    }
+
     fun control(cmd: Int) {
+        if (cmd == PREVIOUS) armPrevCheck()
         if (!transact(TX_PLAY_CONTROL) { it.writeInt(cmd) }) {
             // the firmware's broadcast uses its own numbering: 1 toggle, 2 pause, 3 next, 4 previous, 5 play
             val b = when (cmd) { TOGGLE -> 1; PAUSE -> 2; NEXT -> 3; PREVIOUS -> 4; else -> 5 }
@@ -179,9 +310,31 @@ object BtMusic {
         }
     }
 
+    private val prevCheck = Runnable {
+        if (song != prevSong || title.isBlank()) return@Runnable // another song came: its start was seen
+        val since = SystemClock.elapsedRealtime() - prevSentAt
+        clockSet(if (running) (since - PREV_LAG_MS).coerceAtLeast(0L) else 0L, true)
+        changed()
+    }
+
+    /**
+     * The module's report of the phone's position (whole seconds). A clock that is already right within a second and a
+     * half keeps running as it is: reports every second would make the lines jitter by half a second.
+     */
+    private fun progress(totalSec: Int, posSec: Int) {
+        if (totalSec > 0) { durationSec = totalSec; durationFromPhone = true }
+        val reported = posSec * 1000L + 500L // (somewhere in that second: its middle)
+        if (!positionKnown || kotlin.math.abs(positionMs() - reported) > 1500L) clockSet(reported, true)
+        changed()
+    }
+
+    /** The phone's music is the source AMRI chose (the panel's and the wheel's keys then go to the module). */
+    private var sourceActive = false
+
     /** Makes the phone's music audible: take the Bluetooth music source (app id 15) and unmute the module. */
     fun activate() {
         val c = app ?: return
+        sourceActive = true
         try {
             c.sendBroadcast(Intent("com.nwd.action.ACTION_APP_IN_OUT").putExtra("extra_app_id", BT_MUSIC_APP_ID)
                 .putExtra("extra_app_operation", 1).putExtra("extra_app_event", 0))
@@ -197,6 +350,7 @@ object BtMusic {
 
     /** Leaves the Bluetooth source (local music takes over): pause the phone and mute the module. */
     fun deactivate() {
+        sourceActive = false
         if (!available) return
         if (playing) control(PAUSE)
         transact(TX_SET_MUTE) { it.writeInt(1) }
@@ -212,7 +366,7 @@ object BtMusic {
                 if (code == 4) { // onGetA2dpProgress(totalSec, posSec)
                     val total = data.readInt()
                     val pos = data.readInt()
-                    main.post { durationSec = total; positionSec = pos; positionAt = System.currentTimeMillis(); for (l in listeners) l() }
+                    main.post { progress(total, pos) }
                 }
                 reply?.writeNoException()
                 true
@@ -229,7 +383,7 @@ object BtMusic {
             transact(TX_REGISTER_PIM, oneway = false) { it.writeStrongBinder(pimCallback) }
             val a2dp = query(TX_IS_A2DP)
             if (a2dp != null) connected = a2dp
-            query(TX_IS_PLAYING)?.let { playing = it }
+            query(TX_IS_PLAYING)?.let { setPlaying(it) }
             transact(TX_QUERY_ID3) { }
             changed()
         }

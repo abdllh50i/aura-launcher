@@ -93,8 +93,10 @@ object CrashGuard {
         }
         sp?.edit()?.putBoolean(KEY_DISABLED, !enabled && why == "crash")?.apply()
         SystemProps.set(Device.DISABLED_PROP, if (enabled) "0" else "1")
-        // the hidden status bar belongs to Aura's home screen: the stock launcher gets it back
+        // the hidden status bar belongs to Aura's home screen: the stock launcher gets it back (and the firmware's
+        // animation scales with it)
         try { if (enabled) SystemBars.apply(ctx) else SystemBars.release(ctx) } catch (_: Throwable) { }
+        try { if (enabled) Animations.apply(ctx) else Animations.release(ctx) } catch (_: Throwable) { }
         // so does the stock volume bar (AuraApp asks again at every start while the kill switch is on); back on, the
         // display and the music buttons start here when this process began with the switch on (both idempotent)
         try {

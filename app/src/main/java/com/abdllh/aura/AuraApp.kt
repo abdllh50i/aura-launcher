@@ -1,6 +1,7 @@
 package com.abdllh.aura
 
 import android.app.Application
+import com.abdllh.aura.system.Animations
 import com.abdllh.aura.system.AssistiveBall
 import com.abdllh.aura.system.BootAnim
 import com.abdllh.aura.system.CarAudio
@@ -41,9 +42,12 @@ class AuraApp : Application() {
         com.abdllh.aura.nav.offline.OfflineMaps.init(this)
         UpdateManager.init(this)
         CarAudio.init(this)
-        // the status bar and the volume display are Aura's to change only while Aura is the home screen
+        // the status bar, the volume display and the screen-change animations are Aura's to change only while Aura is
+        // the home screen
         val disabled = SystemProps.get(Device.DISABLED_PROP) == "1"
-        if (disabled) { SystemBars.release(this); VolumeHud.release(this) } else SystemBars.apply(this)
+        if (disabled) { SystemBars.release(this); VolumeHud.release(this); Animations.release(this) }
+        else { SystemBars.apply(this); Animations.apply(this) }
+        Animations.ensureAnimators()
         Player.init(this)
         BtMusic.init(this)
         StockMusic.apply(this)

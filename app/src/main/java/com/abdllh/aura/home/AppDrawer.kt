@@ -95,6 +95,14 @@ class AppDrawer(ctx: Context, private val host: HomeHost) : Sheet(ctx, true) {
             clipToPadding = false
             setPadding(0, 14.dp, 0, 18.dp)
             adapter = this@AppDrawer.adapter
+            // the icons come up row after row when the drawer opens
+            layoutAnimation = android.view.animation.GridLayoutAnimationController(
+                android.view.animation.AnimationSet(true).apply {
+                    addAnimation(android.view.animation.AlphaAnimation(0f, 1f))
+                    addAnimation(android.view.animation.TranslateAnimation(0f, 0f, 16f.dp, 0f))
+                    duration = 300
+                    interpolator = android.view.animation.PathInterpolator(0.05f, 0.7f, 0.1f, 1f)
+                }, 0.04f, 0.10f)
         }
         val body = FrameLayout(ctx)
         body.addView(grid, flp(MATCH, MATCH))
@@ -118,6 +126,7 @@ class AppDrawer(ctx: Context, private val host: HomeHost) : Sheet(ctx, true) {
         applyFilter("")
         if (all.isEmpty()) empty.visibility = GONE // still loading: do not claim "no apps"
         grid.setSelection(0)
+        grid.scheduleLayoutAnimation()
         AppRepo.loadAsync(context) { fresh ->
             if (fresh.isNotEmpty() && fresh != all) {
                 all = fresh

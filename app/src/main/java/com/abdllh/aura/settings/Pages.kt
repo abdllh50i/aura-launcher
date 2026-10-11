@@ -135,6 +135,10 @@ class DisplaySoundPage(private val act: SettingsActivity) : Page(R.string.set_di
             Prefs.hideStatusBar = it
             if (!com.abdllh.aura.system.SystemBars.apply(ctx)) Toast.makeText(ctx, R.string.set_failed, Toast.LENGTH_SHORT).show()
         }, 16)
+        col.addRow(ctx.switchRow(R.drawable.ic_layers, ctx.getString(R.string.set_screen_anim), ctx.getString(R.string.set_screen_anim_sub), Prefs.screenAnimations) {
+            Prefs.screenAnimations = it
+            if (!com.abdllh.aura.system.Animations.apply(ctx)) Toast.makeText(ctx, R.string.set_failed, Toast.LENGTH_SHORT).show()
+        }, 8)
         if (com.abdllh.aura.system.AssistiveBall.available) {
             col.addRow(ctx.switchRow(R.drawable.ic_layers, ctx.getString(R.string.set_ball), ctx.getString(R.string.set_ball_sub),
                 com.abdllh.aura.system.AssistiveBall.shown(ctx)) { on -> com.abdllh.aura.system.AssistiveBall.set(ctx, on) }, 8)

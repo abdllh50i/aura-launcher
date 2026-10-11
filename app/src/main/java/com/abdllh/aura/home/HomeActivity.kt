@@ -176,6 +176,7 @@ class HomeActivity : Activity(), HomeHost {
             return
         }
         if (builtAccent != Prefs.accent || Theme.isDarkNow() != builtDark) restyle() // changed in Settings
+        com.abdllh.aura.system.Animations.ensureAnimators()
         com.abdllh.aura.system.ZLinkGuard.onHomeShown() // back from ZLink: it is switched off again after a while
         val f = IntentFilter().apply {
             addAction(Intent.ACTION_TIME_TICK)

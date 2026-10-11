@@ -23,6 +23,7 @@ import java.util.concurrent.Executors
  * its cover. The song is looked up by artist + title in public music catalogues — Apple's iTunes Search API first,
  * Deezer's search API as the fallback (both free, no account) — and the cover is kept in memory and on disk, so each
  * song is looked up once. Switchable in Settings (it sends the title and artist of the songs played over Bluetooth).
+ * The catalogue's length of the song comes with it (the module does not tell it either): kept beside the cover.
  */
 object CoverSearch {
     private const val TAG = "AuraCover"
@@ -36,27 +37,34 @@ object CoverSearch {
         override fun sizeOf(key: String, value: Bitmap) = value.byteCount
     }
     private val missing = HashMap<String, Long>() // io thread only: songs no catalogue knows (asked again after a while)
+    private val lengths = HashMap<String, Int>() // main thread: the catalogue's length of the covers in [mem]
 
     /** The user's switch (on by default: without it Bluetooth songs have no picture at all). */
     var enabled: Boolean
         get() = Prefs.raw.getBoolean("btCoverOnline", true)
         set(v) { Prefs.raw.edit().putBoolean("btCoverOnline", v).apply() }
 
-    /** The cover of a song, or null; [done] runs on the main thread (at once when it is already known). */
-    fun find(ctx: Context, title: String, artist: String, done: (Bitmap?) -> Unit) {
+    /** A catalogue's answer: the cover's address and the song's length (0 when it gave none). */
+    private class Hit(val url: String, val sec: Int)
+
+    /**
+     * The cover of a song, or null, and the song's length in seconds (0 when unknown); [done] runs on the main thread
+     * (at once when it is already known).
+     */
+    fun find(ctx: Context, title: String, artist: String, done: (Bitmap?, Int) -> Unit) {
         val key = "${norm(artist)}|${norm(title)}"
-        if (norm(title).isEmpty()) { done(null); return }
-        mem.get(key)?.let { done(it); return }
+        if (norm(title).isEmpty()) { done(null, 0); return }
+        mem.get(key)?.let { done(it, lengths[key] ?: 0); return }
         val c = ctx.applicationContext
         val online = enabled
         io.execute {
-            val b = try { fromDisk(c, key) ?: if (online) fromNetwork(c, key, title, artist) else null } catch (t: Throwable) {
+            val r = try { fromDisk(c, key) ?: if (online) fromNetwork(c, key, title, artist) else null } catch (t: Throwable) {
                 Log.w(TAG, "cover for '$artist - $title': $t")
                 null
             }
             main.post {
-                if (b != null) mem.put(key, b)
-                done(b)
+                if (r != null) { mem.put(key, r.first); lengths[key] = r.second }
+                done(r?.first, r?.second ?: 0)
             }
         }
     }
@@ -64,21 +72,21 @@ object CoverSearch {
     // ------------------------------------------------------------------------------------------ lookup
     private var offline = false // io thread: a catalogue could not be asked (no network...) during this lookup
 
-    private fun fromNetwork(c: Context, key: String, title: String, artist: String): Bitmap? {
+    private fun fromNetwork(c: Context, key: String, title: String, artist: String): Pair<Bitmap, Int>? {
         val seen = missing[key]
         if (seen != null && System.currentTimeMillis() - seen < RETRY_MISSING_MS) return null
         val t = clean(title)
         val a = clean(artist)
         offline = false
-        val url = itunes(t, a) ?: deezer(t, a)
-        if (url == null) {
+        val hit = itunes(t, a) ?: deezer(t, a)
+        if (hit == null) {
             if (!offline) missing[key] = System.currentTimeMillis() // really unknown (not just no network right now)
             return null
         }
-        val bytes = download(url)
+        val bytes = download(hit.url)
         val b = decode(bytes) ?: return null
-        try { save(c, key, bytes) } catch (_: Throwable) { }
-        return b
+        try { save(c, key, bytes, hit.sec) } catch (_: Throwable) { }
+        return b to hit.sec
     }
 
     /** Parsed JSON of a catalogue answer, or null (and [offline] set) when it could not be fetched. */
@@ -93,7 +101,7 @@ object CoverSearch {
      * iTunes Search API, Saudi store first (Arabic music; it also finds Arabic-script queries under the Latin names the
      * catalogue uses), then the US store.
      */
-    private fun itunes(title: String, artist: String): String? {
+    private fun itunes(title: String, artist: String): Hit? {
         val term = URLEncoder.encode("$artist $title".trim(), "UTF-8")
         for (country in listOf("sa", "us")) {
             val results = ask("https://itunes.apple.com/search?term=$term&media=music&entity=song&limit=10&country=$country")
@@ -102,14 +110,14 @@ object CoverSearch {
                 val r = results.optJSONObject(i) ?: continue
                 if (!matches(title, artist, r.optString("trackName"), r.optString("artistName"))) continue
                 val art = r.optString("artworkUrl100")
-                if (art.isNotEmpty()) return art.replace("100x100bb", "${SIZE}x${SIZE}bb")
+                if (art.isNotEmpty()) return Hit(art.replace("100x100bb", "${SIZE}x${SIZE}bb"), (r.optLong("trackTimeMillis") / 1000).toInt())
             }
         }
         return null
     }
 
     /** Deezer search API (strong on Arabic and European catalogues). */
-    private fun deezer(title: String, artist: String): String? {
+    private fun deezer(title: String, artist: String): Hit? {
         val q = URLEncoder.encode("$artist $title".trim(), "UTF-8")
         val data = ask("https://api.deezer.com/search?q=$q&limit=10")?.optJSONArray("data") ?: return null
         for (i in 0 until data.length()) {
@@ -117,7 +125,7 @@ object CoverSearch {
             val name = r.optJSONObject("artist")?.optString("name").orEmpty()
             if (!matches(title, artist, r.optString("title"), name)) continue
             val cover = r.optJSONObject("album")?.let { it.optString("cover_big").ifEmpty { it.optString("cover_medium") } }
-            if (!cover.isNullOrEmpty()) return cover
+            if (!cover.isNullOrEmpty()) return Hit(cover, r.optInt("duration"))
         }
         return null
     }
@@ -188,18 +196,28 @@ object CoverSearch {
         return File(dir(c), "$h.jpg")
     }
 
-    private fun fromDisk(c: Context, key: String): Bitmap? {
+    /** The song's length beside its cover ("<hash>.len"; covers kept before there were lengths have none). */
+    private fun lengthFile(cover: File) = File(cover.parentFile, cover.nameWithoutExtension + ".len")
+
+    private fun fromDisk(c: Context, key: String): Pair<Bitmap, Int>? {
         val f = file(c, key)
         if (!f.isFile) return null
         f.setLastModified(System.currentTimeMillis()) // recently used: kept longer
-        return decode(f.readBytes())
+        val b = decode(f.readBytes()) ?: return null
+        val sec = try { lengthFile(f).takeIf { it.isFile }?.readText()?.trim()?.toIntOrNull() ?: 0 } catch (_: Throwable) { 0 }
+        return b to sec
     }
 
-    private fun save(c: Context, key: String, bytes: ByteArray) {
+    private fun save(c: Context, key: String, bytes: ByteArray, sec: Int) {
         val d = dir(c)
         d.mkdirs()
-        file(c, key).writeBytes(bytes)
-        val files = d.listFiles() ?: return
-        if (files.size > DISK_FILES) files.sortedBy { it.lastModified() }.take(files.size - DISK_FILES).forEach { it.delete() }
+        val f = file(c, key)
+        f.writeBytes(bytes)
+        if (sec > 0) lengthFile(f).writeText(sec.toString())
+        val covers = d.listFiles { x -> x.name.endsWith(".jpg") } ?: return
+        if (covers.size > DISK_FILES) covers.sortedBy { it.lastModified() }.take(covers.size - DISK_FILES).forEach {
+            it.delete()
+            lengthFile(it).delete()
+        }
     }
 }

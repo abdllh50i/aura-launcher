@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- a view's press spring (ui/Motion.kt pressScale) -->
+    <item name="aura_press_spring" type="id" />
+</resources>

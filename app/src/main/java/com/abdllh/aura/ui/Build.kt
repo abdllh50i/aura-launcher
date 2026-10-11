@@ -48,8 +48,11 @@ fun Context.spacer(wDp: Int = 0, hDp: Int = 0, weight: Float = 0f): View = View(
     layoutParams = LinearLayout.LayoutParams(if (weight > 0f && wDp == 0) 0 else wDp.dp, if (weight > 0f && hDp == 0) 0 else hDp.dp, weight)
 }
 
-/** Round icon button (quick toggles). [active] tints the icon with the accent colour. */
-class RoundBtn(context: Context, private val res: Int, private val sizeDp: Int = 56) : FrameLayout(context) {
+/**
+ * Round icon button (quick toggles). [active] tints the icon with the accent colour. [flat]: no surface of its own
+ * (it sits in a strip that has one); active, a soft accent circle shows.
+ */
+class RoundBtn(context: Context, private val res: Int, private val sizeDp: Int = 56, private val flat: Boolean = false) : FrameLayout(context) {
     private val img = ImageView(context)
     var active = false
         set(v) { field = v; restyle() }
@@ -69,6 +72,11 @@ class RoundBtn(context: Context, private val res: Int, private val sizeDp: Int =
     fun setIcon(r: Int) { img.setImageResource(r) }
 
     private fun restyle() {
+        if (flat) {
+            background = Shapes.pressable(Shapes.oval(if (active) Palette.accentSoft() else 0), Shapes.oval(Palette.press))
+            img.setColorFilter(if (active) Palette.accent else Palette.text)
+            return
+        }
         // light theme: white buttons lifted by a soft shadow; dark theme: flat tonal buttons
         background = Shapes.pressable(
             if (active) Shapes.oval(Palette.mix(if (Palette.dark) Palette.card2 else Palette.card, Palette.accent, if (Palette.dark) 0.18f else 0.12f))

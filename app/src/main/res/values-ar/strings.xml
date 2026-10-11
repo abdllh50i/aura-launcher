@@ -140,6 +140,8 @@
     <string name="lyrics_failed">ما قدرت أجيب الكلمات (الإنترنت؟). بحاول مرة ثانية</string>
     <string name="lyrics_instrumental">موسيقى بدون كلمات</string>
     <string name="lyrics_nothing">شغّل أغنية وتطلع كلماتها هنا</string>
+    <string name="lyrics_tap_sync">اضغط على السطر اللي ينغنى الحين عشان تمشي الكلمات معه</string>
+    <string name="lyrics_synced">تمت المزامنة ✓</string>
     <string name="maps_dropped_pin">الموقع المحدد</string>
     <string name="maps_pick_home_short">اضغط مطوّل على مكان البيت</string>
     <string name="maps_pick_work_short">اضغط مطوّل على مكان العمل</string>
@@ -183,6 +185,8 @@
     <string name="set_failed">تعذّر تطبيق هذا على الشاشة</string>
     <string name="set_hide_status">إخفاء شريط الحالة العلوي</string>
     <string name="set_hide_status_sub">اسحب من الحافة العلوية للأسفل لإظهاره</string>
+    <string name="set_screen_anim">حركة الانتقال بين الشاشات</string>
+    <string name="set_screen_anim_sub">الشاشات تنفتح وتتسكّر بحركة ناعمة (النظام الأصلي كان مطفيها)</string>
     <string name="set_ball">الدائرة العائمة</string>
     <string name="set_ball_sub">دائرة النظام الأصلي اللي فيها أزرار التحكم بالسيارة</string>
     <string name="media_prev">السابق</string>

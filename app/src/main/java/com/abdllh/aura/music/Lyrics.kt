@@ -28,8 +28,11 @@ object Lyrics {
     /** A line and the time it is sung at (0 for all of them when the lyrics are not timed). */
     class Line(val ms: Long, val text: String)
 
-    /** [synced]: the lines carry times. [instrumental]: a song without words. */
-    class Result(val synced: Boolean, val lines: List<Line>, val instrumental: Boolean = false)
+    /**
+     * [synced]: the lines carry times. [instrumental]: a song without words. [durationSec]: the length of the recording
+     * the lines were timed on (0 when unknown).
+     */
+    class Result(val synced: Boolean, val lines: List<Line>, val instrumental: Boolean = false, val durationSec: Int = 0)
 
     private val io = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
@@ -114,12 +117,16 @@ object Lyrics {
         return null
     }
 
-    /** The search result for this very song (its name, its artist when known, its length): timed lyrics first. */
+    /**
+     * The search result for this very song (its name, its artist when known, its length): timed lyrics first. With no
+     * length to go by (a Bluetooth phone tells none), the recording most entries agree on: a song is usually there
+     * many times, mostly as its album recording, now and then as a video or live one with another length (whose
+     * timing would be off by its intro).
+     */
     private fun best(all: JSONArray, title: String, artist: String, durationSec: Int): JSONObject? {
         val t = norm(title)
         val a = norm(artist)
-        var best: JSONObject? = null
-        var bestRank = Double.MAX_VALUE
+        val found = ArrayList<JSONObject>()
         for (i in 0 until all.length()) {
             val o = all.optJSONObject(i) ?: continue
             if (!hasWords(o)) continue
@@ -129,11 +136,19 @@ object Lyrics {
             if (a.isNotEmpty() && oa.isNotEmpty() && !(oa.contains(a) || a.contains(oa))) continue
             val d = o.optDouble("duration", 0.0)
             if (durationSec > 0 && d > 0 && abs(d - durationSec) > 8) continue // another recording of it
-            val rank = (if (o.optString("syncedLyrics").isNotBlank()) 0.0 else 100.0) +
-                (if (durationSec > 0 && d > 0) abs(d - durationSec) else 50.0)
-            if (rank < bestRank) { bestRank = rank; best = o }
+            found.add(o)
         }
-        return best
+        val want = if (durationSec > 0) durationSec.toDouble() else agreedLength(found)
+        return found.minByOrNull { o ->
+            val d = o.optDouble("duration", 0.0)
+            (if (o.optString("syncedLyrics").isNotBlank()) 0.0 else 100.0) + (if (want > 0 && d > 0) abs(d - want) else 50.0)
+        }
+    }
+
+    /** The length most of the timed entries share (within 3 s of each other), 0 when none has one. */
+    private fun agreedLength(found: List<JSONObject>): Double {
+        val lengths = found.filter { it.optString("syncedLyrics").isNotBlank() }.map { it.optDouble("duration", 0.0) }.filter { it > 0 }
+        return lengths.maxByOrNull { d -> lengths.count { abs(it - d) <= 3.0 } } ?: 0.0
     }
 
     /** For comparing names: lower case, Arabic letters in one form (أ إ آ → ا, ة → ه, ى → ي), no marks or punctuation. */
@@ -156,14 +171,15 @@ object Lyrics {
 
     private fun parse(o: JSONObject): Result? {
         if (o.optBoolean("none")) return null
-        if (o.optBoolean("instrumental")) return Result(false, emptyList(), instrumental = true)
+        val sec = o.optDouble("duration", 0.0).let { if (it.isNaN()) 0 else it.toInt() }
+        if (o.optBoolean("instrumental")) return Result(false, emptyList(), instrumental = true, durationSec = sec)
         val synced = o.optString("syncedLyrics").takeIf { it.isNotBlank() && it != "null" }
         if (synced != null) {
             val lines = parseLrc(synced)
-            if (lines.isNotEmpty()) return Result(true, lines)
+            if (lines.isNotEmpty()) return Result(true, lines, durationSec = sec)
         }
         val plain = o.optString("plainLyrics").takeIf { it.isNotBlank() && it != "null" } ?: return null
-        return Result(false, plain.lines().map { Line(0L, it.trim()) })
+        return Result(false, plain.lines().map { Line(0L, it.trim()) }, durationSec = sec)
     }
 
     private val TAG_RE = Regex("""\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?]""")
@@ -216,7 +232,8 @@ object Lyrics {
     private fun enc(s: String) = URLEncoder.encode(s.trim(), "UTF-8").replace("+", "%20")
 
     private fun key(title: String, artist: String, durationSec: Int): String {
-        val s = "${title.trim().lowercase()}|${artist.trim().lowercase()}|${durationSec / 3}"
+        // (|2: picked by the agreed length since 1.6: what 1.5.4 kept may be a video's timing)
+        val s = "${title.trim().lowercase()}|${artist.trim().lowercase()}|${durationSec / 3}|2"
         return MessageDigest.getInstance("SHA-1").digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
     }
 

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- the screen being covered steps back a little and dims, under the one that opens -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shareInterpolator="false">
+    <scale
+        android:duration="380"
+        android:fromXScale="1"
+        android:fromYScale="1"
+        android:interpolator="@interpolator/aura_emphasized"
+        android:pivotX="50%"
+        android:pivotY="50%"
+        android:toXScale="0.95"
+        android:toYScale="0.95" />
+    <alpha
+        android:duration="380"
+        android:fromAlpha="1"
+        android:interpolator="@interpolator/aura_emphasized"
+        android:toAlpha="0.55" />
+</set>

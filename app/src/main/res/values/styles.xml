@@ -11,6 +11,20 @@
         <item name="android:navigationBarColor">@color/bg</item>
         <item name="android:forceDarkAllowed">false</item>
         <item name="android:windowContentTransitions">false</item>
+        <item name="android:windowAnimationStyle">@style/Aura.ScreenChange</item>
+    </style>
+
+    <!-- Opening and closing AMRI's screens (they play while the system's transition animations are on: see
+         system/Animations.kt; this firmware ships with them off). -->
+    <style name="Aura.ScreenChange" parent="@android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@anim/aura_open_enter</item>
+        <item name="android:activityOpenExitAnimation">@anim/aura_open_exit</item>
+        <item name="android:activityCloseEnterAnimation">@anim/aura_close_enter</item>
+        <item name="android:activityCloseExitAnimation">@anim/aura_close_exit</item>
+        <item name="android:taskOpenEnterAnimation">@anim/aura_open_enter</item>
+        <item name="android:taskOpenExitAnimation">@anim/aura_open_exit</item>
+        <item name="android:taskCloseEnterAnimation">@anim/aura_close_enter</item>
+        <item name="android:taskCloseExitAnimation">@anim/aura_close_exit</item>
     </style>
 
     <style name="Theme.Aura.Home" parent="Theme.Aura">

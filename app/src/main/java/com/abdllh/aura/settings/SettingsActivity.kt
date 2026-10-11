@@ -183,6 +183,7 @@ class SettingsActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        com.abdllh.aura.system.Animations.ensureAnimators()
         UpdateManager.observe(dotObserver) // also refreshes the dot right away
     }
 

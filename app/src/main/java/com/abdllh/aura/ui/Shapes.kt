@@ -4,10 +4,7 @@ import android.os.Build
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.StateListDrawable
-import android.view.MotionEvent
 import android.view.View
-import android.view.animation.DecelerateInterpolator
-import android.view.animation.OvershootInterpolator
 import android.widget.ImageView
 import com.abdllh.aura.util.dp
 
@@ -68,21 +65,6 @@ object Shapes {
     fun tonalOval(): Drawable = pressable(oval(Palette.card2), oval(Palette.card3))
 
     fun accent(radiusDp: Float): Drawable = pressable(rect(Palette.accent, radiusDp), rect(Palette.accentPressed(), radiusDp))
-}
-
-/** Gentle "squish" feedback on press — cheap (view property animation, no layout). */
-fun View.pressScale(scale: Float = 0.97f) {
-    setOnTouchListener { v, e ->
-        when (e.actionMasked) {
-            MotionEvent.ACTION_DOWN ->
-                v.animate().scaleX(scale).scaleY(scale).setDuration(90)
-                    .setInterpolator(DecelerateInterpolator()).start()
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
-                v.animate().scaleX(1f).scaleY(1f).setDuration(260)
-                    .setInterpolator(OvershootInterpolator(2.6f)).start()
-        }
-        false
-    }
 }
 
 /** Soft drop shadow (rendered by the GPU from the view outline; the background drawable defines the shape). */
