@@ -41,6 +41,27 @@ object Actions {
     fun phoneLink(ctx: Context): Boolean =
         AppRepo.launch(ctx, if (AppRepo.isInstalled(ctx, Known.ZLINK)) Known.ZLINK else Known.PHONE)
 
+    /**
+     * Home or Work ([which]) handed to the navigation app chosen in Settings instead of AMRI Maps (Google Maps, Waze...),
+     * which starts driving there: the place kept with its pin goes as coordinates, an address typed long ago as text.
+     * False when there is no such place yet, or no app to give it to.
+     */
+    fun driveWithApp(ctx: Context, which: String): Boolean {
+        val pkg = AppRepo.navPackage(ctx) ?: return false
+        val saved = if (which == "home") com.abdllh.aura.nav.Places.home else com.abdllh.aura.nav.Places.work
+        val address = if (which == "home") com.abdllh.aura.util.Prefs.homeAddress else com.abdllh.aura.util.Prefs.workAddress
+        val at = saved?.let { String.format(java.util.Locale.ROOT, "%.6f,%.6f", it.pos.lat, it.pos.lon) }
+        val uri = when {
+            at != null && pkg == "com.waze" -> "waze://?ll=$at&navigate=yes"
+            at != null -> "google.navigation:q=$at"
+            address.isBlank() -> return false
+            pkg == "com.waze" -> "waze://?q=${android.net.Uri.encode(address)}&navigate=yes"
+            else -> "google.navigation:q=${android.net.Uri.encode(address)}"
+        }
+        com.abdllh.aura.system.HomeGuard.launching(pkg)
+        return start(ctx, Intent(Intent.ACTION_VIEW, android.net.Uri.parse(uri)).setPackage(pkg)) || nav(ctx)
+    }
+
     /** Opens Aura Maps (default) or the chosen navigation app. */
     fun nav(ctx: Context): Boolean {
         if (com.abdllh.aura.util.Prefs.builtInMaps) {

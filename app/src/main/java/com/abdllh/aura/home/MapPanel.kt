@@ -65,7 +65,8 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
         roundedClip(24f)
         if (!Palette.dark) elevate(5f) // on the light theme the map is close to the background colour
         addView(backdrop, flp(MATCH, MATCH))
-        if (Prefs.builtInMaps && MapGuard.homeMapAllowed(ctx)) {
+        // (also when another app does the navigating: the home screen keeps its own live map)
+        if (MapGuard.homeMapAllowed(ctx)) {
             val m = AuraMap(ctx, interactive = false, texture = true, guarded = true)
             m.navTopPadding = 0.08 // the player covers the lower part: keep the car in the middle of what is visible
             m.onFirstFrame = { post { backdrop.visibility = View.GONE } } // no need to keep drawing it under an opaque map
@@ -192,7 +193,7 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
         val p = NavSession.progress ?: return
         if (r !== shownRoute) { // a new trip or a new route after leaving the old one
             shownRoute = r
-            m.setRoute(r.line.points)
+            m.setRouteAhead(r.line) // (what is ahead of the car only: the map cuts it at the car)
             m.setDestination(NavSession.destination?.pos)
         }
         if (m.camera != AuraMap.Camera.NAVIGATE) m.setCamera(AuraMap.Camera.NAVIGATE)
@@ -246,16 +247,11 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
             MapsActivity.open(context) { putExtra("go", which) }
             return
         }
-        val address = if (which == "home") Prefs.homeAddress else Prefs.workAddress
-        if (address.isBlank()) {
+        if (AppRepo.navPackage(context) == null) { host.toast(context.getString(R.string.err_no_nav)); return }
+        if (!Actions.driveWithApp(context, which)) {
+            // no such place yet: it is chosen with a pin on AMRI's map (Settings → Navigation)
             host.toast(context.getString(R.string.home_set_address_hint, context.getString(label)))
             host.openSettings(SettingsActivity.PAGE_NAVIGATION)
-            return
         }
-        val pkg = AppRepo.navPackage(context)
-        if (pkg == null) { host.toast(context.getString(R.string.err_no_nav)); return }
-        val uri = if (pkg == "com.waze") "waze://?q=${Uri.encode(address)}&navigate=yes" else "google.navigation:q=${Uri.encode(address)}"
-        val i = Intent(Intent.ACTION_VIEW, Uri.parse(uri)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        try { context.startActivity(i) } catch (_: Throwable) { Actions.nav(context) }
     }
 }

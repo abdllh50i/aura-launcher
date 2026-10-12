@@ -214,6 +214,8 @@ class NavigationPage(private val act: SettingsActivity) : Page(R.string.set_navi
                 act.rebuild()
             }, 8)
         }
+        // Google's own map, roads and shops, without internet: only its app can keep them (how, in one place)
+        if (AppRepo.isInstalled(ctx, Known.MAPS)) col.addRow(ctx.hint(ctx.getString(R.string.set_nav_google_hint)), 10)
 
         col.addView(ctx.sectionTitle(ctx.getString(R.string.set_places)), lp(MATCH, WRAP).apply { topMargin = 22.dp })
         col.addRow(placeRow(ctx, R.drawable.ic_home, R.string.home_home, "home"))

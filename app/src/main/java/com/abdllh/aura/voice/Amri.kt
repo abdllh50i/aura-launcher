@@ -396,7 +396,11 @@ object Amri {
             Command.BluetoothMusic -> { openMusic(c, true); Answer(s(R.string.amri_bt_music)) }
             Command.OpenMaps -> { com.abdllh.aura.home.Actions.nav(c); Answer(s(R.string.amri_maps)) }
             is Command.Navigate -> {
-                com.abdllh.aura.nav.MapsActivity.open(c) { putExtra("go", if (cmd.home) "home" else "work") }
+                val which = if (cmd.home) "home" else "work"
+                // (the navigation app chosen in Settings, when it is not AMRI Maps and the place is known to hand over)
+                if (com.abdllh.aura.util.Prefs.builtInMaps || !com.abdllh.aura.home.Actions.driveWithApp(c, which)) {
+                    com.abdllh.aura.nav.MapsActivity.open(c) { putExtra("go", which) }
+                }
                 Answer(s(if (cmd.home) R.string.amri_go_home else R.string.amri_go_work))
             }
             Command.HomeScreen -> {

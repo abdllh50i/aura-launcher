@@ -35,6 +35,7 @@ import com.abdllh.aura.ui.iconView
 import com.abdllh.aura.ui.label
 import com.abdllh.aura.ui.lp
 import com.abdllh.aura.ui.pressScale
+import com.abdllh.aura.ui.roundedClip
 import com.abdllh.aura.util.LocaleHelper
 import com.abdllh.aura.util.Prefs
 import com.abdllh.aura.util.dp
@@ -63,6 +64,8 @@ class MapsActivity : Activity() {
     private lateinit var bannerDist: AText
     private lateinit var bannerText: AText
     private lateinit var bannerThen: AText
+    private lateinit var bannerThenRow: LinearLayout
+    private lateinit var bannerThenIcon: ManeuverView
     private lateinit var tripBar: LinearLayout
     private lateinit var tripEta: AText
     private lateinit var tripLeft: AText
@@ -79,9 +82,6 @@ class MapsActivity : Activity() {
     private val arabic get() = Locale.getDefault().language == "ar"
     private val rtl get() = resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL
     private var searchRunnable: Runnable? = null
-    private var lastRouteDraw = 0L
-    private var drawnRoute: Route? = null
-    private var drawnAlong = 0.0
     private var tripShown = false
 
     override fun attachBaseContext(base: Context) {
@@ -99,6 +99,8 @@ class MapsActivity : Activity() {
         setContentView(buildUi())
         map.onUserMoved = { recenterBtn.visibility = View.VISIBLE }
         map.onLongPress = { p -> dropPin(p) }
+        // a shop, a mosque, a fuel station... tapped on the map: there, with the way to it
+        map.onPoiTap = { name, kind, at -> if (NavSession.state == NavSession.State.IDLE) select(Place(name, Poi.label(this, kind), at)) }
         map.onReady = { syncNav(); CarLocation.last?.let { onFix(it) } }
         if (!CarLocation.hasPermission(this)) {
             requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION), 1)
@@ -285,6 +287,7 @@ class MapsActivity : Activity() {
             voiceHintShown = true
             toast(getString(R.string.maps_voice_missing))
         }
+        if (st != NavSession.State.NAVIGATING && turnShown != null) { turnShown = null; map.setTurn(null) }
         if (!navigating) {
             if (tripShown) { // the trip has just ended (Done, End, or by itself after arriving): back to browsing
                 tripShown = false
@@ -303,16 +306,10 @@ class MapsActivity : Activity() {
         if (map.camera != AuraMap.Camera.FREE && map.camera != AuraMap.Camera.OVERVIEW && map.camera != AuraMap.Camera.NAVIGATE) {
             map.setCamera(AuraMap.Camera.NAVIGATE)
         }
-        if (p == null) { map.setRoute(r.line.points); return }
+        // only the part still ahead shows, from under the arrow on: the map cuts the line at the car as it draws it
+        map.setRouteAhead(r.line)
+        if (p == null) return
         map.setCar(p.position, p.bearing, p.speedKmh.toDouble())
-        // the part still ahead: a new route at once, otherwise every 150 m or 10 s (long routes are big to rebuild)
-        val now = SystemClock.elapsedRealtime()
-        if (r !== drawnRoute || p.along - drawnAlong > 150 || now - lastRouteDraw > 10_000) {
-            drawnRoute = r
-            drawnAlong = p.along
-            lastRouteDraw = now
-            map.setRoute(r.line.tail(p.along))
-        }
         val step = r.steps[p.next]
         bannerIcon.turn = Instructions.turn(step)
         bannerIcon.exit = step.exit
@@ -320,13 +317,26 @@ class MapsActivity : Activity() {
         bannerText.text = if (NavSession.rerouting) getString(R.string.maps_rerouting) else Instructions.text(step, arabic)
         val then = r.steps.getOrNull(p.next + 1)
         if (then != null && then.type != "arrive" && then.at - step.at < 250) {
-            bannerThen.visibility = View.VISIBLE
+            bannerThenRow.visibility = View.VISIBLE
+            bannerThenIcon.turn = Instructions.turn(then)
+            bannerThenIcon.exit = then.exit
             bannerThen.text = "${getString(R.string.maps_then)}: ${Instructions.text(then, arabic)}"
-        } else bannerThen.visibility = View.GONE
-        tripEta.text = Units.arrival(p.timeLeft, Prefs.clock24)
-        tripLeft.text = "${Units.duration(p.timeLeft, arabic)} · ${Units.distance(p.remaining, arabic)}"
+        } else bannerThenRow.visibility = View.GONE
+        // the turn ahead, as an arrow on the route itself (not the start or the arrival, nor a turn still far off)
+        val turn = if (step.type == "arrive" || step.type == "depart" || p.toNext > TURN_ARROW_FROM_M || NavSession.rerouting) null else r to p.next
+        if (turn != turnShown) {
+            turnShown = turn
+            if (turn == null) map.setTurn(null)
+            else map.setTurn(r.line.slice(step.at - TURN_ARROW_BEFORE_M, step.at + TURN_ARROW_AFTER_M), r.line.at(step.at + TURN_ARROW_AFTER_M).second)
+        }
+        // how long is left first (what the driver asks), then how far and when
+        tripEta.text = Units.duration(p.timeLeft, arabic)
+        tripLeft.text = "${Units.distance(p.remaining, arabic)} · ${getString(R.string.maps_arrival)} ${Units.arrival(p.timeLeft, Prefs.clock24)}"
         speedText.text = "${p.speedKmh}"
     }
+
+    /** The turn whose arrow is on the map (the route and the step's index). */
+    private var turnShown: Pair<Route, Int>? = null
 
     // ------------------------------------------------------------------------------------------ actions
     private fun openSearch() {
@@ -413,7 +423,6 @@ class MapsActivity : Activity() {
         selected = null
         preview = null
         recenterBtn.visibility = View.GONE
-        drawnRoute = null
         map.setCamera(AuraMap.Camera.NAVIGATE)
         syncNav()
     }
@@ -620,26 +629,46 @@ class MapsActivity : Activity() {
         return root
     }
 
+    /**
+     * The next manoeuvre, like a road sign: a panel in the route's own colour with a large arrow, how far, and what
+     * to do; the manoeuvre right after it, when it follows closely, on a darker strip along its bottom.
+     */
     private fun buildBanner(): LinearLayout {
+        val sign = Palette.accent
+        val on = Palette.onColor(sign)
         val b = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = Shapes.rect(if (Palette.dark) 0xF0181B20.toInt() else 0xF2FFFFFF.toInt(), 26f)
-            elevate(10f)
+            background = Shapes.rect(sign, 28f)
+            roundedClip(28f)
+            elevate(12f)
             visibility = View.GONE
-            setPadding(20.dp, 16.dp, 20.dp, 16.dp)
         }
-        val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        bannerIcon = ManeuverView(this).apply { color = Palette.accent }
-        top.addView(bannerIcon, lp(80.dp, 80.dp))
+        val top = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPaddingRelative(16.dp, 16.dp, 22.dp, 16.dp)
+        }
+        bannerIcon = ManeuverView(this).apply { color = on }
+        top.addView(bannerIcon, lp(92.dp, 92.dp))
         val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        bannerDist = label(36f, Palette.text, Fonts.MEDIUM)
-        bannerText = label(19f, Palette.text2, Fonts.REGULAR, lines = 2)
+        bannerDist = label(42f, on, Fonts.MEDIUM).apply { fontFeatureSettings = "tnum" }
+        bannerText = label(20.5f, Palette.withAlpha(on, 0.92f), Fonts.REGULAR, lines = 2)
         t.addView(bannerDist, lp(WRAP, WRAP))
         t.addView(bannerText, lp(MATCH, WRAP).apply { topMargin = 2.dp })
-        top.addView(t, lp(0, WRAP, 1f).apply { marginStart = 16.dp })
+        top.addView(t, lp(0, WRAP, 1f).apply { marginStart = 14.dp })
         b.addView(top, lp(MATCH, WRAP))
-        bannerThen = label(15f, Palette.text3, Fonts.MEDIUM).apply { visibility = View.GONE }
-        b.addView(bannerThen, lp(MATCH, WRAP).apply { topMargin = 10.dp })
+        bannerThenRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(Palette.mix(sign, 0xFF000000.toInt(), 0.24f))
+            setPaddingRelative(22.dp, 9.dp, 22.dp, 10.dp)
+            visibility = View.GONE
+        }
+        bannerThenIcon = ManeuverView(this).apply { color = on }
+        bannerThenRow.addView(bannerThenIcon, lp(30.dp, 30.dp))
+        bannerThen = label(16f, on, Fonts.MEDIUM)
+        bannerThenRow.addView(bannerThen, lp(0, WRAP, 1f).apply { marginStart = 10.dp })
+        b.addView(bannerThenRow, lp(MATCH, WRAP))
         return b
     }
 
@@ -689,8 +718,9 @@ class MapsActivity : Activity() {
             setPaddingRelative(22.dp, 14.dp, 14.dp, 14.dp)
         }
         val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        tripEta = label(30f, Palette.text, Fonts.MEDIUM)
-        tripLeft = label(16f, Palette.text2, Fonts.REGULAR)
+        // (the time left in green, as on every navigation screen: all is well, this is how long)
+        tripEta = label(31f, if (Palette.dark) Palette.success else 0xFF16894A.toInt(), Fonts.MEDIUM).apply { fontFeatureSettings = "tnum" }
+        tripLeft = label(16.5f, Palette.text2, Fonts.REGULAR)
         t.addView(tripEta, lp(WRAP, WRAP))
         t.addView(tripLeft, lp(WRAP, WRAP).apply { topMargin = 2.dp })
         c.addView(t, lp(0, WRAP, 1f))
@@ -814,6 +844,12 @@ class MapsActivity : Activity() {
     }
 
     companion object {
+        /** The turn's arrow is on the map from this far before it, */
+        private const val TURN_ARROW_FROM_M = 900.0
+        /** along this much of the route before the turn and after it. */
+        private const val TURN_ARROW_BEFORE_M = 45.0
+        private const val TURN_ARROW_AFTER_M = 32.0
+
         fun open(ctx: Context, extras: Intent.() -> Unit = {}) {
             try {
                 ctx.startActivity(Intent(ctx, MapsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).apply(extras))

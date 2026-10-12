@@ -13,6 +13,8 @@ import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.util.dp
+import com.mapbox.geojson.Feature
+import com.mapbox.geojson.Point
 import com.mapbox.mapboxsdk.Mapbox
 import com.mapbox.mapboxsdk.camera.CameraPosition
 import com.mapbox.mapboxsdk.camera.CameraUpdateFactory
@@ -53,6 +55,8 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
     var onFirstFrame: (() -> Unit)? = null
     /** A long press on the map (interactive maps): drop a pin there. */
     var onLongPress: ((LatLon) -> Unit)? = null
+    /** A tap on one of the map's places (interactive maps): its name in the UI language, its kind ([Poi]), where it is. */
+    var onPoiTap: ((name: String, kind: String, at: LatLon) -> Unit)? = null
     /** Fraction of the view height kept free above the car while navigating (puts the car low on the screen). */
     var navTopPadding = 0.42
     /** Extra start padding (e.g. a side panel covering the map). */
@@ -63,6 +67,14 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
     private var anim: ValueAnimator? = null
     private var speedKmh = 0.0
     private var routePts: List<LatLon>? = null
+    // driving: the route the car is on; only what is ahead of the car as it is drawn shows ([setRouteAhead])
+    private var routeLine: Polyline? = null
+    private var farFrom = -1.0   // where along it the long part (SRC_ROUTE) starts; before that, the short part
+    private var trimSeg = 0
+    private var trimAlong = 0.0
+    private var trimAt = 0L
+    private var turnPts: List<LatLon>? = null
+    private var turnBearing = 0.0
     private var dest: LatLon? = null
     private val rtl: Boolean
     private val app = ctx.applicationContext
@@ -138,6 +150,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
                 l(LatLon(ll.latitude, ll.longitude))
                 true
             }
+            if (interactive) m.addOnMapClickListener { ll -> tapPlace(m, ll) }
             val start = CarLocation.lastKnown() ?: LatLon(24.7136, 46.6753) // Riyadh until the first fix
             m.moveCamera(CameraUpdateFactory.newCameraPosition(CameraPosition.Builder().target(LatLng(start.lat, start.lon)).zoom(followZoom).build()))
             loadStyle()
@@ -149,9 +162,39 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         m.setStyle(Style.Builder().fromJson(MapStyle.json(Locale.getDefault().language == "ar"))) { s ->
             style = s
             pushRoute()
+            pushTurn()
             placeOverlays()
             onReady?.invoke()
         }
+    }
+
+    /** A tap: the place of the map nearest to the finger, if one of the drawn ones is under it. */
+    private fun tapPlace(m: MapboxMap, ll: LatLng): Boolean {
+        val l = onPoiTap ?: return false
+        val at = m.projection.toScreenLocation(ll)
+        val r = 26f.dp // (a finger on a car screen, not a pixel)
+        val hits = try {
+            m.queryRenderedFeatures(RectF(at.x - r, at.y - r, at.x + r, at.y + r), *MapStyle.POI_LAYERS)
+        } catch (_: Throwable) {
+            emptyList()
+        }
+        val arabic = Locale.getDefault().language == "ar"
+        fun text(f: Feature, key: String): String? =
+            if (f.hasNonNullValueForProperty(key)) f.getStringProperty(key)?.takeIf { it.isNotBlank() } else null
+        var best: Feature? = null
+        var bestPos: LatLon? = null
+        var bestD = Double.MAX_VALUE
+        for (f in hits) {
+            val g = f.geometry() as? Point ?: continue
+            val pos = LatLon(g.latitude(), g.longitude())
+            val sp = m.projection.toScreenLocation(LatLng(pos.lat, pos.lon))
+            val d = Math.hypot((sp.x - at.x).toDouble(), (sp.y - at.y).toDouble())
+            if (d < bestD) { bestD = d; best = f; bestPos = pos }
+        }
+        val f = best ?: return false
+        val name = (if (arabic) text(f, "name:ar") else text(f, "name:en") ?: text(f, "name:latin")) ?: text(f, "name") ?: return false
+        l(name, text(f, "class").orEmpty(), bestPos ?: return false)
+        return true
     }
 
     // ------------------------------------------------------------------------------------------ lifecycle
@@ -208,6 +251,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
             carBearing = bearing
             follow(false)
             placeOverlays()
+            trimRoute(true)
             return
         }
         val dB = Geo.angleDiff(fromB, bearing)
@@ -220,14 +264,55 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
                 carBearing = (fromB + dB * t + 360) % 360
                 follow(false)
                 placeOverlays()
+                trimRoute(false)
             }
             start()
         }
     }
 
+    /** A route shown whole (a preview, before driving it). */
     fun setRoute(points: List<LatLon>?) {
         routePts = points
+        routeLine = null
         pushRoute()
+    }
+
+    /**
+     * The route being driven: from now on only the part ahead of the car shows, and it starts where the car is
+     * drawn, at every moment (the car glides between fixes: the line is cut at the gliding car, not at the fixes).
+     */
+    fun setRouteAhead(line: Polyline) {
+        if (line === routeLine) return
+        routeLine = line
+        routePts = null
+        pushRoute()
+    }
+
+    /**
+     * Cuts the driven route at the car. The long rest of the route is one source, rebuilt only when the car comes
+     * near its start; the stretch from the car to there is another, a few dozen points, set again on every call
+     * that comes at least [TRIM_EVERY_MS] after the last (the map takes a short line in well under a frame).
+     */
+    private fun trimRoute(force: Boolean) {
+        val line = routeLine ?: return
+        if (style == null) return
+        val now = android.os.SystemClock.uptimeMillis()
+        if (!force && now - trimAt < TRIM_EVERY_MS) return
+        trimAt = now
+        val c = carPos
+        if (c != null) {
+            var snap = line.snap(c, trimSeg, 2, 60)
+            // not near where it was last (the map opened in the middle of a trip, a tunnel): anywhere on the route
+            if (snap == null || snap.offset > OFF_ROUTE_M) snap = line.snap(c, 0, 0, line.points.size)
+            // (off the route altogether: the line stays as it was until the car is back, or a new route comes)
+            if (snap != null && snap.offset <= OFF_ROUTE_M) { trimSeg = snap.segment; trimAlong = snap.along }
+        }
+        val along = trimAlong
+        if (farFrom < 0 || along > farFrom - NEAR_MIN_M || along < farFrom - NEAR_M - 50) {
+            farFrom = minOf(along + NEAR_M, line.length)
+            pushLine(MapStyle.SRC_ROUTE, if (farFrom < line.length - 1) line.tail(farFrom) else null)
+        }
+        pushLine(MapStyle.SRC_ROUTE_NEAR, line.slice(along, minOf(farFrom + 2.0, line.length)))
     }
 
     fun setDestination(p: LatLon?) {
@@ -235,15 +320,54 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         placeOverlays()
     }
 
-    private fun pushRoute() {
+    /**
+     * The arrow of the next turn, drawn on the route: [line] is the stretch of the route through the turn and
+     * [bearing] the direction it leaves in (the arrow's head points that way); null for none.
+     */
+    fun setTurn(line: List<LatLon>?, bearing: Double = 0.0) {
+        turnPts = line
+        turnBearing = bearing
+        pushTurn()
+    }
+
+    private fun pushTurn() {
         val s = style ?: return
-        val pts = routePts
+        val pts = turnPts
+        val json = if (pts == null || pts.size < 2) EMPTY else buildString {
+            // the head: a triangle in metres on the ground, so it tilts and turns with the map like the line it ends
+            val end = pts.last()
+            val head = listOf(Geo.offset(end, turnBearing - 90, HEAD_HALF_M), Geo.offset(end, turnBearing, HEAD_LENGTH_M),
+                Geo.offset(end, turnBearing + 90, HEAD_HALF_M))
+            fun coords(list: List<LatLon>) = list.joinToString(",") { "[${it.lon},${it.lat}]" }
+            append("""{"type":"FeatureCollection","features":[""")
+            append("""{"type":"Feature","properties":{},"geometry":{"type":"LineString","coordinates":[${coords(pts)}]}},""")
+            append("""{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[${coords(head + head.first())}]]}}""")
+            append("]}")
+        }
+        try { s.getSourceAs<GeoJsonSource>(MapStyle.SRC_TURN)?.setGeoJson(json) } catch (_: Throwable) { }
+    }
+
+    private fun pushRoute() {
+        if (style == null) return
+        if (routeLine != null) {
+            farFrom = -1.0
+            trimSeg = 0
+            trimAlong = 0.0
+            trimRoute(true)
+            return
+        }
+        pushLine(MapStyle.SRC_ROUTE, routePts)
+        pushLine(MapStyle.SRC_ROUTE_NEAR, null)
+    }
+
+    private fun pushLine(source: String, pts: List<LatLon>?) {
+        val s = style ?: return
         val json = if (pts == null || pts.size < 2) EMPTY else buildString {
             append("""{"type":"Feature","geometry":{"type":"LineString","coordinates":[""")
             pts.forEachIndexed { i, p -> if (i > 0) append(','); append('[').append(p.lon).append(',').append(p.lat).append(']') }
             append("]}}")
         }
-        try { s.getSourceAs<GeoJsonSource>(MapStyle.SRC_ROUTE)?.setGeoJson(json) } catch (_: Throwable) { }
+        try { s.getSourceAs<GeoJsonSource>(source)?.setGeoJson(json) } catch (_: Throwable) { }
     }
 
     /**
@@ -359,6 +483,14 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         private const val EMPTY = """{"type":"FeatureCollection","features":[]}"""
         private val NAV_EDGES = doubleArrayOf(30.0, 60.0, 90.0)       // km/h
         private val NAV_ZOOMS = doubleArrayOf(16.8, 16.4, 15.9, 15.3) // per speed band
+        // the head of the turn arrow, on the ground
+        private const val HEAD_LENGTH_M = 15.0
+        private const val HEAD_HALF_M = 9.5
+        // the driven route: its short part reaches this far ahead of the car, and is made again when less is left
+        private const val NEAR_M = 1200.0
+        private const val NEAR_MIN_M = 350.0
+        private const val TRIM_EVERY_MS = 70L
+        private const val OFF_ROUTE_M = 60.0
     }
 }
 

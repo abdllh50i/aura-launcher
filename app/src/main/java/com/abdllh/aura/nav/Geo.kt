@@ -31,6 +31,16 @@ object Geo {
         return (deg(atan2(y, x)) + 360.0) % 360.0
     }
 
+    /** The point [metres] away from [p] in the direction [bearing] (degrees clockwise from north). */
+    fun offset(p: LatLon, bearing: Double, metres: Double): LatLon {
+        val d = metres / R
+        val b = rad(bearing)
+        val lat1 = rad(p.lat)
+        val lat2 = asin(sin(lat1) * cos(d) + cos(lat1) * sin(d) * cos(b))
+        val lon2 = rad(p.lon) + atan2(sin(b) * sin(d) * cos(lat1), cos(d) - sin(lat1) * sin(lat2))
+        return LatLon(deg(lat2), deg(lon2))
+    }
+
     /** Point a fraction t of the way from a to b (linear; fine for short segments). */
     fun lerp(a: LatLon, b: LatLon, t: Double) = LatLon(a.lat + (b.lat - a.lat) * t, a.lon + (b.lon - a.lon) * t)
 
@@ -115,6 +125,20 @@ class Polyline(val points: List<LatLon>) {
         val out = ArrayList<LatLon>(points.size - i + 1)
         out.add(at(d).first)
         for (k in i + 1 until points.size) out.add(points[k])
+        return out
+    }
+
+    /** The part of the line between two distances along it (for drawing a stretch of it: the turn ahead). */
+    fun slice(from: Double, to: Double): List<LatLon> {
+        if (points.size < 2) return points
+        val a = from.coerceIn(0.0, length)
+        val b = to.coerceIn(a, length)
+        val i = cumulative.binarySearchFloor(a).coerceAtMost(points.size - 2)
+        val j = cumulative.binarySearchFloor(b).coerceAtMost(points.size - 2)
+        val out = ArrayList<LatLon>(j - i + 2)
+        out.add(at(a).first)
+        for (k in i + 1..j) if (cumulative[k] > a && cumulative[k] < b) out.add(points[k])
+        out.add(at(b).first)
         return out
     }
 

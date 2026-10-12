@@ -105,6 +105,26 @@ fonts, dark/light colours, 3D buildings, labels in the UI language); `AuraMap.kt
 navigate / free / overview; the car and the destination pin are plain Views moved to their projected screen points each
 camera frame — a tilted symbol layer rendered black on the emulator's GPU). `MapGuard` marks each map start on disk: after two
 starts that never drew a frame (a native crash cannot be caught), the home screen falls back to the static `MapBackdropView`.
+The style since 1.8 (`MapStyle.kt`): a road map — motorways and trunk roads in a warm colour, main roads wider than
+streets, every road on a casing (butt-ended: round ones bead where the tiles cut a road), built-up land, sand, parks and
+water each in their tone — and the places people drive to on it: the tiles' `poi` layer as a dot in the colour of its
+kind with its name (`Poi.kt`: food, shops, fuel, health, mosques, hotels, banks...), in four bands by the tiles' `rank`
+from zoom 13.6 / 15 / 16 / 17. Dots are circle layers and names symbol layers without icons (icon symbols drew black
+on a tilted map on the emulator's GPU); the least important band comes first in the list, since a layer further down
+places its names first. A tap on a place (`AuraMap.onPoiTap`: `queryRenderedFeatures` in a finger-sized box, the
+nearest dot) selects it like a search result.
+The route while driving is two sources: `aura-route-near`, from the car to at most 1.2 km ahead, cut again at the car
+every 70 ms — at the car as it is drawn, gliding between the fixes (`AuraMap.trimRoute`, called from the glide), not
+at the fixes — and `aura-route`, the long rest, rebuilt only when less than 350 m of the short part is left. Up to
+1.7 the whole remaining route was rebuilt every 150 m or 10 s, so the line trailed behind the arrow. `aura-turn` is
+the arrow of the next manoeuvre on the route itself (from 900 m before it: 45 m of the route before the turn, 32 m
+after, and a triangle in metres on the ground as its head). The guidance banner is a panel in the route's colour, like
+a road sign; the trip bar leads with the time left.
+Google's map cannot be the map here: the Maps SDK has no offline regions and needs a billed key, the Maps Platform
+terms forbid downloading or keeping its tiles and places, and only the Google Maps app can keep an area for use
+without internet. So that app stays a choice (Settings → Navigation, with a line saying how to download an area in
+it): Where to? opens it, Home / Work and "take me home" are handed to it as coordinates (`Actions.driveWithApp`), and
+the home screen keeps AMRI's own live map either way.
 Search: Photon (`Places.kt`, type-ahead with a generation counter, Home/Work/recents in prefs). Routing: OSRM (`Router.kt`,
 steps placed on the polyline). `NavSession.kt` snaps fixes to the route, reroutes after three off-route fixes (at most every
 8 s), speaks Arabic/English prompts (TTS) and runs `NavService` (foreground, type location) with the next manoeuvre.
