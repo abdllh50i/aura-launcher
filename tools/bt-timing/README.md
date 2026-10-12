@@ -1,5 +1,26 @@
 # K2501 Bluetooth timing experiment (1.6.1 beta)
 
+## Beta 2 repair
+
+Beta 1 used `0x165048` as its connected gate. The original metadata request's
+GOT resolves to `0x165038`; with that true and the unrelated byte zero, beta 1
+only acknowledged VI without sending a request. The regression test derives
+the correct globals from the stock function instead of seeding the same byte
+as the patch. It also runs the complete raw GetPlayStatus response dispatcher
+and big-endian parser, with playing/paused, unknown and disconnected cases.
+
+GOC recreates its PTY on restart. BC03's UartWorker retains its existing serial
+descriptor and does not reopen it on read failure. The launcher now restarts
+BC03 after the daemon, checks that it opened the current slave, rebinds its
+progress callback and restores the service's captured mute state (Binder transaction 59).
+The initial bind alone does not unmute another selected source. The running daemon
+digest is checked through `/proc/PID/exe`, not just the overlay's path. The
+published beta 1 delta is recognized and removed before applying beta 2.
+
+The settings page shows whether timing replies arrive and can copy a local
+diagnostic report. No report is sent automatically. The previous signed 1.6.0
+APK remains the recovery target because beta 1 is the faulty build.
+
 The NWD Bluetooth UI (`com.nwd.bt.music`) gets its data from BC03
 (`com.bt.bc03`), which uses `/system/bin/gocsdk_8800` on this unit. The stock
 AIC8800 daemon implements AVRCP GetPlayStatus responses, but its AT#VI handler
@@ -40,7 +61,7 @@ require the root local ADB service already used by this ROM.
 ```powershell
 py -3 tools/bt-timing/make_patch.py --stock PATH_TO_ORIGINAL_GOC --ndk PATH_TO_NDK
 py -3 tools/bt-timing/prepare_rollback.py # or --apk PATH_TO_SIGNED_1.6.0_APK
-.\gradlew.bat :app:assembleRelease '-PappVersionName=1.6.1-beta.1'
+.\gradlew.bat :app:assembleRelease '-PappVersionName=1.6.1-beta.2'
 ```
 
 The generator uses Windows LLVM tools from Android NDK. The delta is committed;
@@ -52,6 +73,7 @@ build fails if the verified backup is missing or modified.
 ```powershell
 py -3 -m pip install --target PATH_TO_TEST_DEPS unicorn pyelftools
 py -3 tools/bt-timing/test_patch.py --stock PATH_TO_ORIGINAL_GOC --deps PATH_TO_TEST_DEPS
+py -3 tools/bt-timing/test_restart.py --adb PATH_TO_ADB --serial emulator-5570
 ```
 
 The ARM test executes the actual request hook and original AV/C packet builder
@@ -60,3 +82,5 @@ adapter, MQ duration/position, unknown values and binary digests. Allocation,
 message delivery and UI string helpers are substituted. It does not simulate
 the physical radio or an iPhone. Device compatibility, response behavior and
 Bluetooth reconnection still need a test on the owner's unit.
+The restart shell test runs the production script in Android sh, substitutes service commands and checks
+the correct ordering plus unchanged PID, wrong executable, failed service and stale slave failures.

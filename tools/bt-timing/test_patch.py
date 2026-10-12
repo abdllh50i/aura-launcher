@@ -18,11 +18,26 @@ b.extend(bytes(patch['size']-len(b)))
 for r in patch['records']:
     d=base64.b64decode(r['data']);b[r['offset']:r['offset']+len(d)]=d
 assert hashlib.sha256(b).hexdigest()==patch['patchedSha256']
+
+def stock_word(va):
+    with open(a.stock,'rb') as source:
+        elf=ELFFile(source)
+        for seg in elf.iter_segments():
+            if seg['p_type']=='PT_LOAD' and seg['p_vaddr']<=va<seg['p_vaddr']+seg['p_filesz']:
+                source.seek(va-seg['p_vaddr']+seg['p_offset'])
+                return struct.unpack('<I',source.read(4))[0]
+    raise AssertionError(hex(va))
+# Resolve globals through the original metadata request's PC-relative GOT,
+# independently of the linker script and the test's artificial connected state.
+CONNECTED_FLAG=stock_word(stock_word(0xa1e40)+0xa1db6)
+assert CONNECTED_FLAG==0x165038
+assert stock_word(stock_word(0xa1e44)+0xa1dda)==0x16b090
+assert stock_word(stock_word(0xa1e48)+0xa1e02)==0x15ab7a
 def read32(u,a):return struct.unpack('<I',u.mem_read(a,4))[0]
 def put32(u,a,v):u.mem_write(a,struct.pack('<I',v&0xffffffff))
 def cstr(u,a):return bytes(u.mem_read(a,256)).split(b'\0')[0]
 def signed(v):return v if v<0x80000000 else v-0x100000000
-def case(base, connected=True, report=False, total=240123, pos=73125):
+def case(base, connected=True, report=False, total=240123, pos=73125, unrelated=0, connection=True, playstate=1):
     u=Uc(UC_ARCH_ARM,UC_MODE_THUMB);u.mem_map(base,0x1c0000)
     # Program headers, including the new executable segment.
     for i in range(10):
@@ -37,8 +52,12 @@ def case(base, connected=True, report=False, total=240123, pos=73125):
             if name=='__stack_chk_guard':put32(u,base+rel['r_offset'],base+0x1a0f00)
     heap=base+0x1a0000;sp=base+0x1b8000;stop=base+0x1bff00
     state={'heap':heap+0x1000,'packets':[],'reports':[],'cached':0}
-    put32(u,base+0x16b090,heap);u.mem_write(heap+0x1a0,b'\x32\0')
-    u.mem_write(base+0x165048,bytes([int(connected)]));u.mem_write(base+0x15ab7a,b'\x77\0')
+    put32(u,base+0x16b090,heap if connection else 0);u.mem_write(heap+0x1a0,b'\x32\0')
+    # Real metadata gate, resolved from the stock function's GOT. The unrelated
+    # byte used by beta.1 remains zero, as it can be on an actual connected unit.
+    u.mem_write(base+CONNECTED_FLAG,bytes([int(connected)]))
+    u.mem_write(base+0x165048,bytes([unrelated]))
+    u.mem_write(base+0x15ab7a,b'\x77\0')
     regs=[UC_ARM_REG_R0,UC_ARM_REG_R1,UC_ARM_REG_R2,UC_ARM_REG_R3]
     def ret(value=None):
         if value is not None:u.reg_write(UC_ARM_REG_R0,value)
@@ -79,9 +98,12 @@ def case(base, connected=True, report=False, total=240123, pos=73125):
     u.hook_add(UC_HOOK_MEM_INVALID,bad)
     u.reg_write(UC_ARM_REG_SP,sp);u.reg_write(UC_ARM_REG_LR,stop|1)
     if report:
-        # The unchanged GetPlayStatus response adapter calls the patched sender.
-        u.mem_write(heap,struct.pack('<II',total&0xffffffff,pos&0xffffffff)+b'\x01')
-        u.reg_write(UC_ARM_REG_R0,heap);start=base+0xa1e4c
+        # Run the original response dispatcher and big-endian parser, not only
+        # its already-decoded callback. AV/C STABLE (0x0c), single packet, PDU 0x30.
+        wire=bytes.fromhex('0000195830000009')+struct.pack('>II',total&0xffffffff,pos&0xffffffff)+bytes([playstate])
+        u.mem_write(heap+0x800,wire)
+        u.mem_write(heap+6,b'\x0c');put32(u,heap+12,heap+0x800)
+        u.reg_write(UC_ARM_REG_R0,heap);start=base+0xa2300
     else:start=base+0x89d0c
     u.emu_start(start|1,stop,count=10000)
     return state
@@ -89,11 +111,13 @@ for base in [0x1000000,0x4000000]:
     q=case(base)
     assert q['packets']==[bytes.fromhex('10110e01480000195830000000')],q
     assert q['cached']==1
-    disconnected=case(base,connected=False)
+    disconnected=case(base,connected=False,unrelated=1)
     assert not disconnected['packets'] and disconnected['cached']==1
+    assert not case(base,connection=False)['packets']
     r=case(base,report=True)
     assert r['reports']==[b'MQ240123\xff73125\xff1'],r
+    assert case(base,report=True,playstate=2)['reports']==[b'MQ240123\xff73125\xff2']
     assert not case(base,report=True,total=0)['reports']
     assert not case(base,report=True,total=0xffffffff)['reports']
     assert not case(base,report=True,pos=0xffffffff)['reports']
-print('PASS: GetPlayStatus packet; stock VI callback; disconnected guard; MQ duration/position; zero/unknown values; SHA-256; two ASLR bases')
+print('PASS: stock-derived connected gate; GetPlayStatus packet; VI callback; full response parser; MQ duration/position; zero/unknown; SHA-256; two ASLR bases')

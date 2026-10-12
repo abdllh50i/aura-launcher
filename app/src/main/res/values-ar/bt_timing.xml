@@ -2,6 +2,16 @@
 <resources>
     <string name="bt_timing_title">توقيت الأغنية من الجوال (تجريبي)</string>
     <string name="bt_timing_sub">يسأل الجوال عن مدة الأغنية ووين وصلت عبر البلوتوث. تغيير هذا الخيار يعيد اتصال البلوتوث مرة.</string>
+    <string name="bt_timing_receiving">مدة الأغنية وموقع تشغيلها يصلان من الجوال.</string>
+    <string name="bt_timing_waiting">بانتظار رد الجوال عن توقيت الأغنية. التقدير المتاح يستمر حتى يصل الرد.</string>
+    <string name="bt_timing_starting">جاري تجهيز توقيت الأغنية من الجوال…</string>
+    <string name="bt_timing_connect">شبّك جوالك بالبلوتوث ليصل توقيت الأغنية.</string>
+    <string name="bt_timing_off">توقيت الجوال متوقف. التقدير المتاح يستمر.</string>
+    <string name="bt_timing_unsupported">خدمة البلوتوث هذه غير مدعومة في التجربة.</string>
+    <string name="bt_timing_failed">تعذر تشغيل توقيت الجوال. افتح التفاصيل لمعرفة السبب.</string>
+    <string name="bt_timing_details">تفاصيل توقيت البلوتوث</string>
+    <string name="bt_timing_details_sub">تعرض وصول الردود، وتقدر تنسخ تقريرًا إذا ما ظهر التوقيت.</string>
+    <string name="bt_timing_copy">نسخ التقرير</string>
     <string name="upd_rollback">الرجوع إلى %1$s</string>
     <string name="upd_rollback_sub">الإصدار السابق (%1$s) محفوظ في الجهاز، وتقدر ترجع له بدون إنترنت.</string>
     <string name="upd_rollback_confirm">ترجع إلى %1$s وتعيد برنامج البلوتوث الأصلي؟ إعداداتك والخرائط المحملة تبقى محفوظة، ويعيد البلوتوث الاتصال مرة.</string>

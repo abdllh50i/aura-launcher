@@ -50,6 +50,7 @@ object BtMusic {
     private const val TX_IS_A2DP = 36
     private const val TX_SET_MUTE = 39
     private const val TX_QUERY_ID3 = 60
+    private const val TX_IS_MUTE = 59
     private const val BT_MUSIC_APP_ID = 15
     /** Where a song that just started is when its title arrives (the module asks the phone for it after the change). */
     private const val START_MS = 250L
@@ -70,14 +71,14 @@ object BtMusic {
     private val main = Handler(Looper.getMainLooper())
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
     private var app: Context? = null
-    private var service: IBinder? = null
+    @Volatile private var service: IBinder? = null
     private var binding = false
 
     var available = false
         private set
-    var connected = false
+    @Volatile var connected = false
         private set
-    var playing = false
+    @Volatile var playing = false
         private set
     var title = ""
         private set
@@ -327,6 +328,7 @@ object BtMusic {
         // AVRCP's 0xffffffff means unknown; the stock parser returns negative numbers for it.
         if (!connected || totalSec !in 1..86400 || posSec !in 0..totalSec) return
         phoneProgressAt = SystemClock.elapsedRealtime()
+        BtTiming.onPhoneProgress()
         durationSec = totalSec
         durationFromPhone = true
         val reported = posSec * 1000L + 500L // (somewhere in that second: its middle)
@@ -335,6 +337,18 @@ object BtMusic {
     }
 
     internal fun timingChanged() = changed()
+
+    /** BC03 reopened its PTY after the native driver restart: re-register our progress callback. */
+    internal fun muteBeforeDriverRestart(): Boolean? = query(TX_IS_MUTE)
+
+    private var muteAfterRestart: Boolean? = null
+    internal fun reconnectAfterDriverRestart(muted: Boolean?) = main.post {
+        muteAfterRestart = muted ?: if (sourceActive) false else null
+        try { app?.unbindService(conn) } catch (_: Throwable) { }
+        service = null
+        binding = false
+        bind()
+    }
 
     /** The phone's music is the source AMRI chose (the panel's and the wheel's keys then go to the module). */
     private var sourceActive = false
@@ -392,6 +406,10 @@ object BtMusic {
             val a2dp = query(TX_IS_A2DP)
             if (a2dp != null) connected = a2dp
             query(TX_IS_PLAYING)?.let { setPlaying(it) }
+            muteAfterRestart?.let { muted ->
+                transact(TX_SET_MUTE) { it.writeInt(if (muted) 1 else 0) }
+                muteAfterRestart = null
+            }
             transact(TX_QUERY_ID3) { }
             changed()
         }

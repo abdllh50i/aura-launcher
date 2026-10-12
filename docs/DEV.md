@@ -172,6 +172,10 @@ values are discarded. Phone progress takes precedence over the previous-button e
 `tools/bt-timing/README.md` for build inputs, instruction tests and hardware limits. The update page has an off
 switch and an offline return to the signed 1.6.0 APK (bundled in the beta and checked during build and installation).
 Return removes the overlay, retains app data with root `pm install -r -d` and switches off beta updates.
+Beta 2 corrects the AVRCP gate to the stock metadata request's `0x165038` (beta 1 used unrelated `0x165048`).
+After GOC restarts, BC03 must restart too: its reader keeps the old PTY open indefinitely. The worker verifies the
+running executable and BC03's current slave descriptor, then AMRI re-registers its callback. It recognizes beta 1's
+overlay SHA for migration/removal. The update page exposes live reply state and a local copyable diagnostic report.
 
 Fallback timing (1.6): the unmodified stack never says. UartConfig.ini `bt_module=0` → the AT# ("atpound") driver
 over `/dev/goc_serial` (the GOC stack for the AIC8800, `persist.sys.bt.aic8800=true`); its progress report is the
