@@ -15,4 +15,3 @@ out/
 *.log
 __pycache__/
 *.pyc
-app/src/main/assets/rollback/*.apk

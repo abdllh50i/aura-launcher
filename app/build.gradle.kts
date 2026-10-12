@@ -1,5 +1,4 @@
 import java.util.Properties
-import java.security.MessageDigest
 
 plugins {
     id("com.android.application")
@@ -33,30 +32,6 @@ fun versionCodeFor(name: String): Int {
 }
 
 val appVersionName: String = (project.findProperty("appVersionName") as String?) ?: "1.0.0"
-
-// Every 1.6.1 beta must contain the verified preceding release for the offline return button.
-tasks.register("verifyRollbackBackup") {
-    doLast {
-        if (appVersionName.startsWith("1.6.1-beta.")) {
-            val backup = file("src/main/assets/rollback/aura-1.6.0.apk")
-            if (!backup.isFile) throw GradleException("Run python tools/bt-timing/prepare_rollback.py before building this beta")
-            val digest = MessageDigest.getInstance("SHA-256")
-            backup.inputStream().use { stream ->
-                val buffer = ByteArray(65536)
-                while (true) {
-                    val n = stream.read(buffer)
-                    if (n < 0) break
-                    digest.update(buffer, 0, n)
-                }
-            }
-            val sha = digest.digest().joinToString("") { "%02x".format(it) }
-            if (sha != "ee1d60c3be1a949a9e5237856dfced6f533595d10230e1c29d7ef9ae88d95caf") {
-                throw GradleException("Rollback backup SHA-256 mismatch")
-            }
-        }
-    }
-}
-tasks.named("preBuild") { dependsOn("verifyRollbackBackup") }
 
 android {
     namespace = "com.abdllh.aura"

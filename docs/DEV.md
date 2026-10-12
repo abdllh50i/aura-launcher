@@ -165,24 +165,7 @@ clock (the line's time + 450 ms, the owner taps what is being sung); while a Blu
 is lit and a hint asks for that tap. The lyrics button puts it in the library's panel (with Bluetooth the song gives the
 panel back for it); the progress tick runs every 200 ms while it shows.
 
-Bluetooth timing (1.6.1 beta): `music/BtTiming.kt` applies a SHA-256 pinned, reversible bind-mount overlay to
-`gocsdk_8800`. AT#VI now requests AVRCP GetPlayStatus every two seconds while connected; the existing native
-response adapter emits the missing MQ template and BC03 delivers transaction 4. Unknown duration/position
-values are discarded. Phone progress takes precedence over the previous-button estimate. See
-`tools/bt-timing/README.md` for build inputs, instruction tests and hardware limits. The update page has an off
-switch and an offline return to the signed 1.6.0 APK (bundled in the beta and checked during build and installation).
-Return removes the overlay, retains app data with root `pm install -r -d` and switches off beta updates.
-Beta 2 corrects the AVRCP gate to the stock metadata request's `0x165038` (beta 1 used unrelated `0x165048`).
-After GOC restarts, BC03 must restart too: its reader keeps the old PTY open indefinitely. The worker verifies the
-running executable and BC03's current slave descriptor, then AMRI re-registers its callback. It recognizes beta 1's
-overlay SHA for migration/removal. The update page exposes live reply state and a local copyable diagnostic report.
-Beta 3 iterates GOC and BC03 PIDs individually; expanding multiple PIDs in one /proc path was the actual unit's
-beta 2 failure. AT#MK refreshes metadata independently of timing every six seconds and after skips. Known live
-executable overlays detach with `umount -l`. Stable recovery is independent of experiment health and reboots after
-the verified installation, clearing all mount namespaces while keeping package data. It never reapplies the
-experiment after a failed recovery install.
-
-Fallback timing (1.6): the unmodified stack never says. UartConfig.ini `bt_module=0` → the AT# ("atpound") driver
+Where a Bluetooth song is (1.6): this unit's stack never says. UartConfig.ini `bt_module=0` → the AT# ("atpound") driver
 over `/dev/goc_serial` (the GOC stack for the AIC8800, `persist.sys.bt.aic8800=true`); its progress report is the
 unsolicited `MQ` indication (`responseA2dpProgress` → `onGetA2dpProgress(total, pos)`, which needs three fields and is
 dropped otherwise) and there is no command to ask for it; the stock BT music app shows its progress bar only with

@@ -31,10 +31,6 @@ class UpdatePage(private val act: SettingsActivity) : Page(R.string.set_update, 
     private lateinit var ctx: Context
     private var observer: ((UpdateManager.State) -> Unit)? = null
     private var lastKind: Class<*>? = null
-    private var rollbackButton: ABtn? = null
-    private var timingSwitch: View? = null
-    private var timingStatus: AText? = null
-    private val timingObserver: () -> Unit = { timingStatus?.text = com.abdllh.aura.music.BtTiming.statusText(ctx) }
 
     override fun build(ctx: Context): View {
         this.ctx = ctx
@@ -81,35 +77,6 @@ class UpdatePage(private val act: SettingsActivity) : Page(R.string.set_update, 
             }
         }, 10)
         col.addRow(ctx.hint(ctx.getString(R.string.upd_footer)), 14)
-        if (com.abdllh.aura.music.BtTiming.supported() || BuildConfig.DEBUG) {
-            timingSwitch = ctx.switchRow(R.drawable.ic_bluetooth, ctx.getString(R.string.bt_timing_title),
-                ctx.getString(R.string.bt_timing_sub), com.abdllh.aura.music.BtTiming.enabled) {
-                com.abdllh.aura.music.BtTiming.enabled = it
-                com.abdllh.aura.music.BtTiming.applyChoice()
-            }.also { col.addRow(it, 12) }
-            timingStatus = ctx.hint(com.abdllh.aura.music.BtTiming.statusText(ctx)).also { col.addRow(it, 8) }
-            col.addRow(ctx.settingRow(R.drawable.ic_bluetooth, ctx.getString(R.string.bt_timing_details),
-                ctx.getString(R.string.bt_timing_details_sub), ctx.chevron()) {
-                if (!UpdateManager.busy) com.abdllh.aura.music.BtTiming.diagnostics { report ->
-                    if (!act.isFinishing && !act.isDestroyed) showTimingDetails(report)
-                }
-            }, 8)
-        }
-        if (com.abdllh.aura.update.Rollback.available(ctx)) {
-            val version = com.abdllh.aura.update.Rollback.VERSION
-            col.addRow(ctx.hint(ctx.getString(R.string.upd_rollback_sub, version)), 14)
-            rollbackButton = ABtn(ctx).apply {
-                kind = ABtn.Kind.TONAL
-                text = ctx.getString(R.string.upd_rollback, version)
-                setOnClickListener {
-                    if (UpdateManager.busy) return@setOnClickListener
-                    com.abdllh.aura.ui.Confirm.show(ctx, ctx.getString(R.string.upd_rollback, version),
-                        ctx.getString(R.string.upd_rollback_confirm, version), ctx.getString(R.string.upd_rollback_action)) {
-                        UpdateManager.rollBack()
-                    }
-                }
-            }.also { col.addRow(it, 8) }
-        }
         return col
     }
 
@@ -117,67 +84,18 @@ class UpdatePage(private val act: SettingsActivity) : Page(R.string.set_update, 
         val o: (UpdateManager.State) -> Unit = { render(it) }
         observer = o
         UpdateManager.observe(o)
-        com.abdllh.aura.music.BtMusic.addListener(timingObserver)
-        timingObserver()
     }
 
     override fun onHide() {
         observer?.let { UpdateManager.unobserve(it) }
         observer = null
-        com.abdllh.aura.music.BtMusic.removeListener(timingObserver)
     }
 
     // ------------------------------------------------------------------------------------ states
-    private fun showTimingDetails(report: String) {
-        val dialog = android.app.Dialog(ctx)
-        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
-        val card = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(24.dp, 20.dp, 24.dp, 18.dp)
-            background = Shapes.rect(Palette.sheet, 24f, Palette.stroke)
-        }
-        card.addView(ctx.label(21f, Palette.text, Fonts.MEDIUM).apply { setText(R.string.bt_timing_details) })
-        card.addView(ScrollView(ctx).apply {
-            addView(ctx.label(13f, Palette.text2, Fonts.REGULAR, lines = 0).apply {
-                text = report
-                typeface = android.graphics.Typeface.MONOSPACE
-                textDirection = View.TEXT_DIRECTION_LTR
-                layoutDirection = View.LAYOUT_DIRECTION_LTR
-                setTextIsSelectable(true)
-            })
-        }, lp(MATCH, 240.dp).apply { topMargin = 14.dp })
-        val actions = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END }
-        actions.addView(ABtn(ctx).apply {
-            kind = ABtn.Kind.TONAL
-            setText(R.string.btn_cancel)
-            setOnClickListener { dialog.dismiss() }
-        }, lp(WRAP, WRAP))
-        actions.addView(ABtn(ctx).apply {
-            kind = ABtn.Kind.PRIMARY
-            setText(R.string.bt_timing_copy)
-            setOnClickListener {
-                val clipboard = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Bluetooth timing", report))
-                dialog.dismiss()
-            }
-        }, lp(WRAP, WRAP).apply { marginStart = 10.dp })
-        card.addView(actions, lp(MATCH, WRAP).apply { topMargin = 14.dp })
-        dialog.setContentView(card)
-        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0))
-        dialog.show()
-        dialog.window?.setLayout(620.dp, WRAP)
-    }
-
     private fun render(s: UpdateManager.State) {
         if (!::holder.isInitialized) return
         val kind = s.javaClass
         holder.removeAllViews()
-        rollbackButton?.isEnabled = !UpdateManager.busy
-        fun enableTree(v: View) {
-            v.isEnabled = !UpdateManager.busy
-            if (v is android.view.ViewGroup) for (i in 0 until v.childCount) enableTree(v.getChildAt(i))
-        }
-        timingSwitch?.let { enableTree(it) }
         when (s) {
             is UpdateManager.State.Idle -> idle(null)
             is UpdateManager.State.Checking -> busy(ctx.getString(R.string.upd_checking), null, indeterminate = true)
@@ -186,7 +104,6 @@ class UpdatePage(private val act: SettingsActivity) : Page(R.string.set_update, 
             is UpdateManager.State.Downloading -> downloading(s)
             is UpdateManager.State.Verifying -> busy(ctx.getString(R.string.upd_verifying), s.release.tag, indeterminate = true)
             is UpdateManager.State.Installing -> busy(ctx.getString(R.string.upd_installing), s.release.tag, indeterminate = true)
-            is UpdateManager.State.RollingBack -> busy(ctx.getString(R.string.upd_rolling_back), s.version, indeterminate = true)
             is UpdateManager.State.Failed -> failed(s)
         }
         if (lastKind != kind) {
