@@ -90,11 +90,16 @@ class RoundBtn(context: Context, private val res: Int, private val sizeDp: Int =
     fun refreshTheme() = restyle()
 }
 
+/**
+ * Rounded corners of [radiusDp] as seen: a view that is shown scaled ([LayoutMove]) keeps its roundness when its
+ * outline is asked for again on the way (invalidateOutline), instead of corners that swell and shrink with it.
+ */
 fun View.roundedClip(radiusDp: Float) {
     clipToOutline = true
     outlineProvider = object : android.view.ViewOutlineProvider() {
         override fun getOutline(v: View, o: android.graphics.Outline) {
-            o.setRoundRect(0, 0, v.width, v.height, radiusDp.dp)
+            val s = v.scaleX
+            o.setRoundRect(0, 0, v.width, v.height, if (s > 0.05f) radiusDp.dp / s else radiusDp.dp)
         }
     }
 }

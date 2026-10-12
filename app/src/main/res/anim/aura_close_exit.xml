@@ -1,20 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- a screen closing: it shrinks towards the middle and fades, above the one coming back -->
+<!-- a screen closing: it shrinks a little towards the middle and fades, above the one coming back. Quicker than
+     opening, and moving from the first frame: it answers the tap. -->
 <set xmlns:android="http://schemas.android.com/apk/res/android"
     android:shareInterpolator="false"
     android:zAdjustment="top">
     <scale
-        android:duration="260"
+        android:duration="200"
         android:fromXScale="1"
         android:fromYScale="1"
         android:interpolator="@interpolator/aura_exit"
         android:pivotX="50%"
         android:pivotY="50%"
-        android:toXScale="0.9"
-        android:toYScale="0.9" />
+        android:toXScale="0.94"
+        android:toYScale="0.94" />
     <alpha
-        android:duration="260"
+        android:duration="160"
         android:fromAlpha="1"
-        android:interpolator="@interpolator/aura_exit"
+        android:interpolator="@android:interpolator/linear"
         android:toAlpha="0" />
 </set>

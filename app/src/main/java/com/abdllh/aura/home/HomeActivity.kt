@@ -13,7 +13,6 @@ import android.os.Handler
 import android.os.Looper
 import android.view.PixelCopy
 import android.view.View
-import android.view.animation.OvershootInterpolator
 import android.view.animation.PathInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -219,7 +218,7 @@ class HomeActivity : Activity(), HomeHost {
         }
         carPanel.stage.playIntro(180)
         rise(carPanel.header, -10, 60)
-        rise(carPanel.quick, 16, 760)
+        rise(carPanel.quick, 16, 520)
 
         mapPanel.alpha = 0f
         mapPanel.scaleX = 0.965f
@@ -235,8 +234,8 @@ class HomeActivity : Activity(), HomeHost {
             val v = dock.apps.getChildAt(i)
             v.alpha = 0f
             v.translationY = 18.dp.toFloat()
-            v.animate().alpha(1f).translationY(0f).setStartDelay(260L + 45L * i).setDuration(420)
-                .setInterpolator(OvershootInterpolator(1.3f)).start()
+            // (one after the other, each settling without a bounce)
+            v.animate().alpha(1f).translationY(0f).setStartDelay(220L + 40L * i).setDuration(380).setInterpolator(ease).start()
         }
     }
 

@@ -95,7 +95,7 @@
     <string name="set_volume_hud">AMRI volume display for the buttons</string>
     <string name="set_volume_hud_sub">A cleaner volume bar for the steering-wheel and panel buttons, and none when you change the volume on the screen</string>
     <string name="set_music_keys">Music buttons open AMRI Music</string>
-    <string name="set_music_keys_sub">The steering wheel\'s music button (and the stock music screens) open AMRI Music</string>
+    <string name="set_music_keys_sub">The steering wheel\'s music button (and the stock music screens) open AMRI Music; pressed again inside it, it goes back to the home screen</string>
     <string name="net_title">Internet</string>
     <string name="net_check">Check now</string>
     <string name="net_online">Working</string>
@@ -142,6 +142,8 @@
     <string name="lyrics_nothing">Play a song to see its lyrics here</string>
     <string name="lyrics_tap_sync">Tap the line being sung now to sync the lyrics</string>
     <string name="lyrics_synced">Lyrics synced ✓</string>
+    <string name="lyrics_bigger">Lyrics on the whole screen</string>
+    <string name="lyrics_smaller">Back to the song</string>
     <string name="maps_dropped_pin">Dropped pin</string>
     <string name="maps_pick_home_short">Long-press your home on the map</string>
     <string name="maps_pick_work_short">Long-press your work on the map</string>
@@ -321,6 +323,8 @@
     <string name="voice_get_tts">Spoken answers: Speech Services by Google</string>
     <string name="voice_get_tts_sub">Without it the answers are only shown (opens the Play Store)</string>
     <string name="about_role">Installed as</string>
+    <string name="about_covered">Stock screen covered at start-up</string>
+    <string name="beta_cleared_restart">The beta\'s Bluetooth experiment was removed. Switch the unit off and on once to finish.</string>
     <string name="role_system">System app (full privileges)</string>
     <string name="role_system_basic">System app</string>
     <string name="role_user">Regular app</string>

@@ -95,7 +95,7 @@
     <string name="set_volume_hud">شريط الصوت من عمري للأزرار</string>
     <string name="set_volume_hud_sub">شريط صوت أنظف لأزرار الدركسون والجهاز، وما يطلع إذا غيّرت الصوت من الشاشة</string>
     <string name="set_music_keys">أزرار الموسيقى تفتح موسيقى عمري</string>
-    <string name="set_music_keys_sub">زر الموسيقى في الدركسون (وشاشات الموسيقى الأصلية) يفتح موسيقى عمري</string>
+    <string name="set_music_keys_sub">زر الموسيقى في الدركسون (وشاشات الموسيقى الأصلية) يفتح موسيقى عمري، وإذا ضغطته مرة ثانية وأنت داخلها يرجّعك للرئيسية</string>
     <string name="net_title">الإنترنت</string>
     <string name="net_check">افحص الآن</string>
     <string name="net_online">شغال</string>
@@ -142,6 +142,8 @@
     <string name="lyrics_nothing">شغّل أغنية وتطلع كلماتها هنا</string>
     <string name="lyrics_tap_sync">اضغط على السطر اللي ينغنى الحين عشان تمشي الكلمات معه</string>
     <string name="lyrics_synced">تمت المزامنة ✓</string>
+    <string name="lyrics_bigger">الكلمات على الشاشة كاملة</string>
+    <string name="lyrics_smaller">رجوع للأغنية</string>
     <string name="maps_dropped_pin">الموقع المحدد</string>
     <string name="maps_pick_home_short">اضغط مطوّل على مكان البيت</string>
     <string name="maps_pick_work_short">اضغط مطوّل على مكان العمل</string>
@@ -321,6 +323,8 @@
     <string name="voice_get_tts">للرد بالصوت: Speech Services by Google</string>
     <string name="voice_get_tts_sub">بدونه الرد يطلع مكتوب بس (يفتح متجر Play)</string>
     <string name="about_role">نوع التثبيت</string>
+    <string name="about_covered">شاشة أصلية غطّاها عمري عند التشغيل</string>
+    <string name="beta_cleared_restart">انشالت تجربة البلوتوث حقت النسخة التجريبية. طفّ الشاشة وشغّلها مرة وحدة عشان تكتمل.</string>
     <string name="role_system">تطبيق نظام (صلاحيات كاملة)</string>
     <string name="role_system_basic">تطبيق نظام</string>
     <string name="role_user">تطبيق عادي</string>

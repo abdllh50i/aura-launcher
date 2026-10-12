@@ -80,10 +80,23 @@ circle slides between P R N D. **The firmware ships with Android's window and tr
 (SettingsProvider `def_window_animation_scale` / `def_window_transition_scale` = 0 %), so every screen change was a cut:
 `system/Animations.kt` sets them to 1 where it finds 0 or nothing (switch in Settings → Display & sound, on by default),
 keeps what it found in `files/anim-scales` and puts it back when switched off, when AMRI stops being the home screen and
-in the installers' restore. The screens open and close with `res/anim/aura_*` (zoom 0.9 ↔ 1 with a fade; the screen
-below steps back to 0.95 and dims) through the theme's `windowAnimationStyle`. In-process, `ensureAnimators()` sets
+in the installers' restore. The screens open and close with `res/anim/aura_*` (zoom 0.94 ↔ 1 with a fade; the screen
+below steps back to 0.97 and dims) through the theme's `windowAnimationStyle`. In-process, `ensureAnimators()` sets
 ValueAnimator's scale back to 1 when the system says 0 (reflection on `setDurationScale`, greylisted = allowed on 10),
 as the stock launcher's `AnimationDriver.resetAnimatorDurationScale` does.
+
+1.7 made the motion quieter and quicker. Rules it follows: nothing on a screen takes longer than about 300 ms
+(`Motion.MEDIUM` 280, `LONG` 420 for a whole layout); what leaves is quicker than what arrives (a screen opens in
+280 ms and closes in 200); nothing starts slowly — `Motion.EXIT` and `aura_exit` are ease-out curves now (an ease-in
+exit read as the screen answering late); a press comes back with one small overshoot, not a wobble (`pressScale`
+releases with stiffness 560, damping 0.7; it was 420 / 0.48). `ui/Motion.kt`'s `LayoutMove` is for a layout that
+changes under the owner's eyes: made before the change it remembers where views are and takes a picture of the ones
+that leave; `play()` after it shows each view coming from its old place (translation and scale only, so no layout
+runs while it plays), the pictures fading where they stood. The moving views' parents must have `clipChildren`
+off, and `roundedClip` keeps a scaled view's corners as round as they look at rest (radius ÷ scale, asked again on
+every frame of the move). Only transforms and alpha are animated anywhere; a view whose text is scaled for a moment
+goes through a layer (`withLayer()`), since text redrawn at a new size on every frame makes this GPU rasterise a
+new set of letters each time.
 
 ## Aura Maps (`nav/`)
 MapLibre Native **10.3.7** on purpose: it renders with OpenGL ES 2.0, which is what the unit's firmware declares
@@ -148,6 +161,16 @@ they come to the front (wheel button, CAN box, app list). Not through the replac
 starts `com.nwd.bt.music` directly. The stock screens' `onResume` sends `com.music.action.STOP_QQ_MUSIC` (BT music) /
 `com.bt.ACTION_A2DP_MUTE` (music) right before `com.nwd.ACTION_MEDIA_PLAY` (15 / 2); the firmware also sends MEDIA_PLAY 15
 alone for phone-projection apps, and Aura marks its own with `MediaMonitor.EXTRA_SELF`.
+The same button again, inside Aura Music, goes out to the home screen (1.7), as it leaves the stock screen on the
+stock system. Why it did nothing before: a key that starts one app (KeyRuleConfig.xml: 99 → app 15 Bluetooth music,
+83 → app 2 music; `StartMode` 0) is handled by `InputChangeSourceRule.singleChangeSource`, which leaves the app
+(`exitSource`, `ExitMode` 1 = back to the source before) only when the key's source is the current one **and** its
+package is on top (`ProcessManager.getTopPackgeName`). With Aura Music on top it is not ("app is at top = false"), so
+the firmware starts the stock screen once more, and 1.6 opened Aura Music over it again. Now a stock music screen that
+comes up over Aura Music (`Front.own` is `MusicActivity`, paused within 1.5 s) on the source Aura Music plays is the
+second press: the home screen instead. The other source's screen is its own button, and changes the source as before
+(MODE, key 23, loops 2 → 3 → 8 → 9 → 11 → 15). Emulator: `settings put system activity_starting
+com.nwd.bt.music,com.nwd.bt.music.home_horizontalActivity` with another app started over Aura Music a moment before.
 Lyrics (1.5.4): `Lyrics.kt` asks LRCLIB (lrclib.net, free and open, no key; many Gulf / Arabic songs) by title, artist
 and length (`/api/get`, then `/api/search?q=` and by field), takes the result whose name, artist and length (±8 s)
 match, prefers timed (LRC) lyrics, keeps them in `cacheDir/lyrics` (a "none" for 3 days, only when every question
@@ -164,6 +187,17 @@ scroll it follows again); a tapped line is where the song goes: the unit's songs
 clock (the line's time + 450 ms, the owner taps what is being sung); while a Bluetooth song's position is unknown no line
 is lit and a hint asks for that tap. The lyrics button puts it in the library's panel (with Bluetooth the song gives the
 panel back for it); the progress tick runs every 200 ms while it shows.
+The lyrics alone on the whole screen (1.7): the button in the panel's corner (`MusicActivity.showFull`; Back, or the
+button where the screen's own way back is, returns; kept in `musicLyricsFull`). A second `LyricsView(big = true)` in a
+layer over the screen (38 sp lines), with a small bar: cover, names, previous / play / next and a thin progress line.
+Both views are fed alike and the layer is INVISIBLE, never GONE, so it stays laid out: going there and back measures
+nothing, it only fades and moves; the one out of sight follows the song without animating (`at()` when `!isShown`), so
+it is in place when shown. The cover travels between its place and the bar's as a copy above both (`fly`), its corner
+radius following its size. Lighting a line: `LyricsView.Line` says `hasOverlappingRendering() = false` — with a
+background (the pressed tint) a dimmed TextView is otherwise drawn through an off-screen buffer on every frame, a
+dozen of them while the lines scroll — and the alpha + scale change of the two lines involved runs `withLayer()`.
+`relayout` (lyrics on/off, another source) is a `LayoutMove`: the cover, the names and the top buttons travel, the
+panel or what was in it fades where it stood.
 
 Where a Bluetooth song is (1.6): this unit's stack never says. UartConfig.ini `bt_module=0` → the AT# ("atpound") driver
 over `/dev/goc_serial` (the GOC stack for the AIC8800, `persist.sys.bt.aic8800=true`); its progress report is the
@@ -178,6 +212,11 @@ allows a repeat-one wrap. Length: the phone's, else the lyrics' recording, else 
 keeps iTunes `trackTimeMillis` / Deezer `duration` beside the cover as `<hash>.len`). Debug: `am broadcast -a
 com.bt.ACTION_AVRCP_MUSIC_ID3 --es extra_avrcp_id3_title T --es extra_avrcp_id3_artist A --ez sim true [--ez sim_first
 true]`, `com.bt.ACTION_BT_MUSIC_PAUSE/PLAY`, `com.abdllh.aura.debug.BT_PROGRESS --ei total S --ei pos S`.
+The 1.6.1 betas (tags `v1.6.1-beta.1..3`, code only in the history) tried to make the phone say it: a changed copy of
+`/system/bin/gocsdk_8800` bind-mounted over the daemon (AT#VI → AVRCP GetPlayStatus, the missing `MQ` template), the
+daemon and `com.bt.bc03` restarted to pick it up. It did not work on the unit and 1.7 is 1.6.0's code again;
+`system/BetaLeftovers.kt` lets that mount go once and removes `/data/local/tmp/amri-bt-timing` (the daemon that runs
+keeps running: the owner is told to restart once). What was learnt about the daemon is in the betas' `tools/bt-timing`.
 
 ### The 3D car (`tools/car3d`, debug-only `CarBakerActivity`)
 The car is not rendered live (the source model has ~726k triangles and 8K textures; the unit has a Mali-G31). Instead a
@@ -288,7 +327,7 @@ and how fast it turned last time. The model itself is not in the repo.
 * The firmware keeps trusted apps in `AppConfig.xml` (`NwdApp`), a background-kill whitelist in `TaskWhitelist.xml`, and a
   fast-dexopt list; `aura-prepare.sh` registers Aura in all of them at every boot (idempotent).
 * The stock launcher also reports "home in front" (ACTION_APP_IN_OUT, app id 4) and starts the floating volume bar, boot tip and
-  assistive touch services; Aura repeats both (`system/NwdBridge.kt`).
+  assistive touch services; Aura repeats both (`system/NwdBridge.kt`), without the boot tip since 1.7 (see below).
 * Volume is the MCU's, not Android's: `com.nwd.setting.service` (binder `com.nwd.setting.service.SettingFeature`,
   setAudioParam = 6, getAudioParam = 7, setMute = 10, registAudioCallback = 24), parameter 14 = system volume in
   0..`Settings.System mcu_max_volume`; current values in `mcu_system_volume` / `mcu_mute_state` (`system/CarAudio.kt`).
@@ -383,6 +422,41 @@ and how fast it turned last time. The model itself is not in the repo.
   CanConfig as JSON: `canProviderName`, `carBandName`, `carTypeName`, `carYearName`, `canManagerClassName`); Settings →
   Vehicle & system shows the box, the car and whether a gear came. Without the CAN gear: D while driving (GPS) and held
   at a stop after it for up to 3 minutes (drawn lighter) unless R. `system/CanGear.kt`, `system/Gear.kt`.
+* What is in front: the framework writes every activity that resumes to `Settings.System activity_starting` as
+  `package,class` (`NwdPackageChecker.checkResumedPackageName`); KernelService observes it (`SourceMgr$6`: `key_top_app`
+  / `key_top_cls`, `ACTION_START_NWD_ACTIVITY` / `ACTION_START_ACTIVITY` with `extra_package_name` /
+  `extra_class_name`). `system/Front.kt` reads it too (a state: a process that starts late still sees what came up
+  before it) and keeps AMRI's own screen in front or last in front (`own`, `ownLeftAt`).
+* What the firmware puts in front when the unit comes on (the owner saw "the old system" until he pressed something):
+  - Not the stock launcher: `SourceMgr.startApp` sends app 4 (ApplicationList.xml: `com.android.launcher` /
+    `com.android.launcher2.Launcher`) as a plain home intent when `isHomePage` (package starts with
+    `com.android.launcher`, class ends with `Launcher`), and `PackageManagerService.chooseBestActivity` answers a MAIN +
+    HOME intent with the package in `persist.nwd.launcher.default`. `ro.nwd.start.launcher.by.fw=true`: the first
+    start is left to the framework.
+  - The source that played when the ignition went off: `SourceMgr.accOn` → `resumeSource` →
+    `SourceKeeper.getKeepSource` (`key_appid`) → `startApp` with the **component** from ApplicationList.xml: the stock
+    radio (8), video (3), AUX (9), TV (11), Bluetooth music (15, `com.nwd.bt.music/.home_horizontalActivity`), music (2).
+    `keepCurrentSource` keeps app 4 only when no audio source is active. `UartConfig.ini`
+    `key_acc_on_not_need_start_app=1` would stop it, and the home intent at ignition-off with it.
+  - `system/HomeGuard.kt`: for 12 s after `com.nwd.action.ACTION_MCU_STATE_CHANGE` says on (byte `extra_mcu_state` 1;
+    0 / 2 / 3 are off) and until the unit has been up 90 s after a boot, the first stock source screen or stock
+    launcher screen that takes the front is covered by AMRI's home screen (the source plays on: the same as Home
+    pressed on it); the stock music screens go to `MusicKeys` at any time, now also when their broadcasts were
+    missed (AMRI's process started after them: `Front` 1.5 s after the process starts); the stock home screen by name
+    is always covered; a screen AMRI opened itself in the last 8 s is left alone. Settings → About shows the last
+    screen covered. Emulator: make AMRI the home app (`cmd package set-home-activity`), `am broadcast -a
+    com.nwd.action.ACTION_MCU_STATE_CHANGE --ei extra_mcu_state 0`, then `1`, start another app and `settings put
+    system activity_starting com.nwd.radio,x`.
+  - The stock boot tip (`com.nwd.fushion.boot.tips2.BootTipService`, started by the stock launcher's `onCreate` and,
+    up to 1.6, by `NwdBridge`): by `FactoryConfig.ini key_boot_menu` it puts `/cache/boot_logo.bmp` over everything
+    from ignition-off until 7 s after ignition-on or a tap (1), or a notice over the stock wallpaper after a boot
+    (2), plus a language page at the first start and handbrake / MCU-version warnings. Stock is 0; the unit's copy in
+    `/data/nwdappconfig/app` is not known. AMRI no longer starts it, and stops one an earlier AMRI started.
+  Which of these the owner saw is not known (nothing was read off the unit); all are closed.
+* The backlight: `com.nwd.action.ACTION_SET_BACKLIGHT_SWITCH`, boolean `extra_backlight_switch` (the setting service's
+  `AbsBackLightManager`; off until the panel is touched). The stock launcher's "screen off" icon sends it and never
+  opens its own `com.nwd.screenoff.ScreenOffActivity`, which is an empty activity; AMRI's screen-off buttons opened
+  that activity up to 1.6 (an empty stock screen stayed in front) and send the broadcast since 1.7.
 * The status bar is hidden with the framework's own `Settings.Global policy_control`
   (`immersive.status=*`), which Android 10 still honours (`system/SystemBars.kt`); swiping down from the top shows it.
 * Boot animation: NWD's player (`libbootanimation.so`, `findBootAnimationFile`) checks `/cache/bootanimation.zip` first,

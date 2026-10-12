@@ -18,8 +18,8 @@ import com.abdllh.aura.ui.Shapes
 import com.abdllh.aura.ui.WRAP
 import com.abdllh.aura.ui.flp
 import com.abdllh.aura.ui.iconView
-import com.abdllh.aura.ui.label
 import com.abdllh.aura.ui.lp
+import com.abdllh.aura.ui.label
 import com.abdllh.aura.util.dp
 
 /**
@@ -27,17 +27,21 @@ import com.abdllh.aura.util.dp
  * dimmed and a little smaller (a few seconds after the owner scrolls by hand, it follows the song again); a tapped
  * line is where the song goes ([onLineTap]: the unit's own songs jump there, Bluetooth ones set their clock — the
  * phone does not say where a song is, see [BtMusic]). [needSync]: the song's position is unknown, so nothing is lit
- * and a hint asks for a tap on the line being sung. Untimed: just the text.
+ * and a hint asks for that tap. Untimed: just the text.
+ *
+ * [big]: the lyrics alone on the whole screen, in large type. The music screen keeps one of each, fed alike; the one
+ * out of sight follows the song without moving anything (no animation runs where nobody looks), so it is in place
+ * the moment it is shown.
  */
-internal class LyricsView(c: Context) : FrameLayout(c) {
+internal class LyricsView(c: Context, private val big: Boolean = false) : FrameLayout(c) {
     private val scroll = ScrollView(c).apply {
         isVerticalScrollBarEnabled = false
         overScrollMode = View.OVER_SCROLL_NEVER
-        isVerticalFadingEdgeEnabled = true // the lines fade at the panel's edges instead of being cut
-        setFadingEdgeLength(70.dp)
+        isVerticalFadingEdgeEnabled = true // the lines fade at the edges instead of being cut
+        setFadingEdgeLength((if (big) 96 else 70).dp)
     }
     private val list = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
-    private val status = c.label(19f, Palette.text2, Fonts.REGULAR, lines = 3, gravity = Gravity.CENTER)
+    private val status = c.label(if (big) 24f else 19f, Palette.text2, Fonts.REGULAR, lines = 3, gravity = Gravity.CENTER)
     private val hint: LinearLayout
     private val done: AText
     private var lines: List<Lyrics.Line> = emptyList()
@@ -48,13 +52,16 @@ internal class LyricsView(c: Context) : FrameLayout(c) {
     private var glide: ValueAnimator? = null
     var onLineTap: ((Lyrics.Line) -> Unit)? = null
 
+    private val dim = if (big) 0.30f else 0.34f   // lines around the one being sung
+    private val small = if (big) 0.92f else 0.95f
+
     /** Unknown position: no line lit, the hint shown (Bluetooth: until a line is tapped or the next song starts). */
     var needSync = false
         set(v) {
             if (v == field) return
             field = v
             showHint()
-            if (v) { for (t in views) t.animate().alpha(IDLE).scaleX(1f).scaleY(1f).setDuration(200).start(); current = -1 }
+            if (v) { for (t in views) fade(t, IDLE, 1f, 0L); current = -1 }
         }
 
     init {
@@ -71,10 +78,11 @@ internal class LyricsView(c: Context) : FrameLayout(c) {
             elevation = 6f.dp
             visibility = View.GONE
             addView(c.iconView(R.drawable.ic_lyrics, 22, Palette.accent), lp(22.dp, 22.dp))
-            addView(c.label(15f, Palette.text, Fonts.MEDIUM, lines = 2).apply { setText(R.string.lyrics_tap_sync) },
+            addView(c.label(if (big) 17f else 15f, Palette.text, Fonts.MEDIUM, lines = 2).apply { setText(R.string.lyrics_tap_sync) },
                 lp(WRAP, WRAP).apply { marginStart = 10.dp })
         }
-        addView(hint, flp(WRAP, WRAP, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { setMargins(18.dp, 14.dp, 18.dp, 0) })
+        // (clear of the corner buttons the music screen puts over the lyrics)
+        addView(hint, flp(WRAP, WRAP, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { setMargins(72.dp, 14.dp, 72.dp, 0) })
         done = c.label(15f, Palette.onColor(Palette.accent), Fonts.MEDIUM, gravity = Gravity.CENTER).apply {
             setText(R.string.lyrics_synced)
             background = Shapes.rect(Palette.accent, 20f)
@@ -87,12 +95,14 @@ internal class LyricsView(c: Context) : FrameLayout(c) {
     /** Room above the first line and below the last, so that either can stand in the middle. */
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        list.setPadding(24.dp, (h * 0.38f).toInt(), 24.dp, (h * 0.5f).toInt())
+        val side = (if (big) 56 else 24).dp
+        list.setPadding(side, (h * 0.38f).toInt(), side, (h * 0.5f).toInt())
     }
 
     /** A message instead of lyrics (looking, none, no internet...). */
     fun showStatus(text: String) {
         lines = emptyList(); views = emptyList(); current = -1
+        glide?.cancel()
         list.removeAllViews()
         status.text = text
         if (status.visibility != View.VISIBLE) { status.visibility = View.VISIBLE; status.alpha = 0f; status.animate().alpha(1f).setDuration(200).start() }
@@ -104,11 +114,18 @@ internal class LyricsView(c: Context) : FrameLayout(c) {
         lines = r.lines
         synced = r.synced
         current = -1
+        glide?.cancel()
         list.removeAllViews()
+        val size = if (big) (if (synced) 38f else 30f) else (if (synced) 26f else 22f)
+        val pad = (if (big) 14 else 10).dp
         views = lines.map { l ->
-            context.label(if (synced) 26f else 22f, Palette.text, Fonts.MEDIUM, lines = 0, gravity = Gravity.CENTER).apply {
+            Line(context).apply {
+                textSize = size
+                setTextColor(Palette.text)
+                weight = Fonts.MEDIUM
+                gravity = Gravity.CENTER
                 text = l.text.ifBlank { "♪" }
-                setPadding(10.dp, 10.dp, 10.dp, 10.dp)
+                setPadding(pad, pad, pad, pad)
                 setLineSpacing(0f, 1.1f)
                 alpha = if (synced) IDLE else 0.92f
                 if (synced) {
@@ -121,9 +138,8 @@ internal class LyricsView(c: Context) : FrameLayout(c) {
         for (v in views) list.addView(v, lp(MATCH, WRAP).apply { topMargin = 2.dp })
         status.visibility = View.GONE
         scroll.visibility = View.VISIBLE
-        scroll.alpha = 0f
-        scroll.animate().alpha(1f).setDuration(Motion.MEDIUM).start()
         scroll.scrollTo(0, 0)
+        if (isShown) { scroll.alpha = 0f; scroll.animate().alpha(1f).setDuration(Motion.MEDIUM).start() } else scroll.alpha = 1f
         showHint()
     }
 
@@ -168,22 +184,50 @@ internal class LyricsView(c: Context) : FrameLayout(c) {
             if (lines[mid].ms <= ms) { i = mid; lo = mid + 1 } else hi = mid - 1
         }
         if (i == current) return
-        views.getOrNull(current)?.animate()?.alpha(DIM)?.scaleX(SMALL)?.scaleY(SMALL)?.setDuration(320)?.setInterpolator(Motion.STANDARD)?.start()
-        if (current == -1) for ((k, t) in views.withIndex()) if (k != i) { t.alpha = DIM; t.scaleX = SMALL; t.scaleY = SMALL }
+        // out of sight (the other size is on the screen): the same end state, nothing animated
+        val live = isShown
+        val time = if (live) LINE_MS else 0L
+        views.getOrNull(current)?.let { fade(it, dim, small, time) }
+        if (current == -1) for ((k, t) in views.withIndex()) if (k != i) fade(t, dim, small, 0L)
         current = i
         val v = views.getOrNull(i) ?: return
-        v.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(320).setInterpolator(Motion.STANDARD).start()
-        if (SystemClock.elapsedRealtime() - touchedAt > FOLLOW_AFTER_TOUCH_MS) glideTo(v)
+        fade(v, 1f, 1f, time)
+        if (!live) scrollNow(v)
+        else if (SystemClock.elapsedRealtime() - touchedAt > FOLLOW_AFTER_TOUCH_MS) glideTo(v)
+    }
+
+    /** Brought into sight: the line being sung stands in the middle at once. */
+    fun settle() {
+        glide?.cancel()
+        views.getOrNull(current)?.let { scrollNow(it) }
+    }
+
+    /**
+     * A line to [alpha] and [scale]. While it moves it is drawn from a picture of itself (a layer): text redrawn at a
+     * new size on every frame costs this GPU a new set of letters each time.
+     */
+    private fun fade(v: View, alpha: Float, scale: Float, ms: Long) {
+        v.animate().cancel()
+        if (ms <= 0L) { v.alpha = alpha; v.scaleX = scale; v.scaleY = scale; return }
+        v.animate().alpha(alpha).scaleX(scale).scaleY(scale).setStartDelay(0).setDuration(ms).setInterpolator(Motion.STANDARD).withLayer().start()
+    }
+
+    private fun target(v: View): Int = (v.top + v.height / 2 - (scroll.height * 0.42f).toInt()).coerceAtLeast(0)
+
+    private fun scrollNow(v: View) {
+        glide?.cancel()
+        if (v.height == 0 || scroll.height == 0) { post { if (views.getOrNull(current) === v) scroll.scrollTo(0, target(v)) }; return } // (laid out first)
+        scroll.scrollTo(0, target(v))
     }
 
     /** A slow glide (the platform's smooth scroll is short and abrupt for this). */
     private fun glideTo(v: View) {
-        val to = (v.top + v.height / 2 - (scroll.height * 0.42f).toInt()).coerceAtLeast(0)
+        val to = target(v)
         val from = scroll.scrollY
         if (from == to) return
         glide?.cancel()
         glide = ValueAnimator.ofInt(from, to).apply {
-            duration = 620
+            duration = GLIDE_MS
             interpolator = Motion.STANDARD
             addUpdateListener { scroll.scrollTo(0, it.animatedValue as Int) }
             start()
@@ -195,10 +239,19 @@ internal class LyricsView(c: Context) : FrameLayout(c) {
         super.onDetachedFromWindow()
     }
 
+    /**
+     * One line. Its dimming is applied to what it draws, not through an off-screen copy of the whole line on every
+     * frame (what a view with a background gets by default): a screen of dimmed lines scrolling was a dozen of those
+     * a frame. The only overlap is the pressed tint under the text, for the moment of a tap.
+     */
+    private class Line(c: Context) : AText(c) {
+        override fun hasOverlappingRendering() = false
+    }
+
     private companion object {
-        const val DIM = 0.34f       // lines around the one being sung
         const val IDLE = 0.62f      // all lines while none is lit (not started, position unknown)
-        const val SMALL = 0.95f
+        const val LINE_MS = 300L
+        const val GLIDE_MS = 560L
         const val FOLLOW_AFTER_TOUCH_MS = 4000L
     }
 }

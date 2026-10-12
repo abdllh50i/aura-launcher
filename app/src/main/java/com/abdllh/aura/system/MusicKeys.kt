@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.SystemClock
 import android.util.Log
+import com.abdllh.aura.home.Known
 import com.abdllh.aura.media.MediaMonitor
 import com.abdllh.aura.music.MusicActivity
 import com.abdllh.aura.util.Prefs
@@ -13,7 +14,12 @@ import com.abdllh.aura.util.Prefs
 /**
  * "Music buttons open Aura Music" (Settings → Display & sound → Music; on by default): when the stock Bluetooth music
  * screen or the stock music player comes up — the steering wheel's music button, the CAN box, the source key, the
- * app list — Aura Music opens on top of it, on the same source, right away.
+ * app list — Aura Music opens on top of it, on the same source, right away. The same button pressed again inside
+ * Aura Music goes out to the home screen (1.7), as it leaves the stock screen on the stock system. The firmware
+ * decides that by the package in front (InputChangeSourceRule.singleChangeSource: the key's source is the current
+ * one, but ProcessManager.getTopPackgeName is not its app — it is Aura — so "app is at top = false" and it starts
+ * the stock screen once more instead of leaving). That stock screen coming up over Aura Music, on the source Aura
+ * Music is playing, is the sign of the second press.
  *
  * Why not the firmware's replace_source_list.xml: an app named there becomes a "source" app, and the firmware
  * force-stops the app of a source it leaves (MCU "pop source" → ACTION_STOP_APP). That would be Aura — the home screen,
@@ -79,11 +85,58 @@ object MusicKeys {
         }
     }
 
+    /**
+     * A stock music screen is in front, as [Front] tells it: the same answer as to its broadcasts, which are missed
+     * when the screen came up before this process did (the unit coming on with that source).
+     */
+    fun stockScreen(c: Context, bt: Boolean) {
+        if (!enabled || SystemProps.get(Device.DISABLED_PROP) == "1") return
+        open(c, bt)
+    }
+
+    /** A press that came while the one before was still being answered: looked at when that is over. */
+    private val later = Runnable {
+        val c = app ?: return@Runnable
+        Front.read()
+        val bt = Front.pkg == Known.BT_MUSIC
+        if (enabled && !Front.ownResumed && (bt || Front.pkg == Known.MUSIC)) open(c, bt)
+    }
+
     private fun open(c: Context, bt: Boolean) {
         val now = SystemClock.elapsedRealtime()
-        if (now - openedAt < 1500L) return // one screen coming up, one Aura Music
+        if (now - openedAt < ONCE_MS) {
+            // one screen coming up, one answer (its broadcasts and [Front] both tell). But a quick second press must
+            // not leave the stock screen in front: what is there is looked at again once this answer has had its time
+            main.removeCallbacks(later)
+            main.postDelayed(later, openedAt + ONCE_MS + 60L - now)
+            return
+        }
+        // AMRI Music was what the owner looked at, on this very source: its button again, inside it. That is the way
+        // out, to the home screen (the stock screen it brought up is covered like the first time, by the home screen
+        // now). Another source's screen is its own button: AMRI Music changes source, as before.
+        val same = bt == (Prefs.raw.getString("musicSource", "local") == "bt")
+        if (same && Front.ownIs(MusicActivity::class.java, AGAIN_MS)) {
+            if (!Front.ownResumed) { again(c); return }
+            // (still in front as far as this process knows: only if something really comes up over it)
+            main.postDelayed({ if (!Front.ownResumed && Front.ownIs(MusicActivity::class.java, AGAIN_MS)) again(c) }, 250L)
+            return
+        }
         openedAt = now
         Log.i(TAG, "stock ${if (bt) "Bluetooth music" else "music"} screen came up: Aura Music instead")
         MusicActivity.openInstead(c, bt)
     }
+
+    private fun again(c: Context) {
+        val now = SystemClock.elapsedRealtime()
+        if (now - openedAt < ONCE_MS) return
+        openedAt = now
+        Log.i(TAG, "the music button again, inside Aura Music: the home screen")
+        HomeGuard.showHome(c)
+    }
+
+    /** The signs of one stock screen coming up arrive within this long of each other. */
+    private const val ONCE_MS = 800L
+    /** AMRI Music left the front this long ago at most: what came up, came up over it. */
+    private const val AGAIN_MS = 2500L
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
 }

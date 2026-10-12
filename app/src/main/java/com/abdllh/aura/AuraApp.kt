@@ -7,6 +7,9 @@ import com.abdllh.aura.system.BootAnim
 import com.abdllh.aura.system.CarAudio
 import com.abdllh.aura.system.CrashGuard
 import com.abdllh.aura.system.Device
+import com.abdllh.aura.system.Front
+import com.abdllh.aura.system.HomeGuard
+import com.abdllh.aura.system.NwdBridge
 import com.abdllh.aura.system.SystemBars
 import com.abdllh.aura.system.SystemProps
 import com.abdllh.aura.system.WifiKeeper
@@ -54,9 +57,13 @@ class AuraApp : Application() {
         WifiKeeper.start(this)
         ZLinkGuard.init(this)
         Power.init(this) // after an "off now": the ACC-off behaviour goes back to the user's choice
+        Front.init(this)
         if (!disabled) {
             VolumeHud.init(this)
             MusicKeys.init(this)
+            HomeGuard.init(this) // a stock screen the firmware puts in front when the unit comes on: AMRI's instead
+            NwdBridge.stopBootTip(this) // (one an earlier AMRI started this boot)
+            com.abdllh.aura.system.BetaLeftovers.removeOnce(this) // what a 1.6.1 beta left over the Bluetooth daemon
             Gear.init(this)
             BootAnim.ensure(this) // this build's boot animation, also after an update from the screen
             AssistiveBall.offOnce(this) // the stock floating circle the owner switched on by accident

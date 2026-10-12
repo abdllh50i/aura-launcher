@@ -167,7 +167,7 @@ class DisplaySoundPage(private val act: SettingsActivity) : Page(R.string.set_di
         }
         if (AppRepo.isInstalled(ctx, Known.STOCK_LAUNCHER)) {
             col.addRow(ctx.settingRow(R.drawable.ic_power, ctx.getString(R.string.ctl_screen_off), null, ctx.chevron()) {
-                AppRepo.launchComponent(ctx, Known.STOCK_LAUNCHER, Known.ACT_SCREEN_OFF)
+                com.abdllh.aura.home.Actions.screenOff(ctx)
             })
             col.addRow(ctx.settingRow(R.drawable.ic_monitor, ctx.getString(R.string.set_screensaver), null, ctx.chevron()) {
                 AppRepo.launchComponent(ctx, Known.STOCK_LAUNCHER, Known.ACT_LOCK)
@@ -388,6 +388,8 @@ class AboutPage(private val act: SettingsActivity) : Page(R.string.set_about, R.
                 Device.isSystemApp(ctx) -> R.string.role_system_basic
                 else -> R.string.role_user
             }))
+        // the last stock screen the home screen took the place of as the unit came on (for reports from the unit)
+        com.abdllh.aura.system.HomeGuard.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_home, R.string.about_covered, it) }
 
         // Home-app control (car unit only)
         if (Device.isNwd) {

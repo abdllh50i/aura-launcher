@@ -34,7 +34,8 @@ file, so it comes with updates from the screen) and an **in-app updater that pul
   download (*Settings → Navigation → Offline map*, ~150 MB) brings the map, search (indexed on the unit) and routing
   (BRouter running on the unit) without internet. AMRI Music: the unit's storage
   and USB sticks, plus the phone's Bluetooth music through the firmware's own Bluetooth module (covers looked up online by
-  title and artist); the steering wheel's music button opens it. The volume controls drive the unit's real (MCU) volume,
+  title and artist), synced lyrics that can take the whole screen; the steering wheel's music button opens it (and,
+  pressed again inside it, goes back to the home screen). The volume controls drive the unit's real (MCU) volume,
   and AMRI's own volume display replaces the stock bar for the wheel and panel buttons (none for changes made on the
   screen). The dock holds the apps you pin to it, and the home screen shows the gear (P R N D: R from the reverse wire,
   the rest from the car's CAN box when it reports it). ZLink (CarPlay) stays off until it is opened, and the Wi-Fi is

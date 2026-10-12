@@ -39,7 +39,6 @@ object Known {
     )
 
     /** Activities that live inside the stock launcher package (NWD tools). */
-    const val ACT_SCREEN_OFF = "com.nwd.screenoff.ScreenOffActivity"
     const val ACT_TOOLBOX = "com.nwd.android.toolsmanager.ToolsManagerActivity"
     const val ACT_WHEEL = "com.nwd.wheel.learning.MainActivity"
     const val ACT_REBOOT = "com.nwd.tools.reboot.RebootActivity"
@@ -118,7 +117,7 @@ object AppRepo {
             Known.ZLINK -> com.abdllh.aura.system.ZLinkGuard.open(ctx) // kept off by Aura: turned on first
             else -> {
                 val i = launchIntent(ctx, pkg)
-                if (i != null) { ctx.startActivity(i); true } else false
+                if (i != null) { com.abdllh.aura.system.HomeGuard.launching(pkg); ctx.startActivity(i); true } else false
             }
         }
     } catch (_: Throwable) {
@@ -134,6 +133,7 @@ object AppRepo {
     }
 
     fun launchComponent(ctx: Context, pkg: String, cls: String): Boolean = try {
+        com.abdllh.aura.system.HomeGuard.launching(pkg)
         ctx.startActivity(Intent().setComponent(ComponentName(pkg, cls)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         true
     } catch (_: Throwable) {

@@ -23,8 +23,18 @@ object Actions {
 
     fun hasScreenOff(ctx: Context) = AppRepo.isInstalled(ctx, Known.STOCK_LAUNCHER)
 
-    fun screenOff(ctx: Context): Boolean =
-        AppRepo.launchComponent(ctx, Known.STOCK_LAUNCHER, Known.ACT_SCREEN_OFF) || start(ctx, Intent(Settings.ACTION_DISPLAY_SETTINGS))
+    /**
+     * The backlight off, as the stock launcher's "screen off" icon does it: it never opens that icon's activity
+     * (com.nwd.screenoff.ScreenOffActivity is empty), it asks the setting service (KernelUtils.requestSetBackLight-
+     * Switch → AbsBackLightManager), which darkens the panel until it is touched. Opening the activity, as AMRI did
+     * up to 1.6, left an empty stock screen in front instead.
+     */
+    fun screenOff(ctx: Context): Boolean = try {
+        ctx.sendBroadcast(Intent("com.nwd.action.ACTION_SET_BACKLIGHT_SWITCH").putExtra("extra_backlight_switch", false))
+        true
+    } catch (_: Throwable) {
+        false
+    }
 
     fun car(ctx: Context): Boolean = AppRepo.launch(ctx, Known.MYCAR) || AppRepo.launch(ctx, Known.CAR_SETTING)
 
