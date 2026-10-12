@@ -31,26 +31,28 @@ object TileMath {
 }
 
 /**
- * What the offline map holds: the Eastern Province of Saudi Arabia. Street level (zoom 14, the most detailed level of
- * the map data) where people live and drive, the main roads around at zoom 12, the whole province (and a margin) as an
- * overview; plus BRouter's routing data for the 5°x5° squares around it (Riyadh included, for the road there).
+ * What the offline map holds, since 1.8: Jubail, and Dammam with Dhahran and Khobar, at street level (zoom 14, the
+ * most detailed level of the map data: every street and every place of the tiles), King Fahd airport, the main
+ * roads between them, and the country around as an overview; plus BRouter's routing data for the two 5°x5° squares
+ * they lie in. Up to 1.7 it was the whole Eastern Province (Qatif, Al-Ahsa, Hafr Al-Batin, Khafji, the roads to
+ * Kuwait, Riyadh and Salwa, about 150 MB); the owner asked for the three cities only, and a smaller download.
  */
 object Region {
     class Box(val west: Double, val south: Double, val east: Double, val north: Double, val minZoom: Int, val maxZoom: Int)
 
+    /** The area's name for the store: a map kept for another area is trimmed to this one ([OfflineMaps]). */
+    const val ID = "jubail-dammam-khobar-1"
+
     val BOXES = listOf(
-        Box(45.00, 17.00, 56.00, 29.00, 0, 10),  // the province and around it: overview
-        Box(48.30, 25.10, 50.40, 27.70, 11, 14), // Jubail, Ras Tanura, Qatif, Dammam, Khobar, Dhahran, Abqaiq, Al-Ahsa, Nairyah
-        Box(45.85, 28.33, 46.10, 28.52, 11, 14), // Hafr Al-Batin
-        Box(48.40, 28.35, 48.55, 28.48, 11, 14), // Khafji
-        Box(47.62, 27.48, 47.76, 27.60, 11, 14), // Qaryat Al-Ulya
-        Box(45.80, 27.00, 49.70, 28.60, 11, 12), // the roads north: Hafr Al-Batin, Khafji, Kuwait
-        Box(47.00, 24.40, 49.60, 25.50, 11, 12), // the road to Riyadh (up to the edge of Riyadh, not the city)
-        Box(49.00, 24.00, 50.90, 25.20, 11, 12)  // Haradh, Salwa
+        Box(46.00, 24.00, 52.00, 29.00, 0, 10),  // around them: overview
+        Box(49.40, 26.85, 49.82, 27.25, 11, 14), // Jubail: the town, the industrial city, Fanateer, the ports
+        Box(49.88, 26.10, 50.30, 26.52, 11, 14), // Dammam, Dhahran, Khobar (Half Moon Bay up to Dammam's port)
+        Box(49.72, 26.40, 49.90, 26.53, 11, 14), // King Fahd airport
+        Box(49.50, 26.40, 50.20, 26.95, 11, 12)  // the roads between them (street level along the main ones: roadTiles)
     )
 
-    /** BRouter's routing data: lon 45..55, lat 20..30 (file names are the squares' south-west corners). */
-    val SEGMENTS = listOf("E45_N25", "E50_N25", "E45_N20", "E50_N20")
+    /** BRouter's routing data: lon 45..55, lat 25..30 (file names are the squares' south-west corners). */
+    val SEGMENTS = listOf("E45_N25", "E50_N25")
 
     /** The routing square a point falls in, e.g. "E50_N25". */
     fun segmentOf(lat: Double, lon: Double): String {

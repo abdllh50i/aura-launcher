@@ -30,9 +30,12 @@ file, so it comes with updates from the screen) and an **in-app updater that pul
   stop it, volume 20, mute, volume all the way up, play music, open the map, take me home, what time is it. Long-press an app in the app list to uninstall apps a
   dealer installed on the unit (even ones that made themselves device administrators).
 * AMRI Maps: search, route preview, turn-by-turn guidance with Arabic/English voice prompts and rerouting, on free
-  OpenStreetMap services (OpenFreeMap tiles, Photon search, OSRM routing), and **offline in the Eastern Province**: one
-  download (*Settings → Navigation → Offline map*, ~150 MB) brings the map, search (indexed on the unit) and routing
-  (BRouter running on the unit) without internet. AMRI Music: the unit's storage
+  OpenStreetMap services (OpenFreeMap tiles, Photon search, OSRM routing), and **offline in Jubail, Dammam and Khobar**: one
+  download (*Settings → Navigation → Offline map*, ~35 MB) brings the map with its streets and places, search (indexed
+  on the unit) and routing (BRouter running on the unit) without internet. **The owner's own additions** — street
+  speed limits, speed cameras, traffic signals and bumps — are drawn in a small map editor on the PC
+  (`tools/map-editor/map-editor.bat`), published with one button, and picked up by every unit (*Settings → Navigation →
+  Map additions → Update*): the limit shows as its sign while driving, a camera or a bump ahead is announced. AMRI Music: the unit's storage
   and USB sticks, plus the phone's Bluetooth music through the firmware's own Bluetooth module (covers looked up online by
   title and artist), synced lyrics that can take the whole screen; the steering wheel's music button opens it (and,
   pressed again inside it, goes back to the home screen). The volume controls drive the unit's real (MCU) volume,

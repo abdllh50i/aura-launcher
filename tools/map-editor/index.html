@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>محرّر خريطة عمري</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+  :root { --bg:#0e1013; --card:#171a1f; --card2:#20242b; --line:#2a2f37; --text:#f2f3f5; --text2:#a3a8b0; --accent:#3e6ae1;
+          --red:#e5484d; --amber:#f5a524; --green:#2fd07a; }
+  * { box-sizing:border-box; }
+  html, body { height:100%; margin:0; background:var(--bg); color:var(--text); font-family:"Segoe UI", Tahoma, sans-serif; }
+  #app { display:flex; height:100%; }
+  #side { width:340px; flex:none; background:var(--card); border-inline-end:1px solid var(--line); display:flex; flex-direction:column; }
+  #map { flex:1; min-width:0; }
+  header { padding:18px 18px 10px; }
+  header h1 { font-size:20px; margin:0 0 4px; font-weight:600; }
+  header p { margin:0; color:var(--text2); font-size:13px; line-height:1.6; }
+  .group { padding:10px 18px; }
+  .group h2 { font-size:12px; color:var(--text2); font-weight:600; margin:0 0 8px; letter-spacing:.02em; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; }
+  button { font:inherit; color:var(--text); background:var(--card2); border:1px solid transparent; border-radius:14px; padding:11px 14px;
+           cursor:pointer; transition:transform .12s ease-out, background .15s ease; }
+  button:active { transform:scale(.97); }
+  button:hover { background:#272c34; }
+  .tool { flex:1 1 calc(50% - 4px); display:flex; align-items:center; gap:9px; justify-content:flex-start; font-size:15px; }
+  .tool.on { background:rgba(62,106,225,.22); border-color:var(--accent); }
+  .dot { width:14px; height:14px; border-radius:50%; flex:none; }
+  .city { flex:1; font-size:14px; padding:9px 8px; }
+  #hint { margin:2px 18px 6px; padding:11px 13px; background:var(--card2); border-radius:14px; color:var(--text2); font-size:13.5px; line-height:1.7; min-height:64px; }
+  #counts { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .count { background:var(--card2); border-radius:14px; padding:10px 12px; }
+  .count b { display:block; font-size:22px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .count span { color:var(--text2); font-size:12.5px; }
+  /* the tools scroll in a short window; the publish button stays in sight */
+  #tools { flex:1; min-height:0; overflow-y:auto; }
+  footer { flex:none; padding:14px 18px 18px; border-top:1px solid var(--line); }
+  #publish { width:100%; background:var(--accent); font-size:16px; font-weight:600; padding:14px; }
+  #publish:hover { background:#4a75e6; }
+  #publish:disabled { opacity:.55; cursor:default; }
+  #undo { width:100%; margin-bottom:8px; font-size:14px; }
+  #status { margin-bottom:10px; font-size:13px; color:var(--text2); line-height:1.7; min-height:22px; white-space:pre-line; }
+  #status.ok { color:var(--green); } #status.bad { color:#ff8a8e; }
+  .maplibregl-popup-content { background:var(--card); color:var(--text); border-radius:16px; padding:14px; box-shadow:0 10px 30px rgba(0,0,0,.5); min-width:230px; }
+  .maplibregl-popup-tip { border-top-color:var(--card) !important; border-bottom-color:var(--card) !important; }
+  .maplibregl-popup-close-button { color:var(--text2); font-size:20px; inset-inline-end:6px; top:4px; right:auto; }
+  .pop h3 { margin:0 0 3px; font-size:15px; font-weight:600; }
+  .pop p { margin:0 0 10px; color:var(--text2); font-size:12.5px; }
+  .speeds { display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; }
+  .speeds button { padding:9px 0; border-radius:50%; aspect-ratio:1; background:#fff; color:#16181c; font-weight:700; border:3px solid var(--red); font-variant-numeric:tabular-nums; }
+  .speeds button:hover { background:#ffecec; }
+  .pop .wide { width:100%; margin-top:8px; font-size:14px; }
+  .pop .danger { background:rgba(229,72,77,.18); color:#ff9a9d; }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="side">
+    <div id="tools">
+    <header>
+      <h1>محرّر خريطة عمري</h1>
+      <p>أضف سرعات الشوارع والساهر والإشارات والمطبات، ثم انشرها لتظهر على شاشات السيارات.</p>
+    </header>
+    <div class="group">
+      <h2>انتقل إلى</h2>
+      <div class="row">
+        <button class="city" data-at="49.66,27.01,13">الجبيل</button>
+        <button class="city" data-at="50.10,26.42,12.5">الدمام</button>
+        <button class="city" data-at="50.20,26.28,13">الخبر</button>
+      </div>
+    </div>
+    <div class="group">
+      <h2>الأداة</h2>
+      <div class="row">
+        <button class="tool on" data-tool="move"><span class="dot" style="background:#7d8794"></span>تحريك</button>
+        <button class="tool" data-tool="speed"><span class="dot" style="background:#fff;border:3px solid var(--red)"></span>سرعة شارع</button>
+        <button class="tool" data-tool="camera"><span class="dot" style="background:var(--red)"></span>ساهر</button>
+        <button class="tool" data-tool="signal"><span class="dot" style="background:var(--green)"></span>إشارة</button>
+        <button class="tool" data-tool="bump"><span class="dot" style="background:var(--amber)"></span>مطب</button>
+        <button class="tool" data-tool="delete"><span class="dot" style="background:#3a3f48"></span>حذف</button>
+      </div>
+    </div>
+    <div id="hint"></div>
+    <div class="group">
+      <h2>الموجود الآن</h2>
+      <div id="counts">
+        <div class="count"><b id="nSpeed">0</b><span>شارع بسرعته</span></div>
+        <div class="count"><b id="nCamera">0</b><span>ساهر</span></div>
+        <div class="count"><b id="nSignal">0</b><span>إشارة</span></div>
+        <div class="count"><b id="nBump">0</b><span>مطب</span></div>
+      </div>
+    </div>
+    </div>
+    <footer>
+      <div id="status"></div>
+      <button id="undo">تراجع عن آخر تعديل</button>
+      <button id="publish">تحديث الخريطة (نشر)</button>
+    </footer>
+  </aside>
+  <div id="map"></div>
+</div>
+
+<script>
+'use strict';
+// ---------------------------------------------------------------------------------------------- state
+const SPEEDS = [20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 140];
+const HINTS = {
+  move: 'حرّك الخريطة وقرّبها. اضغط على أي شيء أضفته لتعديله أو حذفه.',
+  speed: 'اضغط على الشارع (قرّب الخريطة أولًا)، يتلوّن الشارع كله بالأزرق، ثم اختر سرعته.',
+  camera: 'اضغط على مكان الساهر، ثم اختر السرعة التي يرصدها (أو بدون سرعة).',
+  signal: 'اضغط على مكان الإشارة لإضافتها.',
+  bump: 'اضغط على مكان المطب لإضافته.',
+  delete: 'اضغط على أي شيء أضفته لحذفه.'
+};
+let data = { version: 1, updated: 0, speeds: [], cameras: [], signals: [], bumps: [] };
+let tool = 'move';
+let popup = null;
+let dirty = false;          // changed since the last publish
+const history = [];         // snapshots for undo
+
+const $ = id => document.getElementById(id);
+const uid = () => Math.random().toString(36).slice(2, 10);
+
+function status(text, kind) { const s = $('status'); s.textContent = text; s.className = kind || ''; }
+
+function setTool(t) {
+  tool = t;
+  document.querySelectorAll('.tool').forEach(b => b.classList.toggle('on', b.dataset.tool === t));
+  $('hint').textContent = HINTS[t];
+  map.getCanvas().style.cursor = t === 'move' ? '' : 'crosshair';
+  closePopup();
+  select(null);
+}
+
+function closePopup() { if (popup) { popup.remove(); popup = null; } }
+
+// ---------------------------------------------------------------------------------------------- server
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} : {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Map-Editor': '1' }, body: JSON.stringify(body)
+  });
+  const j = await r.json().catch(() => ({ ok: false, message: 'رد غير مفهوم من البرنامج' }));
+  if (!r.ok && j.ok === undefined) j.ok = false;
+  return j;
+}
+
+let saving = Promise.resolve();
+function changed(snapshotBefore) {
+  if (snapshotBefore) { history.push(snapshotBefore); if (history.length > 40) history.shift(); }
+  dirty = true;
+  render();
+  status('تعديلات غير منشورة. اضغط «تحديث الخريطة» لنشرها.', '');
+  // kept on this PC at once, so nothing is lost if the page closes before publishing
+  saving = saving.then(() => api('/api/save', data)).catch(() => {});
+}
+
+// ---------------------------------------------------------------------------------------------- map
+maplibregl.setRTLTextPlugin('https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.2.3/mapbox-gl-rtl-text.min.js', true);
+const map = new maplibregl.Map({
+  container: 'map',
+  style: 'https://tiles.openfreemap.org/styles/liberty',
+  center: [49.95, 26.65], zoom: 9.4, attributionControl: { compact: true }
+});
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-left');
+map.dragRotate.disable();
+map.touchZoomRotate.disableRotation();
+
+const EMPTY = { type: 'FeatureCollection', features: [] };
+let tilesSource = 'openmaptiles';
+
+map.on('load', async () => {
+  // the vector source of the base style (its name, whatever the style calls it)
+  for (const [name, s] of Object.entries(map.getStyle().sources)) if (s.type === 'vector') { tilesSource = name; break; }
+  map.addSource('extras', { type: 'geojson', data: EMPTY });
+  map.addSource('sel', { type: 'geojson', data: EMPTY });
+  map.addLayer({ id: 'x-speed-casing', type: 'line', source: 'extras', filter: ['==', ['get', 'kind'], 'speed'],
+    layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#7a1216', 'line-width': 8, 'line-opacity': .55 } });
+  map.addLayer({ id: 'x-speed', type: 'line', source: 'extras', filter: ['==', ['get', 'kind'], 'speed'],
+    layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#e5484d', 'line-width': 5 } });
+  map.addLayer({ id: 'x-speed-label', type: 'symbol', source: 'extras', filter: ['==', ['get', 'kind'], 'speed'],
+    layout: { 'symbol-placement': 'line', 'symbol-spacing': 160, 'text-field': ['get', 'label'], 'text-size': 14,
+              'text-font': ['Noto Sans Bold'], 'text-rotation-alignment': 'viewport', 'text-allow-overlap': true },
+    paint: { 'text-color': '#fff', 'text-halo-color': '#9c1c21', 'text-halo-width': 3 } });
+  map.addLayer({ id: 'sel', type: 'line', source: 'sel', layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#3e6ae1', 'line-width': 7, 'line-opacity': .9 } });
+  const lamp = (id, color, dy) => map.addLayer({ id: 'x-signal-' + id, type: 'circle', source: 'extras', filter: ['==', ['get', 'kind'], 'signal'],
+    paint: { 'circle-color': color, 'circle-radius': 4.5, 'circle-stroke-color': '#20242b', 'circle-stroke-width': 2,
+             'circle-translate': [0, dy], 'circle-translate-anchor': 'viewport' } });
+  lamp('red', '#e5484d', -10); lamp('amber', '#f5a524', 0); lamp('green', '#2fd07a', 10);
+  map.addLayer({ id: 'x-bump', type: 'circle', source: 'extras', filter: ['==', ['get', 'kind'], 'bump'],
+    paint: { 'circle-color': '#f5a524', 'circle-radius': 8, 'circle-stroke-color': '#fff', 'circle-stroke-width': 2.5 } });
+  map.addLayer({ id: 'x-camera', type: 'circle', source: 'extras', filter: ['==', ['get', 'kind'], 'camera'],
+    paint: { 'circle-color': '#e5484d', 'circle-radius': 11, 'circle-stroke-color': '#fff', 'circle-stroke-width': 2.5 } });
+  map.addLayer({ id: 'x-camera-eye', type: 'circle', source: 'extras', filter: ['==', ['get', 'kind'], 'camera'],
+    paint: { 'circle-color': '#fff', 'circle-radius': 4 } });
+  map.addLayer({ id: 'x-label', type: 'symbol', source: 'extras', filter: ['in', ['get', 'kind'], ['literal', ['camera', 'bump']]],
+    layout: { 'text-field': ['get', 'label'], 'text-size': 13, 'text-font': ['Noto Sans Bold'], 'text-anchor': 'top', 'text-offset': [0, 1],
+              'text-allow-overlap': true },
+    paint: { 'text-color': '#7a1216', 'text-halo-color': '#fff', 'text-halo-width': 2 } });
+
+  await loaded;
+  render();
+  setTool('move');
+});
+
+// what is there already: asked for at once (the counts show before the map has drawn)
+const loaded = api('/api/data').then(got => {
+  if (got && got.data) data = normalise(got.data);
+  render();
+  status(got && got.published ? 'آخر نشر: ' + when(got.published) : 'لم يُنشر شيء بعد.', '');
+}).catch(() => status('تعذّر قراءة البيانات من البرنامج. أعد تشغيل map-editor.bat', 'bad'));
+
+const ITEM_LAYERS = ['x-camera', 'x-bump', 'x-signal-red', 'x-signal-amber', 'x-signal-green', 'x-speed'];
+
+function normalise(d) {
+  const out = { version: 1, updated: d.updated || 0, speeds: [], cameras: [], signals: [], bumps: [] };
+  for (const k of ['speeds', 'cameras', 'signals', 'bumps']) for (const it of (d[k] || [])) out[k].push({ ...it, id: it.id || uid() });
+  return out;
+}
+
+function when(ms) { return new Date(ms).toLocaleString('ar-SA-u-nu-latn-ca-gregory', { dateStyle: 'medium', timeStyle: 'short' }); }
+
+function render() {
+  const f = [];
+  for (const s of data.speeds) for (const line of s.lines)
+    f.push({ type: 'Feature', properties: { kind: 'speed', id: s.id, label: String(s.kmh) }, geometry: { type: 'LineString', coordinates: line } });
+  const point = (kind, it, label) => f.push({ type: 'Feature', properties: { kind, id: it.id, label }, geometry: { type: 'Point', coordinates: [it.lon, it.lat] } });
+  for (const c of data.cameras) point('camera', c, 'ساهر' + (c.kmh ? ' ' + c.kmh : ''));
+  for (const s of data.signals) point('signal', s, '');
+  for (const b of data.bumps) point('bump', b, 'مطب');
+  let src = null;
+  try { src = map.getSource('extras'); } catch (e) { /* the map's style has not arrived yet */ }
+  if (src) src.setData({ type: 'FeatureCollection', features: f });
+  $('nSpeed').textContent = data.speeds.length;
+  $('nCamera').textContent = data.cameras.length;
+  $('nSignal').textContent = data.signals.length;
+  $('nBump').textContent = data.bumps.length;
+  $('undo').disabled = history.length === 0;
+}
+
+function select(lines) {
+  const src = map.getSource('sel');
+  if (src) src.setData(lines ? { type: 'FeatureCollection', features: lines.map(l => ({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: l } })) } : EMPTY);
+}
+
+// ---------------------------------------------------------------------------------------------- geometry
+const R = 6371008.8, RAD = Math.PI / 180;
+function metres(a, b) { // two [lon, lat]
+  const x = (b[0] - a[0]) * RAD * Math.cos((a[1] + b[1]) / 2 * RAD), y = (b[1] - a[1]) * RAD;
+  return Math.sqrt(x * x + y * y) * R;
+}
+function toSegment(p, a, b) { // distance in metres from p to the segment a-b
+  const k = Math.cos(a[1] * RAD);
+  const bx = (b[0] - a[0]) * k, by = b[1] - a[1], px = (p[0] - a[0]) * k, py = p[1] - a[1];
+  const len2 = bx * bx + by * by;
+  const t = len2 < 1e-18 ? 0 : Math.max(0, Math.min(1, (px * bx + py * by) / len2));
+  const dx = px - bx * t, dy = py - by * t;
+  return Math.sqrt(dx * dx + dy * dy) * RAD * R;
+}
+function toLine(p, line) { let d = Infinity; for (let i = 0; i + 1 < line.length; i++) d = Math.min(d, toSegment(p, line[i], line[i + 1])); return d; }
+function linesOf(g) { return g.type === 'LineString' ? [g.coordinates] : g.type === 'MultiLineString' ? g.coordinates : []; }
+function simplify(line, tolM) { // Douglas-Peucker
+  if (line.length < 3) return line;
+  const keep = new Uint8Array(line.length); keep[0] = keep[line.length - 1] = 1;
+  const stack = [[0, line.length - 1]];
+  while (stack.length) {
+    const [a, b] = stack.pop(); let worst = 0, at = -1;
+    for (let i = a + 1; i < b; i++) { const d = toSegment(line[i], line[a], line[b]); if (d > worst) { worst = d; at = i; } }
+    if (worst > tolM) { keep[at] = 1; stack.push([a, at], [at, b]); }
+  }
+  return line.filter((_, i) => keep[i]);
+}
+const round = line => line.map(p => [+p[0].toFixed(6), +p[1].toFixed(6)]);
+
+/**
+ * The street under a click: the named road nearest to it and every piece of the same name that hangs together with it
+ * (the tiles cut a street into pieces, and another street of the same name elsewhere must not come along).
+ */
+function streetAt(lngLat, pixel) {
+  const p = [lngLat.lng, lngLat.lat];
+  const named = map.querySourceFeatures(tilesSource, { sourceLayer: 'transportation_name' });
+  let best = null, bestD = Infinity;
+  for (const f of named) for (const l of linesOf(f.geometry)) { const d = toLine(p, l); if (d < bestD) { bestD = d; best = f; } }
+  const reach = Math.max(14, 14 * 156543 * Math.cos(p[1] * RAD) / Math.pow(2, map.getZoom() + 1)); // about 14 px on the ground
+  if (best && bestD <= reach) {
+    const name = best.properties.name || best.properties['name:latin'] || best.properties.ref || '';
+    const key = f => (f.properties.name || '') + '|' + (f.properties.ref || '');
+    let pieces = [];
+    for (const f of named) if (key(f) === key(best)) for (const l of linesOf(f.geometry)) if (l.length > 1) pieces.push(l);
+    // connected to the piece that was clicked
+    const start = pieces.reduce((a, l) => toLine(p, l) < toLine(p, a) ? l : a, pieces[0]);
+    const got = [start], rest = pieces.filter(l => l !== start);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (let i = rest.length - 1; i >= 0; i--) {
+        const l = rest[i], ends = [l[0], l[l.length - 1]];
+        if (got.some(g => ends.some(e => toLine(e, g) < 35) || [g[0], g[g.length - 1]].some(e => toLine(e, l) < 35))) { got.push(l); rest.splice(i, 1); grew = true; }
+      }
+    }
+    return { name, lines: got.map(l => round(simplify(l, 1.5))) };
+  }
+  // no name there: the piece of road under the finger
+  const box = [[pixel.x - 8, pixel.y - 8], [pixel.x + 8, pixel.y + 8]];
+  const roads = map.queryRenderedFeatures(box).filter(f => f.sourceLayer === 'transportation' && f.geometry.type.includes('LineString'));
+  if (!roads.length) return null;
+  let line = null, d = Infinity;
+  for (const f of roads) for (const l of linesOf(f.geometry)) { const x = toLine(p, l); if (x < d) { d = x; line = l; } }
+  return line ? { name: '', lines: [round(simplify(line, 1.5))] } : null;
+}
+
+// ---------------------------------------------------------------------------------------------- tools
+function speedButtons(onPick, extra) {
+  const wrap = document.createElement('div'); wrap.className = 'speeds';
+  for (const s of SPEEDS) { const b = document.createElement('button'); b.textContent = s; b.onclick = () => onPick(s); wrap.appendChild(b); }
+  return wrap;
+}
+function pop(lngLat, title, sub, build) {
+  closePopup();
+  const el = document.createElement('div'); el.className = 'pop';
+  const h = document.createElement('h3'); h.textContent = title; el.appendChild(h);
+  if (sub) { const s = document.createElement('p'); s.textContent = sub; el.appendChild(s); }
+  build(el);
+  popup = new maplibregl.Popup({ closeOnClick: false, maxWidth: '300px' }).setLngLat(lngLat).setDOMContent(el).addTo(map);
+  popup.on('close', () => select(null));
+}
+function wide(el, text, cls, fn) { const b = document.createElement('button'); b.className = 'wide ' + (cls || ''); b.textContent = text; b.onclick = fn; el.appendChild(b); }
+
+function find(kind, id) {
+  const list = { speed: data.speeds, camera: data.cameras, signal: data.signals, bump: data.bumps }[kind];
+  return { list, item: list.find(x => x.id === id) };
+}
+function remove(kind, id) {
+  const before = JSON.stringify(data);
+  const { list, item } = find(kind, id);
+  if (!item) return;
+  list.splice(list.indexOf(item), 1);
+  closePopup();
+  changed(before);
+}
+function itemAt(pixel) {
+  const box = [[pixel.x - 9, pixel.y - 9], [pixel.x + 9, pixel.y + 9]];
+  const hit = map.queryRenderedFeatures(box, { layers: ITEM_LAYERS });
+  // a point before a line: a camera on a street with a limit is the smaller target
+  return hit.find(f => f.properties.kind !== 'speed') || hit[0] || null;
+}
+
+map.on('click', e => {
+  const at = [e.lngLat.lng, e.lngLat.lat];
+  if (tool === 'move' || tool === 'delete') {
+    const f = itemAt(e.point);
+    if (!f) { closePopup(); return; }
+    const { kind, id } = f.properties;
+    if (tool === 'delete') { remove(kind, id); return; }
+    const { item } = find(kind, id);
+    if (!item) return;
+    const names = { speed: 'سرعة الشارع', camera: 'ساهر', signal: 'إشارة مرور', bump: 'مطب' };
+    pop(e.lngLat, names[kind], kind === 'speed' ? (item.name || 'شارع بدون اسم') + ' · ' + item.kmh + ' كم/س' : (kind === 'camera' && item.kmh ? item.kmh + ' كم/س' : ''), el => {
+      if (kind === 'speed' || kind === 'camera') el.appendChild(speedButtons(s => { const before = JSON.stringify(data); item.kmh = s; closePopup(); changed(before); }));
+      wide(el, 'حذف', 'danger', () => remove(kind, id));
+    });
+    return;
+  }
+  if (tool === 'speed') {
+    if (map.getZoom() < 12.5) { status('قرّب الخريطة أكثر لتحديد الشارع.', 'bad'); return; }
+    const st = streetAt(e.lngLat, e.point);
+    if (!st) { status('ما لقيت شارع هنا. اضغط على خط الشارع نفسه.', 'bad'); return; }
+    select(st.lines);
+    pop(e.lngLat, st.name || 'شارع بدون اسم', 'اختر سرعة الشارع (كم/س)', el => {
+      el.appendChild(speedButtons(s => {
+        const before = JSON.stringify(data);
+        data.speeds.push({ id: uid(), name: st.name, kmh: s, lines: st.lines });
+        closePopup(); select(null); changed(before);
+      }));
+    });
+    return;
+  }
+  if (tool === 'camera') {
+    pop(e.lngLat, 'ساهر', 'السرعة التي يرصدها (كم/س)', el => {
+      const add = kmh => { const before = JSON.stringify(data); data.cameras.push({ id: uid(), lon: +at[0].toFixed(6), lat: +at[1].toFixed(6), kmh }); closePopup(); changed(before); };
+      el.appendChild(speedButtons(add));
+      wide(el, 'بدون سرعة', '', () => add(0));
+    });
+    return;
+  }
+  const before = JSON.stringify(data);
+  (tool === 'signal' ? data.signals : data.bumps).push({ id: uid(), lon: +at[0].toFixed(6), lat: +at[1].toFixed(6) });
+  changed(before);
+});
+
+document.querySelectorAll('.tool').forEach(b => b.onclick = () => setTool(b.dataset.tool));
+document.querySelectorAll('.city').forEach(b => b.onclick = () => { const [lon, lat, z] = b.dataset.at.split(',').map(Number); map.flyTo({ center: [lon, lat], zoom: z, duration: 900 }); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') setTool('move'); });
+
+$('undo').onclick = () => {
+  const last = history.pop();
+  if (!last) return;
+  data = JSON.parse(last);
+  closePopup(); select(null);
+  dirty = true; render();
+  status('رجعت خطوة. اضغط «تحديث الخريطة» لنشر الحالة الحالية.', '');
+  saving = saving.then(() => api('/api/save', data)).catch(() => {});
+};
+
+$('publish').onclick = async () => {
+  const b = $('publish');
+  b.disabled = true;
+  status('جاري النشر…', '');
+  try {
+    await saving;
+    const r = await api('/api/publish', data);
+    if (r.ok) {
+      dirty = false;
+      if (r.updated) data.updated = r.updated;
+      status('تم النشر ✓\nعلى الشاشة: الإعدادات ← الملاحة ← إضافات الخريطة ← تحديث (وتتحدّث لحالها مرة في اليوم).', 'ok');
+    } else status('ما تم النشر: ' + (r.message || 'خطأ غير معروف'), 'bad');
+  } catch (err) {
+    status('ما تم النشر: ' + err, 'bad');
+  }
+  b.disabled = false;
+};
+
+window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+</script>
+</body>
+</html>

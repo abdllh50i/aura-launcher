@@ -333,6 +333,7 @@ class MapsActivity : Activity() {
         tripEta.text = Units.duration(p.timeLeft, arabic)
         tripLeft.text = "${Units.distance(p.remaining, arabic)} · ${getString(R.string.maps_arrival)} ${Units.arrival(p.timeLeft, Prefs.clock24)}"
         speedText.text = "${p.speedKmh}"
+        speedText.setTextColor(if (RoadWatch.state.over) Palette.danger else Palette.text) // (over the street's limit)
     }
 
     /** The turn whose arrow is on the map (the route and the step's index). */
@@ -626,6 +627,10 @@ class MapsActivity : Activity() {
         speedBubble.addView(speedText, lp(WRAP, WRAP))
         speedBubble.addView(label(12f, Palette.text2, Fonts.REGULAR, gravity = Gravity.CENTER).apply { setText(R.string.maps_kmh) }, lp(WRAP, WRAP))
         root.addView(speedBubble, flp(92.dp, 92.dp, Gravity.BOTTOM or Gravity.END).apply { setMargins(0, 0, 18.dp, 40.dp); marginEnd = 18.dp })
+        // the owner's additions: the street's limit above the speed, and the camera or bump ahead at the top beside the
+        // compass (beside the limit it covered the car while navigating)
+        root.addView(RoadHud(this, parts = RoadHud.Parts.SIGN), flp(WRAP, WRAP, Gravity.BOTTOM or Gravity.END).apply { setMargins(0, 0, 33.dp, 138.dp); marginEnd = 33.dp })
+        root.addView(RoadHud(this, parts = RoadHud.Parts.ALERT), flp(WRAP, WRAP, Gravity.TOP or Gravity.END).apply { setMargins(0, 31.dp, 94.dp, 0); marginEnd = 94.dp })
         return root
     }
 

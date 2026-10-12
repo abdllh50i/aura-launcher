@@ -77,7 +77,12 @@ object OfflineMaps {
             }
         }
         when (Prefs.raw.getString(KEY_STATE, "none")) {
-            "ready" -> status = Status(Phase.READY, updatedAt = Prefs.raw.getLong(KEY_UPDATED, 0L), sizeBytes = size(c))
+            "ready" -> {
+                status = Status(Phase.READY, updatedAt = Prefs.raw.getLong(KEY_UPDATED, 0L), sizeBytes = size(c))
+                // kept from when the area was larger (1.7: the whole province): trimmed to today's, by itself
+                val st = store
+                if (st != null && st.meta("region") != Region.ID) main.postDelayed({ trimKept(c, st) }, 15_000L)
+            }
             "downloading" -> {
                 status = Status(Phase.PAUSED, sizeBytes = size(c))
                 main.postDelayed(autoResume, 30_000L) // where it stopped (the unit slept or restarted)
@@ -128,11 +133,60 @@ object OfflineMaps {
 
     private fun openStore(f: File): TileStore = TileStore(f).also { store = it; TileServer.store = it }
 
+    /** Removes the tiles and the routing squares that are outside the area; how many tiles went. */
+    private fun trim(st: TileStore, base: File, tiles: LongArray, roads: LongArray): Int {
+        val keep = HashSet<Long>((tiles.size + roads.size) * 2)
+        for (k in tiles) keep.add(k)
+        for (k in roads) keep.add(k)
+        val gone = st.keepOnly(keep)
+        File(base, "segments4").listFiles()?.forEach { f ->
+            if (f.name.endsWith(".rd5") && f.name.removeSuffix(".rd5") !in Region.SEGMENTS) f.delete()
+        }
+        if (gone > 0) Log.i(TAG, "trimmed to ${Region.ID}: $gone tiles removed")
+        return gone
+    }
+
+    /**
+     * A finished map of an older, larger area: what is outside today's goes, the search index is made again from what
+     * is left and the file is compacted. No internet needed when the new area lies inside the old one (it does: 1.7's
+     * province held all of it); anything missing is fetched like an interrupted download.
+     */
+    private fun trimKept(c: Context, st: TileStore) {
+        if (running || status.phase != Phase.READY) return
+        running = true
+        stop = false
+        Thread({
+            var missing = false
+            try {
+                val tiles = Region.tiles()
+                val roads = Region.roadTiles(st)
+                if (trim(st, dir(c), tiles, roads) > 0) {
+                    set(Status(Phase.INDEXING, 0, 1, sizeBytes = st.bytes()), force = true)
+                    PlaceIndex.build(st, { d, t -> set(Status(Phase.INDEXING, d.toLong(), t.toLong(), sizeBytes = st.bytes())) }, { stop })
+                    check()
+                    st.compact()
+                }
+                val have = st.keys()
+                missing = tiles.any { it !in have } || Region.SEGMENTS.any { !File(dir(c), "segments4/$it.rd5").isFile }
+                if (!missing) st.setMeta("region", Region.ID)
+            } catch (t: Throwable) {
+                Log.w(TAG, "trim: $t") // (tried again at the next start: the area's name is not written)
+            } finally {
+                running = false
+            }
+            if (missing) {
+                Prefs.raw.edit().putString(KEY_STATE, "downloading").apply()
+                set(Status(Phase.PAUSED, sizeBytes = size(c)), force = true)
+                main.postDelayed(autoResume, 5_000L)
+            } else set(Status(Phase.READY, updatedAt = Prefs.raw.getLong(KEY_UPDATED, 0L), sizeBytes = size(c)), force = true)
+        }, "aura-offline-trim").start()
+    }
+
     // -------------------------------------------------------------------------------------------------------- work
     private fun work(c: Context) {
         try {
             val base = dir(c)
-            if (base.usableSpace < 600L * 1024 * 1024) throw IOException("space")
+            if (base.usableSpace < 250L * 1024 * 1024) throw IOException("space")
             val st = store ?: openStore(File(base, "map.db"))
             // debug builds can take a small test area instead (setprop debug.aura.offline small)
             val small = com.abdllh.aura.BuildConfig.DEBUG && com.abdllh.aura.system.SystemProps.get("debug.aura.offline") == "small"
@@ -143,7 +197,7 @@ object OfflineMaps {
             // progress in one bar: routing data counts as about as many units as 1500 tiles, the road tiles (known
             // only once the zoom-12 tiles are in) are guessed until then
             val segUnits = 1500L
-            val roadGuess = if (small) 300L else 4000L
+            val roadGuess = if (small) 300L else 700L
             val total = AtomicLong(segUnits + tiles.size + GLYPH_RANGES.size * FONT_STACKS.size + roadGuess)
             val done = AtomicLong((tiles.size - todo.size).toLong())
             val bytes = AtomicLong(0)
@@ -245,12 +299,16 @@ object OfflineMaps {
             done.addAndGet((roads.size - roadTodo.size).toLong())
             Log.i(TAG, "road tiles: ${roads.size} (${roadTodo.size} to fetch)")
             fetchTiles(roadTodo)
+            // (begun for an older, larger area: what is outside today's goes before the index is made)
+            val trimmed = if (small) 0 else trim(st, base, tiles, roads)
 
             // 4. the search index
             set(Status(Phase.INDEXING, 0, 1, bytes.get(), sizeBytes = st.bytes()), force = true)
             PlaceIndex.build(st, { d, t -> set(Status(Phase.INDEXING, d.toLong(), t.toLong(), bytes.get(), sizeBytes = st.bytes())) }, { stop })
             check()
+            if (trimmed > 0) st.compact()
             st.setMeta("completed", System.currentTimeMillis().toString())
+            st.setMeta("region", Region.ID)
             st.setMeta("tiles", template.get())
             val now = System.currentTimeMillis()
             Prefs.raw.edit().putString(KEY_STATE, "ready").putLong(KEY_UPDATED, now).apply()

@@ -23,6 +23,8 @@ object MapStyle {
     const val SRC_ROUTE_NEAR = "aura-route-near"
     /** The next turn: a short line along the route through it and its arrow head (a polygon). */
     const val SRC_TURN = "aura-turn"
+    /** What the owner added with the map editor ([MapExtras]): cameras, signals, bumps, streets with their limit. */
+    const val SRC_EXTRAS = "aura-extras"
 
     /** The layers a tap looks in for a place ([AuraMap.onPoiTap]). */
     val POI_LAYERS = arrayOf("poi-dot-a", "poi-dot-b", "poi-dot-c", "poi-dot-d", "poi-name-a", "poi-name-b", "poi-name-c", "poi-name-d")
@@ -202,7 +204,7 @@ object MapStyle {
                "paint":{"line-color":"#FFFFFF","line-width":${width(8 to 2.8, 14 to 4.8, 16 to 6.8, 18 to 9.5)}}}""",
             """{"id":"turn-head","type":"fill","source":"$SRC_TURN","filter":["==","${'$'}type","Polygon"],
                "paint":{"fill-color":"#FFFFFF"}}"""
-        ) + pois + listOf(
+        ) + pois + extras(dark, c.roadHalo, bold) + listOf(
             // labels
             """{"id":"water-name","type":"symbol","source":"omt","source-layer":"water_name","minzoom":10,
                "layout":{"text-field":$name,"text-font":$regular,"text-size":13,"text-max-width":8},
@@ -250,7 +252,44 @@ object MapStyle {
         val glyphs = if (local) com.abdllh.aura.nav.offline.TileServer.glyphsUrl else GLYPHS
         return """{"version":8,"name":"Aura","glyphs":"$glyphs",
           "sources":{"omt":{"type":"vector",$source,"attribution":"$ATTRIBUTION"},
-            "$SRC_ROUTE":$empty,"$SRC_ROUTE_NEAR":$empty,"$SRC_TURN":$empty},
+            "$SRC_ROUTE":$empty,"$SRC_ROUTE_NEAR":$empty,"$SRC_TURN":$empty,"$SRC_EXTRAS":$empty},
           "layers":[${layers.joinToString(",")}]}"""
+    }
+
+    /**
+     * The owner's additions, drawn without icons like the places: a camera is a red disc with a white eye and its
+     * word under it, a bump an amber dot with its word, a traffic signal its three lamps (three dots that keep their
+     * order whichever way the map is turned), and a street's limit is written along it.
+     */
+    private fun extras(dark: Boolean, halo: String, bold: String): List<String> {
+        fun kind(k: String) = """["==",["get","kind"],"$k"]"""
+        val ring = if (dark) "#14171B" else "#FFFFFF"
+        fun lamp(id: String, color: String, dy: Int) =
+            """{"id":"extras-signal-$id","type":"circle","source":"$SRC_EXTRAS","minzoom":14,"filter":${kind("signal")},
+               "paint":{"circle-color":"$color","circle-radius":3.6,"circle-stroke-color":"#20242B","circle-stroke-width":1.6,
+               "circle-translate":[0,$dy],"circle-translate-anchor":"viewport"}}"""
+        fun word(id: String, k: String, color: String, minzoom: Double, size: Double, dy: Double) =
+            """{"id":"extras-$id-name","type":"symbol","source":"$SRC_EXTRAS","minzoom":$minzoom,"filter":${kind(k)},
+               "layout":{"text-field":["get","label"],"text-font":$bold,"text-size":$size,"text-anchor":"top","text-offset":[0,$dy],
+               "text-allow-overlap":true,"text-ignore-placement":true},
+               "paint":{"text-color":"$color","text-halo-color":"$halo","text-halo-width":1.8}}"""
+        return listOf(
+            """{"id":"extras-speed","type":"symbol","source":"$SRC_EXTRAS","minzoom":13,"filter":${kind("speed")},
+               "layout":{"symbol-placement":"line","symbol-spacing":230,"text-field":["get","label"],"text-font":$bold,
+               "text-size":["interpolate",["linear"],["zoom"],13,12,17,16],"text-rotation-alignment":"viewport","text-keep-upright":true,
+               "text-padding":2},
+               "paint":{"text-color":"${if (dark) "#FF8A8E" else "#C9272D"}","text-halo-color":"$halo","text-halo-width":2.2}}""",
+            lamp("red", "#E5484D", -8), lamp("amber", "#F5A524", 0), lamp("green", "#2FD07A", 8),
+            """{"id":"extras-bump","type":"circle","source":"$SRC_EXTRAS","minzoom":13.5,"filter":${kind("bump")},
+               "paint":{"circle-color":"#F5A524","circle-radius":["interpolate",["linear"],["zoom"],13.5,4,17,7.5],
+               "circle-stroke-color":"$ring","circle-stroke-width":2}}""",
+            """{"id":"extras-camera","type":"circle","source":"$SRC_EXTRAS","minzoom":10,"filter":${kind("camera")},
+               "paint":{"circle-color":"#E5484D","circle-radius":["interpolate",["linear"],["zoom"],10,4,14,8,17,10.5],
+               "circle-stroke-color":"$ring","circle-stroke-width":2.2}}""",
+            """{"id":"extras-camera-eye","type":"circle","source":"$SRC_EXTRAS","minzoom":13,"filter":${kind("camera")},
+               "paint":{"circle-color":"#FFFFFF","circle-radius":["interpolate",["linear"],["zoom"],13,2.2,17,3.8]}}""",
+            word("bump", "bump", if (dark) "#F7BE5C" else "#9A6200", 15.0, 12.5, 0.75),
+            word("camera", "camera", if (dark) "#FF8A8E" else "#C9272D", 12.5, 13.5, 0.9)
+        )
     }
 }

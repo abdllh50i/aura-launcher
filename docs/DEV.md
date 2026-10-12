@@ -132,14 +132,17 @@ Debug builds: `MapsActivity --es mock_loc "lat,lon,bearing"` and `--ez simulate 
 needs `hw.gps = yes` for `adb emu geo fix`. A release build can be tried on the emulator with `-PwithEmulatorAbi`.
 
 ### Offline map (`nav/offline/`)
-Settings → Navigation → Offline map downloads the Eastern Province once (`OfflineMaps.kt`, resumable, waits out internet
-drops, resumes after a restart): BRouter's routing data `segments4/E45_N25, E50_N25, E45_N20, E50_N20.rd5` (brouter.de,
-~26 MB, lon 45–55 / lat 20–30), the Noto Sans glyph ranges of the labels, and every OpenFreeMap tile of `Region.kt` (street
-level, zoom 14, over the populated band Jubail–Dammam–Khobar–Qatif–Abqaiq–Al-Ahsa and Hafr Al-Batin, Khafji, Qaryat
-Al-Ulya; zoom 11–12 over the roads to Kuwait, Riyadh and Salwa; zoom ≤10 over the whole province: ~20 800 tiles), then
-zoom 13–14 tiles along the motorways/trunk/primary/secondary roads of those zoom-12 areas (`Region.roadTiles`, found in the
-tiles themselves), then builds the search index. All in `files/offline/map.db` (SQLite, WAL: tiles as sent (gzip), glyphs,
-`places`). About 150 MB.
+Settings → Navigation → Offline map downloads Jubail, Dammam–Dhahran–Khobar and the roads between them once
+(`OfflineMaps.kt`, resumable, waits out internet drops, resumes after a restart): BRouter's routing data
+`segments4/E45_N25, E50_N25.rd5` (brouter.de, ~17 MB, lon 45–55 / lat 25–30), the Noto Sans glyph ranges of the labels,
+and every OpenFreeMap tile of `Region.kt` (street level, zoom 14 — every street and every place the tiles have — over the
+two cities and King Fahd airport; zoom 11–12 over the stretch between them; zoom ≤10 around them: ~1 300 tiles), then
+zoom 13–14 tiles along the motorways/trunk/primary/secondary roads of that stretch (`Region.roadTiles`, found in the
+tiles themselves, ~1 000), then builds the search index. All in `files/offline/map.db` (SQLite, WAL: tiles as sent
+(gzip), glyphs, `places`). 34 MB, a minute on a good line. Up to 1.7 the area was the whole Eastern Province (~150 MB):
+the owner asked for the three cities only. A unit that holds the old area is trimmed to the new one at the next start
+(`OfflineMaps.trimKept`: the store's `region` fact is not `Region.ID` → tiles outside it deleted, the two southern
+routing files removed, the search index rebuilt, `VACUUM`), without downloading anything.
 * `TileServer.kt`: http://127.0.0.1:47821 (fixed port: MapLibre's cache keys stay valid across restarts) serves
   `/t/z/x/y.pbf` and `/f/{fontstack}/{range}.pbf` from the store, else from OpenFreeMap (503 when neither: not cached;
   a missing glyph range answers 204 so labels never hold a tile up). A thread per connection (a stored tile never waits
@@ -160,6 +163,32 @@ tiles themselves), then builds the search index. All in `files/offline/map.db` (
 * Debug: `setprop debug.aura.offline small` downloads only a test area (Jubail + a stretch of the Dammam highway, two
   routing squares, ~27 MB). Offline tests on the emulator: `svc data disable` + an iptables REJECT on every interface
   except DNS and 10.0.2.2, and delete `files/mbgl-offline.db` (MapLibre's own cache) with the app stopped.
+
+### Map additions: limits, cameras, signals, bumps (`tools/map-editor`, `nav/MapExtras.kt`)
+What the map data does not have, the owner draws himself and every unit picks up.
+* **The editor** (`tools/map-editor/map-editor.bat` → `server.py`, Python standard library, http://127.0.0.1:8765, this
+  PC only: it answers no other host name and no other site's page). `index.html` is a MapLibre GL JS map (OpenFreeMap
+  "liberty") with six tools: move, street speed (a click takes the nearest named road of the tiles and the pieces of
+  the same name joined to it, simplified, and asks for the limit), camera (with the speed it checks), signal, bump,
+  delete. Every change is saved at once to `data/additions.json` (ignored by git); **تحديث الخريطة (نشر)** publishes.
+* **Publishing** writes `additions.json` to the branch `mapdata` of the GitHub repository through `gh api` (the account
+  `gh` is logged in to; the branch is made the first time, an orphan with that one file — never a copy of the code).
+  `--dry-run` publishes to `data/published.json` instead; `--repo owner/name` for another repository.
+* **Format** (version 1; a unit ignores any other version):
+  `{"version":1,"updated":ms,"speeds":[{"id","name","kmh","lines":[[[lon,lat],…],…]}],"cameras":[{"id","lat","lon","kmh"}],"signals":[{"id","lat","lon"}],"bumps":[{"id","lat","lon"}]}`
+* **On the unit** `MapExtras` keeps the last copy in `files/map-extras.json` (so it works without internet), fetches
+  `api.github.com/repos/{repo}/contents/additions.json?ref=mapdata` (raw; `raw.githubusercontent.com` if that fails)
+  once a day when there is internet, and at once from Settings → Navigation → Map additions → Update (`ExtrasCard`).
+  The repository is the updater's (`Prefs.updateRepo`). `MapStyle.extras` draws them from the GeoJSON source
+  `aura-extras`: the limit as numbers along the street, a camera as a red disc, a signal as three lamps, a bump as an
+  amber dot (circles and text, like the places: no icon symbols).
+* **While driving** `RoadWatch` reads every fix: the limit of the marked street the car is on (within 24 m of the line and
+  heading along it, held 4 s over gaps), and the nearest camera (600 m) or bump (180 m) ahead of it (±55°), with a tone
+  the first time each comes within reach. `RoadHud` shows them on the Maps screen (the limit as its sign above the
+  speed, red when the car is over it; the warning at the top) and on the home screen's map. Only while fixes come: the
+  home screen or the map in front, or a route being driven.
+* Debug: `setprop debug.aura.extras http://10.0.2.2:8765/api/data` reads the editor on the PC directly (run it with
+  `--dry-run`); `adb emu geo fix` + `MapsActivity --ez simulate true` drives a route past them.
 
 ## Aura Music (`music/`)
 `Library.kt` reads MediaStore (internal storage, `/mnt/media_rw/udisk*`, SD card) and groups by album / artist / folder;

@@ -183,9 +183,10 @@ class DisplaySoundPage(private val act: SettingsActivity) : Page(R.string.set_di
 // ---------------------------------------------------------------------------------------------- Navigation
 class NavigationPage(private val act: SettingsActivity) : Page(R.string.set_navigation, R.drawable.ic_nav) {
     private var offline: OfflineCard? = null
+    private var extras: ExtrasCard? = null
 
-    override fun onShow() { offline?.attach() }
-    override fun onHide() { offline?.detach() }
+    override fun onShow() { offline?.attach(); extras?.attach() }
+    override fun onHide() { offline?.detach(); extras?.detach() }
 
     override fun build(ctx: Context): View {
         val col = ctx.pageColumn()
@@ -227,6 +228,12 @@ class NavigationPage(private val act: SettingsActivity) : Page(R.string.set_navi
         col.addRow(card.view, 8)
         col.addRow(ctx.hint(ctx.getString(R.string.off_hint)), 10)
         card.attach()
+
+        // what the owner added to the map: cameras, bumps, signals, streets' limits
+        val more = ExtrasCard(ctx).also { extras = it }
+        col.addRow(more.view, 14)
+        col.addRow(ctx.hint(ctx.getString(R.string.extras_hint)), 10)
+        more.attach()
         return col
     }
 

@@ -163,8 +163,20 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
             style = s
             pushRoute()
             pushTurn()
+            pushExtras()
             placeOverlays()
             onReady?.invoke()
+        }
+    }
+
+    /** The owner's additions ([MapExtras]) on the map; again whenever a newer set was fetched. */
+    private val extrasChanged: () -> Unit = { pushExtras() }
+
+    private fun pushExtras() {
+        val s = style ?: return
+        try {
+            s.getSourceAs<GeoJsonSource>(MapStyle.SRC_EXTRAS)?.setGeoJson(MapExtras.geoJson(Locale.getDefault().language == "ar"))
+        } catch (_: Throwable) {
         }
     }
 
@@ -203,6 +215,8 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
     fun onStart() {
         mapView.onStart()
         firstFrame = FirstFrame().also { mapView.addOnDidFinishRenderingFrameListener(it) }
+        MapExtras.addListener(extrasChanged)
+        pushExtras() // (fetched while this map was not on the screen)
     }
 
     fun onResume() {
@@ -215,6 +229,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
 
     fun onStop() {
         if (guarded) MapGuard.ok(app) // still alive: the engine did not crash
+        MapExtras.removeListener(extrasChanged)
         mapView.removeOnDidFinishRenderingFrameListener(firstFrame)
         mapView.onStop()
     }

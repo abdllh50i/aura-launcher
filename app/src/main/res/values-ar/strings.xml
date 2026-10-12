@@ -66,6 +66,17 @@
     <string name="poi_park">حديقة ورياضة</string>
     <string name="poi_sight">معلم</string>
     <string name="poi_public">خدمة حكومية</string>
+    <string name="road_camera">ساهر</string>
+    <string name="road_bump">مطب</string>
+    <string name="extras_title">إضافات الخريطة</string>
+    <string name="extras_none">ما فيه إضافات محمّلة. اضغط تحديث.</string>
+    <string name="extras_summary">%1$s ساهر · %2$s مطب · %3$s إشارة · %4$s شارع بسرعته</string>
+    <string name="extras_updated">منشورة %1$s</string>
+    <string name="extras_update">تحديث</string>
+    <string name="extras_updating">جاري التحديث…</string>
+    <string name="extras_done">محدّثة</string>
+    <string name="extras_failed">ما قدرت أحدّث (الإنترنت؟)</string>
+    <string name="extras_hint">الساهر والمطبات والإشارات وسرعات الشوارع اللي أضافها صاحب النظام على الخريطة. تطلع على الخريطة، وسرعة الشارع تطلع لك كلوحة وأنت تمشي، والساهر أو المطب اللي قدامك ينبّهك. تتحدّث لحالها مرة في اليوم إذا فيه نت، وتشتغل بعدها بدون نت.</string>
     <string name="set_nav_google_hint">خريطة قوقل نفسها ما تشتغل إلا في تطبيق قوقل. عشان تستعملها بدون نت: افتح خرائط Google ← صورتك ← الخرائط بلا إنترنت ← اختيار خريطتك، وحمّل منطقتك مرة وحدة. بعدها اختر خرائط Google فوق: «إلى أين؟» والمنزل والعمل تفتح عليها.</string>
     <string name="maps_searching">جاري البحث…</string>
     <string name="maps_offline">لا يوجد اتصال بالإنترنت</string>
@@ -409,8 +420,8 @@
 
     <!-- الخريطة بدون إنترنت (الإعدادات ← الملاحة) -->
     <string name="off_section">الخريطة بدون إنترنت</string>
-    <string name="off_title">المنطقة الشرقية</string>
-    <string name="off_none">مو محمّلة · حوالي 150 ميجا</string>
+    <string name="off_title">الجبيل · الدمام · الخبر</string>
+    <string name="off_none">مو محمّلة · حوالي 35 ميجا</string>
     <string name="off_downloading">يحمّل… %1$s%% · %2$s ميجا</string>
     <string name="off_waiting">ينتظر الإنترنت…</string>
     <string name="off_indexing">يجهّز البحث… %1$s%%</string>
@@ -424,5 +435,5 @@
     <string name="off_delete">حذف</string>
     <string name="off_delete_title">تحذف الخريطة؟</string>
     <string name="off_delete_text">الخريطة والمسارات والبحث بيحتاجون الإنترنت من جديد.</string>
-    <string name="off_hint">الخريطة والمسارات والبحث تشتغل بدون إنترنت داخل الشرقية (الجبيل، الدمام، الخبر، القطيف، الأحساء، حفر الباطن، الخفجي…). تحميل مرة وحدة حوالي 150 ميجا: الأفضل على واي فاي قوي أو باقة كافية. ومع الإنترنت المسار يجي من الإنترنت أول (فيه أسماء الشوارع).</string>
+    <string name="off_hint">الخريطة والمسارات والبحث تشتغل بدون إنترنت في الجبيل والدمام والظهران والخبر بكل شوارعها ومحلاتها، والطرق اللي بينها. تحميل مرة وحدة حوالي 35 ميجا. ومع الإنترنت المسار يجي من الإنترنت أول (فيه أسماء الشوارع).</string>
 </resources>

@@ -47,6 +47,27 @@ class TileStore(val file: File) {
         }
     }
 
+    /** Removes every tile that is not in [keep] (the area got smaller); how many went. */
+    fun keepOnly(keep: Set<Long>): Int {
+        val gone = keys().filter { it !in keep }
+        if (gone.isEmpty()) return 0
+        db.beginTransaction()
+        try {
+            val st = db.compileStatement("DELETE FROM tiles WHERE k = ?")
+            for (k in gone) {
+                st.bindLong(1, k)
+                st.executeUpdateDelete()
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        return gone.size
+    }
+
+    /** Gives the room of removed tiles back to the unit (the file is rewritten: seconds for a map of this size). */
+    fun compact() = try { db.execSQL("VACUUM") } catch (_: Throwable) { }
+
     /** The tiles of one zoom level, in key order, a page at a time (the place index reads them all). */
     fun forEachTile(z: Int, each: (Long, ByteArray) -> Unit) {
         val lo = TileMath.key(z, 0, 0)
