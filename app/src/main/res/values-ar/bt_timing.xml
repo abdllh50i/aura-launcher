@@ -13,8 +13,8 @@
     <string name="bt_timing_details_sub">تعرض وصول الردود، وتقدر تنسخ تقريرًا إذا ما ظهر التوقيت.</string>
     <string name="bt_timing_copy">نسخ التقرير</string>
     <string name="upd_rollback">الرجوع إلى %1$s</string>
-    <string name="upd_rollback_sub">الإصدار السابق (%1$s) محفوظ في الجهاز، وتقدر ترجع له بدون إنترنت.</string>
-    <string name="upd_rollback_confirm">ترجع إلى %1$s وتعيد برنامج البلوتوث الأصلي؟ إعداداتك والخرائط المحملة تبقى محفوظة، ويعيد البلوتوث الاتصال مرة.</string>
+    <string name="upd_rollback_sub">الإصدار المستقر (%1$s) محفوظ في الجهاز. الرجوع يعمل بدون إنترنت ويعيد تشغيل الشاشة.</string>
+    <string name="upd_rollback_confirm">ترجع إلى %1$s وتعيد تشغيل الشاشة لإزالة تعديل البلوتوث؟ إعداداتك والخرائط المحملة تبقى محفوظة.</string>
     <string name="upd_rollback_action">الرجوع للإصدار السابق</string>
     <string name="upd_rolling_back">جاري الرجوع للإصدار السابق…</string>
 </resources>

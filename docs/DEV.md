@@ -176,6 +176,11 @@ Beta 2 corrects the AVRCP gate to the stock metadata request's `0x165038` (beta 
 After GOC restarts, BC03 must restart too: its reader keeps the old PTY open indefinitely. The worker verifies the
 running executable and BC03's current slave descriptor, then AMRI re-registers its callback. It recognizes beta 1's
 overlay SHA for migration/removal. The update page exposes live reply state and a local copyable diagnostic report.
+Beta 3 iterates GOC and BC03 PIDs individually; expanding multiple PIDs in one /proc path was the actual unit's
+beta 2 failure. AT#MK refreshes metadata independently of timing every six seconds and after skips. Known live
+executable overlays detach with `umount -l`. Stable recovery is independent of experiment health and reboots after
+the verified installation, clearing all mount namespaces while keeping package data. It never reapplies the
+experiment after a failed recovery install.
 
 Fallback timing (1.6): the unmodified stack never says. UartConfig.ini `bt_module=0` → the AT# ("atpound") driver
 over `/dev/goc_serial` (the GOC stack for the AIC8800, `persist.sys.bt.aic8800=true`); its progress report is the

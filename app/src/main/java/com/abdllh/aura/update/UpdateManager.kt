@@ -280,9 +280,10 @@ object UpdateManager {
                 val rel = Release("v${Rollback.VERSION}", "", "", false, "", apk.name, "", apk.length(), Rollback.SHA256, null)
                 verify(rel, apk, rollback = true)
                 // The preceding app must stay on the stable channel after it starts.
-                Prefs.updateBeta = false
-                Prefs.availableTag = ""
-                Prefs.releaseCache = ""
+                if (!Prefs.raw.edit().putBoolean("updateBeta", false).putString("availableTag", "")
+                        .putString("releaseCache", "").commit()) {
+                    throw UpdateException(UpdateException.Kind.STORAGE, "Could not save the stable update channel")
+                }
                 Rollback.install(app, apk)
                 onInstalled()
             } catch (t: Throwable) {

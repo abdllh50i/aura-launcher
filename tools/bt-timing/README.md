@@ -1,5 +1,28 @@
 # K2501 Bluetooth timing experiment (1.6.1 beta)
 
+## Beta 3 repair from device diagnostics
+
+The unit reports two GOC PIDs. Beta 2 expanded that list into a single unquoted
+`/proc/PID/exe` lookup, which hashed a directory instead of the executable and
+rejected the running patch. All executable checks now iterate and quote each
+PID. Reports include each PID's digest separately; BC03 descriptor checks also
+accept multiple processes.
+
+AT#MK refreshes phone metadata every six seconds while connected, including
+when timing is switched off. A transport skip requests an earlier refresh.
+Metadata and status commands alternate so they are not issued together.
+
+An executing ELF pins its bind mount: ordinary unmount may fail with EBUSY.
+Known overlays now use lazy detach, including repeated known mount layers.
+Recovery stops polling and turns the experiment off synchronously, attempts
+detachment, then installs the verified stable APK regardless of the experiment's
+health. After success it reboots; this clears all process mappings and temporary
+mounts. On an install failure it restores the original service and keeps the
+experiment off. The confirmation dialog states that the unit will restart.
+
+`fork_fixture.c` is an emulator-only test helper, never included in the APK.
+It reproduces two live PIDs and a busy executing bind mount on Android's kernel.
+
 ## Beta 2 repair
 
 Beta 1 used `0x165048` as its connected gate. The original metadata request's
@@ -61,7 +84,7 @@ require the root local ADB service already used by this ROM.
 ```powershell
 py -3 tools/bt-timing/make_patch.py --stock PATH_TO_ORIGINAL_GOC --ndk PATH_TO_NDK
 py -3 tools/bt-timing/prepare_rollback.py # or --apk PATH_TO_SIGNED_1.6.0_APK
-.\gradlew.bat :app:assembleRelease '-PappVersionName=1.6.1-beta.2'
+.\gradlew.bat :app:assembleRelease '-PappVersionName=1.6.1-beta.3'
 ```
 
 The generator uses Windows LLVM tools from Android NDK. The delta is committed;

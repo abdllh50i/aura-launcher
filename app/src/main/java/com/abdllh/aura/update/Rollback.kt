@@ -30,7 +30,7 @@ object Rollback {
 
     /** Detach the install from this process: replacing the APK kills AMRI, but must not kill the installer. */
     fun install(ctx: Context, apk: File) {
-        if (!BtTiming.restoreForRollback()) throw UpdateException(UpdateException.Kind.INSTALL, "Could not restore the original Bluetooth driver")
+        BtTiming.prepareForRollback()
         val script = File(ctx.filesDir, "rollback-install.sh")
         script.writeText("""
             #!/system/bin/sh
@@ -38,6 +38,10 @@ object Rollback {
             code=${'$'}?
             echo "EXIT=${'$'}code" >> $DIR/result
             if [ "${'$'}code" = 0 ]; then
+                sync
+                sleep 1
+                reboot
+                # If firmware refuses the reboot, still open the installed stable app.
                 am start -n com.abdllh.aura/.home.HomeActivity >/dev/null 2>&1
             fi
         """.trimIndent() + "\n")

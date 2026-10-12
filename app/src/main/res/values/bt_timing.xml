@@ -13,8 +13,8 @@
     <string name="bt_timing_details_sub">Show received replies and copy a report if the timing does not appear.</string>
     <string name="bt_timing_copy">Copy report</string>
     <string name="upd_rollback">Return to %1$s</string>
-    <string name="upd_rollback_sub">The previous version (%1$s) is saved on this device. You can return to it without internet.</string>
-    <string name="upd_rollback_confirm">Return to %1$s and restore the original Bluetooth driver? Your settings and downloaded maps are kept. Bluetooth reconnects once.</string>
+    <string name="upd_rollback_sub">Stable version %1$s is saved on this device. Returning works offline and restarts the head unit.</string>
+    <string name="upd_rollback_confirm">Return to %1$s and restart the head unit to clear the Bluetooth modification? Your settings and downloaded maps are kept.</string>
     <string name="upd_rollback_action">Return to previous version</string>
     <string name="upd_rolling_back">Returning to previous version…</string>
 </resources>

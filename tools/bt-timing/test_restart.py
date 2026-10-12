@@ -29,11 +29,16 @@ sleep() { :; }
 setprop() { restarted=1; }
 pidof() {
     if [ "$1" = gocsdk_8800 ]; then
-        if [ "$restarted" = 1 ] && [ "$scenario" != unchanged_pid ]; then echo 222; else echo 111; fi
+        if [ "$restarted" = 1 ] && [ "$scenario" != unchanged_pid ]; then
+            if [ "$scenario" = ready_multi ]; then echo '6994 7153'; else echo 222; fi
+        else echo 111; fi
     elif [ "$bc03" = 1 ]; then echo 333; fi
 }
 getprop() { echo running; }
 sha256sum() {
+    # Reject exactly the malformed /proc/PID_LIST/exe lookup seen on the unit.
+    [ "$#" = 1 ] || { echo 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  directory'; return 0; }
+    case "$1" in /proc/*/exe) ;; *) echo 'not an executable'; return 1;; esac
     if [ "$scenario" = wrong_image ]; then echo 'wrong digest'; else echo 'EXPECTED  executable'; fi
 }
 am() {
@@ -60,9 +65,9 @@ assert run('shell', 'id -u').stdout.strip() == '0', 'Emulator adbd must be root'
 assert run('shell', f'mkdir -p {remote} && ln -sf /dev/null {remote}/serial').returncode == 0
 assert run('push', str(local), remote+'/case.sh').returncode == 0
 try:
-    for scenario in ['ready', 'wrong_image', 'unchanged_pid', 'service_failed', 'stale_fd']:
+    for scenario in ['ready', 'ready_multi', 'wrong_image', 'unchanged_pid', 'service_failed', 'stale_fd']:
         result = run('shell', f'sh {remote}/case.sh {scenario}')
-        success = scenario == 'ready'
+        success = scenario in ['ready', 'ready_multi']
         assert result.stdout.strip().endswith('stack-ready') == success, (scenario, result.stdout, result.stderr)
         assert (result.returncode == 0) == success, (scenario, result.returncode)
         if scenario in ['wrong_image', 'unchanged_pid']:

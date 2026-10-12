@@ -39,6 +39,9 @@ object BtTiming {
     @Volatile private var requests = 0
     @Volatile private var replies = 0
     @Volatile private var lastReplyAt = 0L
+    @Volatile private var metadataRequests = 0
+    private var lastMetadataAt = 0L
+    @Volatile private var metadataError = ""
     private var restartPending = false
 
     var enabled: Boolean
@@ -52,13 +55,20 @@ object BtTiming {
         app = ctx.applicationContext
         worker.execute { apply() }
         worker.scheduleWithFixedDelay({
-            if (!active || stopped || !enabled || !BtMusic.connected) return@scheduleWithFixedDelay
+            if (stopped || restartPending || !BtMusic.connected) return@scheduleWithFixedDelay
+            val metadata = SystemClock.elapsedRealtime() - lastMetadataAt >= 6000
+            if (!metadata && (!active || !enabled)) return@scheduleWithFixedDelay
+            // MK refreshes the real phone metadata; Binder transaction 60 only repeats BC03's cache.
+            val command = if (metadata) "AT#MK" else "AT#VI"
             // This is the existing command pipe owned by BC03, not the hardware UART. Only write; BC03 keeps reading.
-            val r = LocalAdb.run("[ \"\$(getprop init.svc.gocsdk_8800)\" = running ] && [ -c /dev/goc_serial ] && printf 'AT#VI\\r\\n' > /dev/goc_serial && echo queried", 5000)
+            val r = LocalAdb.run("[ \"\$(getprop init.svc.gocsdk_8800)\" = running ] && [ -c /dev/goc_serial ] && printf '$command\\r\\n' > /dev/goc_serial && echo queried", 5000)
             if (r.ok && r.output.endsWith("queried")) {
-                failures = 0
-                requests++
+                if (metadata) { metadataRequests++; lastMetadataAt = SystemClock.elapsedRealtime(); metadataError = "" }
+                else { failures = 0; requests++ }
                 main.post { BtMusic.timingChanged() }
+            } else if (metadata) {
+                lastMetadataAt = SystemClock.elapsedRealtime()
+                metadataError = r.output.take(180)
             } else if (++failures >= 3) {
                 enabled = false
                 val restored = restoreOnWorker()
@@ -70,6 +80,9 @@ object BtTiming {
     }
 
     fun applyChoice() { worker.execute { apply() } }
+
+    /** Ask again soon after a track skip, after the phone has processed the transport command. */
+    internal fun refreshTrack() { worker.schedule({ lastMetadataAt = 0L }, 1, TimeUnit.SECONDS) }
 
     internal fun onPhoneProgress() {
         replies++
@@ -99,16 +112,30 @@ object BtTiming {
 
     // GOC creates a fresh /dev/ptmx slave on each start. BC03's UartWorker keeps
     // its opened descriptor forever: it must restart too, then AMRI must rebind.
-    private fun runningDriverHash(): String = LocalAdb.run("sha256sum /proc/\$(pidof gocsdk_8800)/exe 2>/dev/null", 5000).output.substringBefore(' ').trim()
+    private fun runningDriverMatches(expected: String): Boolean {
+        val r = LocalAdb.run("""
+            pids=${'$'}(pidof gocsdk_8800)
+            [ -n "${'$'}pids" ] || exit 1
+            checked=0
+            for pid in ${'$'}pids; do
+                case "${'$'}pid" in ''|*[!0-9]*) exit 1;; esac
+                actual=${'$'}(sha256sum "/proc/${'$'}pid/exe" 2>/dev/null | cut -d ' ' -f 1)
+                [ "${'$'}actual" = '$expected' ] || exit 1
+                checked=1
+            done
+            [ "${'$'}checked" = 1 ] && echo driver-match
+        """.trimIndent(), 5000)
+        return r.ok && r.output.endsWith("driver-match")
+    }
 
     private fun portConnected(): Boolean {
         val r = LocalAdb.run("""
             tty=${'$'}(readlink -f /dev/goc_serial)
             [ -c /dev/goc_serial ] && [ -n "${'$'}tty" ] || exit 1
-            bc03_pid=${'$'}(pidof com.bt.bc03)
-            [ -n "${'$'}bc03_pid" ] || exit 1
-            for fd in /proc/${'$'}bc03_pid/fd/*; do
-                if [ "${'$'}(readlink "${'$'}fd")" = "${'$'}tty" ]; then echo port-open; exit 0; fi
+            for bc03_pid in ${'$'}(pidof com.bt.bc03); do
+                for fd in /proc/"${'$'}bc03_pid"/fd/*; do
+                    if [ "${'$'}(readlink "${'$'}fd")" = "${'$'}tty" ]; then echo port-open; exit 0; fi
+                done
             done
         """.trimIndent(), 5000)
         return r.ok && r.output.endsWith("port-open")
@@ -137,17 +164,21 @@ object BtTiming {
                 fi
             done
             [ "${'$'}ready" = 1 ] || exit 1
-            [ "${'$'}(sha256sum /proc/${'$'}new_pid/exe | cut -d ' ' -f 1)" = '$expected' ] || exit 1
+            for pid in ${'$'}new_pid; do
+                case "${'$'}pid" in ''|*[!0-9]*) exit 1;; esac
+                [ "${'$'}(sha256sum "/proc/${'$'}pid/exe" | cut -d ' ' -f 1)" = '$expected' ] || exit 1
+            done
             am force-stop com.bt.bc03 || exit 1
             am startservice -n com.bt.bc03/com.bt.bc03.BTService || exit 1
             tty=${'$'}(readlink -f /dev/goc_serial)
             for attempt in 1 2 3 4 5; do
-                bc03_pid=${'$'}(pidof com.bt.bc03)
-                for fd in /proc/${'$'}bc03_pid/fd/*; do
-                    if [ "${'$'}(readlink "${'$'}fd")" = "${'$'}tty" ]; then
-                        echo stack-ready
-                        exit 0
-                    fi
+                for bc03_pid in ${'$'}(pidof com.bt.bc03); do
+                    for fd in /proc/"${'$'}bc03_pid"/fd/*; do
+                        if [ "${'$'}(readlink "${'$'}fd")" = "${'$'}tty" ]; then
+                            echo stack-ready
+                            exit 0
+                        fi
+                    done
                 done
                 sleep 1
             done
@@ -169,12 +200,14 @@ object BtTiming {
                 echo init_driver=${'$'}(sha256sum /proc/1/root$TARGET 2>/dev/null | cut -d ' ' -f 1)
                 echo daemon=${'$'}(getprop init.svc.gocsdk_8800)
                 echo daemon_pid=${'$'}(pidof gocsdk_8800)
-                echo running_driver=${'$'}(sha256sum /proc/${'$'}(pidof gocsdk_8800)/exe 2>/dev/null | cut -d ' ' -f 1)
+                for pid in ${'$'}(pidof gocsdk_8800); do
+                    echo "running_driver[${'$'}pid]=${'$'}(sha256sum "/proc/${'$'}pid/exe" 2>/dev/null | cut -d ' ' -f 1)"
+                done
                 echo bc03_pid=${'$'}(pidof com.bt.bc03)
                 echo tty=${'$'}(readlink -f /dev/goc_serial)
             """.trimIndent(), 7000)
             val age = if (lastReplyAt == 0L) "none" else "${(SystemClock.elapsedRealtime() - lastReplyAt) / 1000}s"
-            val report = "AMRI ${BuildConfig.VERSION_NAME}\nenabled=$enabled active=$active\nconnected=${BtMusic.connected} playing=${BtMusic.playing}\nrequests=$requests replies=$replies last_reply=$age\nerror=$detail\n${probe.output}"
+            val report = "AMRI ${BuildConfig.VERSION_NAME}\nenabled=$enabled active=$active\nconnected=${BtMusic.connected} playing=${BtMusic.playing}\nrequests=$requests replies=$replies last_reply=$age\nmetadata_requests=$metadataRequests metadata_error=$metadataError\nerror=$detail\n${probe.output}"
             main.post { done(report) }
         }
     }
@@ -199,13 +232,12 @@ object BtTiming {
             val p = config()
             var sha = driverHash()
             if (sha == PREVIOUS_PATCH) {
-                val r = LocalAdb.run("umount $TARGET && echo previous-removed", 7000)
-                check(r.ok && r.output.endsWith("previous-removed")) { "Could not remove beta.1 Bluetooth overlay" }
+                check(detachOverlays()) { "Could not remove beta.1 Bluetooth overlay" }
                 restartPending = true
                 sha = driverHash()
             }
             if (sha == p.getString("patchedSha256")) {
-                if (runningDriverHash() != sha || !portConnected()) {
+                if (!runningDriverMatches(sha) || !portConnected()) {
                     restartPending = true
                     check(restartStack(sha)) { "Mounted Bluetooth driver was not running" }
                 }
@@ -260,19 +292,44 @@ object BtTiming {
             if (sha == p.getString("stockSha256")) return !restartPending || restartStack(sha)
             // A different driver which we never patched must not prevent returning to the preceding app.
             if (sha != p.getString("patchedSha256") && sha != PREVIOUS_PATCH) return !wasActive && !restartPending
-            val r = LocalAdb.run("umount $TARGET && echo restored", 7000)
-            if (!r.ok || !r.output.endsWith("restored")) return false
-            restartPending = true
-            driverHash() == p.getString("stockSha256") && restartStack(p.getString("stockSha256"))
+            detachOverlays() && restartStack(p.getString("stockSha256"))
         } catch (t: Throwable) { Log.w("AuraBtTiming", "restore: $t"); false }
     }
 
-    /** Stop polling and remove the overlay before replacing AMRI with the previous APK. Called off the UI thread. */
-    fun restoreForRollback(): Boolean {
-        if (app == null) return true
-        stopped = true
-        return worker.submit<Boolean> { restoreOnWorker() }.get(60, TimeUnit.SECONDS)
+    /** Executable bind mounts can be busy; detach them without modifying the system partition. */
+    private fun detachOverlays(): Boolean {
+        val p = config()
+        repeat(16) {
+            val sha = driverHash()
+            if (sha == p.getString("stockSha256")) return true
+            if (sha != PREVIOUS_PATCH && sha != p.getString("patchedSha256")) return false
+            val r = LocalAdb.run("umount -l $TARGET && echo detached", 7000)
+            if (!r.ok || !r.output.endsWith("detached")) return false
+            restartPending = true
+        }
+        return driverHash() == p.getString("stockSha256")
     }
 
-    fun resumeAfterFailedRollback() { stopped = false; applyChoice() }
+    /** Recovery must work even if the experiment is unhealthy. The successful installer reboots to clear every mount. */
+    fun prepareForRollback() {
+        stopped = true
+        enabled = false
+        Prefs.raw.edit().putBoolean(KEY, false).commit()
+        active = false
+        if (app == null) return
+        try {
+            val detached = worker.submit<Boolean> { detachOverlays() }.get(45, TimeUnit.SECONDS)
+            if (!detached) Log.w("AuraBtTiming", "Recovery will clear remaining overlays with reboot")
+        } catch (t: Throwable) { Log.w("AuraBtTiming", "Recovery cleanup: $t") }
+    }
+
+    fun resumeAfterFailedRollback() {
+        stopped = false
+        // If installation fails, restore communication with the original service,
+        // while keeping the experiment off instead of mounting it again.
+        if (app != null && !enabled) worker.execute {
+            detail = if (restoreOnWorker()) "" else "Original Bluetooth service needs a restart"
+            main.post { BtMusic.timingChanged() }
+        }
+    }
 }

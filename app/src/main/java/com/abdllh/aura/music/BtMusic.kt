@@ -311,6 +311,7 @@ object BtMusic {
             val b = when (cmd) { TOGGLE -> 1; PAUSE -> 2; NEXT -> 3; PREVIOUS -> 4; else -> 5 }
             app?.sendBroadcast(Intent("com.nwd.ACTION_A2DP_CONTROL_COMMAND").putExtra("extra_command", b))
         }
+        if (cmd == NEXT || cmd == PREVIOUS) BtTiming.refreshTrack()
     }
 
     private val prevCheck = Runnable {
