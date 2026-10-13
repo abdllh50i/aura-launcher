@@ -37,7 +37,9 @@ file, so it comes with updates from the screen) and an **in-app updater that pul
   (`tools/map-editor/map-editor.bat`), published with one button, and picked up by every unit (*Settings → Navigation →
   Map additions → Update*): the limit shows as its sign while driving, a camera or a bump ahead is announced. AMRI Music: the unit's storage
   and USB sticks, plus the phone's Bluetooth music through the firmware's own Bluetooth module (covers looked up online by
-  title and artist), synced lyrics that can take the whole screen; the steering wheel's music button opens it (and,
+  title and artist, YouTube Music's catalogue first, which also gives the song's length), **YouTube Music as a third
+  source**: its catalogue is searched from AMRI Music and the song is played by the YouTube Music app on the unit,
+  with its real time and position, synced lyrics that can take the whole screen; the steering wheel's music button opens it (and,
   pressed again inside it, goes back to the home screen). A phone call shows as AMRI's own card over any screen (who,
   decline and answer, then the time and hang up) in place of the stock window, and rings with AMRI's own ringtone
   (*Settings → Display & sound → Calls*). The volume controls drive the unit's real (MCU) volume,

@@ -274,6 +274,43 @@ looked up the place stays as it is (open with "looking", or closed), so it does 
 lyrics. The song the button was pressed on is the exception (`lyricsPinned`): there the line saying that there are
 none is the answer to the press. A change that happens inside another (`relaying`) joins its movement.
 
+YouTube Music (1.10, `music/YtMusic.kt`). The owner asked for an iPhone player fed by the ytmusicapi library and tied
+to the unit; that cannot be had — ytmusicapi finds songs, it never carries their sound (its FAQ sends downloads to
+another tool), pulling YouTube's audio outside its own app is not something this project does, and iOS lets no app
+read what another one plays. What ytmusicapi's search can do went in instead, twice:
+* `YtMusic.find`: the request YouTube Music's own web page makes (POST `music.youtube.com/youtubei/v1/search`, client
+  `WEB_REMIX` with today's date as its version, the "songs" filter `EgWKAQIIAWoMEA4QChADEAQQCRAF`, `hl` Arabic for an
+  Arabic query so the names read like the phone's, cookie `SOCS=CAI`, no account). It answers with rows of
+  `musicResponsiveListItemRenderer`: the title, "artist • album • 3:54", `playlistItemData.videoId` and a picture
+  whose size is in its address (`=w120-h120` → any). Not a published interface: when Google changes it the search
+  finds nothing until this is updated; nothing else depends on it.
+* A Bluetooth song's own length and cover: `CoverSearch` asks this catalogue first (then iTunes, then Deezer). The
+  phone plays from it, so the first song there with that name and artist is the song itself; its length is believed
+  over the lyrics' recording and over another catalogue's (`BtMusic.offerDuration`, `FROM_SERVICE`). With a length the
+  bar and the times show for every song whose start was seen (the clock of 1.6); the position itself is still not
+  the phone's word. Two recordings under one name (an album cut of 5:15 and a single of 5:54) cannot be told apart:
+  the first is taken. The covers kept before 1.10 are dropped once (`cache/covers2`).
+* A third source in Aura Music, "YouTube": a search box and its results in the panel; a song chosen is handed to
+  YouTube's own app on the unit (`com.google.android.apps.youtube.music`, else `com.google.android.youtube`) as the
+  link its share button gives (`ACTION_VIEW music.youtube.com/watch?v=…`), which brings that app to the front; when
+  its session plays something that started after the hand-over, Aura Music comes back (`YtMusic.onSession`, 12 s at
+  most, else the owner is left in the app: it wants something on its own screen). From then on the song is read and
+  steered through the app's media session (`MediaMonitor.app` / `appPosition` / `appControl`, for any of
+  `YtMusic.players`): title, artist, cover, length, the real position, pause / next / previous, the seek bar, a
+  tapped lyric line; the lyrics are looked up with the song's real length. `MediaMonitor` now listens to every other
+  app's session, not only the one the home card shows. Leaving the source pauses the app; the music button comes
+  back to this source when it was the last one that is not Bluetooth (`musicSourceOwn`). The firmware injects the
+  wheel's media keys to the playing session itself when Aura's own player does not hold them. Playing with the app
+  out of sight needs what YouTube asks for it (a Premium account): a session that stops within 3.5 s of Aura Music
+  coming back is said so once. Settings → About shows how the last hand-over went.
+* Not tried before the unit: the hand-over itself and what YouTube's app does with it (neither emulator has a
+  working YouTube app: the Google Play image's is from 2020 and wants a sign-in to update). Tried on the emulator:
+  the search, the Bluetooth lookup, and the whole session side against a stand-in — `gradlew assembleDebug -PstandIn`
+  builds a second copy of the app as `com.abdllh.aura.standin`, whose player is "another app with a media session";
+  `setprop debug.aura.ytpkg com.abdllh.aura.standin` (and notification access for the real copy, which is not
+  privileged there: `cmd notification allow_listener com.abdllh.aura/com.abdllh.aura.media.AuraNotificationListener`)
+  points the YouTube source at it.
+
 Where a Bluetooth song is (1.6): this unit's stack never says. UartConfig.ini `bt_module=0` → the AT# ("atpound") driver
 over `/dev/goc_serial` (the GOC stack for the AIC8800, `persist.sys.bt.aic8800=true`); its progress report is the
 unsolicited `MQ` indication (`responseA2dpProgress` → `onGetA2dpProgress(total, pos)`, which needs three fields and is

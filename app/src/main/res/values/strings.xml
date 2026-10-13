@@ -181,8 +181,8 @@
     <string name="drawer_app_info">App info</string>
     <string name="set_zlink_off">ZLink (CarPlay) stays off until I open it</string>
     <string name="set_zlink_off_sub">It no longer comes up by itself when the phone connects over Bluetooth, and leaves the Wi-Fi alone</string>
-    <string name="set_bt_cover">Album art for Bluetooth music</string>
-    <string name="set_bt_cover_sub">Finds the cover online from the song\'s title and artist (Apple Music, Deezer)</string>
+    <string name="set_bt_cover">Cover and length of Bluetooth songs</string>
+    <string name="set_bt_cover_sub">Finds the cover and the length online from the song\'s title and artist (YouTube Music first, then Apple Music and Deezer)</string>
     <string name="nav_channel">Navigation</string>
     <string name="nav_starting">Starting navigation…</string>
     <string name="nav_title">Navigation</string>
@@ -447,6 +447,8 @@
     <string name="yt_failed">YouTube Music could not be reached. Check the internet and try again.</string>
     <string name="yt_no_app">Playing needs the YouTube Music app on the unit (from the Play Store, with your account).</string>
     <string name="yt_get_app">Open the store</string>
+    <string name="yt_needs_front">YouTube Music stopped when AMRI Music came back: playing without the app in front needs a Premium account.</string>
+    <string name="about_yt">Last song handed to YouTube Music</string>
     <string name="yt_idle">Choose a song from YouTube Music</string>
 
     <!-- a phone call (the card over every screen) -->

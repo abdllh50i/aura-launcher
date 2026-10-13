@@ -425,6 +425,8 @@ class AboutPage(private val act: SettingsActivity) : Page(R.string.set_about, R.
         com.abdllh.aura.system.HomeGuard.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_home, R.string.about_covered, it) }
         // how the music button last reached AMRI: its own key (no stock screen), or a stock screen that had to be covered
         com.abdllh.aura.system.MusicKeys.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_steering, R.string.about_music_key, it) }
+        // how the last song handed to YouTube's app went (it could not be tried before the unit)
+        com.abdllh.aura.music.YtMusic.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_music, R.string.about_yt, it) }
 
         // Home-app control (car unit only)
         if (Device.isNwd) {

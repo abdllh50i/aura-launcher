@@ -203,6 +203,8 @@ object YtMusic {
      */
     fun play(c: Context, song: Song, onPlaying: () -> Unit): Boolean {
         val pkg = player(c) ?: return false
+        app = c.applicationContext
+        main.removeCallbacks(stillPlaying)
         val link = if (pkg == PKG) "https://music.youtube.com/watch?v=${song.id}" else "https://www.youtube.com/watch?v=${song.id}"
         // the speakers are the app's now: AMRI's own player lets go, the phone's music is muted, and the unit's sound
         // goes to Android (the firmware does not switch for an app that plays without its screen)
@@ -229,7 +231,11 @@ object YtMusic {
     }
 
     /** The app did not start playing in time (it asks for something on its own screen): the owner stays there. */
-    private val giveUp = Runnable { handed = null; back = null }
+    private val giveUp = Runnable {
+        if (handed != null) note("no song played within ${HAND_MS / 1000} s of the hand-over")
+        handed = null
+        back = null
+    }
 
     /**
      * Called by [MediaMonitor] when the app's session changes: once it plays something new after a hand-over, AMRI
@@ -248,8 +254,40 @@ object YtMusic {
         main.removeCallbacks(giveUp)
         val b = back
         back = null
+        note("${s.pkg.substringAfterLast('.')} played after ${SystemClock.elapsedRealtime() - handedAt} ms")
         // (a moment for its first frames: the app must not find itself paused by losing the screen mid-start)
-        main.postDelayed({ b?.invoke() }, 600L)
+        main.postDelayed({
+            b?.invoke()
+            returnedAt = SystemClock.elapsedRealtime()
+            main.postDelayed(stillPlaying, 3500L)
+        }, 600L)
+    }
+
+    private var returnedAt = 0L
+
+    /**
+     * AMRI Music is back in front: an app that stopped at that very moment is one that plays in front only (YouTube
+     * without a Premium account). Said once, so the owner knows why it is silent.
+     */
+    private val stillPlaying = Runnable {
+        val s = MediaMonitor.app(players) ?: return@Runnable
+        if (s.playing) return@Runnable
+        note("${s.pkg.substringAfterLast('.')} stopped once out of sight")
+        val c = app ?: return@Runnable
+        try { android.widget.Toast.makeText(c, com.abdllh.aura.R.string.yt_needs_front, android.widget.Toast.LENGTH_LONG).show() } catch (_: Throwable) { }
+    }
+
+    private var app: Context? = null
+
+    /** How the last hand-over went, for Settings → About ("" when there never was one). */
+    val note: String get() = com.abdllh.aura.util.Prefs.raw.getString("ytNote", "").orEmpty()
+
+    private fun note(what: String) {
+        try {
+            val at = SimpleDateFormat("MM-dd HH:mm", Locale.ROOT).format(Date())
+            com.abdllh.aura.util.Prefs.raw.edit().putString("ytNote", "$at  $what").apply()
+        } catch (_: Throwable) {
+        }
     }
 
     private fun takeSpeakers(c: Context) {

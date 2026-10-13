@@ -40,6 +40,9 @@ android {
 
     defaultConfig {
         applicationId = "com.abdllh.aura"
+        // -PstandIn: a second copy under another name, for the emulator — "another app that plays music" (its player
+        // has a full media session), which the YouTube source of the real copy can be pointed at (debug.aura.ytpkg)
+        if (project.hasProperty("standIn")) applicationIdSuffix = ".standin"
         minSdk = 26
         targetSdk = 29
         // derived from the version name (see versionCodeFor); the updater requires every update to carry a higher code

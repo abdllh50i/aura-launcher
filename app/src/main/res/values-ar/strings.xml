@@ -181,8 +181,8 @@
     <string name="drawer_app_info">معلومات التطبيق</string>
     <string name="set_zlink_off">ZLink (كار بلاي) يبقى طافي لين أفتحه بنفسي</string>
     <string name="set_zlink_off_sub">ما يطلع لحاله لما يتصل الجوال بالبلوتوث، وما يطفّي الواي فاي</string>
-    <string name="set_bt_cover">صور الأغاني لموسيقى البلوتوث</string>
-    <string name="set_bt_cover_sub">تجيب صورة الأغنية من الإنترنت باسمها واسم الفنان (Apple Music وDeezer)</string>
+    <string name="set_bt_cover">صورة ومدة أغاني البلوتوث</string>
+    <string name="set_bt_cover_sub">تجيب صورة الأغنية ومدتها من الإنترنت باسمها واسم الفنان (يوتيوب ميوزك أول، ثم Apple Music وDeezer)</string>
     <string name="nav_channel">الملاحة</string>
     <string name="nav_starting">جاري بدء الملاحة…</string>
     <string name="nav_title">الملاحة</string>
@@ -447,6 +447,8 @@
     <string name="yt_failed">ما قدرت أوصل ليوتيوب ميوزك. تأكد من الإنترنت وجرّب مرة ثانية.</string>
     <string name="yt_no_app">التشغيل يحتاج تطبيق YouTube Music على الشاشة (من متجر Play، بحسابك).</string>
     <string name="yt_get_app">افتح المتجر</string>
+    <string name="yt_needs_front">يوتيوب ميوزك وقف لما رجعت لموسيقى عمري: التشغيل بدون ما يكون التطبيق قدامك يحتاج اشتراك Premium.</string>
+    <string name="about_yt">آخر أغنية انسلّمت ليوتيوب ميوزك</string>
     <string name="yt_idle">اختر أغنية من يوتيوب ميوزك</string>
 
     <!-- a phone call (the card over every screen) -->
