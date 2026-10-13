@@ -438,6 +438,17 @@
     <string name="off_delete_text">The map, routes and search will need the internet again.</string>
     <string name="off_hint">The map, routes and search keep working without internet in Jubail, Dammam, Dhahran and Khobar, with all their streets and shops, and on the roads between them. One download of about 35 MB. With internet, a route still comes from the internet first (it has the road names).</string>
 
+    <!-- YouTube Music inside AMRI Music -->
+    <string name="music_youtube">YouTube</string>
+    <string name="yt_search_hint">Search YouTube Music</string>
+    <string name="yt_hint">Type a song or an artist. What you choose is played by the YouTube Music app on the unit, and AMRI shows its time and lyrics.</string>
+    <string name="yt_searching">Searching…</string>
+    <string name="yt_none">Nothing found under that name</string>
+    <string name="yt_failed">YouTube Music could not be reached. Check the internet and try again.</string>
+    <string name="yt_no_app">Playing needs the YouTube Music app on the unit (from the Play Store, with your account).</string>
+    <string name="yt_get_app">Open the store</string>
+    <string name="yt_idle">Choose a song from YouTube Music</string>
+
     <!-- a phone call (the card over every screen) -->
     <string name="call_incoming">Incoming call</string>
     <string name="call_dialing">Calling…</string>

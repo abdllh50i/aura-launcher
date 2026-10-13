@@ -90,8 +90,12 @@ object BtMusic {
         private set
     /** The length came from the phone (believed over a catalogue's or the lyrics'). */
     private var durationFromPhone = false
-    /** Where a length not from the phone came from: the lyrics' recording is believed over a catalogue's match. */
-    private var durationFromLyrics = false
+    /**
+     * Where a length not from the phone came from ([FROM_CATALOGUE] … [FROM_SERVICE]; 0 none): YouTube Music's own
+     * catalogue (what the phone plays from) is believed over the recording the lyrics were timed on, and that over
+     * another catalogue's match.
+     */
+    private var durationFrom = 0
     /** The clock follows the song: its start was seen, the phone said where it is, or the owner set it ([syncTo]). */
     var positionKnown = false
         private set
@@ -157,14 +161,15 @@ object BtMusic {
         changed()
     }
 
-    /**
-     * A length for the song [title]/[artist], used while the phone tells none: [fromLyrics] the recording the lyrics
-     * were timed on (what the lines follow), else a catalogue's match (it may be another recording, a live one...).
-     */
-    fun offerDuration(sec: Int, forTitle: String, forArtist: String, fromLyrics: Boolean) {
+    const val FROM_CATALOGUE = 1 // a music catalogue's match (it may be another recording, a live one...)
+    const val FROM_LYRICS = 2    // the recording the lyrics were timed on (what the lines follow)
+    const val FROM_SERVICE = 3   // YouTube Music's own catalogue: the song as the phone plays it
+
+    /** A length for the song [forTitle]/[forArtist], used while the phone tells none; the better source wins ([from]). */
+    fun offerDuration(sec: Int, forTitle: String, forArtist: String, from: Int) {
         if (durationFromPhone || sec !in 20..3600 || forTitle != title || forArtist != artist) return
-        if (durationFromLyrics && !fromLyrics) return
-        durationFromLyrics = fromLyrics
+        if (from < durationFrom) return
+        durationFrom = from
         if (sec == durationSec) return
         durationSec = sec
         changed()
@@ -225,7 +230,7 @@ object BtMusic {
                             artist = a
                             durationSec = 0 // unknown until told (not the song before's)
                             durationFromPhone = false
-                            durationFromLyrics = false
+                            durationFrom = 0
                             clockSet(if (start) START_MS else 0L, start)
                             if (t.isNotBlank()) lastSong = song
                         } else if (t.isNotBlank() && lastSong.isEmpty()) {
@@ -270,10 +275,11 @@ object BtMusic {
         if (title.isBlank()) return
         val t = title
         val a = artist
-        CoverSearch.find(c, t, a) { b, sec ->
+        CoverSearch.find(c, t, a) { b, sec, yt ->
             if (artKey != key) return@find
             art = b
-            if (sec > 0) offerDuration(sec, t, a, fromLyrics = false) // (the catalogue's length, while nothing better)
+            // (the catalogue's length, while nothing better; YouTube Music's is the song's own)
+            if (sec > 0) offerDuration(sec, t, a, if (yt) FROM_SERVICE else FROM_CATALOGUE)
             changed()
         }
     }

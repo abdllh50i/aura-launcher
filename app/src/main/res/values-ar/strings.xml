@@ -438,6 +438,17 @@
     <string name="off_delete_text">الخريطة والمسارات والبحث بيحتاجون الإنترنت من جديد.</string>
     <string name="off_hint">الخريطة والمسارات والبحث تشتغل بدون إنترنت في الجبيل والدمام والظهران والخبر بكل شوارعها ومحلاتها، والطرق اللي بينها. تحميل مرة وحدة حوالي 35 ميجا. ومع الإنترنت المسار يجي من الإنترنت أول (فيه أسماء الشوارع).</string>
 
+    <!-- YouTube Music inside AMRI Music -->
+    <string name="music_youtube">يوتيوب</string>
+    <string name="yt_search_hint">ابحث في يوتيوب ميوزك</string>
+    <string name="yt_hint">اكتب اسم أغنية أو فنان. اللي تختاره يشغّله تطبيق يوتيوب ميوزك اللي على الشاشة، وعمري يعرض وقته وكلماته.</string>
+    <string name="yt_searching">يبحث…</string>
+    <string name="yt_none">ما لقيت شي بهالاسم</string>
+    <string name="yt_failed">ما قدرت أوصل ليوتيوب ميوزك. تأكد من الإنترنت وجرّب مرة ثانية.</string>
+    <string name="yt_no_app">التشغيل يحتاج تطبيق YouTube Music على الشاشة (من متجر Play، بحسابك).</string>
+    <string name="yt_get_app">افتح المتجر</string>
+    <string name="yt_idle">اختر أغنية من يوتيوب ميوزك</string>
+
     <!-- a phone call (the card over every screen) -->
     <string name="call_incoming">اتصال وارد</string>
     <string name="call_dialing">جاري الاتصال…</string>

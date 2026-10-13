@@ -153,7 +153,8 @@
             android:label="@string/music_title"
             android:launchMode="singleTask"
             android:screenOrientation="landscape"
-            android:theme="@style/Theme.Aura">
+            android:theme="@style/Theme.Aura"
+            android:windowSoftInputMode="adjustNothing|stateAlwaysHidden">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.DEFAULT" />

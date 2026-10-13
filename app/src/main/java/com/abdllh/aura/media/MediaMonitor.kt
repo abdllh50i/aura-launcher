@@ -163,9 +163,75 @@ object MediaMonitor {
     private val sessionsListener = MediaSessionManager.OnActiveSessionsChangedListener { list -> onSessions(list) }
 
     private val callback = object : MediaController.Callback() {
-        override fun onMetadataChanged(metadata: MediaMetadata?) = publish()
-        override fun onPlaybackStateChanged(state: PlaybackState?) = publish()
-        override fun onSessionDestroyed() { controller = null; publish() }
+        override fun onMetadataChanged(metadata: MediaMetadata?) = changed()
+        override fun onPlaybackStateChanged(state: PlaybackState?) = changed()
+        override fun onSessionDestroyed() = requery() // (which one went is not told: the list is asked for again)
+    }
+
+    private fun changed() {
+        // the home card follows the app that plays (another one may have started since the list last changed)
+        controller = others.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING }
+            ?: controller?.takeIf { it in others } ?: others.firstOrNull()
+        publish()
+        try { com.abdllh.aura.music.YtMusic.onSession() } catch (t: Throwable) { Log.w(TAG, "yt: $t") }
+    }
+
+    /** Every other app's session, the one that plays first (the home card shows [controller]; AMRI Music may want one app's). */
+    private var others: List<MediaController> = emptyList()
+    private var requery: () -> Unit = {}
+
+    /** What one app plays, as its own session tells it. */
+    class AppSession(val pkg: String, val title: String, val artist: String, val album: String, val art: Bitmap?,
+                     val playing: Boolean, val durationMs: Long)
+
+    private fun of(pkgs: Set<String>): MediaController? =
+        others.firstOrNull { it.packageName in pkgs && it.playbackState?.state == PlaybackState.STATE_PLAYING }
+            ?: others.firstOrNull { it.packageName in pkgs }
+
+    /** The session of the first of [pkgs] that has one (the one playing, when two do); null when none has a song. */
+    fun app(pkgs: Set<String>): AppSession? {
+        val c = of(pkgs) ?: return null
+        val md = c.metadata ?: return null
+        val title = md.getString(MediaMetadata.METADATA_KEY_TITLE) ?: md.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE) ?: return null
+        return AppSession(c.packageName, title,
+            md.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: md.getString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE) ?: "",
+            md.getString(MediaMetadata.METADATA_KEY_ALBUM).orEmpty(),
+            md.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART) ?: md.getBitmap(MediaMetadata.METADATA_KEY_ART)
+                ?: md.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON),
+            c.playbackState?.state == PlaybackState.STATE_PLAYING,
+            md.getLong(MediaMetadata.METADATA_KEY_DURATION).coerceAtLeast(0L))
+    }
+
+    /** Where that app's song is now (ms): its last report carried on by the clock while it plays; null when it tells none. */
+    fun appPosition(pkgs: Set<String>): Long? {
+        val st = of(pkgs)?.playbackState ?: return null
+        if (st.position < 0L) return null
+        var pos = st.position
+        if (st.state == PlaybackState.STATE_PLAYING) {
+            pos += ((android.os.SystemClock.elapsedRealtime() - st.lastPositionUpdateTime) * st.playbackSpeed).toLong()
+        }
+        return pos.coerceAtLeast(0L)
+    }
+
+    enum class Do { PLAY, PAUSE, TOGGLE, NEXT, PREVIOUS }
+
+    /** Steers that app through its session; false when it has none. */
+    fun appControl(pkgs: Set<String>, what: Do, seekToMs: Long = -1L): Boolean {
+        val c = of(pkgs) ?: return false
+        return try {
+            val t = c.transportControls
+            if (seekToMs >= 0L) t.seekTo(seekToMs) else when (what) {
+                Do.PLAY -> t.play()
+                Do.PAUSE -> t.pause()
+                Do.TOGGLE -> if (c.playbackState?.state == PlaybackState.STATE_PLAYING) t.pause() else t.play()
+                Do.NEXT -> t.skipToNext()
+                Do.PREVIOUS -> t.skipToPrevious()
+            }
+            true
+        } catch (t: Throwable) {
+            Log.w(TAG, "control: $t")
+            false
+        }
     }
 
     private fun registerSessions() {
@@ -177,6 +243,7 @@ object MediaMonitor {
             try {
                 msm.addOnActiveSessionsChangedListener(sessionsListener, component, main)
                 onSessions(msm.getActiveSessions(component))
+                requery = { try { onSessions(msm.getActiveSessions(component)) } catch (t: Throwable) { Log.w(TAG, "sessions: $t") } }
                 return
             } catch (_: SecurityException) {
                 // try the next option
@@ -188,13 +255,13 @@ object MediaMonitor {
     }
 
     private fun onSessions(list: List<MediaController>?) {
-        controller?.unregisterCallback(callback)
+        for (c in others) try { c.unregisterCallback(callback) } catch (_: Throwable) { }
         // Aura Music is read directly (auraInfo), so only other apps' sessions count here.
-        val others = list?.filter { it.packageName != app?.packageName }
-        val pick = others?.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING } ?: others?.firstOrNull()
-        controller = pick
-        pick?.registerCallback(callback, main)
-        publish()
+        others = list?.filter { it.packageName != app?.packageName }.orEmpty()
+        controller = others.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING } ?: others.firstOrNull()
+        // (each of them is listened to: AMRI Music follows one app's session, whichever the home card shows)
+        for (c in others) try { c.registerCallback(callback, main) } catch (_: Throwable) { }
+        changed()
     }
 
     private fun fromController(c: MediaController): NowPlaying? {

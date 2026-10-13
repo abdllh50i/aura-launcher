@@ -22,6 +22,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ListView
 import com.abdllh.aura.R
+import com.abdllh.aura.media.MediaMonitor
 import com.abdllh.aura.home.AppRepo
 import com.abdllh.aura.ui.AText
 import com.abdllh.aura.ui.Fonts
@@ -80,6 +81,16 @@ class MusicActivity : Activity() {
     private lateinit var playBtn: FrameLayout
     private lateinit var libraryBox: LinearLayout
     private lateinit var btBox: LinearLayout
+    // YouTube: a search of its catalogue; what is chosen is played by YouTube's own app (YtMusic)
+    private lateinit var ytBox: LinearLayout
+    private lateinit var ytInput: android.widget.EditText
+    private lateinit var ytList: ListView
+    private lateinit var ytNote: LinearLayout
+    private lateinit var ytNoteText: AText
+    private lateinit var ytNoteBtn: AText
+    private var ytSongs: List<YtMusic.Song> = emptyList()
+    private var ytAsked = 0
+    private var ytCover: Bitmap? = null
     private lateinit var btState: AText
     private lateinit var btBadge: FrameLayout
     private lateinit var btBadgeIcon: ImageView
@@ -123,7 +134,11 @@ class MusicActivity : Activity() {
 
     private var tab = Tab.SONGS
     private var group: Group? = null
-    private var bt = false
+    /** Where the music comes from: the unit's own files, the phone over Bluetooth, or YouTube's app on the unit. */
+    private enum class Src(val pref: String) { LOCAL("local"), BT("bt"), YT("yt") }
+    private var src = Src.LOCAL
+    private val bt get() = src == Src.BT
+    private val yt get() = src == Src.YT
     private var lastArtKey = Long.MIN_VALUE
     private var btCover: Bitmap? = null
     /** The song shown (its title comes in with a little movement when it changes). */
@@ -146,7 +161,12 @@ class MusicActivity : Activity() {
         Theme.window(this, Palette.bg)
         Player.init(this)
         BtMusic.init(this)
-        bt = Prefs.raw.getString("musicSource", "local") == "bt" || (BtMusic.playing && !Player.playing)
+        MediaMonitor.start(this) // (other apps' sessions: the YouTube source reads one)
+        src = when {
+            Prefs.raw.getString("musicSource", "local") == "bt" || (BtMusic.playing && !Player.playing) -> Src.BT
+            Prefs.raw.getString("musicSource", "local") == "yt" -> Src.YT
+            else -> Src.LOCAL
+        }
         lyricsWanted = Prefs.raw.getBoolean("musicLyrics", false)
         lyricsOn = lyricsWanted // (until the song in front turns out to have none)
         lyricsFull = lyricsOn && Prefs.raw.getBoolean("musicLyricsFull", false)
@@ -172,10 +192,12 @@ class MusicActivity : Activity() {
         val src = i?.getStringExtra(EXTRA_SOURCE) ?: return
         i.removeExtra(EXTRA_SOURCE)
         if (src == "bt") {
-            if (bt) BtMusic.activate() else selectSource(true) // selectSource activates it
+            if (bt) BtMusic.activate() else selectSource(Src.BT) // selectSource activates it
         } else {
-            if (bt) selectSource(false)
-            if (Player.current != null && !Player.playing) Player.resume()
+            // the music button: the unit's own music — YouTube's app when that is what was listened to last
+            if (bt) selectSource(if (Prefs.raw.getString("musicSourceOwn", "local") == "yt") Src.YT else Src.LOCAL)
+            if (yt) MediaMonitor.appControl(YtMusic.players, MediaMonitor.Do.PLAY)
+            else if (Player.current != null && !Player.playing) Player.resume()
         }
     }
 
@@ -191,6 +213,7 @@ class MusicActivity : Activity() {
         Player.addListener(playerListener)
         Library.addListener(libraryListener)
         BtMusic.addListener(btListener)
+        MediaMonitor.observe(appListener)
         Player.restore()
         showNowPlaying()
         showList()
@@ -201,6 +224,7 @@ class MusicActivity : Activity() {
         Player.removeListener(playerListener)
         Library.removeListener(libraryListener)
         BtMusic.removeListener(btListener)
+        MediaMonitor.unobserve(appListener)
         seek.removeCallbacks(progressTick)
         if (::lyricsView.isInitialized) lyricsView.removeCallbacks(lyricsRetry)
         lyricsKey = null // looked up again when the screen comes back
@@ -221,18 +245,40 @@ class MusicActivity : Activity() {
         com.abdllh.aura.system.Animations.ensureAnimators()
     }
 
-    private val playerListener: () -> Unit = { if (!bt) showNowPlaying(); (listView?.adapter as? BaseAdapter)?.notifyDataSetChanged() }
+    private val playerListener: () -> Unit = { if (src == Src.LOCAL) showNowPlaying(); (listView?.adapter as? BaseAdapter)?.notifyDataSetChanged() }
     private val libraryListener: () -> Unit = { Player.restore(); showList(); showNowPlaying() }
     private val btListener: () -> Unit = { if (bt) showNowPlaying() }
+    private val appListener: (com.abdllh.aura.media.NowPlaying?) -> Unit = { if (yt) showNowPlaying() }
+
+    /** Where the song of the source in front is (ms), and whether that is not really known (a Bluetooth song's). */
+    private fun positionNow(): Long = when (src) {
+        Src.BT -> BtMusic.positionMs()
+        Src.YT -> MediaMonitor.appPosition(YtMusic.players) ?: 0L
+        Src.LOCAL -> Player.position()
+    }
+
+    private val positionUnknown get() = bt && !BtMusic.positionKnown
 
     private val progressTick = object : Runnable {
         override fun run() {
             if (lyricsOn) {
-                val unknown = bt && !BtMusic.positionKnown
-                val at = if (bt) BtMusic.positionMs() else Player.position()
+                val unknown = positionUnknown
+                val at = positionNow()
                 lyrics { it.needSync = unknown; it.at(at) }
             }
-            if (bt) {
+            if (yt) {
+                // YouTube's app tells its song's length and where it is (the real position)
+                val s = MediaMonitor.app(YtMusic.players)
+                val d = s?.durationMs ?: 0L
+                val p = MediaMonitor.appPosition(YtMusic.players)
+                seek.visibility = if (s != null) View.VISIBLE else View.INVISIBLE
+                if (!seek.dragging) {
+                    seek.progress = if (d > 0 && p != null) (p.toFloat() / d).coerceIn(0f, 1f) else 0f
+                    tNow.text = if (s == null) "" else if (p != null) time(p.coerceAtMost(if (d > 0) d else p)) else UNKNOWN_TIME
+                    tTotal.text = if (s == null) "" else if (d > 0) time(d) else UNKNOWN_TIME
+                }
+                fullLine.progress = if (d > 0 && p != null) (p.toFloat() / d).coerceIn(0f, 1f) else -1f
+            } else if (bt) {
                 // the phone does not say where a song is (BtMusic keeps a clock): unknown parts are left as dashes
                 val song = BtMusic.connected && BtMusic.title.isNotBlank()
                 val d = BtMusic.durationSec * 1000L
@@ -332,7 +378,7 @@ class MusicActivity : Activity() {
         // (a change inside a change, such as the lyrics closing as the source changes: one movement, the outer one's)
         if (relaying || !::root.isInitialized || !root.isLaidOut || !root.isShown || lyricsFull) { change(); return }
         val hadPanel = panel.visibility == View.VISIBLE
-        val inside = listOf(libraryBox, btBox, lyricsView)
+        val inside = listOf(libraryBox, btBox, ytBox, lyricsView)
         val was = inside.firstOrNull { hadPanel && it.visibility == View.VISIBLE }
         val move = LayoutMove(root, listOf(artBox, info, lyricsBtn, source), setOf(artBox),
             leaving = if (hadPanel && !panelAfter) listOf(panel) else listOfNotNull(was))
@@ -472,7 +518,11 @@ class MusicActivity : Activity() {
     private fun refreshLyrics() {
         if (!lyricsWanted || !::lyricsView.isInitialized) return
         class Song(val key: String, val title: String, val artist: String, val sec: Int)
-        val s = if (bt) {
+        val s = if (yt) {
+            // (YouTube's app tells the song's own length: the right recording's lyrics)
+            MediaMonitor.app(YtMusic.players)
+                ?.let { Song("yt:${it.title}|${it.artist}", it.title, it.artist, (it.durationMs / 1000).toInt()) }
+        } else if (bt) {
             if (!BtMusic.connected || BtMusic.title.isBlank()) null
             // (once per song: the phone's own length, when it told one, helps to pick the right recording)
             else Song("bt:${BtMusic.title}|${BtMusic.artist}", BtMusic.title, BtMusic.artist, BtMusic.phoneDurationSec)
@@ -488,7 +538,7 @@ class MusicActivity : Activity() {
             if (lyricsKey != s.key || isDestroyed) return@get
             // the length of the recording the lines were timed on: the Bluetooth song's, while the phone tells none
             // (timed lines only: an untimed record's length says no more than a catalogue's)
-            if (bt && r != null && r.synced && r.durationSec > 0) BtMusic.offerDuration(r.durationSec, s.title, s.artist, fromLyrics = true)
+            if (bt && r != null && r.synced && r.durationSec > 0) BtMusic.offerDuration(r.durationSec, s.title, s.artist, BtMusic.FROM_LYRICS)
             when {
                 r == null && failed -> {
                     lyrics { it.showStatus(getString(R.string.lyrics_failed)) }
@@ -501,8 +551,8 @@ class MusicActivity : Activity() {
                 r == null -> { lyrics { it.showStatus(getString(R.string.lyrics_none)) }; lyricsHave(false) }
                 r.instrumental -> { lyrics { it.showStatus(getString(R.string.lyrics_instrumental)) }; lyricsHave(false) }
                 else -> {
-                    val unknown = bt && !BtMusic.positionKnown
-                    val at = if (bt) BtMusic.positionMs() else Player.position()
+                    val unknown = positionUnknown
+                    val at = positionNow()
                     lyrics { it.show(r); it.needSync = unknown; it.at(at) }
                     lyricsHave(true)
                 }
@@ -515,7 +565,11 @@ class MusicActivity : Activity() {
      * where it is (the owner taps what is being sung: a moment after the line started).
      */
     private fun onLineTap(l: Lyrics.Line) {
-        if (bt) {
+        if (yt) {
+            // (YouTube's app can be moved, like the unit's own player)
+            MediaMonitor.appControl(YtMusic.players, MediaMonitor.Do.PLAY, seekToMs = l.ms)
+            lyrics { it.at(l.ms) }
+        } else if (bt) {
             BtMusic.syncTo(l.ms + TAP_REACTION_MS)
             val at = BtMusic.positionMs()
             lyrics { it.needSync = false; it.at(at) }
@@ -530,10 +584,31 @@ class MusicActivity : Activity() {
     // ------------------------------------------------------------------------------------------ now playing
     private fun showNowPlaying() {
         paintAccents()
-        shuffleBtn.visibility = if (bt) View.INVISIBLE else View.VISIBLE
-        repeatBtn.visibility = if (bt) View.INVISIBLE else View.VISIBLE
+        shuffleBtn.visibility = if (src != Src.LOCAL) View.INVISIBLE else View.VISIBLE
+        repeatBtn.visibility = if (src != Src.LOCAL) View.INVISIBLE else View.VISIBLE
         seek.enabledSeek = !bt
         btSettings.visibility = if (bt && (!BtMusic.available || !BtMusic.connected)) View.VISIBLE else View.GONE
+        if (yt) {
+            // what YouTube's app plays, as its own session tells it
+            val s = MediaMonitor.app(YtMusic.players)
+            artIcon.setImageResource(R.drawable.ic_music)
+            val cover = s?.art
+            if (lastArtKey != YT_ART || cover !== ytCover) { ytCover = cover; setArt(cover, YT_ART) }
+            if (s == null) {
+                title.setText(R.string.yt_idle)
+                artist.text = ""
+                album.text = ""
+            } else {
+                title.text = s.title
+                artist.text = s.artist
+                album.text = s.album
+            }
+            songChanged("yt:${s?.title}|${s?.artist}")
+            playIcon.setPlaying(s?.playing == true)
+            syncBar(s?.playing == true)
+            refreshLyrics()
+            return
+        }
         if (bt) {
             artIcon.setImageResource(R.drawable.ic_bluetooth)
             // once per cover (found online by title + artist): Bluetooth updates come every second
@@ -578,7 +653,7 @@ class MusicActivity : Activity() {
             album.text = t.album
             if (lastArtKey != t.albumId) {
                 lastArtKey = t.albumId
-                ArtLoader.get(this, t, 600) { b -> if (Player.current?.albumId == t.albumId && !bt) setArt(b, t.albumId) }
+                ArtLoader.get(this, t, 600) { b -> if (Player.current?.albumId == t.albumId && src == Src.LOCAL) setArt(b, t.albumId) }
             }
         }
         songChanged("lib:${t?.id}")
@@ -684,7 +759,7 @@ class MusicActivity : Activity() {
     /** Everything that takes the cover's colour: the source switch, shuffle and repeat. */
     private fun paintAccents() {
         source.indicator = coverAccent
-        if (source.selected != (if (bt) 1 else 0)) source.select(if (bt) 1 else 0)
+        if (source.selected != src.ordinal) source.select(src.ordinal)
         shuffleBtn.setColorFilter(if (Player.shuffle) coverAccent else Palette.text2)
         repeatBtn.setColorFilter(if (Player.repeat != Player.Repeat.OFF) coverAccent else Palette.text2)
         btBadge.background = Shapes.oval(Palette.withAlpha(coverAccent, 0.18f))
@@ -735,11 +810,19 @@ class MusicActivity : Activity() {
         return (0xFF shl 24) or ((r / 64).toInt() shl 16) or ((g / 64).toInt() shl 8) or (bl / 64).toInt()
     }
 
-    private fun selectSource(useBt: Boolean) {
-        relayout(panelAfter = !(useBt && !lyricsOn)) {
-            bt = useBt
-            Prefs.raw.edit().putString("musicSource", if (useBt) "bt" else "local").apply()
-            if (useBt) BtMusic.activate() else BtMusic.deactivate()
+    private fun selectSource(to: Src) {
+        if (to == src) return
+        relayout(panelAfter = !(to == Src.BT && !lyricsOn)) {
+            val was = src
+            src = to
+            val e = Prefs.raw.edit().putString("musicSource", to.pref)
+            if (to != Src.BT) e.putString("musicSourceOwn", to.pref) // (what the music key comes back to)
+            e.apply()
+            // the speakers go with the source: the phone's music unmuted or muted, the unit's own player and
+            // YouTube's app paused when they are left
+            if (to == Src.BT) BtMusic.activate() else BtMusic.deactivate()
+            if (to == Src.YT) Player.pauseForOtherSource()
+            if (was == Src.YT) MediaMonitor.appControl(YtMusic.players, MediaMonitor.Do.PAUSE)
             lastArtKey = Long.MIN_VALUE
             showNowPlaying()
             showList()
@@ -747,6 +830,10 @@ class MusicActivity : Activity() {
     }
 
     private fun transport(action: Int) {
+        if (yt) {
+            MediaMonitor.appControl(YtMusic.players, when (action) { 0 -> MediaMonitor.Do.PREVIOUS; 1 -> MediaMonitor.Do.TOGGLE; else -> MediaMonitor.Do.NEXT })
+            return
+        }
         if (bt) {
             BtMusic.control(when (action) { 0 -> BtMusic.PREVIOUS; 1 -> BtMusic.TOGGLE; else -> BtMusic.NEXT })
             return
@@ -759,8 +846,187 @@ class MusicActivity : Activity() {
     }
 
     private fun playFrom(list: List<Track>, i: Int) {
-        if (bt) selectSource(false)
+        if (src != Src.LOCAL) selectSource(Src.LOCAL)
         Player.play(list, i)
+    }
+
+    // ------------------------------------------------------------------------------------------ YouTube
+    private fun buildYt(): View {
+        ytBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(14.dp, 14.dp, 14.dp, 0); visibility = View.GONE }
+        val bar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = Shapes.rect(Palette.withAlpha(Palette.card3, 0.75f), 28f)
+            setPaddingRelative(18.dp, 0, 6.dp, 0)
+        }
+        bar.addView(iconView(R.drawable.ic_search, 24, Palette.text2), lp(24.dp, 24.dp))
+        ytInput = android.widget.EditText(this).apply {
+            setHint(R.string.yt_search_hint)
+            setHintTextColor(Palette.text3)
+            setTextColor(Palette.text)
+            textSize = 18f
+            typeface = Fonts.get(Fonts.REGULAR)
+            isSingleLine = true
+            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH or android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI
+            background = null
+            setPadding(4.dp, 0, 4.dp, 0)
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun afterTextChanged(s: android.text.Editable?) = ytTyped(s?.toString().orEmpty())
+                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            })
+            setOnEditorActionListener { _, action, ev ->
+                if (action == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH || ev?.keyCode == android.view.KeyEvent.KEYCODE_ENTER) {
+                    removeCallbacks(ytSearchLater)
+                    if (text.trim().length >= 2) ytSearch(text.toString())
+                    ytHideKeyboard() // (it covers most of a car screen: the results show)
+                    true
+                } else false
+            }
+        }
+        bar.addView(ytInput, lp(0, MATCH, 1f).apply { marginStart = 10.dp })
+        bar.addView(FrameLayout(this).apply {
+            background = Shapes.ghostOval()
+            isClickable = true
+            pressScale(0.9f)
+            setOnClickListener { ytInput.setText(""); ytHideKeyboard() }
+            addView(iconView(R.drawable.ic_close, 22, Palette.text2).apply { layoutParams = flp(22.dp, 22.dp, Gravity.CENTER) })
+        }, lp(46.dp, 46.dp))
+        ytBox.addView(bar, lp(MATCH, 56.dp))
+
+        val body = FrameLayout(this)
+        ytList = ListView(this).apply {
+            divider = null
+            selector = android.graphics.drawable.ColorDrawable(0)
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            clipToPadding = false
+            setPadding(0, 4.dp, 0, 12.dp)
+            adapter = object : BaseAdapter() {
+                override fun getCount() = ytSongs.size
+                override fun getItem(i: Int) = ytSongs[i]
+                override fun getItemId(i: Int) = i.toLong()
+                override fun getView(i: Int, convert: View?, parent: ViewGroup): View {
+                    val row = (convert as? YtRow) ?: YtRow(this@MusicActivity)
+                    val s = ytSongs[i]
+                    row.bind(s)
+                    row.setOnClickListener { ytPlay(s) }
+                    return row
+                }
+            }
+        }
+        body.addView(ytList, flp(MATCH, MATCH))
+        ytNote = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(30.dp, 0, 30.dp, 20.dp) }
+        ytNote.addView(iconView(R.drawable.ic_music_list, 44, Palette.text3), lp(44.dp, 44.dp))
+        ytNoteText = label(16.5f, Palette.text2, Fonts.REGULAR, lines = 5, gravity = Gravity.CENTER)
+        ytNote.addView(ytNoteText, lp(MATCH, WRAP).apply { topMargin = 14.dp })
+        ytNoteBtn = label(17f, Palette.onColor(Palette.accent), Fonts.MEDIUM, gravity = Gravity.CENTER).apply {
+            background = Shapes.accent(18f); setPadding(26.dp, 0, 26.dp, 0); isClickable = true; pressScale(0.95f)
+            setText(R.string.yt_get_app)
+            setOnClickListener { YtMusic.openStore(this@MusicActivity) }
+        }
+        ytNote.addView(ytNoteBtn, lp(WRAP, 58.dp).apply { topMargin = 18.dp })
+        body.addView(ytNote, flp(MATCH, MATCH))
+        ytBox.addView(body, lp(MATCH, 0, 1f).apply { topMargin = 8.dp })
+        ytShow()
+        return ytBox
+    }
+
+    private val ytSearchLater = Runnable { ytSearch(ytInput.text.toString()) }
+
+    /** Typed: searched once the typing rests (the catalogue is asked over the phone's internet). */
+    private fun ytTyped(q: String) {
+        ytInput.removeCallbacks(ytSearchLater)
+        if (q.trim().length < 2) {
+            ytAsked++ // (an answer still on its way is for a query that is gone)
+            ytSongs = emptyList()
+            ytShow()
+        } else ytInput.postDelayed(ytSearchLater, 700L)
+    }
+
+    private fun ytSearch(q: String) {
+        val asked = ++ytAsked
+        if (ytSongs.isEmpty()) ytShow(getString(R.string.yt_searching))
+        YtMusic.search(q) { songs ->
+            if (asked != ytAsked || isDestroyed) return@search
+            ytSongs = songs.orEmpty()
+            ytShow(if (songs == null) getString(R.string.yt_failed) else null)
+            if (songs != null) ytList.setSelection(0)
+        }
+    }
+
+    /** The results, or the line that stands in their place ([note], or what the state calls for). */
+    private fun ytShow(note: String? = null) {
+        (ytList.adapter as BaseAdapter).notifyDataSetChanged()
+        val noApp = YtMusic.player(this) == null
+        val text = note ?: when {
+            ytSongs.isNotEmpty() -> null
+            ytInput.text.trim().length >= 2 -> getString(R.string.yt_none)
+            noApp -> getString(R.string.yt_no_app)
+            else -> getString(R.string.yt_hint)
+        }
+        ytNote.visibility = if (text != null) View.VISIBLE else View.GONE
+        ytList.visibility = if (text != null) View.INVISIBLE else View.VISIBLE
+        ytNoteText.text = text.orEmpty()
+        ytNoteBtn.visibility = if (noApp && note == null && ytSongs.isEmpty() && ytInput.text.trim().length < 2) View.VISIBLE else View.GONE
+    }
+
+    /** A song chosen: YouTube's own app takes it and plays; this screen comes back as soon as it does. */
+    private fun ytPlay(s: YtMusic.Song) {
+        ytHideKeyboard()
+        val c = applicationContext
+        val ok = YtMusic.play(this, s) {
+            try { c.startActivity(Intent(c, MusicActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Throwable) { }
+        }
+        if (!ok) {
+            android.widget.Toast.makeText(this, R.string.yt_no_app, android.widget.Toast.LENGTH_LONG).show()
+            YtMusic.openStore(this)
+        }
+    }
+
+    private fun ytHideKeyboard() {
+        try {
+            (getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).hideSoftInputFromWindow(ytInput.windowToken, 0)
+            ytInput.clearFocus()
+        } catch (_: Throwable) {
+        }
+    }
+
+    /** A found song (recycled by the list; a late picture for a recycled row is ignored). */
+    private inner class YtRow(ctx: Context) : LinearLayout(ctx) {
+        private val img = ImageView(ctx).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
+        private val t1 = ctx.label(18f, Palette.text, Fonts.MEDIUM)
+        private val t2 = ctx.label(14.5f, Palette.text2, Fonts.REGULAR)
+        private val dur = ctx.label(14f, Palette.text3, Fonts.MEDIUM)
+        private var shown = ""
+
+        init {
+            orientation = HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = 76.dp
+            setPaddingRelative(10.dp, 8.dp, 18.dp, 8.dp)
+            isClickable = true
+            background = Shapes.ghost(18f)
+            layoutParams = android.widget.AbsListView.LayoutParams(MATCH, WRAP)
+            val box = FrameLayout(ctx).apply { background = Shapes.rect(Palette.card2, 14f); roundedClip(14f) }
+            box.addView(ctx.iconView(R.drawable.ic_music, 22, Palette.text3).apply { layoutParams = flp(22.dp, 22.dp, Gravity.CENTER) })
+            box.addView(img, flp(MATCH, MATCH))
+            addView(box, lp(58.dp, 58.dp))
+            val col = LinearLayout(ctx).apply { orientation = VERTICAL }
+            col.addView(t1, lp(MATCH, WRAP))
+            col.addView(t2, lp(MATCH, WRAP).apply { topMargin = 3.dp })
+            addView(col, lp(0, WRAP, 1f).apply { marginStart = 16.dp; marginEnd = 10.dp })
+            addView(dur, lp(WRAP, WRAP))
+        }
+
+        fun bind(s: YtMusic.Song) {
+            t1.text = s.title
+            t2.text = listOf(s.artist, s.album).filter { it.isNotBlank() }.joinToString("  ·  ")
+            dur.text = if (s.sec > 0) time(s.sec * 1000L) else ""
+            shown = s.thumb
+            img.setImageDrawable(null)
+            YtMusic.thumb(s.thumb) { b -> if (shown == s.thumb && b != null) img.setImageBitmap(b) }
+        }
     }
 
     // ------------------------------------------------------------------------------------------ library
@@ -801,7 +1067,8 @@ class MusicActivity : Activity() {
         }
         applyLayout()
         // Bluetooth: the library makes way for the song (see applyLayout); the lyrics, when shown, take the panel
-        libraryBox.visibility = if (bt || lyricsOn) View.GONE else View.VISIBLE
+        libraryBox.visibility = if (src != Src.LOCAL || lyricsOn) View.GONE else View.VISIBLE
+        ytBox.visibility = if (yt && !lyricsOn) View.VISIBLE else View.GONE
         btBox.visibility = if (bt && !lyricsOn) View.VISIBLE else View.GONE
         lyricsView.visibility = if (lyricsOn) View.VISIBLE else View.GONE
         expandBtn.visibility = if (lyricsOn) View.VISIBLE else View.GONE
@@ -817,7 +1084,7 @@ class MusicActivity : Activity() {
             return
         }
         if (Library.loaded && Library.tracks.isEmpty()) {
-            showEmpty(getString(R.string.music_empty), getString(R.string.music_bluetooth)) { selectSource(true) }
+            showEmpty(getString(R.string.music_empty), getString(R.string.music_bluetooth)) { selectSource(Src.BT) }
             return
         }
         empty.visibility = View.GONE
@@ -851,7 +1118,7 @@ class MusicActivity : Activity() {
             override fun getItemId(i: Int) = tracks[i].id
             override fun getView(i: Int, convert: View?, parent: ViewGroup): View {
                 val row = (convert as? TrackRow) ?: TrackRow(this@MusicActivity)
-                row.bind(tracks[i], tracks[i].id == Player.current?.id && !bt)
+                row.bind(tracks[i], tracks[i].id == Player.current?.id && src == Src.LOCAL)
                 row.setOnClickListener { playFrom(tracks, i) }
                 return row
             }
@@ -1039,8 +1306,8 @@ class MusicActivity : Activity() {
                 if (resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL) scaleX = -1f
             })
         }, lp(56.dp, 56.dp))
-        source = Segmented(this, listOf(getString(R.string.music_library), getString(R.string.music_bluetooth)), equal = false) { i ->
-            selectSource(i == 1)
+        source = Segmented(this, listOf(getString(R.string.music_library), getString(R.string.music_bluetooth), getString(R.string.music_youtube)), equal = false) { i ->
+            selectSource(Src.values()[i])
         }.apply { trackColor = Palette.withAlpha(Palette.card, if (Palette.dark) 0.55f else 0.75f) }
         top.addView(View(this), lp(0, 1, 1f))
         lyricsIcon = iconView(R.drawable.ic_lyrics, 26, Palette.text)
@@ -1083,7 +1350,14 @@ class MusicActivity : Activity() {
         info.addView(artist, lp(MATCH, WRAP).apply { topMargin = 4.dp })
         info.addView(album, lp(MATCH, WRAP).apply { topMargin = 2.dp })
 
-        seek = SeekView(this).apply { onSeek = { f -> Player.seekTo((Player.duration() * f).toLong()) } }
+        seek = SeekView(this).apply {
+            onSeek = { f ->
+                if (yt) {
+                    val d = MediaMonitor.app(YtMusic.players)?.durationMs ?: 0L
+                    if (d > 0) MediaMonitor.appControl(YtMusic.players, MediaMonitor.Do.PLAY, seekToMs = (d * f).toLong())
+                } else Player.seekTo((Player.duration() * f).toLong())
+            }
+        }
         info.addView(seek, lp(MATCH, 36.dp).apply { topMargin = 12.dp })
         val times = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; layoutDirection = View.LAYOUT_DIRECTION_LTR }
         // (digits of one width: the times do not wobble as they count)
@@ -1189,6 +1463,7 @@ class MusicActivity : Activity() {
             setOnClickListener { openBluetooth(this@MusicActivity) }
         }, lp(WRAP, 60.dp).apply { topMargin = 24.dp })
         panel.addView(btBox, flp(MATCH, MATCH))
+        panel.addView(buildYt(), flp(MATCH, MATCH))
         lyricsView = LyricsView(this).apply { visibility = View.GONE; onLineTap = { l -> onLineTap(l) } }
         panel.addView(lyricsView, flp(MATCH, MATCH))
         // over the lyrics, in the panel's corner: the lyrics alone on the whole screen
@@ -1300,6 +1575,7 @@ class MusicActivity : Activity() {
         // art keys for "no cover" states (album ids are >= 0)
         private const val BT_ART = Long.MIN_VALUE + 1
         private const val NO_ART = -2L
+        private const val YT_ART = Long.MIN_VALUE + 2
         /** A time the phone does not tell (Bluetooth). */
         private const val UNKNOWN_TIME = "–:––"
         /** How long after a line starts the owner, hearing it, taps it. */

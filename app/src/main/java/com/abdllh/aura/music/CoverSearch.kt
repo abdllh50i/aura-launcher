@@ -37,24 +37,29 @@ object CoverSearch {
         override fun sizeOf(key: String, value: Bitmap) = value.byteCount
     }
     private val missing = HashMap<String, Long>() // io thread only: songs no catalogue knows (asked again after a while)
-    private val lengths = HashMap<String, Int>() // main thread: the catalogue's length of the covers in [mem]
+    /** Main thread: the catalogue's length of the covers in [mem], and whether YouTube Music's catalogue gave it. */
+    private val lengths = HashMap<String, Pair<Int, Boolean>>()
 
     /** The user's switch (on by default: without it Bluetooth songs have no picture at all). */
     var enabled: Boolean
         get() = Prefs.raw.getBoolean("btCoverOnline", true)
         set(v) { Prefs.raw.edit().putBoolean("btCoverOnline", v).apply() }
 
-    /** A catalogue's answer: the cover's address and the song's length (0 when it gave none). */
-    private class Hit(val url: String, val sec: Int)
+    /** A catalogue's answer: the cover's address and the song's length (0 when it gave none); [yt]: YouTube Music's. */
+    private class Hit(val url: String, val sec: Int, val yt: Boolean = false)
+
+    /** A cover with its song's length in seconds (0 unknown) and whether YouTube Music's catalogue told it. */
+    private class Found(val cover: Bitmap, val sec: Int, val yt: Boolean)
 
     /**
-     * The cover of a song, or null, and the song's length in seconds (0 when unknown); [done] runs on the main thread
-     * (at once when it is already known).
+     * The cover of a song, or null, the song's length in seconds (0 when unknown) and whether that length is
+     * YouTube Music's own (the song itself, for a phone that plays from there: believed over another catalogue's);
+     * [done] runs on the main thread (at once when it is already known).
      */
-    fun find(ctx: Context, title: String, artist: String, done: (Bitmap?, Int) -> Unit) {
+    fun find(ctx: Context, title: String, artist: String, done: (Bitmap?, Int, Boolean) -> Unit) {
         val key = "${norm(artist)}|${norm(title)}"
-        if (norm(title).isEmpty()) { done(null, 0); return }
-        mem.get(key)?.let { done(it, lengths[key] ?: 0); return }
+        if (norm(title).isEmpty()) { done(null, 0, false); return }
+        mem.get(key)?.let { val l = lengths[key]; done(it, l?.first ?: 0, l?.second ?: false); return }
         val c = ctx.applicationContext
         val online = enabled
         io.execute {
@@ -63,8 +68,8 @@ object CoverSearch {
                 null
             }
             main.post {
-                if (r != null) { mem.put(key, r.first); lengths[key] = r.second }
-                done(r?.first, r?.second ?: 0)
+                if (r != null) { mem.put(key, r.cover); lengths[key] = r.sec to r.yt }
+                done(r?.cover, r?.sec ?: 0, r?.yt ?: false)
             }
         }
     }
@@ -72,21 +77,40 @@ object CoverSearch {
     // ------------------------------------------------------------------------------------------ lookup
     private var offline = false // io thread: a catalogue could not be asked (no network...) during this lookup
 
-    private fun fromNetwork(c: Context, key: String, title: String, artist: String): Pair<Bitmap, Int>? {
+    private fun fromNetwork(c: Context, key: String, title: String, artist: String): Found? {
         val seen = missing[key]
         if (seen != null && System.currentTimeMillis() - seen < RETRY_MISSING_MS) return null
         val t = clean(title)
         val a = clean(artist)
         offline = false
-        val hit = itunes(t, a) ?: deezer(t, a)
+        val hit = ytmusic(t, a) ?: itunes(t, a) ?: deezer(t, a)
         if (hit == null) {
             if (!offline) missing[key] = System.currentTimeMillis() // really unknown (not just no network right now)
             return null
         }
         val bytes = download(hit.url)
         val b = decode(bytes) ?: return null
-        try { save(c, key, bytes, hit.sec) } catch (_: Throwable) { }
-        return b to hit.sec
+        try { save(c, key, bytes, hit.sec, hit.yt) } catch (_: Throwable) { }
+        return Found(b, hit.sec, hit.yt)
+    }
+
+    /**
+     * YouTube Music's catalogue first (1.10, see [YtMusic]: the search ytmusicapi makes): the owner's phone plays from
+     * it, so the first song there with this name and artist is the song itself — its own cover, and its own length,
+     * which the other catalogues often miss or give for another recording. The names the phone sends are that
+     * catalogue's own, so they mostly match letter for letter.
+     */
+    private fun ytmusic(title: String, artist: String): Hit? {
+        val songs = try { YtMusic.find("$artist $title".trim()) } catch (t: Throwable) {
+            Log.i(TAG, "YouTube Music: $t")
+            offline = true
+            return null
+        }
+        for (s in songs.take(8)) {
+            if (s.thumb.isEmpty() || !matches(title, artist, s.title, s.artist)) continue
+            return Hit(YtMusic.sized(s.thumb, SIZE), s.sec, yt = true)
+        }
+        return null
     }
 
     /** Parsed JSON of a catalogue answer, or null (and [offline] set) when it could not be fetched. */
@@ -189,7 +213,19 @@ object CoverSearch {
         return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = s })
     }
 
-    private fun dir(c: Context) = File(c.cacheDir, "covers")
+    /**
+     * "covers2" since 1.10: what was kept before came from the other catalogues, often with no length or another
+     * recording's; every song is looked up once more, YouTube Music first (the old folder goes).
+     */
+    private fun dir(c: Context): File {
+        if (!cleaned) {
+            cleaned = true
+            try { File(c.cacheDir, "covers").takeIf { it.isDirectory }?.deleteRecursively() } catch (_: Throwable) { }
+        }
+        return File(c.cacheDir, "covers2")
+    }
+
+    private var cleaned = false
 
     private fun file(c: Context, key: String): File {
         val h = MessageDigest.getInstance("SHA-1").digest(key.toByteArray()).joinToString("") { "%02x".format(it) }
@@ -199,21 +235,22 @@ object CoverSearch {
     /** The song's length beside its cover ("<hash>.len"; covers kept before there were lengths have none). */
     private fun lengthFile(cover: File) = File(cover.parentFile, cover.nameWithoutExtension + ".len")
 
-    private fun fromDisk(c: Context, key: String): Pair<Bitmap, Int>? {
+    private fun fromDisk(c: Context, key: String): Found? {
         val f = file(c, key)
         if (!f.isFile) return null
         f.setLastModified(System.currentTimeMillis()) // recently used: kept longer
         val b = decode(f.readBytes()) ?: return null
-        val sec = try { lengthFile(f).takeIf { it.isFile }?.readText()?.trim()?.toIntOrNull() ?: 0 } catch (_: Throwable) { 0 }
-        return b to sec
+        // "<seconds>", or "<seconds> y" when YouTube Music's catalogue gave them
+        val len = try { lengthFile(f).takeIf { it.isFile }?.readText()?.trim().orEmpty() } catch (_: Throwable) { "" }
+        return Found(b, len.substringBefore(' ').toIntOrNull() ?: 0, len.endsWith(" y"))
     }
 
-    private fun save(c: Context, key: String, bytes: ByteArray, sec: Int) {
+    private fun save(c: Context, key: String, bytes: ByteArray, sec: Int, yt: Boolean) {
         val d = dir(c)
         d.mkdirs()
         val f = file(c, key)
         f.writeBytes(bytes)
-        if (sec > 0) lengthFile(f).writeText(sec.toString())
+        if (sec > 0) lengthFile(f).writeText(if (yt) "$sec y" else sec.toString())
         val covers = d.listFiles { x -> x.name.endsWith(".jpg") } ?: return
         if (covers.size > DISK_FILES) covers.sortedBy { it.lastModified() }.take(covers.size - DISK_FILES).forEach {
             it.delete()
