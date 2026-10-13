@@ -356,6 +356,14 @@ object BtMusic {
         transact(TX_SET_MUTE) { it.writeInt(1) }
     }
 
+    // ------------------------------------------------------------------------------------------ phone calls
+    /**
+     * The same service holds the phone side (see phone/Calls): BTFeature.answerCall is 14, cancelCall 15 — which
+     * declines a call that rings and ends one that is dialled or talked on. False when the service could not be told.
+     */
+    fun answerCall(): Boolean = transact(14) { }
+    fun cancelCall(): Boolean = transact(15) { }
+
     // ------------------------------------------------------------------------------------------ binder
     private val pimCallback = object : Binder() {
         init { attachInterface(null, CALLBACK) }

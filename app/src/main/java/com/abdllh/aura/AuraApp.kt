@@ -30,6 +30,9 @@ import com.abdllh.aura.util.Prefs
 class AuraApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        // BootHome's process, right after a power-on: the user's storage is still closed (settings would throw) and
+        // nothing of AMRI is wanted yet but that one waiting screen
+        if (processName().endsWith(":boot")) return
         CrashGuard.install(this) // first: a crash while the rest of the start-up runs must be counted as well
         if (BuildConfig.DEBUG) {
             // emulator tests: the root shell through scripts/fake_adbd.py  (setprop debug.aura.adb 10.0.2.2:15555)
@@ -37,6 +40,7 @@ class AuraApp : Application() {
                 p.toIntOrNull()?.let { com.abdllh.aura.system.LocalAdb.host = h; com.abdllh.aura.system.LocalAdb.port = it }
             }
         }
+        com.abdllh.aura.home.BootHome.ensure(this) // AMRI's home screen for the moment after a power-on (the unit only)
         Dp.init(this)
         Prefs.init(this)
         Theme.refresh()
@@ -49,7 +53,10 @@ class AuraApp : Application() {
         // the status bar, the volume display and the screen-change animations are Aura's to change only while Aura is
         // the home screen
         val disabled = SystemProps.get(Device.DISABLED_PROP) == "1"
-        if (disabled) { SystemBars.release(this); VolumeHud.release(this); Animations.release(this) }
+        if (disabled) {
+            SystemBars.release(this); VolumeHud.release(this); Animations.release(this)
+            com.abdllh.aura.phone.Calls.release(this); MusicKeys.release()
+        }
         else { SystemBars.apply(this); Animations.apply(this) }
         Animations.ensureAnimators()
         Player.init(this)
@@ -66,10 +73,15 @@ class AuraApp : Application() {
             NwdBridge.stopBootTip(this) // (one an earlier AMRI started this boot)
             com.abdllh.aura.system.BetaLeftovers.removeOnce(this) // what a 1.6.1 beta left over the Bluetooth daemon
             Gear.init(this)
+            com.abdllh.aura.phone.Calls.init(this) // a phone call: AMRI's own card and ring, not the stock window
             BootAnim.ensure(this) // this build's boot animation, also after an update from the screen
             AssistiveBall.offOnce(this) // the stock floating circle the owner switched on by accident
             com.abdllh.aura.system.AppRemover.removeRequestedOnce(this) // the "Vivid" launcher the owner asked to remove
             com.abdllh.aura.voice.Amri.init(this) // the voice assistant (its wake word listener when switched on)
         }
     }
+
+    private fun processName(): String =
+        if (android.os.Build.VERSION.SDK_INT >= 28) getProcessName()
+        else try { java.io.File("/proc/self/cmdline").readText().trim('\u0000', ' ', '\n') } catch (_: Throwable) { "" }
 }

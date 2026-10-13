@@ -14,6 +14,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- the voice assistant "عمري": its wake word, and the speech recogniser it asks (runtime permission) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Aura's volume display over other apps (allowed through appops by the ROM / Aura's root shell) -->
@@ -69,6 +70,41 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- The home screen of the first moments after a power-on, while the user's storage is still closed and only
+             direct-boot aware screens exist: without it the stock launcher is the only home screen the firmware
+             finds then, and it stays (see home/BootHome.kt). A process of its own, in which AuraApp does nothing.
+             The low priority: once the user is unlocked HomeActivity comes first for the home intent.
+             Off here and switched on by the app on the car unit (BootHome.ensure): on a stock Android a second home
+             screen in the package makes the system drop the home app that was chosen. -->
+        <activity
+            android:name=".home.BootHome"
+            android:configChanges="orientation|keyboard|keyboardHidden|screenSize|smallestScreenSize|screenLayout|uiMode|density|fontScale"
+            android:directBootAware="true"
+            android:enabled="false"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:process=":boot"
+            android:screenOrientation="landscape"
+            android:stateNotNeeded="true"
+            android:taskAffinity="com.abdllh.aura.boot"
+            android:theme="@style/Theme.Aura.Boot">
+            <intent-filter android:priority="-900">
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- Starts AMRI's process when the unit has started, whatever is in front: HomeGuard then sees a stock screen
+             that took the home screen's place (the second line of defence behind BootHome). -->
+        <receiver
+            android:name=".system.BootReceiver"
+            android:exported="true">
+            <intent-filter android:priority="900">
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
         <activity
             android:name=".settings.SettingsActivity"

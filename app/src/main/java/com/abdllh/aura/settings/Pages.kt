@@ -146,7 +146,10 @@ class DisplaySoundPage(private val act: SettingsActivity) : Page(R.string.set_di
 
         col.addView(ctx.sectionTitle(ctx.getString(R.string.set_music)), lp(MATCH, WRAP).apply { topMargin = 22.dp })
         col.addRow(ctx.switchRow(R.drawable.ic_steering, ctx.getString(R.string.set_music_keys), ctx.getString(R.string.set_music_keys_sub),
-            com.abdllh.aura.system.MusicKeys.enabled) { on -> com.abdllh.aura.system.MusicKeys.enabled = on }, 8)
+            com.abdllh.aura.system.MusicKeys.enabled) { on ->
+            com.abdllh.aura.system.MusicKeys.enabled = on
+            com.abdllh.aura.system.MusicKeys.applyRules() // (the firmware's key rules with or without the music keys)
+        }, 8)
         col.addRow(ctx.switchRow(R.drawable.ic_disc, ctx.getString(R.string.set_bt_cover), ctx.getString(R.string.set_bt_cover_sub),
             com.abdllh.aura.music.CoverSearch.enabled) { on -> com.abdllh.aura.music.CoverSearch.enabled = on }, 8)
         if (com.abdllh.aura.system.StockMusic.available(ctx)) {
@@ -156,6 +159,27 @@ class DisplaySoundPage(private val act: SettingsActivity) : Page(R.string.set_di
                 com.abdllh.aura.system.StockMusic.apply(ctx) { ok ->
                     if (!ok) act.runOnUiThread { Toast.makeText(ctx, R.string.set_failed, Toast.LENGTH_LONG).show() }
                 }
+            }, 8)
+        }
+
+        if (com.abdllh.aura.phone.Calls.available) {
+            col.addView(ctx.sectionTitle(ctx.getString(R.string.set_calls)), lp(MATCH, WRAP).apply { topMargin = 22.dp })
+            col.addRow(ctx.switchRow(R.drawable.ic_phone, ctx.getString(R.string.set_call_card), ctx.getString(R.string.set_call_card_sub),
+                com.abdllh.aura.phone.Calls.enabled) { on ->
+                com.abdllh.aura.phone.Calls.enabled = on
+                com.abdllh.aura.phone.Calls.apply(ctx) { ok ->
+                    if (!ok) act.runOnUiThread { Toast.makeText(ctx, R.string.set_failed, Toast.LENGTH_LONG).show() }
+                }
+            }, 8)
+            col.addRow(ctx.switchRow(R.drawable.ic_volume, ctx.getString(R.string.set_call_ring), ctx.getString(R.string.set_call_ring_sub),
+                com.abdllh.aura.phone.Ringtone.enabled) { on ->
+                com.abdllh.aura.phone.Ringtone.enabled = on
+                com.abdllh.aura.phone.Ringtone.apply(ctx) { ok ->
+                    if (!ok) act.runOnUiThread { Toast.makeText(ctx, R.string.set_failed, Toast.LENGTH_LONG).show() }
+                }
+            }, 8)
+            col.addRow(ctx.settingRow(R.drawable.ic_play, ctx.getString(R.string.set_call_ring_play), null, ctx.chevron()) {
+                com.abdllh.aura.phone.Ringtone.play(ctx)
             }, 8)
         }
 
@@ -399,6 +423,8 @@ class AboutPage(private val act: SettingsActivity) : Page(R.string.set_about, R.
             }))
         // the last stock screen the home screen took the place of as the unit came on (for reports from the unit)
         com.abdllh.aura.system.HomeGuard.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_home, R.string.about_covered, it) }
+        // how the music button last reached AMRI: its own key (no stock screen), or a stock screen that had to be covered
+        com.abdllh.aura.system.MusicKeys.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_steering, R.string.about_music_key, it) }
 
         // Home-app control (car unit only)
         if (Device.isNwd) {

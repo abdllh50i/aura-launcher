@@ -220,6 +220,25 @@ comes up over Aura Music (`Front.own` is `MusicActivity`, paused within 1.5 s) o
 second press: the home screen instead. The other source's screen is its own button, and changes the source as before
 (MODE, key 23, loops 2 → 3 → 8 → 9 → 11 → 15). Emulator: `settings put system activity_starting
 com.nwd.bt.music,com.nwd.bt.music.home_horizontalActivity` with another app started over Aura Music a moment before.
+All of that answers a stock screen that is already in front: the owner saw it for a moment. Nothing tells of the press
+earlier — `ACTION_KEY_VALUE` is not sent for a key that has a rule, and `ACTION_CHANGE_SOURCE` / `key_appid` change in
+the very call that starts the screen (`changeSource` → `pushApp` → `startApp`). So since 1.9 the two music keys are
+taken out of the firmware's key rules (`MusicKeys.applyRules`, root): `/data/nwdappconfig/app/KeyRuleConfig.xml` (the
+only copy KernelService reads; `SourceMgr.<init>`, once, no reload) loses its `<KeyItem Key="83">` and `Key="99"`
+blocks. A key with no rule is only announced (`InputChangeSourceRule.isCanPanelChegeSource`: "no keyItem can
+response" → `sendKey`), the way the volume keys are, and `MusicKeys.key` opens Aura Music at the press itself: nothing
+stock is ever started. It refuses what the firmware refused (a phone call, reversing), keeps the firmware's 1.5 s
+between presses (a key held down is announced again and again), and the second press inside Aura Music still goes home. The edit is made on a copy and checked (as many rules
+opened as closed, the list's end, key 23 still there: a file the parser cannot read loses every key's rule silently)
+before it is written through the file; the original is `KeyRuleConfig.xml.pre-aura`, which the switch going off, the
+kill switch and the ROM restore's `*.pre-aura` loop put back. It works from the unit's next start; until then, and
+for every other way a stock music screen comes up (MODE, key 97, a CAN box that starts `com.nwd.bt.music` itself for its
+key 26, the ignition, the app list), the cover above stays. Settings → About shows how the button last arrived
+("key 83" or "stock music screen"). Not done: pointing app 2 / 15 at Aura in ApplicationList.xml or the replace list
+(the force-stop above, and key 83 on any Aura screen would then *leave* instead of opening), and disabling the stock
+screens (a CAN key 26 would then do nothing at all, with no sign of it for Aura). Emulator: `setprop debug.aura.unit 1`,
+the rules file pushed to `/data/nwdappconfig/app`, the root shell through `scripts/fake_adbd.py`, then `am broadcast -a
+com.nwd.action.ACTION_KEY_VALUE --ei extra_key_value 83`.
 Lyrics (1.5.4): `Lyrics.kt` asks LRCLIB (lrclib.net, free and open, no key; many Gulf / Arabic songs) by title, artist
 and length (`/api/get`, then `/api/search?q=` and by field), takes the result whose name, artist and length (±8 s)
 match, prefers timed (LRC) lyrics, keeps them in `cacheDir/lyrics` (a "none" for 3 days, only when every question
@@ -247,6 +266,13 @@ background (the pressed tint) a dimmed TextView is otherwise drawn through an of
 dozen of them while the lines scroll — and the alpha + scale change of the two lines involved runs `withLayer()`.
 `relayout` (lyrics on/off, another source) is a `LayoutMove`: the cover, the names and the top buttons travel, the
 panel or what was in it fades where it stood.
+A song without lyrics gives the room back (1.9): the button is the owner's wish (`lyricsWanted`, the pref), their
+place being open is another thing (`lyricsOn`). When the lookup of a new song ends with nothing — none, an
+instrumental, the server not reached — `lyricsHave(false)` closes the panel, and leaves the whole-screen lyrics first
+(without touching `musicLyricsFull`); the next song that has some opens them again, the size they were. While a song is
+looked up the place stays as it is (open with "looking", or closed), so it does not flap between two songs that have
+lyrics. The song the button was pressed on is the exception (`lyricsPinned`): there the line saying that there are
+none is the answer to the press. A change that happens inside another (`relaying`) joins its movement.
 
 Where a Bluetooth song is (1.6): this unit's stack never says. UartConfig.ini `bt_module=0` → the AT# ("atpound") driver
 over `/dev/goc_serial` (the GOC stack for the AIC8800, `persist.sys.bt.aic8800=true`); its progress report is the
@@ -477,11 +503,42 @@ and how fast it turned last time. The model itself is not in the repo.
   `extra_class_name`). `system/Front.kt` reads it too (a state: a process that starts late still sees what came up
   before it) and keeps AMRI's own screen in front or last in front (`own`, `ownLeftAt`).
 * What the firmware puts in front when the unit comes on (the owner saw "the old system" until he pressed something):
-  - Not the stock launcher: `SourceMgr.startApp` sends app 4 (ApplicationList.xml: `com.android.launcher` /
-    `com.android.launcher2.Launcher`) as a plain home intent when `isHomePage` (package starts with
-    `com.android.launcher`, class ends with `Launcher`), and `PackageManagerService.chooseBestActivity` answers a MAIN +
-    HOME intent with the package in `persist.nwd.launcher.default`. `ro.nwd.start.launcher.by.fw=true`: the first
-    start is left to the framework.
+  - **After a power-on, the stock launcher — found in 1.9, and the cause of the owner's report** (he had turned on
+    "power off completely when the car is switched off": every start of the car is a cold boot). Android starts the
+    home screen at `systemReady`, while user 0 is still "locked" (the user is unlocked only after the first activity
+    has gone idle: `finishBooting` → `maybeUnlockUser`; the unit is not encrypted, the state machine runs all the
+    same). Until then the package manager finds direct-boot aware components only (`updateFlags` adds
+    `MATCH_DIRECT_BOOT_AWARE` alone), and NWD's `PackageParser.parseBaseApplication` force-marks every package whose
+    name contains `launcher` or `nwd` (plus `com.bt.bc03`, `com.android.utils.sendkey` and the packages listed in
+    `/data/nwdappconfig/app/DirectBootAwareAppList.ini`) as direct-boot aware ("force set … directBootAware=true",
+    `ro.kernelservice.directbootaware`, true unless set). So the only home candidate was
+    `com.android.launcher2.Launcher`, and `chooseBestActivity` returns a single candidate before it ever reads
+    `persist.nwd.launcher.default` (the property is looked at for two or more: the first entry of that package).
+    Nothing asks for the home screen again after the unlock, AMRI's process was never started (no boot receiver, the
+    home intent did not reach it), so `HomeGuard` did not exist to cover anything; the first home intent after that
+    — a Home key, leaving any app — found AMRI. A wake-up from sleep never passes through this, which is why it
+    only showed with the power-off option.
+    The fix is `home/BootHome.kt`: a second home activity, `directBootAware`, in a process of its own (`:boot`, where
+    `AuraApp.onCreate` returns at once: `getSharedPreferences` throws while locked), filter priority −900. Locked,
+    the candidates are the stock launcher and it; the property picks AMRI's package, that is it. It is a black
+    screen that waits for `ACTION_USER_UNLOCKED` (and looks every 400 ms), then sends the home intent, which now
+    finds `HomeActivity` (priority 0, first of AMRI's entries), and finishes — what Android's own `FallbackHome` does.
+    After 6 s unlocked with the intent still finding itself it starts `HomeActivity` by name; never unlocked for 40 s,
+    the stock launcher by name (it exists in that state). The component is off in the manifest and switched on by
+    the app on the unit (`BootHome.ensure`, at every start): on a stock Android a second home activity in the package
+    makes the package manager drop the chosen home app ("Result set changed, dropping preferred activity"). Component
+    states are written 10 s late: the first power-on after the update's first run uses it. Behind it,
+    `system/BootReceiver` (BOOT_COMPLETED) starts AMRI's process whatever is in front, so `HomeGuard` covers a stock
+    home screen within seconds should `BootHome` not be chosen (a unit whose component state was reset, the first boot
+    after the ROM is installed). Do not disable the stock launcher instead: with no direct-boot aware home nothing
+    goes idle and the boot never finishes. Emulator: `setprop debug.aura.boothome 1`, start the app, wait 15 s,
+    `adb reboot`; `logcat -s AuraBootHome` ("home after 1865 ms"); there the candidates are Settings' FallbackHome
+    (−1000) and it, and it wins by priority.
+  - Not the stock launcher by KernelService: `SourceMgr.startApp` sends app 4 (ApplicationList.xml:
+    `com.android.launcher` / `com.android.launcher2.Launcher`) as a plain home intent when `isHomePage` (package
+    starts with `com.android.launcher`, class ends with `Launcher`), and `PackageManagerService.chooseBestActivity`
+    answers a MAIN + HOME intent with the package in `persist.nwd.launcher.default`. `ro.nwd.start.launcher.by.fw=true`:
+    for the first-boot source (−48, app 4) `resumeSource` starts nothing ("first boot source,by fw start launcher").
   - The source that played when the ignition went off: `SourceMgr.accOn` → `resumeSource` →
     `SourceKeeper.getKeepSource` (`key_appid`) → `startApp` with the **component** from ApplicationList.xml: the stock
     radio (8), video (3), AUX (9), TV (11), Bluetooth music (15, `com.nwd.bt.music/.home_horizontalActivity`), music (2).
@@ -501,7 +558,38 @@ and how fast it turned last time. The model itself is not in the repo.
     from ignition-off until 7 s after ignition-on or a tap (1), or a notice over the stock wallpaper after a boot
     (2), plus a language page at the first start and handbrake / MCU-version warnings. Stock is 0; the unit's copy in
     `/data/nwdappconfig/app` is not known. AMRI no longer starts it, and stops one an earlier AMRI started.
-  Which of these the owner saw is not known (nothing was read off the unit); all are closed.
+  The last three were closed in 1.7 without knowing which one the owner saw; it was none of them (the first one).
+* Phone calls belong to the Bluetooth service (`com.bt.bc03`, `HFPManager`), not to the phone app
+  (`com.nwd.android.phone`). It broadcasts, to anybody: `com.bt.ACTION_BT_INCOMING_CALL`, `_INCOMING_NUMBER`
+  (`extra_phone_number`, `extra_phone_name` when its synced phone book has the number), `_INCOMING_NAME`; the same
+  three with `OUTGOING`; `_BEGIN_CALL_ONLINE`; `_END_CALL`; and keeps `Settings.System key_bt_state` (3 ringing, 4
+  dialling, 5 talking) and `key_call_num`. `BTFeature` (binder): `answerCall` 14, `cancelCall` 15 (declines a ringing
+  call, ends any other), `changeSoundChannel` 28, `getCallState` 52, `setMute` 58 (microphone); or broadcast
+  `com.nwd.bluetooth.hfp.operation`, int `extra_hfp_operation` 2 answer / 3 hang up. KernelService turns the broadcasts
+  into the MCU's phone status (`MCUDeviceManager$5` → `BtProtocalUtil.requestSendBtStatus`, `bt_phone_status`), the
+  setting service into the backlight and `AudioManager.setMode`, and volume changes go to parameter 16 while
+  `key_bt_state` ≥ 3: none of it depends on a window.
+  - The stock call window: the phone app's `BtBroadcastReceiver` service answers `_INCOMING_NUMBER` with broadcast
+    `com.nwd.android.phone.createFloat` (`pagename` "phonedialog_horizontal", `bt_state`, `bt_call_number`,
+    `bt_call_name`), and its `com.nwd.android.phone.FloatBar` service draws the dialog in one of the firmware's top
+    window layers (`ro.nwd.first.window` 2401 + 1), above anything an app can add; the same window serves a dialled
+    and an answered call. `phone/Calls.kt` disables that one component (root `pm disable`, like the stock volume bar;
+    not during a call: it restarts the phone app's process) and `phone/CallBanner.kt` shows AMRI's card instead: who,
+    decline and answer, then the time and hang up. The card shows only while the stock component is really off —
+    never the two together. The phone app's own state keeps running (`mIsShow` is set after the broadcast whether
+    anybody drew or not), so the panel's answer / hang-up keys it handles still work. The switch going off, the kill
+    switch (also when it is set while AMRI runs: that is the ROM's restore at work, and an older pack's restore does
+    not know this component) and the restore itself enable it again.
+  - The ring is the service's too (`PlayerService`, on `_INCOMING_CALL`): a `MediaPlayer` looping a file on
+    `STREAM_VOICE_CALL` at full stream volume (the loudness is the MCU's phone-call volume), stopped by
+    `_BEGIN_CALL_ONLINE` / `_END_CALL`; no setting turns it off. The file: the last that exists of
+    `/data/ringtones/ring.ogg`, `/system/ring.mp3` (there: 19 s, peaks at −9.6 dBFS), `/mtc/ring.mp3` — unless
+    `ro.nwd.internal.path` + `/ring.mp3` exists (`/mnt/media_rw/sdcard`, which init links to the primary storage:
+    a `ring.mp3` in the root of the internal storage), looked for at every ring. `phone/Ringtone.kt` puts AMRI's ring
+    there as root (`res/raw/aura_ring.mp3`, made by `design/sound/make_ring.py`: a marimba phrase in E major, 4.6 s
+    with a quiet end, −6 dBFS), with its MD5 in `.aura-ring` beside it; an owner's own `ring.mp3` is kept as
+    `ring.mp3.pre-aura` and comes back. A second player from AMRI would only sound over the firmware's.
+  - Emulator: `am broadcast -a com.abdllh.aura.debug.CALL --es state ring|talk|end --es number … --es name …`.
 * The backlight: `com.nwd.action.ACTION_SET_BACKLIGHT_SWITCH`, boolean `extra_backlight_switch` (the setting service's
   `AbsBackLightManager`; off until the panel is touched). The stock launcher's "screen off" icon sends it and never
   opens its own `com.nwd.screenoff.ScreenOffActivity`, which is an empty activity; AMRI's screen-off buttons opened

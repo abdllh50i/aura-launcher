@@ -94,8 +94,14 @@ class MusicActivity : Activity() {
     private lateinit var lyricsView: LyricsView
     private lateinit var lyricsBtn: FrameLayout
     private lateinit var lyricsIcon: ImageView
+    /** The owner's switch (the button): lyrics wanted. */
+    private var lyricsWanted = false
+    /** Their place is open: wanted, and the song has some (or the owner asked on this very song, see [lyricsPinned]). */
     private var lyricsOn = false
     private var lyricsKey: String? = null
+    /** The button was just pressed on: the song then in front keeps their place open even when it has none ("" = no song). */
+    private var lyricsAsked = false
+    private var lyricsPinned: String? = null
     // ...or the whole screen, in large type, over a small bar with the song and its buttons
     private lateinit var root: FrameLayout
     private lateinit var content: LinearLayout
@@ -141,7 +147,8 @@ class MusicActivity : Activity() {
         Player.init(this)
         BtMusic.init(this)
         bt = Prefs.raw.getString("musicSource", "local") == "bt" || (BtMusic.playing && !Player.playing)
-        lyricsOn = Prefs.raw.getBoolean("musicLyrics", false)
+        lyricsWanted = Prefs.raw.getBoolean("musicLyrics", false)
+        lyricsOn = lyricsWanted // (until the song in front turns out to have none)
         lyricsFull = lyricsOn && Prefs.raw.getBoolean("musicLyricsFull", false)
         setContentView(buildUi())
         if (lyricsFull) showFull(true, animate = false)
@@ -254,13 +261,66 @@ class MusicActivity : Activity() {
     private inline fun lyrics(f: (LyricsView) -> Unit) { f(lyricsView); f(lyricsBig) }
 
     private fun toggleLyrics() {
-        relayout(panelAfter = !(bt && lyricsOn)) {
-            lyricsOn = !lyricsOn
-            Prefs.raw.edit().putBoolean("musicLyrics", lyricsOn).apply()
+        val on = !lyricsWanted
+        relayout(panelAfter = !(bt && !on)) {
+            lyricsWanted = on
+            lyricsOn = on
+            lyricsAsked = on
+            Prefs.raw.edit().putBoolean("musicLyrics", on).apply()
             lyricsKey = null
             showList()
             showNowPlaying()
         }
+    }
+
+    /**
+     * The song in front has lyrics to show, or not: their place opens or closes with it, and the button stays on. A
+     * song without any gives the room back (to the cover, to the library) instead of a line saying so; the next one
+     * that has some brings them back the size they were. Not for the song the owner pressed the button on: there the
+     * line that says why nothing shows is the answer.
+     */
+    private fun lyricsHave(some: Boolean) {
+        if (!lyricsWanted) return
+        val show = some || lyricsPinned == (lyricsKey ?: "")
+        if (show == lyricsOn) return
+        val moving = root.isLaidOut && root.isShown
+        when {
+            show && Prefs.raw.getBoolean("musicLyricsFull", false) -> {
+                lyricsOn = true
+                if (moving) {
+                    showFull(true, remember = false)
+                    // the song's side takes its new layout once it is out of sight
+                    root.postDelayed({ if (lyricsFull && lyricsOn) showList() }, 240L)
+                } else {
+                    showList()
+                    showFull(true, animate = false, remember = false)
+                }
+            }
+            show -> relayout(panelAfter = true) { lyricsOn = true; showList() }
+            lyricsFull -> {
+                // the large lyrics are left first; large stays the owner's choice for the next song that has some
+                lyricsOn = false
+                showList() // (the song's side is out of sight: it comes back in its new layout)
+                if (moving) afterLayout { if (lyricsFull && !lyricsOn) showFull(false, remember = false) }
+                else showFull(false, animate = false, remember = false)
+            }
+            else -> relayout(panelAfter = !bt) { lyricsOn = false; showList() }
+        }
+    }
+
+    private var relaying = false
+
+    /** Runs [then] once the layout asked for is done, just before it is drawn. */
+    private fun afterLayout(then: () -> Unit) {
+        val o = root.viewTreeObserver
+        o.addOnPreDrawListener(object : android.view.ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                (if (o.isAlive) o else root.viewTreeObserver).removeOnPreDrawListener(this)
+                then()
+                return true
+            }
+        })
+        root.requestLayout()
     }
 
     /**
@@ -269,13 +329,15 @@ class MusicActivity : Activity() {
      * [panelAfter]: the panel beside the song is still there afterwards (then only what is in it changes).
      */
     private fun relayout(panelAfter: Boolean, change: () -> Unit) {
-        if (!::root.isInitialized || !root.isLaidOut || !root.isShown || lyricsFull) { change(); return }
+        // (a change inside a change, such as the lyrics closing as the source changes: one movement, the outer one's)
+        if (relaying || !::root.isInitialized || !root.isLaidOut || !root.isShown || lyricsFull) { change(); return }
         val hadPanel = panel.visibility == View.VISIBLE
         val inside = listOf(libraryBox, btBox, lyricsView)
         val was = inside.firstOrNull { hadPanel && it.visibility == View.VISIBLE }
         val move = LayoutMove(root, listOf(artBox, info, lyricsBtn, source), setOf(artBox),
             leaving = if (hadPanel && !panelAfter) listOf(panel) else listOfNotNull(was))
-        change()
+        relaying = true
+        try { change() } finally { relaying = false }
         val hasPanel = panel.visibility == View.VISIBLE
         val now = inside.firstOrNull { hasPanel && it.visibility == View.VISIBLE }
         // (the same thing in the same panel: nothing left, nothing came)
@@ -295,10 +357,11 @@ class MusicActivity : Activity() {
      * The lyrics alone on the whole screen ([on]) or back beside the song: the screen below steps back and fades, the
      * large lines come up, and the cover travels between its place and the small bar's.
      */
-    private fun showFull(on: Boolean, animate: Boolean = true) {
+    private fun showFull(on: Boolean, animate: Boolean = true, remember: Boolean = true) {
         val moving = animate && root.isLaidOut && root.isShown
         lyricsFull = on
-        Prefs.raw.edit().putBoolean("musicLyricsFull", on).apply()
+        // ([remember]: the owner's own press, not a song without lyrics passing by)
+        if (remember) Prefs.raw.edit().putBoolean("musicLyricsFull", on).apply()
         flight?.cancel()
         for (v in listOf(content, fullBar, fullClose, lyricsBig)) v.animate().cancel()
         if (!moving) {
@@ -405,9 +468,9 @@ class MusicActivity : Activity() {
     private var lyricsRetryKey: String? = null
     private val lyricsRetry = Runnable { if (lyricsKey == lyricsRetryKey) { lyricsKey = null; refreshLyrics() } }
 
-    /** The lyrics of what plays now, looked up once per song while they are shown. */
+    /** The lyrics of what plays now, looked up once per song while the owner wants them (see [lyricsHave]). */
     private fun refreshLyrics() {
-        if (!lyricsOn || !::lyricsView.isInitialized) return
+        if (!lyricsWanted || !::lyricsView.isInitialized) return
         class Song(val key: String, val title: String, val artist: String, val sec: Int)
         val s = if (bt) {
             if (!BtMusic.connected || BtMusic.title.isBlank()) null
@@ -416,7 +479,10 @@ class MusicActivity : Activity() {
         } else Player.current?.let { Song("lib:${it.id}", it.title, it.artist, (it.durationMs / 1000).toInt()) }
         if (s?.key == lyricsKey && lyricsKey != null) return
         lyricsKey = s?.key
-        if (s == null) { lyrics { it.showStatus(getString(R.string.lyrics_nothing)) }; return }
+        val pin = s?.key ?: ""
+        if (lyricsAsked) { lyricsAsked = false; lyricsPinned = pin } else if (pin != lyricsPinned) lyricsPinned = null
+        if (s == null) { lyrics { it.showStatus(getString(R.string.lyrics_nothing)) }; lyricsHave(false); return }
+        // (while they are looked up their place stays as it is: open with this line, or closed)
         lyrics { it.showStatus(getString(R.string.lyrics_loading)) }
         Lyrics.get(this, s.title, s.artist, s.sec) { r, failed ->
             if (lyricsKey != s.key || isDestroyed) return@get
@@ -430,13 +496,15 @@ class MusicActivity : Activity() {
                     lyricsView.removeCallbacks(lyricsRetry)
                     lyricsRetryKey = s.key
                     lyricsView.postDelayed(lyricsRetry, 20_000L)
+                    lyricsHave(false)
                 }
-                r == null -> lyrics { it.showStatus(getString(R.string.lyrics_none)) }
-                r.instrumental -> lyrics { it.showStatus(getString(R.string.lyrics_instrumental)) }
+                r == null -> { lyrics { it.showStatus(getString(R.string.lyrics_none)) }; lyricsHave(false) }
+                r.instrumental -> { lyrics { it.showStatus(getString(R.string.lyrics_instrumental)) }; lyricsHave(false) }
                 else -> {
                     val unknown = bt && !BtMusic.positionKnown
                     val at = if (bt) BtMusic.positionMs() else Player.position()
                     lyrics { it.show(r); it.needSync = unknown; it.at(at) }
+                    lyricsHave(true)
                 }
             }
         }
@@ -622,8 +690,8 @@ class MusicActivity : Activity() {
         btBadge.background = Shapes.oval(Palette.withAlpha(coverAccent, 0.18f))
         btBadgeIcon.setColorFilter(coverAccent)
         if (::lyricsBtn.isInitialized) {
-            lyricsBtn.background = if (lyricsOn) Shapes.oval(coverAccent) else Shapes.ghostOval()
-            lyricsIcon.setColorFilter(if (lyricsOn) Palette.onColor(coverAccent) else Palette.text)
+            lyricsBtn.background = if (lyricsWanted) Shapes.oval(coverAccent) else Shapes.ghostOval()
+            lyricsIcon.setColorFilter(if (lyricsWanted) Palette.onColor(coverAccent) else Palette.text)
         }
     }
 

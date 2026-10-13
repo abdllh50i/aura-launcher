@@ -908,6 +908,15 @@ class Installer:
                       'grep -q com.abdllh.aura "$L" 2>/dev/null && rm -f "$L"\n'
                       'pm enable com.nwd.android.music.ui >/dev/null 2>&1\n'
                       'pm enable com.android.launcher/com.launcher.FloatBar >/dev/null 2>&1\n'
+                      # the stock call window Aura turned off, and Aura's ring in the internal storage (only while it
+                      # is still Aura's: the marker beside it holds its MD5; the owner's own ring comes back)
+                      'pm enable com.nwd.android.phone/com.nwd.android.phone.FloatBar >/dev/null 2>&1\n'
+                      'D=$(getprop ro.nwd.internal.path); [ -n "$D" ] || D=/mnt/media_rw/sdcard\n'
+                      'if [ -f "$D/.aura-ring" ]; then\n'
+                      '  [ "$(md5sum "$D/ring.mp3" 2>/dev/null | cut -d\' \' -f1)" = "$(cat "$D/.aura-ring")" ] && rm -f "$D/ring.mp3"\n'
+                      '  [ -f "$D/ring.mp3.pre-aura" ] && [ ! -f "$D/ring.mp3" ] && mv -f "$D/ring.mp3.pre-aura" "$D/ring.mp3"\n'
+                      '  rm -f "$D/.aura-ring"\n'
+                      'fi\n'
                       'case "$(settings get global policy_control 2>/dev/null)" in *immersive.*) '
                       'settings delete global policy_control >/dev/null 2>&1 ;; esac\n'
                       # the firmware's animation scales (0 on this firmware), kept by Aura when it turned them on

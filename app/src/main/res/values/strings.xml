@@ -349,6 +349,7 @@
     <string name="voice_get_tts_sub">Without it the answers are only shown (opens the Play Store)</string>
     <string name="about_role">Installed as</string>
     <string name="about_covered">Stock screen covered at start-up</string>
+    <string name="about_music_key">Music button, last press</string>
     <string name="beta_cleared_restart">The beta\'s Bluetooth experiment was removed. Switch the unit off and on once to finish.</string>
     <string name="role_system">System app (full privileges)</string>
     <string name="role_system_basic">System app</string>
@@ -436,4 +437,20 @@
     <string name="off_delete_title">Delete the offline map?</string>
     <string name="off_delete_text">The map, routes and search will need the internet again.</string>
     <string name="off_hint">The map, routes and search keep working without internet in Jubail, Dammam, Dhahran and Khobar, with all their streets and shops, and on the roads between them. One download of about 35 MB. With internet, a route still comes from the internet first (it has the road names).</string>
+
+    <!-- a phone call (the card over every screen) -->
+    <string name="call_incoming">Incoming call</string>
+    <string name="call_dialing">Calling…</string>
+    <string name="call_answering">Answering…</string>
+    <string name="call_ended">Call ended</string>
+    <string name="call_unknown">Unknown number</string>
+    <string name="call_answer">Answer</string>
+    <string name="call_decline">Decline</string>
+    <string name="call_hangup">End call</string>
+    <string name="set_calls">Calls</string>
+    <string name="set_call_card">AMRI\'s call card</string>
+    <string name="set_call_card_sub">An incoming call shows as AMRI\'s card over any screen: the name, the number, answer and decline, in place of the stock window</string>
+    <string name="set_call_ring">AMRI\'s ringtone</string>
+    <string name="set_call_ring_sub">A calm ring in place of the stock one. Its volume is the phone-call volume</string>
+    <string name="set_call_ring_play">Hear the ringtone</string>
 </resources>

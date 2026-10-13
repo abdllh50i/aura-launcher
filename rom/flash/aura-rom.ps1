@@ -205,7 +205,8 @@ if ($Action -eq "Install") {
     $expect = "prepared"
 } else {
     # undo the config edits made at boot, Aura Music replacing the stock music app, the hidden status bar, the
-    # screen-change animations Aura turned on and the stock volume bar turned off, the boot animation Aura put in the
+    # screen-change animations Aura turned on, the stock volume bar and the stock call window turned off, Aura's ring
+    # (only while it is still Aura's; the owner's own comes back), the boot animation Aura put in the
     # firmware's "dynamic logo" file (only while it is still Aura's; the one from before comes back), and give the home
     # role back to the stock launcher. An Aura updated from
     # the screen lives in /data/app and would stay on as an ordinary app once its system copy is gone: it is uninstalled
@@ -229,6 +230,13 @@ L=/data/nwdappconfig/app/replace_source_list.xml
 grep -q com.abdllh.aura "$L" 2>/dev/null && rm -f "$L"
 pm enable com.nwd.android.music.ui >/dev/null 2>&1
 pm enable com.android.launcher/com.launcher.FloatBar >/dev/null 2>&1
+pm enable com.nwd.android.phone/com.nwd.android.phone.FloatBar >/dev/null 2>&1
+D=$(getprop ro.nwd.internal.path); [ -n "$D" ] || D=/mnt/media_rw/sdcard
+if [ -f "$D/.aura-ring" ]; then
+  [ "$(md5sum "$D/ring.mp3" 2>/dev/null | cut -d' ' -f1)" = "$(cat "$D/.aura-ring")" ] && rm -f "$D/ring.mp3"
+  [ -f "$D/ring.mp3.pre-aura" ] && [ ! -f "$D/ring.mp3" ] && mv -f "$D/ring.mp3.pre-aura" "$D/ring.mp3"
+  rm -f "$D/.aura-ring"
+fi
 case "$(settings get global policy_control 2>/dev/null)" in *immersive.*) settings delete global policy_control >/dev/null 2>&1 ;; esac
 A=/data/data/com.abdllh.aura/files/anim-scales
 if [ -f $A ]; then

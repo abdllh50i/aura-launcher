@@ -30,4 +30,15 @@
     <style name="Theme.Aura.Home" parent="Theme.Aura">
         <item name="android:windowShowWallpaper">false</item>
     </style>
+
+    <!-- BootHome: the black the boot animation ends on, until the home screen can start; nothing moves. -->
+    <style name="Theme.Aura.Boot" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:statusBarColor">@android:color/black</item>
+        <item name="android:navigationBarColor">@android:color/black</item>
+        <item name="android:windowShowWallpaper">false</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:windowDisablePreview">true</item>
+        <item name="android:forceDarkAllowed">false</item>
+    </style>
 </resources>

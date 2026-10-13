@@ -349,6 +349,7 @@
     <string name="voice_get_tts_sub">بدونه الرد يطلع مكتوب بس (يفتح متجر Play)</string>
     <string name="about_role">نوع التثبيت</string>
     <string name="about_covered">شاشة أصلية غطّاها عمري عند التشغيل</string>
+    <string name="about_music_key">آخر ضغطة لزر الموسيقى</string>
     <string name="beta_cleared_restart">انشالت تجربة البلوتوث حقت النسخة التجريبية. طفّ الشاشة وشغّلها مرة وحدة عشان تكتمل.</string>
     <string name="role_system">تطبيق نظام (صلاحيات كاملة)</string>
     <string name="role_system_basic">تطبيق نظام</string>
@@ -436,4 +437,20 @@
     <string name="off_delete_title">تحذف الخريطة؟</string>
     <string name="off_delete_text">الخريطة والمسارات والبحث بيحتاجون الإنترنت من جديد.</string>
     <string name="off_hint">الخريطة والمسارات والبحث تشتغل بدون إنترنت في الجبيل والدمام والظهران والخبر بكل شوارعها ومحلاتها، والطرق اللي بينها. تحميل مرة وحدة حوالي 35 ميجا. ومع الإنترنت المسار يجي من الإنترنت أول (فيه أسماء الشوارع).</string>
+
+    <!-- a phone call (the card over every screen) -->
+    <string name="call_incoming">اتصال وارد</string>
+    <string name="call_dialing">جاري الاتصال…</string>
+    <string name="call_answering">جاري الرد…</string>
+    <string name="call_ended">انتهت المكالمة</string>
+    <string name="call_unknown">رقم غير معروف</string>
+    <string name="call_answer">رد</string>
+    <string name="call_decline">رفض</string>
+    <string name="call_hangup">إنهاء المكالمة</string>
+    <string name="set_calls">الاتصالات</string>
+    <string name="set_call_card">نافذة الاتصال من عمري</string>
+    <string name="set_call_card_sub">لما أحد يدق عليك تطلع بطاقة عمري فوق أي شاشة: الاسم والرقم وزر رد وزر رفض، بدل نافذة النظام الأصلي</string>
+    <string name="set_call_ring">نغمة عمري</string>
+    <string name="set_call_ring_sub">نغمة اتصال هادئة بدل نغمة النظام الأصلي. صوتها من صوت المكالمات</string>
+    <string name="set_call_ring_play">اسمع النغمة</string>
 </resources>

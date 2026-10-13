@@ -31,11 +31,40 @@ import com.abdllh.aura.util.Prefs
  *  - music player:   com.bt.ACTION_A2DP_MUTE, video.stop, ipod.stop, then com.nwd.ACTION_MEDIA_PLAY (2).
  * The firmware also sends MEDIA_PLAY 15 alone when a phone-projection app starts, and Aura sends its own (marked with
  * [MediaMonitor.EXTRA_SELF]): the broadcast just before tells the stock screens apart.
+ *
+ * All of that answers a stock screen that is already in front: the owner saw it for a moment before Aura Music covered
+ * it. Nothing tells of the press earlier (the key's own broadcast is not sent for a key that has a rule, and the
+ * source's bookkeeping changes in the same call that starts the screen). So since 1.9 the two music keys are taken
+ * out of the firmware's key rules ([applyRules]): /data/nwdappconfig/app/KeyRuleConfig.xml maps key 83 to the music
+ * player (app 2) and 99 to Bluetooth music (15), each a <KeyItem> of its own; a key with no rule is only announced
+ * (InputChangeSourceRule.isCanPanelChegeSource: "no keyItem can response" → sendKey → com.nwd.action.ACTION_KEY_VALUE,
+ * byte extra_key_value — the way the volume keys arrive) and nothing is started. Aura Music then opens at the press
+ * itself ([key]), with no stock screen under it. KernelService reads the rules once, when it starts: the change works
+ * from the unit's next start (until then, and for every other way a stock music screen comes up — the MODE key's
+ * round of sources, a CAN box that starts the screen itself, the ignition, the app list — the answer above stays).
+ * The file is kept as KeyRuleConfig.xml.pre-aura, which the switch going off and the ROM's restore put back.
  */
 object MusicKeys {
     private const val TAG = "AuraMusicKeys"
     private const val KEY = "musicKeysAura"
     private const val PAIR_MS = 1500L
+    private const val RULES = "/data/nwdappconfig/app/KeyRuleConfig.xml"
+    private const val KEY_RULES = "musicKeyRulesOut" // "on" while the two keys are out of the firmware's rules
+    private const val KEY_NOTE = "musicKeyNote"
+    private const val KEY_MUSIC = 83
+    private const val KEY_BT_MUSIC = 99
+    /**
+     * One press, one answer: the firmware's own pace for a key that changes the source (isAllowChangeSource, "press
+     * too fast"). A key held down is announced again and again, and must not open the screen and leave it at once.
+     */
+    private const val KEY_ONCE_MS = 1500L
+    private const val END = "__aura_end__"
+
+    private val worker = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private var keyAt = -1_000_000L
+
+    /** How the music button last reached AMRI, for Settings → About ("" when it never did). */
+    val note: String get() = Prefs.raw.getString(KEY_NOTE, "").orEmpty()
 
     private var app: Context? = null
     private var qqStopAt = -1_000_000L   // the stock Bluetooth music screen's first sign
@@ -56,9 +85,132 @@ object MusicKeys {
                 addAction("com.music.action.STOP_QQ_MUSIC")
                 addAction("com.bt.ACTION_A2DP_MUTE")
                 addAction("com.nwd.ACTION_MEDIA_PLAY")
+                addAction("com.nwd.action.ACTION_KEY_VALUE")
             })
         } catch (t: Throwable) {
             Log.w(TAG, "receiver: $t")
+        }
+        // (not in the middle of the start-up; the rules are only read at the unit's next start anyway)
+        main.postDelayed({ applyRules() }, 15_000L)
+    }
+
+    // ------------------------------------------------------------------------------------------ the key itself
+    private val unit get() = Device.isNwd || (com.abdllh.aura.BuildConfig.DEBUG && SystemProps.get("debug.aura.unit") == "1")
+
+    /**
+     * Brings the firmware's key rules in line with the switch: the two music keys out of them while it is on, the
+     * rules as they were when it is off (or when AMRI is not the home screen). [done]: true when it worked.
+     */
+    fun applyRules(done: ((Boolean) -> Unit)? = null) {
+        if (!unit) { done?.invoke(true); return }
+        worker.execute {
+            val ok = try {
+                if (enabled && SystemProps.get(Device.DISABLED_PROP) != "1") takeKeys() else giveKeysBack()
+            } catch (t: Throwable) {
+                Log.w(TAG, "rules: $t")
+                false
+            }
+            done?.invoke(ok)
+        }
+    }
+
+    /** AMRI stops being the home screen (the kill switch): the firmware's own rules again. */
+    fun release() {
+        if (!unit) return
+        worker.execute { try { giveKeysBack() } catch (t: Throwable) { Log.w(TAG, "release: $t") } }
+    }
+
+    private fun sh(script: String): String? {
+        val r = LocalAdb.run("(\n$script\n)\necho $END", 20_000)
+        if (!r.ok) return null
+        val out = r.output.trimEnd()
+        return if (out.endsWith(END)) out.removeSuffix(END).trimEnd() else null
+    }
+
+    /**
+     * The two <KeyItem> blocks cut out of a copy, the copy checked (every rule still opens and closes, the list ends,
+     * the other keys are there: a file the firmware cannot read loses every key's rule without a word), then written
+     * through the file itself, which keeps its owner and label.
+     */
+    private fun takeKeys(): Boolean {
+        val q = "\""
+        // no root shell at every start: the file itself says whether there is anything to do, where it can be read
+        // (a reset of the firmware's settings brings the stock rules back); else what was done last
+        val there = try {
+            java.io.File(RULES).readText().let { "<KeyItem Key=$q$KEY_MUSIC$q" in it || "<KeyItem Key=$q$KEY_BT_MUSIC$q" in it }
+        } catch (_: Throwable) {
+            null
+        }
+        if (there == false || (there == null && Prefs.raw.getString(KEY_RULES, "") == "on")) return true
+        val out = sh("""
+            F=$RULES; T=${'$'}F.aura-tmp
+            [ -f ${'$'}F ] || { echo no-file; exit 0; }
+            grep -q '<KeyItem Key=${q}$KEY_MUSIC$q' ${'$'}F || grep -q '<KeyItem Key=${q}$KEY_BT_MUSIC$q' ${'$'}F || { echo out; exit 0; }
+            [ -f ${'$'}F.pre-aura ] || cp -p ${'$'}F ${'$'}F.pre-aura || { echo failed backup; exit 1; }
+            sed -e '/<KeyItem Key=${q}$KEY_MUSIC$q/,/<\/KeyItem>/d' -e '/<KeyItem Key=${q}$KEY_BT_MUSIC$q/,/<\/KeyItem>/d' ${'$'}F > ${'$'}T || { rm -f ${'$'}T; echo failed sed; exit 1; }
+            O=${'$'}(grep -c '<KeyItem Key=$q' ${'$'}T); C=${'$'}(grep -c '</KeyItem>' ${'$'}T)
+            if [ "${'$'}O" = "${'$'}C" ] && [ "${'$'}O" -ge 5 ] && grep -q '</KeyRuleList>' ${'$'}T && grep -q '<KeyItem Key=${q}23$q' ${'$'}T \
+               && ! grep -q '<KeyItem Key=${q}$KEY_MUSIC$q' ${'$'}T && ! grep -q '<KeyItem Key=${q}$KEY_BT_MUSIC$q' ${'$'}T; then
+              cat ${'$'}T > ${'$'}F && rm -f ${'$'}T && sync && echo out
+            else
+              rm -f ${'$'}T; echo "failed check ${'$'}O ${'$'}C"; exit 1
+            fi
+        """.trimIndent()) ?: return false
+        Log.i(TAG, "key rules: $out")
+        val lines = out.lines()
+        if ("no-file" in lines) return true // not this firmware's layout: the keys stay the firmware's
+        if ("out" !in lines) return false
+        Prefs.raw.edit().putString(KEY_RULES, "on").apply()
+        return true
+    }
+
+    private fun giveKeysBack(): Boolean {
+        if (Prefs.raw.getString(KEY_RULES, "") != "on") return true // never touched
+        val out = sh("""
+            F=$RULES
+            if [ -f ${'$'}F.pre-aura ]; then cat ${'$'}F.pre-aura > ${'$'}F && rm -f ${'$'}F.pre-aura && sync && echo back; else echo back; fi
+        """.trimIndent()) ?: return false
+        Log.i(TAG, "key rules: $out")
+        if ("back" !in out.lines()) return false
+        Prefs.raw.edit().putString(KEY_RULES, "off").apply()
+        return true
+    }
+
+    /**
+     * The wheel's (or the panel's) music key itself, announced because its rule is gone: AMRI Music on that key's
+     * source, at once; pressed again inside it on that source, out to the home screen. What the firmware refused for
+     * a key of its own is refused here: not during a phone call, not while reversing.
+     */
+    private fun key(c: Context, bt: Boolean) {
+        val now = SystemClock.elapsedRealtime()
+        if (now - keyAt < KEY_ONCE_MS) return
+        keyAt = now
+        note("key ${if (bt) KEY_BT_MUSIC else KEY_MUSIC}")
+        if (com.abdllh.aura.phone.Calls.busy || Gear.current == Gear.Pos.R) return
+        if (!enabled || SystemProps.get(Device.DISABLED_PROP) == "1") {
+            // the switch went off since the unit started (the rules come back at its next start): the stock screen,
+            // as the firmware would have opened it
+            com.abdllh.aura.home.AppRepo.launchComponent(c, if (bt) Known.BT_MUSIC else Known.MUSIC,
+                (if (bt) Known.BT_MUSIC else Known.MUSIC) + ".home_horizontalActivity")
+            return
+        }
+        val same = bt == (Prefs.raw.getString("musicSource", "local") == "bt")
+        if (same && Front.ownResumed && Front.own == MusicActivity::class.java.name) {
+            Log.i(TAG, "the music key inside Aura Music: the home screen")
+            openedAt = now
+            HomeGuard.showHome(c)
+            return
+        }
+        openedAt = now
+        Log.i(TAG, "the ${if (bt) "Bluetooth music" else "music"} key: Aura Music")
+        MusicActivity.openInstead(c, bt)
+    }
+
+    private fun note(what: String) {
+        try {
+            val at = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.ROOT).format(java.util.Date())
+            Prefs.raw.edit().putString(KEY_NOTE, "$at  $what").apply()
+        } catch (_: Throwable) {
         }
     }
 
@@ -68,6 +220,11 @@ object MusicKeys {
                 if (i.getBooleanExtra(MediaMonitor.EXTRA_SELF, false)) return
                 val now = SystemClock.elapsedRealtime()
                 when (i.action) {
+                    "com.nwd.action.ACTION_KEY_VALUE" -> {
+                        // (a byte; only keys without a rule are announced: the two music keys once theirs are gone)
+                        val k = (i.extras?.get("extra_key_value") as? Number)?.toInt() ?: return
+                        if (k == KEY_MUSIC || k == KEY_BT_MUSIC) key(c, k == KEY_BT_MUSIC)
+                    }
                     "com.music.action.STOP_QQ_MUSIC" -> qqStopAt = now
                     "com.bt.ACTION_A2DP_MUTE" -> a2dpMuteAt = now
                     "com.nwd.ACTION_MEDIA_PLAY" -> {
@@ -123,6 +280,7 @@ object MusicKeys {
         }
         openedAt = now
         Log.i(TAG, "stock ${if (bt) "Bluetooth music" else "music"} screen came up: Aura Music instead")
+        note("stock ${if (bt) "BT music" else "music"} screen")
         MusicActivity.openInstead(c, bt)
     }
 
