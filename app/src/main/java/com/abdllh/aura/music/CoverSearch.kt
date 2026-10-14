@@ -49,33 +49,55 @@ object CoverSearch {
     private class Hit(val url: String, val sec: Int, val yt: Boolean = false)
 
     /** A cover with its song's length in seconds (0 unknown) and whether YouTube Music's catalogue told it. */
-    private class Found(val cover: Bitmap, val sec: Int, val yt: Boolean)
+    /** [provisional]: another catalogue's answer while YouTube Music could not be asked: shown, not kept. */
+    private class Found(val cover: Bitmap, val sec: Int, val yt: Boolean, val provisional: Boolean = false)
 
     /**
      * The cover of a song, or null, the song's length in seconds (0 when unknown) and whether that length is
      * YouTube Music's own (the song itself, for a phone that plays from there: believed over another catalogue's);
      * [done] runs on the main thread (at once when it is already known).
      */
-    fun find(ctx: Context, title: String, artist: String, done: (Bitmap?, Int, Boolean) -> Unit) {
+    fun find(ctx: Context, title: String, artist: String, done: (Bitmap?, Int, Boolean) -> Unit) =
+        find(ctx, title, artist) { b, sec, yt, _ -> done(b, sec, yt) }
+
+    /** The same, and whether nothing came because nothing could be asked (no internet yet): worth asking again. */
+    fun find(ctx: Context, title: String, artist: String, done: (Bitmap?, Int, Boolean, Boolean) -> Unit) {
         val key = "${norm(artist)}|${norm(title)}"
-        if (norm(title).isEmpty()) { done(null, 0, false); return }
-        mem.get(key)?.let { val l = lengths[key]; done(it, l?.first ?: 0, l?.second ?: false); return }
+        if (norm(title).isEmpty()) { done(null, 0, false, false); return }
+        mem.get(key)?.let { val l = lengths[key]; done(it, l?.first ?: 0, l?.second ?: false, false); return }
         val c = ctx.applicationContext
         val online = enabled
         io.execute {
+            lastFailed = false
             val r = try { fromDisk(c, key) ?: if (online) fromNetwork(c, key, title, artist) else null } catch (t: Throwable) {
                 Log.w(TAG, "cover for '$artist - $title': $t")
+                lastFailed = true
                 null
             }
+            val failed = (r == null && lastFailed) || r?.provisional == true
             main.post {
-                if (r != null) { mem.put(key, r.cover); lengths[key] = r.sec to r.yt }
-                done(r?.cover, r?.sec ?: 0, r?.yt ?: false)
+                if (r != null && !r.provisional) { mem.put(key, r.cover); lengths[key] = r.sec to r.yt }
+                done(r?.cover, r?.sec ?: 0, r?.yt ?: false, failed)
             }
         }
     }
 
     // ------------------------------------------------------------------------------------------ lookup
     private var offline = false // io thread: a catalogue could not be asked (no network...) during this lookup
+    private var failure = ""    // io thread: why YouTube Music could not be asked, for the note
+    @Volatile private var lastFailed = false
+
+    /** The last lookup and how it went, for Settings → About ("" when there was none yet). */
+    val note: String get() = Prefs.raw.getString("coverNote", "").orEmpty()
+
+    private fun note(what: String) {
+        Log.i(TAG, what)
+        try {
+            val at = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.ROOT).format(java.util.Date())
+            Prefs.raw.edit().putString("coverNote", "$at  $what").apply()
+        } catch (_: Throwable) {
+        }
+    }
 
     private fun fromNetwork(c: Context, key: String, title: String, artist: String): Found? {
         val seen = missing[key]
@@ -83,15 +105,25 @@ object CoverSearch {
         val t = clean(title)
         val a = clean(artist)
         offline = false
-        val hit = ytmusic(t, a) ?: itunes(t, a) ?: deezer(t, a)
+        failure = ""
+        val yt = ytmusic(title, artist)
+        val hit = yt ?: itunes(t, a) ?: deezer(t, a)
+        val from = when { yt != null -> "YouTube Music"; hit == null -> null; hit.url.contains("mzstatic") -> "Apple Music"; else -> "Deezer" }
+        // (what the phone sent, letter for letter, where the answer came from, and why not from YouTube Music)
+        val len = hit?.sec?.let { s -> String.format(java.util.Locale.ROOT, "%d:%02d", s / 60, s % 60) }.orEmpty()
+        val ytWhy = if (yt != null) "" else " (YouTube Music: ${failure.ifEmpty { "no match" }})"
+        note("'$title' / '$artist' → " + (from?.let { "$it $len$ytWhy" } ?: (if (offline) "no answer" else "not found") + ytWhy))
         if (hit == null) {
             if (!offline) missing[key] = System.currentTimeMillis() // really unknown (not just no network right now)
+            lastFailed = offline
             return null
         }
         val bytes = download(hit.url)
         val b = decode(bytes) ?: return null
-        try { save(c, key, bytes, hit.sec, hit.yt) } catch (_: Throwable) { }
-        return Found(b, hit.sec, hit.yt)
+        // (YouTube Music could not be asked: this answer is shown, and the song is asked about again later)
+        val provisional = yt == null && failure.isNotEmpty()
+        if (!provisional) try { save(c, key, bytes, hit.sec, hit.yt) } catch (_: Throwable) { }
+        return Found(b, hit.sec, hit.yt, provisional)
     }
 
     /**
@@ -101,16 +133,87 @@ object CoverSearch {
      * catalogue's own, so they mostly match letter for letter.
      */
     private fun ytmusic(title: String, artist: String): Hit? {
-        val songs = try { YtMusic.find("$artist $title".trim()) } catch (t: Throwable) {
-            Log.i(TAG, "YouTube Music: $t")
-            offline = true
-            return null
-        }
-        for (s in songs.take(8)) {
-            if (s.thumb.isEmpty() || !matches(title, artist, s.title, s.artist)) continue
-            return Hit(YtMusic.sized(s.thumb, SIZE), s.sec, yt = true)
+        // What the phone sends is what the app it plays from shows: YouTube Music's own names, or — from the YouTube
+        // app, or a video in YouTube Music — the video's title ("Artist - Song (Official Video) | 2023") with the
+        // channel's name as the artist. So it is asked a few ways, best guess first, and the answers are scored
+        // (across scripts) rather than matched letter for letter.
+        val t = clean(title)
+        val a = clean(artist)
+        val parts = Regex("""\s+[-–—|]\s+""").split(t).map { clean(it) }.filter { it.isNotBlank() }
+        val tries = LinkedHashSet<Pair<String, String>>() // (title, artist)
+        tries.add(t to a)
+        if (parts.size >= 2) { tries.add(parts[1] to parts[0]); tries.add(parts[0] to parts[1]) }
+        if (a.isNotBlank()) tries.add((if (parts.size >= 2) parts[1] else t) to "") // the title alone
+        for ((qt, qa) in tries.take(3)) {
+            if (qt.isBlank()) continue
+            val songs = try { YtMusic.find("$qa $qt".trim()) } catch (e: Throwable) {
+                Log.i(TAG, "YouTube Music: $e")
+                failure = e.message ?: e.javaClass.simpleName
+                offline = true
+                return null
+            }
+            val best = songs.take(10).filter { it.thumb.isNotEmpty() }.map { it to fit(qt, qa, it) }.maxByOrNull { it.second }
+            if (best != null && best.second >= 0.0) return Hit(YtMusic.sized(best.first.thumb, SIZE), best.first.sec, yt = true)
         }
         return null
+    }
+
+    /** The same title, in the same script or the other (by consonants), with nothing much added or missing. */
+    private fun sameTitle(a: String, b: String): Boolean {
+        val x = norm(a)
+        val y = norm(b)
+        if (x.isEmpty() || y.isEmpty()) return false
+        if (x == y) return true
+        if (TextMatch.arabic(x) != TextMatch.arabic(y)) {
+            val p = TextMatch.skeleton(x)
+            val q = TextMatch.skeleton(y)
+            return p.length >= 3 && 1.0 - TextMatch.lev(p, q).toDouble() / maxOf(p.length, q.length) >= 0.85
+        }
+        return false
+    }
+
+    /** How well a found song answers (title, artist), the better the higher; negative when it does not. */
+    private fun fit(title: String, artist: String, s: YtMusic.Song): Double {
+        // the title alone (an artist field that is a channel's name): only the very same title — one that merely
+        // contains a word of it ("Nobody" in "Qwzx Plor Nobody") is another song
+        if (artist.isBlank()) return when {
+            sameTitle(title, clean(s.title)) -> 0.8
+            // or the phone's title holds both the song's name and its artist ("Artist - Song" with no artist field)
+            within(title, s.title) && within(title, s.artist) -> 0.75
+            else -> -1.0
+        }
+        val ts = sim(title, clean(s.title))
+        if (ts < 0.75) return -1.0
+        val sa = sim(artist, s.artist)
+        if (sa < 0.5) return -1.0
+        return ts * 0.7 + sa * 0.3
+    }
+
+    /**
+     * How alike two names are, 0..1. In the same script by their words (consonants alone would make "Three Weeks"
+     * look like "After Hours"); across scripts by their consonants ([TextMatch.score]), the only way there.
+     */
+    private fun sim(a: String, b: String): Double {
+        val x = norm(a)
+        val y = norm(b)
+        if (x.isEmpty() || y.isEmpty()) return 0.0
+        if (TextMatch.arabic(x) != TextMatch.arabic(y)) return TextMatch.score(x, y)
+        return when {
+            x == y -> 1.0
+            x.startsWith(y) || y.startsWith(x) -> 0.95
+            x.contains(y) || y.contains(x) -> 0.9
+            else -> TextMatch.overlap(x, y) * 0.85
+        }
+    }
+
+    /** [part] appears in [whole] (as words in the same script, by its consonants across scripts). */
+    private fun within(whole: String, part: String): Boolean {
+        val w = norm(whole)
+        val p = norm(clean(part))
+        if (w.isEmpty() || p.length < 2) return false
+        if (TextMatch.arabic(w) == TextMatch.arabic(p)) return " $w ".contains(" $p ")
+        val ps = TextMatch.skeleton(p)
+        return ps.length >= 4 && TextMatch.skeleton(w).contains(ps)
     }
 
     /** Parsed JSON of a catalogue answer, or null (and [offline] set) when it could not be fetched. */

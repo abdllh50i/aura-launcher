@@ -81,15 +81,33 @@ object YtMusic {
         }
     }
 
-    /** The search itself (blocking; throws when the answer could not be had). */
-    fun find(query: String): List<Song> {
+    /**
+     * The search itself (blocking; throws when the answer could not be had, the reason in the message). The web
+     * client's version is a date: today's in UTC, as ytmusicapi has it. YouTube takes any well-formed date (one
+     * years ahead or behind was tried); should it ever refuse one (HTTP 400), the day before and then a day it
+     * really had are tried.
+     */
+    fun find(query: String): List<Song> = try {
+        find(query, today())
+    } catch (e: Refused) {
+        try { find(query, today(1)) } catch (e2: Refused) { find(query, KNOWN_VERSION_DAY, last = true) }
+    }
+
+    /** A day YouTube Music's web client really had (a clock that is far off: the date alone would be refused). */
+    private const val KNOWN_VERSION_DAY = "20250610"
+
+    private fun today(back: Int = 0) = SimpleDateFormat("yyyyMMdd", Locale.ROOT).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+        .format(Date(System.currentTimeMillis() - back * 86_400_000L))
+
+    private class Refused(m: String) : IllegalStateException(m)
+
+    private fun find(query: String, day: String, last: Boolean = false): List<Song> {
         val arabic = query.any { it in '؀'..'ۿ' }
         val body = JSONObject()
             .put("context", JSONObject()
                 .put("client", JSONObject()
                     .put("clientName", "WEB_REMIX")
-                    // (the web client's version is a date; today's, as ytmusicapi does)
-                    .put("clientVersion", "1." + SimpleDateFormat("yyyyMMdd", Locale.ROOT).format(Date()) + ".01.00")
+                    .put("clientVersion", "1.$day.01.00")
                     // names come in the language asked for: Arabic for an Arabic query, so they read like the phone's
                     .put("hl", if (arabic) "ar" else "en")
                     .put("gl", "SA"))
@@ -109,8 +127,17 @@ object YtMusic {
             c.setRequestProperty("X-Origin", "https://music.youtube.com")
             c.setRequestProperty("Cookie", "SOCS=CAI") // (no consent page instead of an answer)
             c.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
-            if (c.responseCode !in 200..299) throw IllegalStateException("HTTP ${c.responseCode}")
-            return parse(JSONObject(c.inputStream.use { String(it.readBytes(), Charsets.UTF_8) }))
+            val code = c.responseCode
+            if (code !in 200..299) {
+                val why = try { c.errorStream?.use { String(it.readBytes(), Charsets.UTF_8) }.orEmpty() } catch (_: Throwable) { "" }
+                val msg = "HTTP $code " + Regex(""""message"\s*:\s*"([^"]{0,80})""").find(why)?.groupValues?.get(1).orEmpty()
+                if (code == 400 && !last) throw Refused(msg.trim())
+                throw IllegalStateException(msg.trim())
+            }
+            val text = c.inputStream.use { String(it.readBytes(), Charsets.UTF_8) }
+            val o = JSONObject(text)
+            if (!o.has("contents")) throw IllegalStateException("an answer without results")
+            return parse(o)
         } finally {
             c.disconnect()
         }

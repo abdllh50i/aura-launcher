@@ -40,6 +40,9 @@ object RoadWatch {
     private var tone: ToneGenerator? = null
 
     fun addListener(l: () -> Unit) { listeners.add(l); start() }
+
+    /** A camera just marked where the car is: it is not announced (it was marked a moment ago, right here). */
+    fun quiet(s: MapExtras.Spot) { announced.add(s) }
     fun removeListener(l: () -> Unit) { listeners.remove(l) }
 
     private fun start() {

@@ -258,6 +258,24 @@ class NavigationPage(private val act: SettingsActivity) : Page(R.string.set_navi
         col.addRow(more.view, 14)
         col.addRow(ctx.hint(ctx.getString(R.string.extras_hint)), 10)
         more.attach()
+
+        // "a camera here": the button on the maps, and the cameras marked with it
+        col.addRow(ctx.switchRow(R.drawable.ic_speed_camera, ctx.getString(R.string.set_mark_camera), ctx.getString(R.string.set_mark_camera_sub),
+            com.abdllh.aura.nav.CameraMark.enabled) { on -> com.abdllh.aura.nav.CameraMark.enabled = on }, 14)
+        val count = ctx.valueText("")
+        fun myCameras() {
+            val n = com.abdllh.aura.nav.MapExtras.mine.size
+            count.text = if (n == 0) ctx.getString(R.string.set_my_cameras_none) else ctx.getString(R.string.set_my_cameras, "$n")
+        }
+        myCameras()
+        col.addRow(ctx.settingRow(R.drawable.ic_trash, ctx.getString(R.string.set_my_cameras_clear), null, count) {
+            if (com.abdllh.aura.nav.MapExtras.mine.isEmpty()) return@settingRow
+            com.abdllh.aura.ui.Confirm.show(ctx, ctx.getString(R.string.set_my_cameras_clear_title), ctx.getString(R.string.set_my_cameras_clear_text),
+                ctx.getString(R.string.set_my_cameras_clear)) {
+                com.abdllh.aura.nav.MapExtras.clearMine()
+                myCameras()
+            }
+        }, 8)
         return col
     }
 
@@ -425,6 +443,8 @@ class AboutPage(private val act: SettingsActivity) : Page(R.string.set_about, R.
         com.abdllh.aura.system.HomeGuard.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_home, R.string.about_covered, it) }
         // how the music button last reached AMRI: its own key (no stock screen), or a stock screen that had to be covered
         com.abdllh.aura.system.MusicKeys.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_steering, R.string.about_music_key, it) }
+        // the last Bluetooth song's lookup: where its cover and length came from, or why nothing came
+        com.abdllh.aura.music.CoverSearch.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_disc, R.string.about_cover, it) }
         // how the last song handed to YouTube's app went (it could not be tried before the unit)
         com.abdllh.aura.music.YtMusic.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_music, R.string.about_yt, it) }
 

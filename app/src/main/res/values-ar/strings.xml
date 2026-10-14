@@ -448,9 +448,23 @@
     <string name="yt_no_app">التشغيل يحتاج تطبيق YouTube Music على الشاشة (من متجر Play، بحسابك).</string>
     <string name="yt_get_app">افتح المتجر</string>
     <string name="yt_needs_front">يوتيوب ميوزك وقف لما رجعت لموسيقى عمري: التشغيل بدون ما يكون التطبيق قدامك يحتاج اشتراك Premium.</string>
+    <string name="about_cover">آخر بحث عن صورة ومدة أغنية بلوتوث</string>
     <string name="about_yt">آخر أغنية انسلّمت ليوتيوب ميوزك</string>
     <string name="yt_idle">اختر أغنية من يوتيوب ميوزك</string>
 
+    <!-- "a camera here" on the maps -->
+    <string name="mark_camera">ساهر هنا</string>
+    <string name="mark_camera_saved">انحفظ ساهر هنا · اضغط للتراجع</string>
+    <string name="mark_camera_undone">انشال</string>
+    <string name="mark_camera_no_gps">ما فيه موقع GPS بعد</string>
+    <string name="mark_camera_known">ساهر مسجّل هنا من قبل</string>
+    <string name="set_mark_camera">زر «ساهر هنا» في الخريطة</string>
+    <string name="set_mark_camera_sub">اضغطه وأنت عند الكاميرا ويحفظ مكانها: تطلع على الخريطة وينبّهك عندها مثل الباقي</string>
+    <string name="set_my_cameras">ساهر اللي حفظته من الخريطة: %1$s</string>
+    <string name="set_my_cameras_none">ما حفظت ساهر من الخريطة بعد</string>
+    <string name="set_my_cameras_clear">حذف الكل</string>
+    <string name="set_my_cameras_clear_title">تحذف كل ساهر اللي حفظته؟</string>
+    <string name="set_my_cameras_clear_text">الكاميرات اللي حفظتها بالزر تنشال من الخريطة والتنبيه. اللي جت من إضافات الخريطة تبقى.</string>
     <!-- a phone call (the card over every screen) -->
     <string name="call_incoming">اتصال وارد</string>
     <string name="call_dialing">جاري الاتصال…</string>

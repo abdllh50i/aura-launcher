@@ -38,13 +38,20 @@ object MapExtras {
 
     enum class Kind { CAMERA, SIGNAL, BUMP }
 
-    /** A camera, a signal or a bump; [kmh] is a camera's limit (0 when not given). */
-    class Spot(val kind: Kind, val pos: LatLon, val kmh: Int)
+    /**
+     * A camera, a signal or a bump; [kmh] is a camera's limit (0 when not given). [mine]: a camera marked on this unit
+     * with the map's "camera here" button ([addMine]), not one the editor published.
+     */
+    class Spot(val kind: Kind, val pos: LatLon, val kmh: Int, val mine: Boolean = false)
 
     /** A street (or a stretch of one) and its limit. */
     class Speed(val name: String, val kmh: Int, val lines: List<List<LatLon>>)
 
+    /** Everything the map and the road watch use: what was published, and the cameras marked on this unit. */
     @Volatile var spots: List<Spot> = emptyList(); private set
+    @Volatile private var published: List<Spot> = emptyList()
+    /** The cameras marked on this unit (Settings → Navigation lists and clears them). */
+    @Volatile var mine: List<Spot> = emptyList(); private set
     @Volatile var speeds: List<Speed> = emptyList(); private set
     /** When the owner last published what is here (0: nothing fetched yet). */
     @Volatile var updatedAt = 0L; private set
@@ -65,7 +72,8 @@ object MapExtras {
     fun addListener(l: () -> Unit) { listeners.add(l) }
     fun removeListener(l: () -> Unit) { listeners.remove(l) }
 
-    fun count(kind: Kind) = spots.count { it.kind == kind }
+    /** What the editor published, of one kind (the cameras marked on this unit are [mine]). */
+    fun count(kind: Kind) = published.count { it.kind == kind }
 
     fun init(ctx: Context) {
         if (app != null) return
@@ -78,6 +86,7 @@ object MapExtras {
             } catch (t: Throwable) {
                 Log.w(TAG, "kept additions unreadable: $t")
             }
+            readMine(c)
             main.postDelayed(auto, 20_000L)
         }
     }
@@ -201,11 +210,82 @@ object MapExtras {
                 if (cell != lastCell) { g.getOrPut(cell) { ArrayList() }.add(piece); lastCell = cell }
             }
         }
-        spots = newSpots
+        published = newSpots
+        spots = newSpots + mine
         speeds = newSpeeds
         grid = g
         updatedAt = o.optLong("updated", 0L)
         main.post { for (l in listeners) l() }
+    }
+
+    // ------------------------------------------------------------------------------------------ cameras marked here
+    private const val MINE = "my-cameras.json"
+    /** A camera this close to one already known is that one. */
+    private const val SAME_M = 40.0
+
+    /**
+     * A camera marked where the car is (the map's "camera here" button): kept on this unit, drawn and announced like
+     * the published ones. Returns it, or the known camera already there (then nothing is added). Main thread.
+     */
+    fun addMine(p: LatLon, kmh: Int): Pair<Spot, Boolean> {
+        spots.firstOrNull { it.kind == Kind.CAMERA && Geo.distance(it.pos, p) < SAME_M }?.let { return it to false }
+        val s = Spot(Kind.CAMERA, p, kmh.coerceIn(0, 200), mine = true)
+        mine = mine + s
+        changedMine()
+        return s to true
+    }
+
+    /** Takes back a camera marked here (the "undo" right after, or the list in the settings). Main thread. */
+    fun removeMine(s: Spot) {
+        if (s !in mine) return
+        mine = mine - s
+        changedMine()
+    }
+
+    fun clearMine() {
+        if (mine.isEmpty()) return
+        mine = emptyList()
+        changedMine()
+    }
+
+    private fun changedMine() {
+        spots = published + mine
+        // (at once, on this thread: a road watch told now does not announce the camera the car is standing at)
+        for (l in listeners) l()
+        val c = app ?: return
+        val list = mine
+        io.execute {
+            try {
+                val a = JSONArray()
+                for (s in list) a.put(JSONObject().put("lat", s.pos.lat).put("lon", s.pos.lon).put("kmh", s.kmh))
+                val f = File(c.filesDir, MINE)
+                val tmp = File(c.filesDir, "$MINE.tmp")
+                tmp.writeText(JSONObject().put("version", 1).put("cameras", a).toString())
+                tmp.renameTo(f)
+            } catch (t: Throwable) {
+                Log.w(TAG, "my cameras: $t")
+            }
+        }
+    }
+
+    private fun readMine(c: Context) {
+        try {
+            val f = File(c.filesDir, MINE)
+            if (!f.isFile) return
+            val a = JSONObject(f.readText()).optJSONArray("cameras") ?: return
+            val out = ArrayList<Spot>()
+            for (i in 0 until a.length()) {
+                val o = a.getJSONObject(i)
+                val lat = o.getDouble("lat")
+                val lon = o.getDouble("lon")
+                if (lat in -90.0..90.0 && lon in -180.0..180.0) out.add(Spot(Kind.CAMERA, LatLon(lat, lon), o.optInt("kmh", 0).coerceIn(0, 200), mine = true))
+            }
+            mine = out
+            spots = published + out
+            main.post { for (l in listeners) l() }
+        } catch (t: Throwable) {
+            Log.w(TAG, "my cameras unreadable: $t")
+        }
     }
 
     private fun cell(lat: Double, lon: Double): Long =

@@ -71,6 +71,7 @@ class MapsActivity : Activity() {
     private lateinit var tripLeft: AText
     private lateinit var speedBubble: LinearLayout
     private lateinit var speedText: AText
+    private lateinit var cameraMark: CameraMark
     private lateinit var recenterBtn: View
     private lateinit var compassBtn: ImageView
     private lateinit var voiceBtn: ImageView
@@ -279,6 +280,12 @@ class MapsActivity : Activity() {
         banner.visibility = if (st == NavSession.State.NAVIGATING) View.VISIBLE else View.GONE
         tripBar.visibility = if (st == NavSession.State.NAVIGATING) View.VISIBLE else View.GONE
         speedBubble.visibility = if (st == NavSession.State.NAVIGATING) View.VISIBLE else View.GONE
+        // the camera button: in the speed's place when there is none, beside it while a route is driven
+        (cameraMark.layoutParams as? FrameLayout.LayoutParams)?.let { p ->
+            val end = (if (st == NavSession.State.NAVIGATING) 122 else 16).dp
+            val bottom = (if (st == NavSession.State.NAVIGATING) 53 else 40).dp
+            if (p.marginEnd != end || p.bottomMargin != bottom) { p.marginEnd = end; p.rightMargin = end; p.leftMargin = end; p.bottomMargin = bottom; cameraMark.layoutParams = p }
+        }
         (voiceBtn.tag as? View ?: voiceBtn).visibility = if (navigating) View.VISIBLE else View.GONE // the round button around the icon
         arrivedCard.visibility = if (st == NavSession.State.ARRIVED) View.VISIBLE else View.GONE
         val voice = NavSession.voiceOn && !NavSession.voiceMissing
@@ -613,8 +620,8 @@ class MapsActivity : Activity() {
             recenterBtn.visibility = View.GONE
             map.setCamera(if (NavSession.state == NavSession.State.NAVIGATING) AuraMap.Camera.NAVIGATE else AuraMap.Camera.FOLLOW)
         }.apply { visibility = View.GONE }
-        // beside the speed bubble on the free side: the cards on the start side never cover it
-        root.addView(recenterBtn, flp(WRAP, 60.dp, Gravity.BOTTOM or Gravity.END).apply { setMargins(0, 0, 126.dp, 56.dp); marginEnd = 126.dp })
+        // beside the speed bubble and the camera button, on the free side: the cards on the start side never cover it
+        root.addView(recenterBtn, flp(WRAP, 60.dp, Gravity.BOTTOM or Gravity.END).apply { setMargins(0, 0, 204.dp, 56.dp); marginEnd = 204.dp })
 
         speedBubble = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -631,6 +638,9 @@ class MapsActivity : Activity() {
         // compass (beside the limit it covered the car while navigating)
         root.addView(RoadHud(this, parts = RoadHud.Parts.SIGN), flp(WRAP, WRAP, Gravity.BOTTOM or Gravity.END).apply { setMargins(0, 0, 33.dp, 138.dp); marginEnd = 33.dp })
         root.addView(RoadHud(this, parts = RoadHud.Parts.ALERT), flp(WRAP, WRAP, Gravity.TOP or Gravity.END).apply { setMargins(0, 31.dp, 94.dp, 0); marginEnd = 94.dp })
+        // "a camera here": beside the speed, in reach of the driver's hand (Settings → Navigation hides it)
+        cameraMark = CameraMark(this)
+        root.addView(cameraMark, flp(WRAP, WRAP, Gravity.BOTTOM or Gravity.END).apply { setMargins(16.dp, 0, 16.dp, 40.dp); marginEnd = 16.dp })
         return root
     }
 

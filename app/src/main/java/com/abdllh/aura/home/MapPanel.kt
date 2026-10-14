@@ -125,6 +125,8 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
 
         // the street's limit and the camera or bump ahead (the owner's additions to the map)
         addView(com.abdllh.aura.nav.RoadHud(ctx, small = true), flp(WRAP, WRAP, Gravity.TOP or Gravity.END).apply { setMargins(14.dp, 16.dp, 14.dp, 0) })
+        // "a camera here", under the limit's sign (Settings → Navigation hides it)
+        addView(com.abdllh.aura.nav.CameraMark(ctx, small = true), flp(WRAP, WRAP, Gravity.TOP or Gravity.END).apply { setMargins(14.dp, 82.dp, 14.dp, 0) })
         addView(media, flp(MATCH, WRAP, Gravity.BOTTOM or Gravity.START).apply { setMargins(14.dp, 0, 14.dp, 14.dp) })
         live?.onReady = { syncNav(); CarLocation.last?.let { onFix(it) } }
         refresh()

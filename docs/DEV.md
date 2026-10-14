@@ -187,6 +187,14 @@ What the map data does not have, the owner draws himself and every unit picks up
   the first time each comes within reach. `RoadHud` shows them on the Maps screen (the limit as its sign above the
   speed, red when the car is over it; the warning at the top) and on the home screen's map. Only while fixes come: the
   home screen or the map in front, or a route being driven.
+* **A camera marked on the road** (1.10.1): the round button "ساهر هنا" (`nav/CameraMark.kt`) on the Maps screen
+  (beside the speed; in its place when no route is driven) and on the home screen's map marks a camera where the car
+  is (`CarLocation.last`, with the limit of the marked street if there is one, else no speed). `MapExtras.addMine`
+  keeps it in `files/my-cameras.json` (`{"version":1,"cameras":[{"lat","lon","kmh"}]}`), on this unit only: it is not
+  published and not in the editor. One within 40 m of a camera already there is not added again ("already marked").
+  `MapExtras.spots` = the published ones + these, so they are drawn and announced the same way; the one just marked
+  is not announced (`RoadWatch.quiet`). The strip beside the button takes the last one back for 5 s. Settings →
+  Navigation: the button's switch (`markCameraButton`, on by default) and how many are kept, with delete-all.
 * Debug: `setprop debug.aura.extras http://10.0.2.2:8765/api/data` reads the editor on the PC directly (run it with
   `--dry-run`); `adb emu geo fix` + `MapsActivity --ez simulate true` drives a route past them.
 
@@ -290,6 +298,14 @@ read what another one plays. What ytmusicapi's search can do went in instead, tw
   bar and the times show for every song whose start was seen (the clock of 1.6); the position itself is still not
   the phone's word. Two recordings under one name (an album cut of 5:15 and a single of 5:54) cannot be told apart:
   the first is taken. The covers kept before 1.10 are dropped once (`cache/covers2`).
+  Matching (1.10.1): up to three searches — "artist title"; for a title like "Artist - Song" (a video's name, the
+  artist field often the album) both halves each way; then the title alone. A row counts when its title is the same
+  song (equal, starts with, contains, or the same consonants across Arabic/Latin; ≥ 0.75) and its artist agrees
+  (≥ 0.5), or, with no artist to compare, when the title is the whole of it. The version day: today (UTC), then
+  yesterday on HTTP 400, then a known good one (`KNOWN_VERSION_DAY`). When YouTube Music could not be asked (no
+  internet, refused) what another catalogue found is shown but not kept, and `BtMusic` asks again (3 times, 15 s
+  apart, more each time). Settings → About shows the last lookup: what was asked and where the answer came from, or
+  why YouTube Music gave none (`CoverSearch.note`).
 * A third source in Aura Music, "YouTube": a search box and its results in the panel; a song chosen is handed to
   YouTube's own app on the unit (`com.google.android.apps.youtube.music`, else `com.google.android.youtube`) as the
   link its share button gives (`ACTION_VIEW music.youtube.com/watch?v=…`), which brings that app to the front; when
@@ -508,7 +524,8 @@ and how fast it turned last time. The model itself is not in the repo.
   2 mute). The installer's restore enables the component again; `Settings.System isVolumeTouch` = 1 would also silence it
   (observer only, must change after the bar connected).
 * Bluetooth music has no cover art in the BT module; `music/CoverSearch.kt` finds it by title + artist (iTunes Search
-  API, Deezer), matching Arabic-script names against the catalogues' Latin spellings by their consonants.
+  API, Deezer; YouTube Music's catalogue first since 1.10), matching Arabic-script names against the catalogues' Latin
+  spellings by their consonants.
 * Power belongs to the MCU. Apps reach it with broadcast `com.nwd.action.EMU_SEND_DATA_TO_MCU` (byte[] `protocal`,
   written verbatim to the MCU UART by KernelService, no permission); frame `F0 LEN TYPE SUB 00 data… SUM` (`LEN` = data
   + 3, `SUM` = low byte of the sum of everything after `F0`). The factory option `sleep_power_off` is `7B 1F [mode, h]`:

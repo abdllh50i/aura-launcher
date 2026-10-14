@@ -265,21 +265,35 @@ object BtMusic {
         }
     }
 
-    /** Looks up the current song's cover, once per song (the module itself never sends one). */
+    /**
+     * Looks up the current song's cover and length, once per song (the module itself never sends either) — again a
+     * little later when nothing could be asked (the phone's internet comes up after the car starts: the first song
+     * would otherwise go without).
+     */
     private fun findArt() {
-        val c = app ?: return
         val key = "$artist|$title"
         if (key == artKey) return
         artKey = key
         art = null
+        main.removeCallbacks(artAgain)
+        artTries = 0
         if (title.isBlank()) return
+        lookUp(key)
+    }
+
+    private var artTries = 0
+    private val artAgain = Runnable { if (artKey == "$artist|$title" && art == null) lookUp(artKey) }
+
+    private fun lookUp(key: String) {
+        val c = app ?: return
         val t = title
         val a = artist
-        CoverSearch.find(c, t, a) { b, sec, yt ->
+        CoverSearch.find(c, t, a) { b, sec, yt, failed ->
             if (artKey != key) return@find
             art = b
             // (the catalogue's length, while nothing better; YouTube Music's is the song's own)
             if (sec > 0) offerDuration(sec, t, a, if (yt) FROM_SERVICE else FROM_CATALOGUE)
+            if (b == null && failed && ++artTries <= 3) main.postDelayed(artAgain, 15_000L * artTries)
             changed()
         }
     }

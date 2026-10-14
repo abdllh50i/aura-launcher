@@ -448,9 +448,23 @@
     <string name="yt_no_app">Playing needs the YouTube Music app on the unit (from the Play Store, with your account).</string>
     <string name="yt_get_app">Open the store</string>
     <string name="yt_needs_front">YouTube Music stopped when AMRI Music came back: playing without the app in front needs a Premium account.</string>
+    <string name="about_cover">Last Bluetooth song looked up</string>
     <string name="about_yt">Last song handed to YouTube Music</string>
     <string name="yt_idle">Choose a song from YouTube Music</string>
 
+    <!-- "a camera here" on the maps -->
+    <string name="mark_camera">Camera here</string>
+    <string name="mark_camera_saved">Camera saved here · tap to undo</string>
+    <string name="mark_camera_undone">Removed</string>
+    <string name="mark_camera_no_gps">No GPS position yet</string>
+    <string name="mark_camera_known">A camera is already marked here</string>
+    <string name="set_mark_camera">"Camera here" button on the map</string>
+    <string name="set_mark_camera_sub">Press it at a speed camera and its place is saved: it shows on the map and is announced like the others</string>
+    <string name="set_my_cameras">Cameras you marked on the map: %1$s</string>
+    <string name="set_my_cameras_none">No cameras marked on the map yet</string>
+    <string name="set_my_cameras_clear">Delete all</string>
+    <string name="set_my_cameras_clear_title">Delete every camera you marked?</string>
+    <string name="set_my_cameras_clear_text">The cameras saved with the button leave the map and the warnings. The ones from the map additions stay.</string>
     <!-- a phone call (the card over every screen) -->
     <string name="call_incoming">Incoming call</string>
     <string name="call_dialing">Calling…</string>
