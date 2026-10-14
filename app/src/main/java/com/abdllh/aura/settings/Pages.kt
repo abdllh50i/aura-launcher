@@ -332,6 +332,11 @@ class VehiclePage(private val act: SettingsActivity) : Page(R.string.set_vehicle
             com.abdllh.aura.system.WifiKeeper.enabled = on
             com.abdllh.aura.system.WifiKeeper.apply(ctx)
         }, 8)
+        col.addRow(ctx.switchRow(R.drawable.ic_wifi, ctx.getString(R.string.set_wifi_on_start), ctx.getString(R.string.set_wifi_on_start_sub),
+            com.abdllh.aura.system.WifiOnStart.enabled) { on ->
+            com.abdllh.aura.system.WifiOnStart.enabled = on
+            if (on) com.abdllh.aura.system.WifiOnStart.ensure("switch")
+        }, 8)
         if (com.abdllh.aura.system.ZLinkGuard.available(ctx)) {
             col.addRow(ctx.switchRow(R.drawable.ic_smartphone, ctx.getString(R.string.set_zlink_off), ctx.getString(R.string.set_zlink_off_sub),
                 com.abdllh.aura.system.ZLinkGuard.enabled) { on ->

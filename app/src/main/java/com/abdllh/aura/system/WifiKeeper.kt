@@ -637,6 +637,9 @@ object WifiKeeper {
     }
 
     // ------------------------------------------------------------------------------------------------------ the log
+    /** A line from elsewhere ([WifiOnStart]). Main thread. */
+    fun record(type: String, a: String = "") = add(Event(System.currentTimeMillis(), type, a))
+
     private fun add(e: Event) {
         synchronized(events) {
             events.add(e)

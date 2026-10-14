@@ -151,6 +151,11 @@
     <string name="net_ev_restart">Restarting the Wi-Fi (attempt %1$s)</string>
     <string name="net_ev_fixfail">Couldn\'t restart the Wi-Fi</string>
     <string name="net_ev_diag">Details: %1$s</string>
+    <string name="net_ev_wifion_airplane">At start: airplane mode was left on from the car switching off; turned off, Wi-Fi on</string>
+    <string name="net_ev_wifion_wifi">At start: the Wi-Fi was off; switched on</string>
+    <string name="net_ev_wifion_fail">At start: the Wi-Fi could not be switched on</string>
+    <string name="set_wifi_on_start">Wi-Fi on with the car</string>
+    <string name="set_wifi_on_start_sub">When the car starts: airplane mode off and the Wi-Fi on, without touching it</string>
     <string name="net_log_empty">Nothing yet: drops of the internet and their cause show up here.</string>
     <string name="net_hint">When the internet stops while the phone stays connected (an iPhone hotspot does this), the car reconnects by itself within about half a minute, and tries again if it doesn\'t come back. “The phone isn\'t answering” is the Wi-Fi link itself.</string>
     <string name="dur_s">%1$s s</string>

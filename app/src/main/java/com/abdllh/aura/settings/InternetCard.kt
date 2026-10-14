@@ -118,6 +118,11 @@ class InternetCard(private val ctx: Context) {
             "fix" -> c.getString(if (e.b == "restart") R.string.net_ev_restart else R.string.net_ev_reconnect, e.a)
             "fixfail" -> c.getString(R.string.net_ev_fixfail)
             "diag" -> c.getString(R.string.net_ev_diag, e.a)
+            "wifion" -> c.getString(when (e.a) {
+                "airplane" -> R.string.net_ev_wifion_airplane
+                "wifi" -> R.string.net_ev_wifion_wifi
+                else -> R.string.net_ev_wifion_fail
+            })
             else -> e.type
         }
 

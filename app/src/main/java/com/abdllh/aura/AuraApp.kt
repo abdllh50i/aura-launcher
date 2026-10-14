@@ -64,6 +64,7 @@ class AuraApp : Application() {
         StockMusic.apply(this)
         WifiKeeper.start(this)
         ZLinkGuard.init(this)
+        com.abdllh.aura.system.WifiOnStart.init(this) // the Wi-Fi on when the car starts (the firmware's airplane mode off)
         Power.init(this) // after an "off now": the ACC-off behaviour goes back to the user's choice
         Front.init(this)
         if (!disabled) {

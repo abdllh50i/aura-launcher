@@ -151,6 +151,11 @@
     <string name="net_ev_restart">إعادة تشغيل الواي فاي (محاولة %1$s)</string>
     <string name="net_ev_fixfail">تعذّر إعادة تشغيل الواي فاي</string>
     <string name="net_ev_diag">تفاصيل: %1$s</string>
+    <string name="net_ev_wifion_airplane">عند التشغيل: وضع الطيران كان شغّال من إطفاء السيارة، انطفى والواي فاي اشتغل</string>
+    <string name="net_ev_wifion_wifi">عند التشغيل: الواي فاي كان مطفي، اشتغل</string>
+    <string name="net_ev_wifion_fail">عند التشغيل: ما قدر يشغّل الواي فاي</string>
+    <string name="set_wifi_on_start">الواي فاي يشتغل مع السيارة</string>
+    <string name="set_wifi_on_start_sub">أول ما تشغّل السيارة: يطفي وضع الطيران ويشغّل الواي فاي بدون ما تلمسه</string>
     <string name="net_log_empty">لا شيء بعد: هنا يظهر كل انقطاع للإنترنت وسببه.</string>
     <string name="net_hint">إذا وقف الإنترنت والجوال متصل (نقطة اتصال الآيفون تسويها)، السيارة تعيد الاتصال بنفسها خلال نص دقيقة تقريبًا، وتعيد المحاولة لو ما رجع. «الجوال ما يرد» يعني رابط الواي فاي نفسه.</string>
     <string name="dur_s">%1$s ث</string>

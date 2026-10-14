@@ -37,7 +37,8 @@ file, so it comes with updates from the screen) and an **in-app updater that pul
   (`tools/map-editor/map-editor.bat`), published with one button, and picked up by every unit (*Settings → Navigation →
   Map additions → Update*): the limit shows as its sign while driving, a camera or a bump ahead is announced. A camera
   can also be marked from the car: one press of the camera button on the map while passing it (kept on that unit;
-  the button can be hidden in *Settings → Navigation*). AMRI Music: the unit's storage
+  the button can be hidden in *Settings → Navigation*). The Wi-Fi is on as soon as the car starts, also after the unit
+  powered off (the firmware leaves airplane mode on then). AMRI Music: the unit's storage
   and USB sticks, plus the phone's Bluetooth music through the firmware's own Bluetooth module (covers looked up online by
   title and artist, YouTube Music's catalogue first, which also gives the song's length), **YouTube Music as a third
   source**: its catalogue is searched from AMRI Music and the song is played by the YouTube Music app on the unit,

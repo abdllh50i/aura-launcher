@@ -472,6 +472,21 @@ and how fast it turned last time. The model itself is not in the repo.
   auto-sleep turns airplane mode on and wake-up off (every ACC cycle reloads the Wi-Fi), the BT module's "close Wi-Fi
   in calls" is for K20/K22 platforms only (this is K25), SystemUI's screen-off Wi-Fi switch is disabled, nothing in
   /system watches connectivity and toggles the Wi-Fi.
+  **Except after a power-off** (1.11.0): the airplane mode is NwdManagerService's (`services.jar`): `handleAutoSleep`
+  (ignition off) `setAirplaneModeOn(true)`, `handleAutoWakeup` `setAirplaneModeOn(false)`, also `lowVoltageProtect`
+  (on, then sleep); `initSettings` at boot does not touch it. A unit that powered off instead of waking ("power off
+  when the car is switched off", or the hours after which a sleeping unit powers off) boots with airplane mode still
+  on, so the Wi-Fi stayed off until the owner switched it on. `system/WifiOnStart.kt` (switch "Wi-Fi on with the car",
+  `wifiOnStart`, on by default): once per boot (its boot id kept, so a restart of AMRI's process later in the same
+  boot does nothing) 6 s after `sys.boot_completed`, and 12 s after every `SCREEN_ON` or the firmware's
+  `com.nwd.ACTION_AUTO_SLEEP_WAKE_STATE`, with the screen on and ZLink not holding the Wi-Fi: airplane mode off
+  (`ConnectivityManager.setAirplaneMode`, which needs NETWORK_SETTINGS, else root `cmd connectivity airplane-mode
+  disable`: the setting and the broadcast, as the firmware does), then the Wi-Fi on if it did not come back
+  (`setWifiEnabled`, else root `svc wifi enable`). Logged in the Wi-Fi log (`wifion`: airplane / wifi / fail).
+  Emulator test: airplane mode also cuts the emulator's network, so 10.0.2.2 is unreachable: `adb reverse tcp:15555
+  tcp:15555` and `setprop debug.aura.adb 127.0.0.1:15555` (the unit's own adbd is on loopback, which airplane mode
+  leaves alone); `cmd connectivity airplane-mode enable`, then power key twice (wake), or delete `wifiOnStartBoot`
+  from `shared_prefs/aura.xml` and start the app (boot).
   `system/WifiKeeper.kt` holds a high-performance Wi-Fi lock (useless on this chip, see above), probes the web every 20 s through the
   Wi-Fi network and, when it fails, tells apart a dead link (the phone/gateway does not answer), a phone that passes
   nothing (its DNS or gateway answers, the internet does not), DNS trouble and blocked web; it restarts the Wi-Fi for
