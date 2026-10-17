@@ -20,22 +20,24 @@ import com.abdllh.aura.util.dp
  * stays 2.5 s (4 s when [long]) and goes. A new message while one shows changes its text in place instead of
  * coming in again. Without an activity to show it in (a service, a receiver, an activity that is finishing:
  * the message must outlive it) it falls back to Android's Toast.
+ * A caller that leaves the screen right after the message (finishes, or starts another screen over it) passes
+ * [outlives]: a Snack belongs to its activity and would go, or be covered, with it, unread; a Toast stays on top.
  */
 object Snack {
     /** Default distance from the bottom of the activity, in dp (the home screen passes its dock's height plus 16). */
     const val ABOVE_DP = 24
 
-    fun show(ctx: Context, msg: Int, long: Boolean = false, icon: Int = 0, aboveDp: Int = ABOVE_DP) =
-        show(ctx, ctx.getString(msg), long, icon, aboveDp)
+    fun show(ctx: Context, msg: Int, long: Boolean = false, icon: Int = 0, aboveDp: Int = ABOVE_DP, outlives: Boolean = false) =
+        show(ctx, ctx.getString(msg), long, icon, aboveDp, outlives)
 
-    fun show(ctx: Context, msg: CharSequence, long: Boolean = false, icon: Int = 0, aboveDp: Int = ABOVE_DP) {
+    fun show(ctx: Context, msg: CharSequence, long: Boolean = false, icon: Int = 0, aboveDp: Int = ABOVE_DP, outlives: Boolean = false) {
         if (Looper.myLooper() != Looper.getMainLooper()) {
-            Handler(Looper.getMainLooper()).post { show(ctx, msg, long, icon, aboveDp) }
+            Handler(Looper.getMainLooper()).post { show(ctx, msg, long, icon, aboveDp, outlives) }
             return
         }
-        val a = activityOf(ctx)
-        val content = a?.takeIf { !it.isFinishing && !it.isDestroyed }?.findViewById<ViewGroup>(android.R.id.content)
-        if (content == null) {
+        val a = if (outlives) null else activityOf(ctx)?.takeIf { !it.isFinishing && !it.isDestroyed }
+        val content = a?.findViewById<ViewGroup>(android.R.id.content)
+        if (a == null || content == null) {
             Toast.makeText(ctx.applicationContext, msg, if (long) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).show()
             return
         }

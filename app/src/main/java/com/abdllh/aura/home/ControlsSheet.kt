@@ -85,7 +85,7 @@ class ControlsSheet(ctx: Context, private val host: HomeHost) : Sheet(ctx, false
         brightness.onChange = { v, user ->
             brightValue.text = "$v%"
             if (user && !Controls.setBrightnessPercent(context, v)) {
-                host.toast(context.getString(R.string.err_write_settings))
+                host.toast(context.getString(R.string.err_write_settings), outlives = true)
                 Controls.requestWriteSettings(context)
             }
         }

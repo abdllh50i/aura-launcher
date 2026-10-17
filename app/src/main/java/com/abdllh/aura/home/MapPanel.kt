@@ -254,7 +254,7 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
         if (AppRepo.navPackage(context) == null) { host.toast(context.getString(R.string.err_no_nav)); return }
         if (!Actions.driveWithApp(context, which)) {
             // no such place yet: it is chosen with a pin on AMRI's map (Settings → Navigation)
-            host.toast(context.getString(R.string.home_set_address_hint, context.getString(label)))
+            host.toast(context.getString(R.string.home_set_address_hint, context.getString(label)), outlives = true)
             host.openSettings(SettingsActivity.PAGE_NAVIGATION)
         }
     }

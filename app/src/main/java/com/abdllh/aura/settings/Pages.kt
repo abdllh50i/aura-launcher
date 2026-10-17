@@ -105,7 +105,7 @@ class DisplaySoundPage(private val act: SettingsActivity) : Page(R.string.set_di
             onChange = { v, user ->
                 bv.text = "$v%"
                 if (user && !Controls.setBrightnessPercent(ctx, v)) {
-                    Snack.show(ctx, R.string.err_write_settings)
+                    Snack.show(ctx, R.string.err_write_settings, outlives = true)
                     Controls.requestWriteSettings(ctx)
                 }
             }

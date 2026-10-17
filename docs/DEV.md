@@ -138,7 +138,9 @@ is migrated when its file is touched. Older helpers still work and are marked be
 * `Elev` with `View.lift(level, overMap = false)`: `REST` 2 resting controls, `FLOAT` 6 things floating over content,
   `OVERLAY` 12 menus, HUDs, banners, messages. On the dark theme `lift` leaves the shadow out unless `overMap`
   (it cannot be seen on a near-black screen and is still tessellated on every outline change); over the map it is
-  the edge that keeps a panel apart from the roads. `elevate(dp)` is deprecated.
+  the edge that keeps a panel apart from the roads. Elevation also orders siblings, and on the dark theme `lift`
+  gives none: a view that must draw above its siblings is placed there by child order (or passes `overMap` when it
+  floats over the map), never by `lift`. `elevate(dp)` is deprecated.
 * `Space` (dp, 4 dp grid): `XXS` 2, `XS` 4, `S` 8, `M` 12, `L` 16, `XL` 24, `XXL` 32; `GUTTER` 16 is the inset of
   screens, panels and sheets. `Touch.MIN` 56 is the smallest tap target, `Touch.LARGE` 64 a screen's main action; a
   smaller visual sits inside a 56 dp view (`Shapes.touchInset(drawable, visualDp)`).
@@ -177,8 +179,10 @@ shape cut by a rectangle, no clip path), `Sheet` (closes with a push and hands t
 anywhere on the panel where nothing under the finger can scroll up; `onOpened()` when the open has come to rest),
 `Modal` (`Modal.card(ctx)` + `Modal(ctx, card).show()` / `close(then)`: own scrim, card in with `enter`, out with
 `exit`, Back and a scrim tap close it animated; `Confirm` is built on it), `Menu` (grows from the pressed item),
-`Snack.show(ctx, msg, long, icon, aboveDp)` (the in-app message in place of `Toast`; falls back to a Toast where
-there is no activity to show it, or the activity is about to finish or be recreated: use `Toast` itself there).
+`Snack.show(ctx, msg, long, icon, aboveDp, outlives)` (the in-app message in place of `Toast`; falls back to a Toast
+where there is no activity to show it. A Snack belongs to its activity: a caller that leaves the screen right after
+the message, finishing it or opening another screen over it, passes `outlives = true` and gets a Toast that stays on
+top; so does `HomeHost.toast(msg, outlives)`).
 `label()` without a gravity aligns its text to the layout's start edge whatever the script (`AText.alignStart`): a
 Latin name in the Arabic UI stands on the right with the Arabic around it.
 

@@ -291,8 +291,8 @@ class HomeActivity : Activity(), HomeHost {
         startActivity(Intent(this, SettingsActivity::class.java).putExtra(SettingsActivity.EXTRA_PAGE, page))
     }
 
-    override fun toast(msg: String) {
-        Snack.show(this, msg, aboveDp = DOCK_DP + 16)
+    override fun toast(msg: String, outlives: Boolean) {
+        Snack.show(this, msg, aboveDp = DOCK_DP + 16, outlives = outlives)
     }
 
     /**

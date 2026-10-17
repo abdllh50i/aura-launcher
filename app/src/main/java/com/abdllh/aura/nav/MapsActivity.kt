@@ -184,7 +184,7 @@ class MapsActivity : Activity() {
     private fun savePlace(which: String) {
         val p = selected ?: return
         if (which == "home") Places.home = p else Places.work = p
-        toast(getString(R.string.maps_saved))
+        toast(getString(R.string.maps_saved), outlives = finishAfterPick)
         pickFor = null
         input.setHint(R.string.home_where_to)
         if (finishAfterPick) { finishAfterPick = false; finish() }
@@ -468,7 +468,7 @@ class MapsActivity : Activity() {
 
     private fun panelWidth() = 460.dp
 
-    private fun toast(s: String) = Snack.show(this, s)
+    private fun toast(s: String, outlives: Boolean = false) = Snack.show(this, s, outlives = outlives)
 
     // ------------------------------------------------------------------------------------------ search
     private fun onQuery(q: String) {
@@ -606,7 +606,7 @@ class MapsActivity : Activity() {
         voiceBtn = ImageView(this)
         btns.addView(mapButton(R.drawable.ic_volume, voiceBtn) {
             if (NavSession.voiceMissing) { // no text-to-speech engine on the unit: offer Google's (it speaks Arabic)
-                toast(getString(R.string.maps_voice_missing))
+                toast(getString(R.string.maps_voice_missing), outlives = true)
                 openSpeechStore()
                 return@mapButton
             }
