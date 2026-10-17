@@ -111,7 +111,9 @@ object Places {
         }
         fun bucket(p: Place): Int {
             val s = maxOf(TextMatch.score(query, p.name), latin?.let { TextMatch.score(it, p.name) } ?: 0.0)
-            return (s * 4).toInt()
+            // a name that holds the whole query answers it as well as one that is only the query: "Al Dawa Pharmacy"
+            // round the corner is the "pharmacy" asked for, not a place called "Pharmacy" 90 km away
+            return if (s >= 0.9) 4 else (s * 4).toInt()
         }
         val km = unique.associateWith { p -> near?.let { Geo.distance(it, p.pos) / 1000.0 } ?: 0.0 }
         fun band(p: Place): Int = km.getValue(p).let { when { it < 5 -> 0; it < 30 -> 1; it < 150 -> 2; else -> 3 } }

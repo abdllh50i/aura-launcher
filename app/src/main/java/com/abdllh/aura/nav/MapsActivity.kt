@@ -968,7 +968,9 @@ class MapsActivity : Activity() {
         val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.TOP }
         val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         placeName = label(Type.TITLE, Palette.text, lines = 2)
-        placeDetail = label(Type.FOOTNOTE, Palette.text2, lines = 2)
+        // (an address is a list in the UI's language, its commas included: it reads in the UI's direction even when
+        // its first part is a Latin street name, which would otherwise turn the whole line around)
+        placeDetail = label(Type.FOOTNOTE, Palette.text2, lines = 2).apply { textDirection = View.TEXT_DIRECTION_LOCALE }
         texts.addView(placeName, lp(MATCH, WRAP).apply { topMargin = Space.XS.dp })
         texts.addView(placeDetail, lp(MATCH, WRAP).apply { topMargin = Space.XS.dp })
         head.addView(texts, lp(0, WRAP, 1f))
@@ -1106,7 +1108,7 @@ class MapsActivity : Activity() {
         r.addView(badge, lp(46.dp, 46.dp))
         val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         t.addView(label(Type.LABEL, Palette.text).apply { text = title }, lp(MATCH, WRAP))
-        if (detail.isNotBlank()) t.addView(label(Type.FOOTNOTE, Palette.text2).apply { text = detail }, lp(MATCH, WRAP).apply { topMargin = Space.XXS.dp })
+        if (detail.isNotBlank()) t.addView(label(Type.FOOTNOTE, Palette.text2).apply { text = detail; textDirection = View.TEXT_DIRECTION_LOCALE }, lp(MATCH, WRAP).apply { topMargin = Space.XXS.dp })
         r.addView(t, lp(0, WRAP, 1f).apply { marginStart = Space.M.dp })
         if (distance != null) r.addView(label(Type.CAPTION, Palette.text3).apply { text = distance; fontFeatureSettings = "tnum" }, lp(WRAP, WRAP).apply { marginStart = Space.M.dp })
         return r
