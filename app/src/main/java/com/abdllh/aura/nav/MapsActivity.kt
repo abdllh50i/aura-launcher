@@ -726,7 +726,16 @@ class MapsActivity : Activity() {
     /** A message above the card at the bottom, if one is there (it would cover the card's buttons). */
     private fun toast(s: String, outlives: Boolean = false) {
         val card = if (::tripBar.isInitialized) listOf(tripBar, placeCard, arrivedCard).firstOrNull { it.isOn } else null
-        val above = if (card == null || card.height == 0) Snack.ABOVE_DP else (card.height / resources.displayMetrics.density).toInt() + Space.GUTTER + Space.M
+        // (a card revealed in the same pass, as the trip bar with the "no voice" hint, has no height yet: measured here)
+        val h = when {
+            card == null -> 0
+            card.height > 0 -> card.height
+            else -> {
+                card.measure(View.MeasureSpec.makeMeasureSpec(panelWidth(), View.MeasureSpec.EXACTLY), View.MeasureSpec.UNSPECIFIED)
+                card.measuredHeight
+            }
+        }
+        val above = if (h == 0) Snack.ABOVE_DP else (h / resources.displayMetrics.density).toInt() + Space.GUTTER + Space.M
         Snack.show(this, s, aboveDp = above, outlives = outlives)
     }
 
