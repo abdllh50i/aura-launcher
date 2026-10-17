@@ -12,6 +12,7 @@ import android.location.Location
 import android.os.Bundle
 import android.os.SystemClock
 import android.text.Editable
+import android.text.InputType
 import android.text.TextWatcher
 import android.view.Gravity
 import android.view.KeyEvent
@@ -890,6 +891,8 @@ class MapsActivity : Activity() {
             textSize = Type.LABEL.sp
             typeface = Fonts.get(Fonts.REGULAR)
             isSingleLine = true
+            // (no spelling suggestions: the checker underlined place names in red, "Taslis Bukari" as a misspelling)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or InputType.TYPE_TEXT_VARIATION_FILTER
             textAlignment = View.TEXT_ALIGNMENT_VIEW_START
             imeOptions = EditorInfo.IME_ACTION_SEARCH or EditorInfo.IME_FLAG_NO_EXTRACT_UI
             background = null

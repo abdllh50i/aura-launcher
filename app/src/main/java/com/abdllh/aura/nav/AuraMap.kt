@@ -230,6 +230,11 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         // START) so it does not start at the right edge in Arabic.
         view.addView(carView, FrameLayout.LayoutParams(CarMarker.SIZE.dp, CarMarker.SIZE.dp, Gravity.TOP or Gravity.LEFT))
         carView.visibility = View.GONE
+        // A new size (a panel or the keyboard coming and going) moves every point on the screen without any camera
+        // event: the car is placed again once the map has drawn at the new size, or it stays where the old size had it.
+        mapView.addOnLayoutChangeListener { _, l, t, r, b, ol, ot, or, ob ->
+            if (r - l != or - ol || b - t != ob - ot) { mapView.post(placeAgain); mapView.postDelayed(placeAgain, 120) }
+        }
         rtl = ctx.resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL
         mapView.getMapAsync { m ->
             map = m
@@ -859,16 +864,28 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         if (points.size == 1) {
             m.animateCamera(CameraUpdateFactory.newCameraPosition(CameraPosition.Builder()
                 .target(LatLng(points[0].lat, points[0].lon)).zoom(15.5).bearing(0.0).tilt(0.0)
-                .padding(l.toDouble(), padTop.toDouble(), r.toDouble(), padBottom.toDouble()).build()), OVERVIEW_MS)
+                .padding(l.toDouble(), padTop.toDouble(), r.toDouble(), padBottom.toDouble()).build()), OVERVIEW_MS, landed)
             return
         }
         val b = LatLngBounds.Builder()
         points.forEach { b.include(LatLng(it.lat, it.lon)) }
         try {
-            m.animateCamera(CameraUpdateFactory.newLatLngBounds(b.build(), 0.0, 0.0, l, padTop, r, padBottom), OVERVIEW_MS)
+            m.animateCamera(CameraUpdateFactory.newLatLngBounds(b.build(), 0.0, 0.0, l, padTop, r, padBottom), OVERVIEW_MS, landed)
         } catch (_: Throwable) {
         }
     }
+
+    /**
+     * The car placed again where an overview flight ended. A flight that replaces another one (the car and the place
+     * first, then the whole route once it has come) did not always end with a camera-idle event, and the car stayed
+     * where the first flight had left it, beside its road, until the next zoom.
+     */
+    private val landed = object : MapboxMap.CancelableCallback {
+        override fun onCancel() {}
+        override fun onFinish() { mapView.post(placeAgain) }
+    }
+
+    private val placeAgain = Runnable { if (!inDrive) placeOverlays() }
 
     /** + / − buttons: following the car, the zoom is remembered (the next fix would otherwise undo it) and eased to. */
     fun zoomBy(d: Double) {
