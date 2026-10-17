@@ -75,7 +75,13 @@ object Places {
                 if (gen != generation.get()) return@execute
                 try { found += photon(q, near, arabic) } catch (_: Throwable) { failed++ }
             }
-            val result = if (failed == variants.size) null else rank(found, query, variants.getOrNull(1), near)
+            // the strong pull towards the car fills the list with local namesakes ("Jeddah Street" in Jubail): the
+            // engine's best answers anywhere are asked for too, so a far city or airport is still at the list's end
+            var wide = emptyList<Place>()
+            if (near != null && failed < variants.size && gen == generation.get()) {
+                try { wide = photon(variants[0], null, arabic, 3) } catch (_: Throwable) { }
+            }
+            val result = if (failed == variants.size) null else rank(found, wide, query, variants.getOrNull(1), near)
             main.post { online = result; onlineDone = true; show() }
         }
     }
@@ -90,25 +96,24 @@ object Places {
         return out
     }
 
-    private fun photon(q: String, near: LatLon?, arabic: Boolean): List<Place> {
+    private fun photon(q: String, near: LatLon?, arabic: Boolean, limit: Int = 10): List<Place> {
         val enc = URLEncoder.encode(q, "UTF-8")
         // a strong pull towards the car (0.3 still put Toronto and Rwanda before the pharmacy round the corner)
         val bias = near?.let { "&lat=${it.lat}&lon=${it.lon}&zoom=12&location_bias_scale=0.1" } ?: ""
         val lang = if (arabic) "default" else "en"
-        return parse(get("https://photon.komoot.io/api/?q=$enc&limit=10&lang=$lang$bias"), arabic)
+        return parse(get("https://photon.komoot.io/api/?q=$enc&limit=$limit&lang=$lang$bias"), arabic)
     }
 
     /**
-     * Both result lists merged: the places whose name answers the query best (in either script) first; among those
-     * that answer it about as well, the nearer first, by bands (in town, the area, the region, further), then the
-     * search engine's order. A place more than 500 km away is dropped while one under 150 km answers: "pharmacy" is
-     * asked for the nearest one, while a search for a far city still finds it.
+     * The results near the car and [wide] (the same query anywhere) merged: the places whose name answers the query
+     * best (in either script) first; among those that answer it about as well, the nearer first, by bands (in town,
+     * the area, the region, further), then the search engine's order. The best answer anywhere keeps a place at the
+     * end even when local namesakes fill the list: many streets are named after the cities they lead to.
      */
-    private fun rank(list: List<Place>, query: String, latin: String?, near: LatLon?): List<Place> {
+    private fun rank(list: List<Place>, wide: List<Place>, query: String, latin: String?, near: LatLon?): List<Place> {
+        fun key(p: Place) = "${TextMatch.norm(p.name)}|${"%.3f".format(java.util.Locale.ROOT, p.pos.lat)}|${"%.3f".format(java.util.Locale.ROOT, p.pos.lon)}"
         val seen = HashSet<String>()
-        val unique = list.filter {
-            seen.add("${TextMatch.norm(it.name)}|${"%.3f".format(java.util.Locale.ROOT, it.pos.lat)}|${"%.3f".format(java.util.Locale.ROOT, it.pos.lon)}")
-        }
+        val unique = (list + wide).filter { seen.add(key(it)) }
         fun bucket(p: Place): Int {
             val s = maxOf(TextMatch.score(query, p.name), latin?.let { TextMatch.score(it, p.name) } ?: 0.0)
             // a name that holds the whole query answers it as well as one that is only the query: "Al Dawa Pharmacy"
@@ -117,12 +122,12 @@ object Places {
         }
         val km = unique.associateWith { p -> near?.let { Geo.distance(it, p.pos) / 1000.0 } ?: 0.0 }
         fun band(p: Place): Int = km.getValue(p).let { when { it < 5 -> 0; it < 30 -> 1; it < 150 -> 2; else -> 3 } }
-        val closeOnes = unique.any { km.getValue(it) < 150 }
-        return unique.withIndex()
-            .filter { !(near != null && closeOnes && km.getValue(it.value) > 500) }
+        val ranked = unique.withIndex()
             .sortedWith(compareByDescending<IndexedValue<Place>> { bucket(it.value) }.thenBy { band(it.value) }.thenBy { it.index })
             .map { it.value }
-            .take(12)
+        val best = wide.firstOrNull()?.let(::key)
+        if (ranked.size <= 12 || best == null || ranked.take(12).any { key(it) == best }) return ranked.take(12)
+        return ranked.take(11) + ranked.first { key(it) == best }
     }
 
     fun cancelSearch() { generation.incrementAndGet() }

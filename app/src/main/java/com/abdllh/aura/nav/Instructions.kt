@@ -33,11 +33,12 @@ object Instructions {
 
     /**
      * Where a roundabout's exit leads, degrees (+ right): measured on the route ([Step.angle]), else from OSRM's
-     * modifier; NaN when neither says (the arrow then goes by the exit's number).
+     * modifier; NaN when neither says (the arrow then goes by the exit's number). A turning back is always the whole
+     * way round on the left (the ring is driven counter-clockwise): measured, it comes out as +179 or -179 by the
+     * road's noise, and +179 drew an exit right where the car came in.
      */
-    fun exitAngle(s: Step): Float = when {
-        !s.angle.isNaN() -> s.angle.toFloat()
-        else -> when (s.modifier) {
+    fun exitAngle(s: Step): Float {
+        val a = if (!s.angle.isNaN()) s.angle.toFloat() else when (s.modifier) {
             "straight" -> 0f
             "slight right" -> 45f
             "right" -> 90f
@@ -48,6 +49,7 @@ object Instructions {
             "slight left" -> -45f
             else -> Float.NaN
         }
+        return if (a > 160f) -178f else a
     }
 
     fun road(s: Step) = s.name.ifBlank { s.ref }

@@ -17,9 +17,11 @@ and out:
 - `maxWidthPx` (compact only): the most the banner may take. Compact is a fixed 440 dp (`COMPACT_WIDTH_DP`), capped by
   this and by the parent, so the changing numbers never resize it. The home map should set it to what the speed sign
   and the camera chip leave.
-- Full size: 80 dp arrow; the distance (`DISPLAY_M`, its unit at 0.55 and 80 % white: `GuidanceBanner.styled`), the
+- Full size: 80 dp arrow; the distance (`DISPLAY_M`, its unit at 0.55 of its size: `GuidanceBanner.styled`), the
   action (`TITLE`, one line), the road (`BODY`, one line, ellipsized, bidi-wrapped so a Latin name or one with brackets
-  keeps its order in an Arabic line); then the lane strip and the "then" strip in a darker band.
+  keeps its order in an Arabic line); then the lane strip and the "then" strip in a darker band. Every word on the
+  sign is full white and the lines differ by size only: the sign is deepened just to 4.5:1 for white, so any faded
+  line (84 % white was) falls under it.
 - Compact: 52 dp arrow, `HEADLINE` distance, `BODY` action, `FOOTNOTE` road, and at its end a column with the arrival
   clock and "time · distance left" (the home screen has no trip bar). No lane or "then" strip.
 - A new step comes in (the arrow grows from 0.82, the words rise 8 dp, `enter`); the same step only changes its
@@ -36,7 +38,8 @@ and out:
   measured width. Its own instant visibility switch of the search pill and chips should become `reveal` too.
 
 `Guide` (same file) is the guidance colour: `Guide.color()` is the accent unless that is red, amber or graphite (which
-mean danger, a warning, switched off), then the default blue; `Guide.sign()` is that colour deepened until white
+mean danger, a warning, switched off; taken from `Palette.accents` by position, so a reordered swatch list must
+update `Guide.NOT_FOR_GUIDING`), then the default blue; `Guide.sign()` is that colour deepened until white
 reads on it at 4.5:1 (green and cyan accents gave white text at about 2:1). The banner and the arrival card's bar use
 them. The route line, the turn arrow and the car are drawn by `MapStyle` / `AuraMap` (not changed here): they should
 take `Guide.color()` instead of `Palette.accent`, so the route and its sign agree.
@@ -66,23 +69,35 @@ bottom cards +16 dp with a 60 ms delay (after the top one), the recenter pill an
   "متابعة الملاحة" / "Resume" while navigating, "موقعي" / "My location" otherwise. While navigating the map goes back to
   the car by itself 12 s after the last touch, 20 s after the overview button; the timer is cleared on End and in
   `onStop`.
+- The arrival card says "وصلت إلى" / "You have arrived at" and the place's name (not a dropped pin's placeholder name),
+  over a line that runs out in the 30 s before the trip ends by itself. The line steps once a second with a
+  `Motion.SHORT` glide (`arrivedTick`, cleared when the card goes and in `onStop`): one 30 s animation drew a frame
+  at every vsync, about 60 a second, for a parked car.
+- The ETA's green unit (trip bar, place card) is full `Palette.success`, smaller only: at 80 % it was 3.5:1 on the
+  light glass.
 - The speed disc rounds the speed (under 3 km/h is 0: GPS reports 1-3 for a parked car) and turns red with one beat
   over the limit, instead of only its digits.
 
 ## Place card and search
 - The route's time is the headline (green, `HEADLINE`, unit small), then distance and arrival. Go stays dimmed until
   there is a route; a failure is in `warn` with "tap to try again" (the line is the button).
-- The save buttons say what they do ("حفظ كمنزل" / "Set as Home") and are ghost buttons, so Go is the only filled
-  action: labelled "المنزل" beside Go they read as "drive home" and overwrote Home.
+- Go takes the row; beside it one ghost "حفظ" / "Save" opens a `Menu` with "حفظ كمنزل" / "Set as Home" and "حفظ كعمل"
+  / "Set as Work". Labelled "المنزل" beside Go the old buttons read as "drive home" and overwrote Home; two "Set as …"
+  buttons beside it left Go barely wider than either. While Home or Work is being chosen (`pickFor`), Save keeps the
+  place as that at once, without the menu.
 - A dropped pin's route is no longer thrown away when the reverse lookup renames the pin first: the route callbacks
   compare the selection by position, not identity.
 - The first camera flight waits 700 ms for the route (which brings its own overview) instead of flying twice.
 - Search keeps the old rows, dimmed, with a spinner in the clear button's place, until the answer replaces them (the
   card no longer collapses and grows on every letter). Without a fix it biases to the map's centre. Photon's bias is
   stronger (`zoom=12`, `location_bias_scale=0.1`), and `Places.rank` orders equally good names by distance band
-  (< 5, 30, 150 km, further) and drops results over 500 km away while one under 150 km answers. A name that holds
-  the whole query counts as good as the query itself, so "Al Dawa Pharmacy" 230 m away comes before "Pharmacy" in
-  Dammam.
+  (< 5, 30, 150 km, further). A name that holds the whole query counts as good as the query itself, so "Al Dawa
+  Pharmacy" 230 m away comes before "Pharmacy" in Dammam.
+- With a position, `Places.search` also asks Photon once without the bias (the typed text, `limit=3`): the biased
+  answers alone are ten local namesakes for "Jeddah" or "مكة" in the Eastern Province (streets are named after the
+  cities they lead to). Those far answers sort into the last band, and the first of them keeps a place in the twelve
+  even when the local ones would fill them. (1.12's first cut dropped everything over 500 km while anything under
+  150 km answered; that lost the far cities.)
 - Address parts are joined with the UI language's comma ("، " in Arabic), whatever the name's script, and the detail
   lines read in the UI's direction (`TEXT_DIRECTION_LOCALE`): an address starting with a Latin street name turned the
   whole Arabic line around.
@@ -98,7 +113,10 @@ bottom cards +16 dp with a 60 ms delay (after the top one), the recenter pill an
   - Roundabouts are measured on the line: `Step.span` (entry to the exit taken; OSRM's exit step, else the end of the
     longest left-turning stretch) and `Step.angle` (where the exit really leads). The icon draws the exit at that
     angle with the exit's number in the ring, and the map's turn arrow runs to the exit. Saudi roundabouts often
-    have five or six arms or arms at 45 degrees, where the old 4-way table pointed the wrong way.
+    have five or six arms or arms at 45 degrees, where the old 4-way table pointed the wrong way. A turning back
+    (measured over +160, which road noise gives as often as -179) is `-178` in `Instructions.exitAngle`: the ring is
+    driven counter-clockwise, so it is the whole way round; +179 drew the exit where the car came in. The icon draws
+    any exit beyond -150 at -150, beside the way in instead of over it.
   - A roundabout step without a road takes its exit step's.
 - OSRM steps now carry `lanes` (from `intersections[0]`), `destinations` and `exits`. Ramps say the exit number and
   "باتجاه …" (two destinations at most); the voice leaves the destination list out.

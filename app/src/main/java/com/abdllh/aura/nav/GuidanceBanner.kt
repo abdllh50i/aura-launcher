@@ -93,7 +93,8 @@ class GuidanceBanner(ctx: Context, val compact: Boolean = false) : LinearLayout(
         // new number on every fix only redraws the line instead of measuring the screen again
         dist = if (compact) ctx.label(Type.HEADLINE, on).apply { fontFeatureSettings = "tnum" } else ctx.label(Type.DISPLAY_M, on)
         action = ctx.label(if (compact) Type.BODY else Type.TITLE, on)
-        road = ctx.label(if (compact) Type.FOOTNOTE else Type.BODY, Palette.withAlpha(on, 0.84f)).apply { ellipsize = TextUtils.TruncateAt.END }
+        // every word on the sign in full white (a faded one fell under 4.5:1 on it): the lines differ by size alone
+        road = ctx.label(if (compact) Type.FOOTNOTE else Type.BODY, on).apply { ellipsize = TextUtils.TruncateAt.END }
         texts.addView(dist, lp(MATCH, WRAP))
         texts.addView(action, lp(MATCH, WRAP).apply { topMargin = Space.XXS.dp })
         texts.addView(road, lp(MATCH, WRAP).apply { topMargin = Space.XXS.dp })
@@ -104,7 +105,7 @@ class GuidanceBanner(ctx: Context, val compact: Boolean = false) : LinearLayout(
                 lp(1.dp, 40.dp).apply { marginStart = Space.M.dp; marginEnd = Space.M.dp })
             val eta = LinearLayout(ctx).apply { orientation = VERTICAL }
             arriveAt = ctx.label(Type.LABEL, on).apply { fontFeatureSettings = "tnum" }
-            left = ctx.label(Type.CAPTION, Palette.withAlpha(on, 0.84f)).apply { fontFeatureSettings = "tnum" }
+            left = ctx.label(Type.CAPTION, on).apply { fontFeatureSettings = "tnum" }
             eta.addView(arriveAt, lp(MATCH, WRAP))
             eta.addView(left, lp(MATCH, WRAP))
             top.addView(eta, lp(104.dp, WRAP))
@@ -189,7 +190,7 @@ class GuidanceBanner(ctx: Context, val compact: Boolean = false) : LinearLayout(
             }
         }
         dist.visibility = View.VISIBLE
-        dist.setIfChanged(styled(Units.distance(p.toNext, ar), 0.55f, Palette.withAlpha(on, 0.8f)))
+        dist.setIfChanged(styled(Units.distance(p.toNext, ar), 0.55f, on))
         action.setIfChanged(Instructions.action(step, ar))
         val name = Instructions.roadLine(step, ar, destination?.name?.takeIf { it != context.getString(R.string.maps_dropped_pin) })
         // (a Latin name in the Arabic line, or one with brackets, keeps its own order: "Jeddah Street (Road 274)")
@@ -248,7 +249,8 @@ class GuidanceBanner(ctx: Context, val compact: Boolean = false) : LinearLayout(
  * switched off; those guide in the default blue.
  */
 object Guide {
-    private val NOT_FOR_GUIDING = setOf(0xFFE5484D.toInt(), 0xFFF5A524.toInt(), 0xFF767D87.toInt(), Palette.OLD_GRAPHITE)
+    // (the swatches themselves, as Settings offers them: amber, red, graphite; and the graphite until 1.11)
+    private val NOT_FOR_GUIDING = setOf(Palette.accents[3], Palette.accents[4], Palette.accents.last(), Palette.OLD_GRAPHITE)
 
     /** The route's colour (a fill: the line, the turn arrow, the car). */
     fun color(): Int = Palette.accent.takeIf { it !in NOT_FOR_GUIDING } ?: Palette.DEFAULT_ACCENT

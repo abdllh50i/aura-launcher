@@ -31,6 +31,7 @@ import com.abdllh.aura.ui.AText
 import com.abdllh.aura.ui.Elev
 import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.MATCH
+import com.abdllh.aura.ui.Menu
 import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Radius
@@ -259,6 +260,8 @@ class MapsActivity : Activity() {
 
     override fun onStop() {
         root.removeCallbacks(autoRecenter)
+        root.removeCallbacks(arrivedTick)
+        arrivalShown = 0L // (back on the screen, the arrival line starts stepping again from where the hold is)
         CarLocation.removeListener(fixListener)
         CarLocation.release("maps")
         NavSession.removeListener(navListener)
@@ -352,7 +355,7 @@ class MapsActivity : Activity() {
         tripBar.reveal(navigating, 16f, delay = 60)
         speedBubble.reveal(navigating, 0f, scaleFrom = 0.9f)
         arrivedCard.reveal(st == NavSession.State.ARRIVED, 16f, delay = 60)
-        if (st == NavSession.State.ARRIVED) showArrival()
+        if (st == NavSession.State.ARRIVED) showArrival() else root.removeCallbacks(arrivedTick)
         placeEndCluster(navigating)
         syncZoom()
         val voice = NavSession.voiceOn && !NavSession.voiceMissing
@@ -397,7 +400,7 @@ class MapsActivity : Activity() {
             else map.setTurn(r.line.slice(step.at - TURN_ARROW_BEFORE_M, step.at + after), r.line.at(step.at + after).second)
         }
         // how long is left first (what the driver asks), then how far and when
-        tripEta.setIfChanged(GuidanceBanner.styled(Units.duration(p.timeLeft, arabic), 0.5f, Palette.withAlpha(Palette.success, 0.8f)))
+        tripEta.setIfChanged(GuidanceBanner.styled(Units.duration(p.timeLeft, arabic), 0.5f, Palette.success))
         tripLeft.setIfChanged("${Units.distance(p.remaining, arabic)} · ${getString(R.string.maps_arrival)} ${Units.arrival(p.timeLeft, Prefs.clock24)}")
         speedText.setIfChanged("${p.speedKmh}")
         showOver(RoadWatch.state.over)
@@ -428,16 +431,31 @@ class MapsActivity : Activity() {
         val at = NavSession.arrivedAt
         if (at == arrivalShown) return
         arrivalShown = at
-        val name = NavSession.destination?.name
-        arrivedCaption.setText(if (name.isNullOrBlank()) R.string.maps_arrived else R.string.maps_arrived_at)
+        // (a pin whose address was not found has no name worth announcing: "arrived at Dropped pin")
+        val name = NavSession.destination?.name?.takeIf { it.isNotBlank() && it != getString(R.string.maps_dropped_pin) }
+        arrivedCaption.setText(if (name == null) R.string.maps_arrived else R.string.maps_arrived_at)
         arrivedName.text = name.orEmpty()
-        arrivedName.visibility = if (name.isNullOrBlank()) View.GONE else View.VISIBLE
-        val left = (NavSession.ARRIVED_HOLD_MS - (SystemClock.elapsedRealtime() - at)).coerceAtLeast(0L)
+        arrivedName.visibility = if (name == null) View.GONE else View.VISIBLE
+        root.removeCallbacks(arrivedTick)
         arrivedBar.animate().cancel()
-        arrivedBar.scaleX = left / NavSession.ARRIVED_HOLD_MS.toFloat()
-        arrivedBar.post {
-            arrivedBar.pivotX = if (rtl) arrivedBar.width.toFloat() else 0f // (it runs out toward the start)
-            arrivedBar.animate().scaleX(0f).setStartDelay(0).setDuration(left).setInterpolator(LinearInterpolator()).start()
+        arrivedBar.scaleX = arrivedLeft()
+        arrivedBar.post { arrivedBar.pivotX = if (rtl) arrivedBar.width.toFloat() else 0f } // (it runs out toward the start)
+        root.postDelayed(arrivedTick, ARRIVED_STEP_MS)
+    }
+
+    /** The share of the arrival's hold still left. */
+    private fun arrivedLeft(): Float =
+        (NavSession.ARRIVED_HOLD_MS - (SystemClock.elapsedRealtime() - NavSession.arrivedAt)).coerceAtLeast(0L) / NavSession.ARRIVED_HOLD_MS.toFloat()
+
+    /**
+     * The arrival line moves on a step a second, each step a short glide: one animation over the whole hold drew a
+     * frame at every vsync for half a minute, on top of the map, for a line moving a few pixels a second.
+     */
+    private val arrivedTick = object : Runnable {
+        override fun run() {
+            val left = arrivedLeft()
+            arrivedBar.anim(Motion.SHORT, LinearInterpolator()).scaleX(left).start()
+            if (left > 0f && NavSession.state == NavSession.State.ARRIVED) root.postDelayed(this, ARRIVED_STEP_MS)
         }
     }
 
@@ -621,7 +639,7 @@ class MapsActivity : Activity() {
 
     /** The route's summary: the time it takes large (what is asked first), then how far and when it arrives. */
     private fun showPreview(r: Route) {
-        placeEta.setIfChanged(GuidanceBanner.styled(Units.duration(r.duration, arabic), 0.6f, Palette.withAlpha(Palette.success, 0.8f)))
+        placeEta.setIfChanged(GuidanceBanner.styled(Units.duration(r.duration, arabic), 0.6f, Palette.success))
         placeEta.visibility = View.VISIBLE
         placeRoute.setTextColor(Palette.text2)
         placeRoute.setIfChanged("  ·  ${Units.distance(r.distance, arabic)} · ${getString(R.string.maps_arrival)} ${Units.arrival(r.duration, Prefs.clock24)}")
@@ -997,19 +1015,22 @@ class MapsActivity : Activity() {
             if (BuildConfig.DEBUG) setOnLongClickListener { intent.putExtra("simulate", true); go(); true }
         }
         actions.addView(goBtn, lp(0, Touch.LARGE.dp, 1f))
-        // Saving is a quiet choice beside Go (outlined, and saying what it does): labelled "Home" next to Go it read
-        // as "drive home", and overwrote the saved Home instead.
-        actions.addView(saveButton(R.string.maps_set_home) { savePlace("home") }, lp(WRAP, Touch.LARGE.dp).apply { marginStart = Space.S.dp })
-        actions.addView(saveButton(R.string.maps_set_work) { savePlace("work") }, lp(WRAP, Touch.LARGE.dp).apply { marginStart = Space.S.dp })
+        // Saving is one quiet choice beside Go, its two kinds in a menu: labelled "Home" next to Go it read as "drive
+        // home" (and overwrote the saved Home instead), and two "Set as ..." buttons left Go barely wider than either.
+        actions.addView(ABtn(this).apply {
+            kind = ABtn.Kind.GHOST
+            setText(R.string.btn_save)
+            setPadding(Space.XL.dp, 0, Space.XL.dp, 0)
+            setOnClickListener { v ->
+                // (Home or Work being chosen, the field says which: Save keeps it as that at once)
+                pickFor?.let { savePlace(it); return@setOnClickListener }
+                Menu.show(v, listOf(
+                    Menu.Item(R.drawable.ic_home, getString(R.string.maps_set_home)) { savePlace("home") },
+                    Menu.Item(R.drawable.ic_briefcase, getString(R.string.maps_set_work)) { savePlace("work") }))
+            }
+        }, lp(WRAP, Touch.LARGE.dp).apply { marginStart = Space.S.dp })
         c.addView(actions, lp(MATCH, WRAP).apply { topMargin = Space.L.dp; marginEnd = Space.M.dp })
         return c
-    }
-
-    private fun saveButton(text: Int, onClick: () -> Unit) = ABtn(this).apply {
-        kind = ABtn.Kind.GHOST
-        setText(text)
-        setPadding(Space.L.dp, 0, Space.L.dp, 0)
-        setOnClickListener { onClick() }
     }
 
     private fun buildTripBar(): LinearLayout {
@@ -1179,6 +1200,8 @@ class MapsActivity : Activity() {
         private const val AUTO_RECENTER_MS = 12_000L
         /** and after a look at the whole route, this long. */
         private const val AUTO_RECENTER_OVERVIEW_MS = 20_000L
+        /** The arrival card's line moves on this often. */
+        private const val ARRIVED_STEP_MS = 1000L
         /** The map's round buttons. */
         private const val MAP_BTN = 66
         /** A search result's height. */

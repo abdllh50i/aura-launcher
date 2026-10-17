@@ -130,7 +130,8 @@ class ManeuverView(ctx: Context) : View(ctx) {
         ring.strokeWidth = stroke.strokeWidth
         c.drawCircle(cx, cy, r, ring)
         // degrees on the screen, 0 = right, -90 = up: the car comes in going up, so a turn of a degrees leaves at -90 + a
-        val exitAngle = if (!angle.isNaN()) -90f + angle
+        // (a turn back leaves at most at 150 degrees left: beside the way in, not drawn over it)
+        val exitAngle = if (!angle.isNaN()) -90f + maxOf(angle, -150f)
             else when (exit) { 1 -> 0f; 2 -> -90f; 3 -> -180f; 4 -> 90f; else -> -90f }
         path.reset()
         path.moveTo(cx, s * 0.94f)
