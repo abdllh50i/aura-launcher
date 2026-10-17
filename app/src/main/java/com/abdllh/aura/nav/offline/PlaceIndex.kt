@@ -238,6 +238,29 @@ object PlaceIndex {
         return place(best, arabic).copy(pos = pos)
     }
 
+    /** A street's Arabic name, found by the name a route gave it ([key]: its local or English name). */
+    class Named(val key: String, val pos: LatLon, val arabic: String)
+
+    /**
+     * The Arabic names of the streets called one of [names] in the local or the English name, every street of each
+     * name (a name can be used by several: the caller takes the nearest). One query for a whole route; the table has
+     * no index on the names, so it scans it once (about 100-200 ms on the unit): off the main thread.
+     */
+    fun arabicNames(st: TileStore, names: Set<String>): List<Named> {
+        val list = names.take(200) // (SQLite allows 999 arguments; a route has a few dozen names)
+        if (list.isEmpty()) return emptyList()
+        val marks = list.joinToString(",") { "?" }
+        val out = ArrayList<Named>()
+        st.db.rawQuery("SELECT name, en, ar, lat, lon FROM places WHERE kind = $STREET AND ar != '' AND (name IN ($marks) OR en IN ($marks))",
+            (list + list).toTypedArray()).use { c ->
+            while (c.moveToNext()) {
+                val key = if (c.getString(0) in names) c.getString(0) else c.getString(1)
+                out.add(Named(key, LatLon(c.getDouble(3), c.getDouble(4)), c.getString(2)))
+            }
+        }
+        return out
+    }
+
     private fun place(r: Row, arabic: Boolean): Place {
         val name = if (arabic) r.ar.ifBlank { r.name } else r.en.ifBlank { r.name }
         val area = if (arabic) r.areaAr.ifBlank { r.area } else r.areaEn.ifBlank { r.area }

@@ -6,18 +6,34 @@ import org.json.JSONObject
 import java.util.Locale
 import java.util.concurrent.Executors
 
+/** One lane where a manoeuvre is (OSRM): the arrows painted on it, and whether it leads the route's way. */
+class Lane(val indications: List<String>, val valid: Boolean, val validIndication: String)
+
 /** One manoeuvre of a route (OSRM step). [at] is its distance along the route geometry. */
 class Step(
     val type: String,          // turn, new name, depart, arrive, merge, on ramp, off ramp, fork, end of road, continue, roundabout, rotary, ...
     val modifier: String,      // uturn, sharp right, right, slight right, straight, slight left, left, sharp left
     val exit: Int,             // roundabout exit number (0 = none)
-    val name: String,          // road name after the manoeuvre (may be empty)
+    var name: String,          // road name after the manoeuvre (may be empty; Arabic from the offline index when it has it)
     val ref: String,           // road number, e.g. "40"
     val location: LatLon,
     val distance: Double,      // length of the step in metres
     val duration: Double,      // seconds
-    var at: Double = 0.0
-)
+    var at: Double = 0.0,
+    val lanes: List<Lane> = emptyList(),
+    val destinations: String = "", // a ramp's signposted destinations, e.g. "40: Dammam, Jubail"
+    val exits: String = ""         // the exit's number on the sign
+) {
+    /** Measured on the line ([Router.prepare]): how far the car turns here, degrees (+ right); NaN when not measured. */
+    var angle = Double.NaN
+    /** Metres from [at] to where the manoeuvre is over: a roundabout's way round to the exit taken; else 0. */
+    var span = 0.0
+    /**
+     * Not a manoeuvre for the driver: the street only changes its name, or the car leaves the roundabout it was told
+     * about. Kept in the route (its time counts), never shown or spoken.
+     */
+    var silent = false
+}
 
 class Route(val line: Polyline, val steps: List<Step>, val distance: Double, val duration: Double) {
     /** Time left from a distance along the route, scaled by the steps' own speeds. */
@@ -32,6 +48,12 @@ class Route(val line: Polyline, val steps: List<Step>, val distance: Double, val
             t += if (start >= along) s.duration else s.duration * ((end - along) / len)
         }
         return t
+    }
+
+    /** The first manoeuvre the driver is told about after step [i] (or null: [i] is the last). */
+    fun following(i: Int): Step? {
+        for (k in i + 1 until steps.size) if (!steps[k].silent) return steps[k]
+        return null
     }
 }
 
@@ -88,7 +110,9 @@ object Router {
     private fun online(from: LatLon, to: LatLon, heading: Double?): Pair<Route?, String?> = try {
         val coords = String.format(Locale.ROOT, "%.6f,%.6f;%.6f,%.6f", from.lon, from.lat, to.lon, to.lat)
         val bearings = heading?.let { String.format(Locale.ROOT, "&bearings=%d,60;", it.toInt().coerceIn(0, 359)) } ?: ""
-        parse(Places.get("https://router.project-osrm.org/route/v1/driving/$coords?overview=full&geometries=geojson&steps=true$bearings")) to null
+        val r = parse(Places.get("https://router.project-osrm.org/route/v1/driving/$coords?overview=full&geometries=geojson&steps=true$bearings"))
+        if (r != null && Locale.getDefault().language == "ar") arabicNames(r)
+        r to null
     } catch (t: Throwable) {
         null to t.message
     }
@@ -115,7 +139,9 @@ object Router {
                 val m = s.getJSONObject("maneuver")
                 val loc = m.getJSONArray("location")
                 steps.add(Step(m.optString("type"), m.optString("modifier"), m.optInt("exit", 0), s.optString("name"),
-                    s.optString("ref"), LatLon(loc.getDouble(1), loc.getDouble(0)), s.optDouble("distance", 0.0), s.optDouble("duration", 0.0)))
+                    s.optString("ref"), LatLon(loc.getDouble(1), loc.getDouble(0)), s.optDouble("distance", 0.0),
+                    s.optDouble("duration", 0.0), lanes = lanes(s), destinations = s.optString("destinations"),
+                    exits = s.optString("exits")))
             }
         }
         // place every manoeuvre on the line, walking forwards so a route that passes a point twice stays in order
@@ -125,6 +151,95 @@ object Router {
             s.at = snap.along
             seg = snap.segment
         }
+        prepare(line, steps)
         return Route(line, steps, r.optDouble("distance", line.length), r.optDouble("duration", 0.0))
     }
+
+    /** The lanes where the step's manoeuvre is: its first intersection is the manoeuvre's own. */
+    private fun lanes(s: JSONObject): List<Lane> {
+        val a = s.optJSONArray("intersections")?.optJSONObject(0)?.optJSONArray("lanes") ?: return emptyList()
+        val out = ArrayList<Lane>(a.length())
+        for (i in 0 until a.length()) {
+            val l = a.optJSONObject(i) ?: continue
+            val ind = l.optJSONArray("indications")
+            val list = if (ind == null) emptyList() else (0 until ind.length()).map { ind.optString(it) }
+            out.add(Lane(list, l.optBoolean("valid"), l.optString("valid_indication")))
+        }
+        return out
+    }
+
+    /**
+     * What both routers' steps need once they are on the line: which steps say nothing new ([Step.silent]), and how a
+     * roundabout is driven ([Step.angle], [Step.span]), measured on the line itself. The exit's number alone does not
+     * say where it leads: Saudi roundabouts often have five or six arms, or arms at 45 degrees.
+     */
+    fun prepare(line: Polyline, steps: List<Step>) {
+        for ((i, s) in steps.withIndex()) {
+            val prev = steps.getOrNull(i - 1)
+            val next = steps.getOrNull(i + 1)
+            val roundabout = Instructions.turn(s) == Turn.ROUNDABOUT
+            val straight = s.modifier.isEmpty() || s.modifier == "straight"
+            // (a straight step that still has lanes to keep to is the lanes' prompt: it stays)
+            val laneHint = s.lanes.size >= 2 && s.lanes.any { !it.valid }
+            s.silent = (s.type in QUIET_TYPES && straight && !laneHint) ||
+                (s.type.startsWith("exit ") && prev != null && Instructions.turn(prev) == Turn.ROUNDABOUT)
+            if (!roundabout) continue
+            // where the car leaves it: OSRM says so with an exit step; else where the way round has turned left most
+            val exitAt = if (next != null && next.type.startsWith("exit ")) next.at else ringEnd(line, s.at, next?.at ?: line.length)
+            if (exitAt.isNaN()) continue
+            s.span = (exitAt - s.at).coerceAtLeast(0.0)
+            val inBearing = Geo.bearing(line.at(s.at - 40).first, line.at(s.at - 8).first)
+            val outBearing = Geo.bearing(line.at(exitAt + 8).first, line.at(exitAt + 40).first)
+            s.angle = Geo.angleDiff(inBearing, outBearing)
+            // the road it leads to, when the roundabout step itself has none (OSRM names it on the exit step)
+            if (next != null && next.type.startsWith("exit ") && s.name.isBlank() && s.ref.isBlank()) s.name = next.name.ifBlank { next.ref }
+        }
+    }
+
+    /**
+     * The end of a roundabout's way round, from its entry at [from]: right-hand traffic turns right into it, goes
+     * round counter-clockwise (the heading turning left the whole way) and turns right again to leave, so the way
+     * round is the longest left-turning stretch, and it ends where that stretch does. NaN when there is none (a mini
+     * roundabout drawn as a point).
+     */
+    private fun ringEnd(line: Polyline, from: Double, limit: Double): Double {
+        val end = minOf(from + 220.0, limit, line.length)
+        var turned = 0.0
+        var peak = 0.0
+        var drop = 0.0
+        var dropAt = Double.NaN
+        var heading = line.at(from - 20).second // (the turn into it may begin before the step's point)
+        var d = from - 15
+        while (d <= end) {
+            val h = line.at(d).second
+            turned += Geo.angleDiff(heading, h)
+            heading = h
+            if (turned > peak) peak = turned
+            if (turned - peak < drop) { drop = turned - peak; dropAt = d }
+            d += 5
+        }
+        return if (drop < -30) dropAt else Double.NaN
+    }
+
+    /**
+     * Arabic street names for an Arabic screen and voice: OSM's `name` is often the English one in Jubail, while the
+     * offline map's index keeps `name:ar`. Off the main thread (a scan of the index: up to 200 ms on the unit).
+     */
+    private fun arabicNames(r: Route) {
+        val store = com.abdllh.aura.nav.offline.OfflineMaps.searchStore() ?: return
+        val wanted = r.steps.map { it.name }.filter { it.isNotBlank() && !Places.isArabic(it) }.toSet()
+        if (wanted.isEmpty()) return
+        val found = try {
+            com.abdllh.aura.nav.offline.PlaceIndex.arabicNames(store, wanted)
+        } catch (_: Throwable) {
+            return
+        }
+        for (s in r.steps) {
+            // a name used by several streets: the one nearest the manoeuvre
+            val best = found.filter { it.key == s.name }.minByOrNull { Geo.distance(it.pos, s.location) } ?: continue
+            if (Geo.distance(best.pos, s.location) < 15_000) s.name = best.arabic
+        }
+    }
+
+    private val QUIET_TYPES = setOf("new name", "continue", "notification", "use lane")
 }

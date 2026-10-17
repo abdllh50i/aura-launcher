@@ -12,6 +12,7 @@ import com.abdllh.aura.nav.Geo
 import com.abdllh.aura.nav.LatLon
 import com.abdllh.aura.nav.Polyline
 import com.abdllh.aura.nav.Route
+import com.abdllh.aura.nav.Router
 import com.abdllh.aura.nav.Step
 import org.json.JSONObject
 import java.io.File
@@ -167,6 +168,8 @@ object OfflineRouter {
             }
             result.add(Step(s.type, s.modifier, s.exit, s.name, s.ref, s.location, len, dur, s.at))
         }
+        // the roundabouts measured on the line, as OSRM's are: a hint gives the exit's number, not where it leads
+        Router.prepare(line, result)
         return Route(line, result, line.length, total)
     }
 }

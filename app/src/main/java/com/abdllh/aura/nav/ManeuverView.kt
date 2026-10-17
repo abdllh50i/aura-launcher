@@ -6,6 +6,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
 import android.view.View
+import com.abdllh.aura.ui.Fonts
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -16,15 +17,26 @@ class ManeuverView(ctx: Context) : View(ctx) {
         set(v) { if (v != field) { field = v; invalidate() } }
     var exit: Int = 0
         set(v) { if (v != field) { field = v; invalidate() } }
+    /** A roundabout: where its exit leads, degrees (+ right, [Instructions.exitAngle]); NaN: by the exit's number. */
+    var angle: Float = Float.NaN
+        set(v) { if (v != field && !(v.isNaN() && field.isNaN())) { field = v; invalidate() } }
     var color: Int = 0xFFFFFFFF.toInt()
         set(v) { if (v != field) { field = v; invalidate() } }
 
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
     private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val number = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; typeface = Fonts.get(Fonts.MEDIUM) }
     private val path = Path()
     private val head = Path()
     private val oval = RectF()
+
+    /** Shows [s]'s manoeuvre. */
+    fun show(s: Step) {
+        turn = Instructions.turn(s)
+        exit = s.exit
+        angle = Instructions.exitAngle(s)
+    }
 
     override fun onDraw(c: Canvas) {
         val s = minOf(width, height).toFloat()
@@ -38,6 +50,7 @@ class ManeuverView(ctx: Context) : View(ctx) {
             Turn.ARRIVE -> arrive(c, s)
             Turn.ROUNDABOUT -> roundabout(c, s)
             Turn.UTURN -> uturn(c, s)
+            Turn.REROUTE -> reroute(c, s)
             else -> bend(c, s, when (turn) {
                 Turn.SLIGHT_LEFT -> -45f
                 Turn.LEFT -> -90f
@@ -104,7 +117,10 @@ class ManeuverView(ctx: Context) : View(ctx) {
         arrowHead(c, xl, s * 0.66f, 180f, s)
     }
 
-    /** Roundabout (counter-clockwise, right-hand traffic) with the exit drawn by its number. */
+    /**
+     * Roundabout (counter-clockwise, right-hand traffic): in from below, round to the exit, out in the direction the
+     * exit really leads ([angle]); the exit's number in the middle of the ring.
+     */
     private fun roundabout(c: Canvas, s: Float) {
         val cx = s * 0.5f
         val cy = s * 0.44f
@@ -113,8 +129,10 @@ class ManeuverView(ctx: Context) : View(ctx) {
         ring.alpha = 110
         ring.strokeWidth = stroke.strokeWidth
         c.drawCircle(cx, cy, r, ring)
-        // entry from below, around counter-clockwise to the exit
-        val exitAngle = when (exit) { 1 -> 0f; 2 -> -90f; 3 -> -180f; 4 -> 90f; else -> -90f } // degrees, 0 = right, -90 = up
+        // degrees on the screen, 0 = right, -90 = up: the car comes in going up, so a turn of a degrees leaves at -90 + a
+        // (a turn back leaves at most at 150 degrees left: beside the way in, not drawn over it)
+        val exitAngle = if (!angle.isNaN()) -90f + maxOf(angle, -150f)
+            else when (exit) { 1 -> 0f; 2 -> -90f; 3 -> -180f; 4 -> 90f; else -> -90f }
         path.reset()
         path.moveTo(cx, s * 0.94f)
         path.lineTo(cx, cy + r)
@@ -127,6 +145,25 @@ class ManeuverView(ctx: Context) : View(ctx) {
         path.lineTo(ex, ey)
         c.drawPath(path, stroke)
         arrowHead(c, ex, ey, exitAngle + 90f, s)
+        if (exit > 0) {
+            number.color = color
+            number.textSize = s * 0.2f
+            c.drawText(exit.toString(), cx, cy - (number.descent() + number.ascent()) / 2, number)
+        }
+    }
+
+    /** A new route is being found: a circling arrow (nearly a full turn), not a manoeuvre that may no longer hold. */
+    private fun reroute(c: Canvas, s: Float) {
+        val cx = s * 0.5f
+        val cy = s * 0.52f
+        val r = s * 0.27f
+        oval.set(cx - r, cy - r, cx + r, cy + r)
+        path.reset()
+        path.addArc(oval, -60f, 300f)
+        c.drawPath(path, stroke)
+        // the head at the arc's end (-60 degrees + 300 = 240), pointing along it, clockwise
+        val end = Math.toRadians(240.0)
+        arrowHead(c, cx + (r * cos(end)).toFloat(), cy + (r * sin(end)).toFloat(), 240f + 180f, s)
     }
 
     private fun arrive(c: Canvas, s: Float) {

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- خرائط Aura (1.12): نصوص لوحة الإرشاد الجديدة وبطاقة المكان وأزرار الخريطة. -->
+<resources>
+    <string name="maps_my_location">موقعي</string>
+    <string name="maps_route_retry">اضغط لإعادة المحاولة</string>
+    <string name="maps_arrived_at">وصلت إلى</string>
+    <string name="maps_voice">الإرشاد الصوتي</string>
+    <string name="maps_overview">المسار كاملًا</string>
+    <string name="maps_zoom_in">تكبير</string>
+    <string name="maps_zoom_out">تصغير</string>
+    <string name="maps_north">الشمال للأعلى</string>
+    <string name="maps_close">إغلاق</string>
+    <string name="maps_clear">مسح</string>
+</resources>

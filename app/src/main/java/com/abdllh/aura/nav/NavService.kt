@@ -11,6 +11,7 @@ import android.location.Location
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import com.abdllh.aura.R
 import com.abdllh.aura.util.Prefs
 import java.util.Locale
@@ -132,6 +133,7 @@ object NavSim {
             val l = Location("sim").apply {
                 latitude = p.lat; longitude = p.lon; bearing = b.toFloat(); speed = (kmh / 3.6).toFloat(); accuracy = 5f
                 time = System.currentTimeMillis()
+                elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos() // (its age is checked like a live fix's: CameraMark)
             }
             CarLocation.publish(l)
             if (along < r.line.length) main.postDelayed(this, 1000) else stop()
