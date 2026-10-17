@@ -101,7 +101,9 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
             gravity = Gravity.CENTER_VERTICAL
             setPaddingRelative(Space.L.dp, 0, Space.XL.dp, 0)
             background = Shapes.glassPressable(Radius.PILL)
-            lift(Elev.FLOAT)
+            // (a low shadow, light theme only: it is drawn again with every frame of the map under it; the glass's
+            // edge does the rest)
+            lift(Elev.REST)
             isClickable = true
             pressScale(Motion.PRESS_SURFACE)
             setOnClickListener { openMaps(true) }
@@ -261,7 +263,7 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
     private fun place(ctx: Context, icon: ImageView, name: Int, onClick: () -> Unit): FrameLayout =
         FrameLayout(ctx).apply {
             background = Shapes.glassPressable(Radius.PILL)
-            lift(Elev.FLOAT)
+            lift(Elev.REST)
             isClickable = true
             contentDescription = ctx.getString(name)
             pressScale(Motion.PRESS_ICON)

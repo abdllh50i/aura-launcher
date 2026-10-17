@@ -182,8 +182,11 @@ class Dock(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
     fun rebuild() {
         builtKey = key()
         apps.removeAllViews()
+        // a fixed width: a long name is cut short instead of widening its tile, so the most there can be (MAX pins and
+        // Apps, 594 dp) always fits between the controls button and the volume
+        val w = if (Prefs.dockLabels) TILE_LABELLED else TILE_BARE
         for ((i, it) in items().withIndex()) {
-            apps.addView(tile(context, it), lp(WRAP, MATCH).apply { if (i > 0) marginStart = Space.S.dp })
+            apps.addView(tile(context, it), lp(w.dp, MATCH).apply { if (i > 0) marginStart = Space.S.dp })
         }
         syncVolume()
         refreshBadge()
@@ -198,9 +201,7 @@ class Dock(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
         gravity = Gravity.CENTER
         val labels = Prefs.dockLabels
         val size = if (labels) 52 else 62
-        // a fixed width: a long name is cut short instead of widening its tile and pushing the others aside
-        minimumWidth = (size + if (labels) 24 else 16).dp
-        setPadding(Space.S.dp, 0, Space.S.dp, 0)
+        setPadding(Space.XS.dp, 0, Space.XS.dp, 0)
         isClickable = true
         contentDescription = item.label
         pressScale(Motion.PRESS_CONTROL)
@@ -228,5 +229,9 @@ class Dock(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
         }
     }
 
+    private companion object {
+        const val TILE_BARE = 78     // dp, a tile's width: its 62 dp icon and room for the press
+        const val TILE_LABELLED = 76 // dp: a 52 dp icon with its name under it
+    }
 }
 
