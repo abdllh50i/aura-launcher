@@ -9,14 +9,19 @@ a microphone, teaching an offline command or switching Beta flashed the bare win
 top, and a tap on the language or accent already chosen did the same. Now:
 * `SettingsActivity.rebuild()` builds the current page again in place, where it was scrolled to (after the tap that
   asked for it has finished: it is posted). Use it when a preference changes what the page shows.
-* `SettingsActivity.restyle(newLocale = false) { … }` is only for the theme, the accent and the language. It takes a
-  picture of the screen (`PixelCopy`, 600 ms at most, null when it fails), runs the block (which sets the preference),
-  builds the whole screen again with the new palette (the language: `recreate()`, the picture handed over in a
-  companion field) and fades the picture out on top over `Motion.LONG`. Page and scroll stay. The accent needs this
-  and not `rebuild()`, since every drawable reads `Palette` when it is built.
+* `SettingsActivity.restyle()` is only for the theme, the accent and the language. It takes a picture of the screen
+  (`PixelCopy`, 600 ms at most, null when it fails), stores the waiting choice, builds the whole screen again with
+  the new palette (the language: `recreate()`, the picture handed over in a companion field) and fades the picture
+  out on top over `Motion.LONG`. Page and scroll stay. It does nothing when nothing waits and the theme shows as it
+  is. The accent needs this and not `rebuild()`, since every drawable reads `Palette` when it is built.
+* A choice is kept at the tap: the theme in Prefs, the accent and the language in `pendingAccent` / `pendingLang`
+  (not Prefs: the accent there would change `Palette` before the picture is taken). The capture's answer stores them
+  before it checks whether the screen is still there, `onDestroy` stores them when the screen goes first (Back or
+  Home within the wait), `onRestart` restyles when they still wait, and a `restyle()` while a capture is under way
+  leaves them to that capture. So a pick shown as chosen is never lost.
 * A choice of theme, accent or language waits `Motion.MEDIUM` (`Later` in `Pages.kt`) so the indicator or the tick is
-  seen landing first; a newer choice replaces the waiting one. Choosing the theme stores it at once and restyles only
-  when what shows changes ("auto" by day on the light theme changes nothing).
+  seen landing first; a newer choice replaces the waiting one. Choosing the theme restyles only when what shows
+  changes ("auto" by day on the light theme changes nothing).
 * Taps on what is already chosen do nothing: `ui.Segmented` and `Swatches` ignore them, a ticked navigation row
   ignores them, the microphone menu skips its current input.
 * `onRestart` (back from Maps, Android's settings, the Play Store): a theme or accent changed elsewhere builds the
@@ -27,6 +32,11 @@ back instantly and scrolled where it was. `Page.onShow()` / `onHide()` still att
 (UpdateManager, the Wi-Fi log, the offline map, MapExtras): a cached page holds no listener while it is hidden, and
 `onHide()` must stay safe to call twice (it is called again from `onDestroy`). `NavigationPage` also keeps the "my
 cameras" count current from a MapExtras listener while it shows.
+* A kept page that shows a level or a state from outside must set it again in `onShow()`: `DisplaySoundPage` sets its
+  brightness and volume sliders there (not through `onChange`, nothing is sent), since the volume changes from the
+  wheel buttons meanwhile and a drag moves from the value shown (a stale 15 over a real 5 was a loud jump).
+* `Page.keep = false` drops a page when it is left, so it is built again at every visit: `VehiclePage` (the gear's
+  source, what the CAN box sent) and `AboutPage` (the notes from the unit, the last crash) are lines read at build.
 
 **Settings: motion.**
 * The sidebar's selection is one `accentSoft` view behind the items, moved by a `Spring` (520 / 0.86) to the chosen
@@ -81,7 +91,7 @@ enrolment card are `Modal`s.
 * The window is the card plus 12 dp at the sides, 18 dp below (the shadow) and 16 dp above (the entrance, at the
   screen's top edge where there is nothing to tap); 1.11's margins left a dead band over the map for the whole call,
   since a touch on a window's transparent edge reaches nothing.
-* `CallBanner.shown` and `CallBanner.bottom()` (px from the screen's top) are for the volume display.
+* `CallBanner.bottom()` (px from the screen's top, 0 with no card) is for the volume display.
 * Surface `Shapes.overlay()` with `lift(Elev.OVERLAY, overMap = true)`, type roles, `accentFg` on `accentSoft` for the
   avatar. The ring round Answer is a view without overlapping rendering (no offscreen pass per frame).
 

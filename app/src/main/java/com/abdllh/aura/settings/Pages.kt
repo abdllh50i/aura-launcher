@@ -40,7 +40,8 @@ import com.abdllh.aura.util.dp
 /**
  * A choice of the theme, the accent or the language: the control shows the choice landing first (the indicator
  * slides, the tick comes in), then the screen takes it ([SettingsActivity.restyle]). A newer choice made before then
- * replaces the one waiting.
+ * replaces the one waiting. The choice itself is kept at the tap (the theme in Prefs, the accent and the language in
+ * [SettingsActivity.pendingAccent] / [SettingsActivity.pendingLang]), so leaving the screen meanwhile does not lose it.
  */
 private class Later(private val v: View) {
     private var r: Runnable? = null
@@ -71,11 +72,14 @@ class GeneralPage(private val act: SettingsActivity) : Page(R.string.set_general
             // (kept at once; the screen changes only when the choice changes what shows now: "auto" by day on the
             // light theme changes nothing)
             Prefs.theme = modes[i]
-            themeLater?.then { if (Theme.isDarkNow() != Palette.dark) act.restyle { } }
+            themeLater?.then { act.restyle() }
         }
         themeLater = Later(theme)
         var accentLater: Later? = null
-        val swatches = Swatches(ctx, Palette.accents, Prefs.accent) { c -> accentLater?.then { act.restyle { Prefs.accent = c } } }
+        val swatches = Swatches(ctx, Palette.accents, Prefs.accent) { c ->
+            act.pendingAccent = c
+            accentLater?.then { act.restyle() }
+        }
         accentLater = Later(swatches)
         col.addRow(ctx.group(
             ctx.block(R.drawable.ic_contrast, ctx.getString(R.string.set_theme), ctx.getString(R.string.set_theme_sub), theme),
@@ -90,7 +94,8 @@ class GeneralPage(private val act: SettingsActivity) : Page(R.string.set_general
         val codes = listOf("system", "ar", "en")
         var langLater: Later? = null
         val lang = ctx.choices(listOf(ctx.getString(R.string.lang_system), "العربية", "English"), codes.indexOf(Prefs.lang).coerceAtLeast(0)) { i ->
-            langLater?.then { act.restyle(newLocale = true) { Prefs.lang = codes[i] } }
+            act.pendingLang = codes[i]
+            langLater?.then { act.restyle() }
         }
         langLater = Later(lang)
         // (the Arabic name in the Arabic typeface, also in the English UI; its letters are drawn smaller than Latin
@@ -103,6 +108,14 @@ class GeneralPage(private val act: SettingsActivity) : Page(R.string.set_general
 
 // ---------------------------------------------------------------------------------------------- Display & sound
 class DisplaySoundPage(private val act: SettingsActivity) : Page(R.string.set_display_sound, R.drawable.ic_sun) {
+    /** The page's sliders and their values, set again at each visit ([onShow]). */
+    private var levels: (() -> Unit)? = null
+
+    // The page is kept between visits, and the volume changes meanwhile (the wheel buttons, the volume display over
+    // this screen), the brightness too (the home screen's controls). A drag moves from the value shown, so a stale
+    // one would set the volume from it: 5 playing, 15 shown, the first move a sudden loud jump.
+    override fun onShow() { levels?.invoke() }
+
     override fun build(ctx: Context): View {
         val col = ctx.pageColumn()
 
@@ -110,8 +123,6 @@ class DisplaySoundPage(private val act: SettingsActivity) : Page(R.string.set_di
         val bs = AuraSlider(ctx).apply {
             max = 100
             setIcon(R.drawable.ic_sun)
-            setProgress(Controls.brightnessPercent(ctx), false)
-            bv.text = "${progress}%"
             onChange = { v, user ->
                 bv.text = "$v%"
                 if (user && !Controls.setBrightnessPercent(ctx, v)) {
@@ -125,12 +136,17 @@ class DisplaySoundPage(private val act: SettingsActivity) : Page(R.string.set_di
         val vs = AuraSlider(ctx).apply {
             max = Controls.volumeMax(ctx)
             setIcon(R.drawable.ic_volume)
-            setProgress(Controls.volume(ctx), false)
-            vv.text = "$progress"
             onChange = { v, user ->
                 if (user) Controls.setVolume(ctx, v)
                 vv.text = "$v"
             }
+        }
+        // (not through onChange: nothing is sent to the car, only what it has is shown)
+        levels = {
+            bs.setProgress(Controls.brightnessPercent(ctx), false)
+            bv.text = "${bs.progress}%"
+            vs.setProgress(Controls.volume(ctx), false)
+            vv.text = "${vs.progress}"
         }
         col.addRow(ctx.group(
             ctx.sliderRow(ctx.getString(R.string.ctl_brightness), bs, bv),
@@ -329,6 +345,8 @@ class VehiclePage(private val act: SettingsActivity) : Page(R.string.set_vehicle
     private class Tile(val icon: Int, val label: Int, val available: (Context) -> Boolean, val run: (Context) -> Unit)
     private var internet: InternetCard? = null
 
+    // (the gear's source and what the CAN box sent change while the car drives)
+    override val keep: Boolean get() = false
     override fun onShow() { internet?.attach() }
     override fun onHide() { internet?.detach() }
 
@@ -441,6 +459,9 @@ class VehiclePage(private val act: SettingsActivity) : Page(R.string.set_vehicle
 
 // ---------------------------------------------------------------------------------------------- About
 class AboutPage(private val act: SettingsActivity) : Page(R.string.set_about, R.drawable.ic_info) {
+    // (the notes from the unit and the last crash change while the screen is up)
+    override val keep: Boolean get() = false
+
     override fun build(ctx: Context): View {
         val col = ctx.pageColumn()
         val rows = ArrayList<View>()

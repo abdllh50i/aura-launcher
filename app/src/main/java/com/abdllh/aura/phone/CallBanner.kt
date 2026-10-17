@@ -54,10 +54,10 @@ internal object CallBanner {
     private var view: Card? = null
     private var attached = false
 
-    /** The card is on screen (the volume display then shows under it, not over the caller's name). */
-    val shown: Boolean get() = attached
-
-    /** Where the card ends, from the top of the screen in px (0 when there is none). */
+    /**
+     * Where the card ends, from the top of the screen in px (0 when there is none): the volume display shows under
+     * it, not over the caller's name.
+     */
     fun bottom(): Int {
         val v = view ?: return 0
         if (!attached) return 0

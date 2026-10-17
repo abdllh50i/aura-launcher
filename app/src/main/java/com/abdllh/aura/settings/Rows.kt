@@ -156,10 +156,15 @@ fun Context.chevron(): ImageView = iconView(com.abdllh.aura.R.drawable.ic_chevro
     if (resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL) it.scaleX = -1f
 }
 
-/** A row's value at its end: one line, shortened in the middle (a build id keeps its start and its end). */
+/**
+ * A row's value at its end: one line, shortened in the middle (a build id keeps its start and its end). A value with
+ * no letter to set its direction (a version, "1.12.0 (1120099)") reads left to right also in Arabic, where it would
+ * otherwise take the interface's direction and show "(1120099) 1.12.0"; an Arabic value still reads right to left.
+ */
 fun Context.valueText(text: CharSequence): AText = label(Type.BODY, Palette.text2).apply {
     this.text = text
     ellipsize = TextUtils.TruncateAt.MIDDLE
+    textDirection = View.TEXT_DIRECTION_FIRST_STRONG_LTR
 }
 
 /**

@@ -47,9 +47,10 @@ import kotlin.math.sign
 
 /**
  * Settings: category list on the start side, selected page on the other.
- * A page is built the first time it is shown and kept (with where it was scrolled to) while the screen is up; a
- * preference that changes what a page shows rebuilds that page in place ([rebuild]); a new theme, accent or language
- * builds the screen again behind a picture of it that fades out ([restyle]). Until 1.11 every one of those recreated
+ * A page is built the first time it is shown and kept (with where it was scrolled to, unless [Page.keep] says not)
+ * while the screen is up; a preference that changes what a page shows rebuilds that page in place ([rebuild]); a new
+ * theme, accent or language builds the screen again behind a picture of it that fades out ([restyle]). Until 1.11
+ * every one of those recreated
  * the activity: a flash of the bare window and the page back at its top, for picking a navigation app or a microphone.
  */
 class SettingsActivity : Activity() {
@@ -273,6 +274,8 @@ class SettingsActivity : Activity() {
         current = index
         moveIndicator(index, animate)
         val page = pages[index]
+        // (a page that is not kept is built anew; its old view, if still leaving, goes at once in the loop below)
+        if (!page.keep) built[index] = null
         val view = built[index] ?: scrolled(page.build(this)).also { sv ->
             built[index] = sv
             sv.setOnScrollChangeListener { v, _, _, _, _ -> if (built.getOrNull(current) === v) edges(v as ScrollView) }
@@ -317,17 +320,39 @@ class SettingsActivity : Activity() {
     }
 
     /**
-     * A new theme, accent ([apply] sets it) or, with [newLocale], language: the screen as it is now is captured, then
-     * built again with the change (the language needs a new activity for its resources), and the picture fades out
-     * on top of it. The page and its scroll stay.
+     * An accent or a language picked that the screen has not taken yet ([restyle] takes it). Kept here from the tap
+     * and not in Prefs at once: the accent there would change [Palette] under the screen before its picture is taken.
+     * If the screen goes first, [onDestroy] stores it.
      */
-    fun restyle(newLocale: Boolean = false, apply: () -> Unit) {
+    var pendingAccent: Int? = null
+    var pendingLang: String? = null
+
+    /** Stores the waiting accent and language; true when the language was one of them. */
+    private fun takePending(): Boolean {
+        pendingAccent?.let { Prefs.accent = it }
+        pendingAccent = null
+        val lang = pendingLang ?: return false
+        pendingLang = null
+        if (lang == Prefs.lang) return false // (picked and picked back before the screen took it)
+        Prefs.lang = lang
+        return true
+    }
+
+    /**
+     * A new theme (already in Prefs), accent or language ([pendingAccent], [pendingLang]): the screen as it is now is
+     * captured, then built again with the change (the language needs a new activity for its resources), and the
+     * picture fades out on top of it. The page and its scroll stay. A call while a capture is under way adds nothing:
+     * that capture takes every choice waiting when it answers.
+     */
+    fun restyle() {
         if (restyling) return
+        if (pendingAccent == null && pendingLang == null && Theme.isDarkNow() == Palette.dark) return
         restyling = true
         capture { snap ->
             restyling = false
+            // (stored before the check: a screen left while its picture was taken keeps the choice)
+            val newLocale = takePending()
             if (isDestroyed) return@capture
-            apply()
             val y = built.getOrNull(current)?.scrollY ?: 0
             if (newLocale) {
                 cover = snap
@@ -390,6 +415,8 @@ class SettingsActivity : Activity() {
         // may have changed meanwhile. The other pages are built again when next shown, this one now; a theme or an
         // accent changed elsewhere (the home screen's controls, the automatic theme at sunset) builds it all again.
         Theme.refresh()
+        // (an accent or a language picked just before leaving, whose wait was cut by it: the whole screen again)
+        if (pendingAccent != null || pendingLang != null) { restyle(); return }
         if (Palette.dark != builtDark || Palette.accent != builtAccent) {
             for (p in pages) p.onHide()
             Theme.window(this)
@@ -415,6 +442,9 @@ class SettingsActivity : Activity() {
         // every page lets go of its listeners (UpdateManager, the Wi-Fi log, the offline map would otherwise keep this
         // dead activity alive)
         if (::pages.isInitialized) for (p in pages) p.onHide()
+        // (an accent or a language picked just before Back or Home: its restyle, or the capture it waits on, would
+        // never run; the next screen built takes it from Prefs)
+        takePending()
         main.removeCallbacksAndMessages(null)
         super.onDestroy()
     }
