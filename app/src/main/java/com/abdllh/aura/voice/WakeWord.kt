@@ -561,15 +561,20 @@ internal class MicLoop(
             r.startRecording()
             if (r.recordingState != AudioRecord.RECORDSTATE_RECORDING) { if (running) onError("mic did not start"); return }
             onStarted?.invoke()
+            MicTap.active = true
             val buf = ShortArray(Features.HOP * 4)
             while (running) {
                 val n = r.read(buf, 0, buf.size)
                 if (n < 0) { if (running) onError("mic read $n"); break }
-                if (n > 0 && running) segmenter.feed(buf, n)
+                if (n > 0 && running) {
+                    segmenter.feed(buf, n)
+                    MicTap.listener?.invoke(buf, n, Features.RATE)
+                }
             }
         } catch (t: Throwable) {
             if (running) onError("mic: $t")
         } finally {
+            MicTap.active = false
             rec = null
             try { r.stop() } catch (_: Throwable) { }
             r.release()
