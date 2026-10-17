@@ -19,7 +19,6 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.Toast
 import com.abdllh.aura.BuildConfig
 import com.abdllh.aura.R
 import com.abdllh.aura.ui.AText
@@ -27,6 +26,7 @@ import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Shapes
+import com.abdllh.aura.ui.Snack
 import com.abdllh.aura.ui.Theme
 import com.abdllh.aura.ui.WRAP
 import com.abdllh.aura.ui.elevate
@@ -468,7 +468,7 @@ class MapsActivity : Activity() {
 
     private fun panelWidth() = 460.dp
 
-    private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
+    private fun toast(s: String) = Snack.show(this, s)
 
     // ------------------------------------------------------------------------------------------ search
     private fun onQuery(q: String) {

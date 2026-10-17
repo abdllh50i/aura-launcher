@@ -17,7 +17,6 @@ import android.view.animation.PathInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.Toast
 import com.abdllh.aura.R
 import com.abdllh.aura.media.MediaMonitor
 import com.abdllh.aura.nav.CarLocation
@@ -30,6 +29,7 @@ import com.abdllh.aura.ui.CarFrames
 import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Palette
+import com.abdllh.aura.ui.Snack
 import com.abdllh.aura.ui.Theme
 import com.abdllh.aura.ui.lp
 import com.abdllh.aura.update.UpdateManager
@@ -52,7 +52,6 @@ class HomeActivity : Activity(), HomeHost {
     private var restyling = false
     private var resumedNow = false
     private var startedNow = false
-    private var toast: Toast? = null
 
     private val tick = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
@@ -293,8 +292,7 @@ class HomeActivity : Activity(), HomeHost {
     }
 
     override fun toast(msg: String) {
-        toast?.cancel()
-        toast = Toast.makeText(this, msg, Toast.LENGTH_SHORT).also { it.show() }
+        Snack.show(this, msg, aboveDp = DOCK_DP + 16)
     }
 
     /**

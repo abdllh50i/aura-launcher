@@ -73,7 +73,7 @@ class UpdatePage(private val act: SettingsActivity) : Page(R.string.set_update, 
         col.addRow(ctx.settingRow(R.drawable.ic_github, ctx.getString(R.string.upd_source), Prefs.updateRepo, ctx.iconView(R.drawable.ic_edit, 22, Palette.text3)) {
             InputDialog.show(ctx, ctx.getString(R.string.upd_source), "owner/repo", Prefs.updateRepo) { v ->
                 if (GitHub.isValidRepo(v)) { Prefs.updateRepo = v.trim(); UpdateManager.forget(); act.rebuild() }
-                else android.widget.Toast.makeText(ctx, R.string.upd_err_repo, android.widget.Toast.LENGTH_LONG).show()
+                else com.abdllh.aura.ui.Snack.show(ctx, R.string.upd_err_repo, long = true)
             }
         }, 10)
         col.addRow(ctx.hint(ctx.getString(R.string.upd_footer)), 14)

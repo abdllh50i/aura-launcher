@@ -23,6 +23,7 @@ import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Shapes
+import com.abdllh.aura.ui.Snack
 import com.abdllh.aura.ui.Theme
 import com.abdllh.aura.ui.WRAP
 import com.abdllh.aura.ui.iconView
@@ -104,7 +105,7 @@ class DisplaySoundPage(private val act: SettingsActivity) : Page(R.string.set_di
             onChange = { v, user ->
                 bv.text = "$v%"
                 if (user && !Controls.setBrightnessPercent(ctx, v)) {
-                    Toast.makeText(ctx, R.string.err_write_settings, Toast.LENGTH_SHORT).show()
+                    Snack.show(ctx, R.string.err_write_settings)
                     Controls.requestWriteSettings(ctx)
                 }
             }
@@ -127,17 +128,17 @@ class DisplaySoundPage(private val act: SettingsActivity) : Page(R.string.set_di
             com.abdllh.aura.system.VolumeHud.enabled) { on ->
             com.abdllh.aura.system.VolumeHud.enabled = on
             com.abdllh.aura.system.VolumeHud.apply(ctx) { ok ->
-                if (!ok) act.runOnUiThread { Toast.makeText(ctx, R.string.set_failed, Toast.LENGTH_LONG).show() }
+                if (!ok) act.runOnUiThread { Snack.show(ctx, R.string.set_failed, long = true) }
             }
         }, 8)
 
         col.addRow(ctx.switchRow(R.drawable.ic_eye_off, ctx.getString(R.string.set_hide_status), ctx.getString(R.string.set_hide_status_sub), Prefs.hideStatusBar) {
             Prefs.hideStatusBar = it
-            if (!com.abdllh.aura.system.SystemBars.apply(ctx)) Toast.makeText(ctx, R.string.set_failed, Toast.LENGTH_SHORT).show()
+            if (!com.abdllh.aura.system.SystemBars.apply(ctx)) Snack.show(ctx, R.string.set_failed)
         }, 16)
         col.addRow(ctx.switchRow(R.drawable.ic_layers, ctx.getString(R.string.set_screen_anim), ctx.getString(R.string.set_screen_anim_sub), Prefs.screenAnimations) {
             Prefs.screenAnimations = it
-            if (!com.abdllh.aura.system.Animations.apply(ctx)) Toast.makeText(ctx, R.string.set_failed, Toast.LENGTH_SHORT).show()
+            if (!com.abdllh.aura.system.Animations.apply(ctx)) Snack.show(ctx, R.string.set_failed)
         }, 8)
         if (com.abdllh.aura.system.AssistiveBall.available) {
             col.addRow(ctx.switchRow(R.drawable.ic_layers, ctx.getString(R.string.set_ball), ctx.getString(R.string.set_ball_sub),
@@ -157,7 +158,7 @@ class DisplaySoundPage(private val act: SettingsActivity) : Page(R.string.set_di
                 com.abdllh.aura.system.StockMusic.enabled) { on ->
                 com.abdllh.aura.system.StockMusic.enabled = on
                 com.abdllh.aura.system.StockMusic.apply(ctx) { ok ->
-                    if (!ok) act.runOnUiThread { Toast.makeText(ctx, R.string.set_failed, Toast.LENGTH_LONG).show() }
+                    if (!ok) act.runOnUiThread { Snack.show(ctx, R.string.set_failed, long = true) }
                 }
             }, 8)
         }
@@ -168,14 +169,14 @@ class DisplaySoundPage(private val act: SettingsActivity) : Page(R.string.set_di
                 com.abdllh.aura.phone.Calls.enabled) { on ->
                 com.abdllh.aura.phone.Calls.enabled = on
                 com.abdllh.aura.phone.Calls.apply(ctx) { ok ->
-                    if (!ok) act.runOnUiThread { Toast.makeText(ctx, R.string.set_failed, Toast.LENGTH_LONG).show() }
+                    if (!ok) act.runOnUiThread { Snack.show(ctx, R.string.set_failed, long = true) }
                 }
             }, 8)
             col.addRow(ctx.switchRow(R.drawable.ic_volume, ctx.getString(R.string.set_call_ring), ctx.getString(R.string.set_call_ring_sub),
                 com.abdllh.aura.phone.Ringtone.enabled) { on ->
                 com.abdllh.aura.phone.Ringtone.enabled = on
                 com.abdllh.aura.phone.Ringtone.apply(ctx) { ok ->
-                    if (!ok) act.runOnUiThread { Toast.makeText(ctx, R.string.set_failed, Toast.LENGTH_LONG).show() }
+                    if (!ok) act.runOnUiThread { Snack.show(ctx, R.string.set_failed, long = true) }
                 }
             }, 8)
             col.addRow(ctx.settingRow(R.drawable.ic_play, ctx.getString(R.string.set_call_ring_play), null, ctx.chevron()) {
@@ -186,7 +187,7 @@ class DisplaySoundPage(private val act: SettingsActivity) : Page(R.string.set_di
         col.addView(ctx.sectionTitle(ctx.getString(R.string.set_shortcuts)), lp(MATCH, WRAP).apply { topMargin = 22.dp })
         if (AppRepo.isInstalled(ctx, "com.nwd.audioset")) {
             col.addRow(ctx.settingRow(R.drawable.ic_sliders, ctx.getString(R.string.set_equalizer), ctx.getString(R.string.set_equalizer_sub), ctx.chevron()) {
-                if (!AppRepo.launch(ctx, "com.nwd.audioset")) Toast.makeText(ctx, R.string.err_app_missing, Toast.LENGTH_SHORT).show()
+                if (!AppRepo.launch(ctx, "com.nwd.audioset")) Snack.show(ctx, R.string.err_app_missing)
             })
         }
         if (AppRepo.isInstalled(ctx, Known.STOCK_LAUNCHER)) {
@@ -359,7 +360,7 @@ class VehiclePage(private val act: SettingsActivity) : Page(R.string.set_vehicle
                 com.abdllh.aura.ui.Confirm.show(act, ctx.getString(R.string.off_now_title), ctx.getString(R.string.off_now_text),
                     ctx.getString(R.string.off_now_action)) {
                     com.abdllh.aura.system.Power.powerOffNow(ctx) {
-                        Toast.makeText(ctx, R.string.off_now_not_taken, Toast.LENGTH_LONG).show()
+                        Snack.show(ctx, R.string.off_now_not_taken, long = true)
                     }
                 }
             }, 8)
@@ -391,7 +392,7 @@ class VehiclePage(private val act: SettingsActivity) : Page(R.string.set_vehicle
         isClickable = true
         pressScale(0.96f)
         setOnClickListener {
-            try { t.run(ctx) } catch (_: Throwable) { Toast.makeText(ctx, R.string.err_app_missing, Toast.LENGTH_SHORT).show() }
+            try { t.run(ctx) } catch (_: Throwable) { Snack.show(ctx, R.string.err_app_missing) }
         }
         addView(ctx.iconView(t.icon, 36, Palette.text), lp(36.dp, 36.dp))
         addView(ctx.label(16f, Palette.text2, Fonts.MEDIUM, gravity = Gravity.CENTER).apply { setText(t.label) }, lp(WRAP, WRAP).apply { topMargin = 10.dp })
