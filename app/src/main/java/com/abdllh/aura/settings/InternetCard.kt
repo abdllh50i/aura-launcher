@@ -7,8 +7,8 @@ import android.view.View
 import android.widget.LinearLayout
 import com.abdllh.aura.R
 import com.abdllh.aura.system.WifiKeeper
+import com.abdllh.aura.ui.ABtn
 import com.abdllh.aura.ui.AText
-import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Shapes
@@ -16,7 +16,8 @@ import com.abdllh.aura.ui.WRAP
 import com.abdllh.aura.ui.iconView
 import com.abdllh.aura.ui.label
 import com.abdllh.aura.ui.lp
-import com.abdllh.aura.ui.pressScale
+import com.abdllh.aura.ui.Space
+import com.abdllh.aura.ui.Type
 import com.abdllh.aura.util.dp
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -29,33 +30,30 @@ import java.util.Locale
  */
 class InternetCard(private val ctx: Context) {
     private val dot = View(ctx)
-    private val status: AText = ctx.label(15f, Palette.text2, Fonts.REGULAR, lines = 3)
+    private val status: AText = ctx.label(Type.FOOTNOTE, Palette.text2, lines = 3)
     private val list = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
     private val listener: () -> Unit = { refresh() }
+    private var dotColor = 0
 
-    val view: LinearLayout = LinearLayout(ctx).apply {
+    val view: View = LinearLayout(ctx).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(20.dp, 16.dp, 20.dp, 16.dp)
-        background = Shapes.card(18f)
+        setPaddingRelative(20.dp, Space.L.dp, 20.dp, Space.L.dp)
         val head = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        head.addView(ctx.iconView(R.drawable.ic_wifi, 27, Palette.text2), lp(27.dp, 27.dp).apply { marginEnd = 18.dp })
+        head.addView(ctx.iconView(R.drawable.ic_wifi, 26, Palette.text2), lp(26.dp, 26.dp).apply { marginEnd = 18.dp })
         val texts = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
         val titleRow = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        titleRow.addView(ctx.label(18.5f, Palette.text, Fonts.MEDIUM).apply { setText(R.string.net_title) }, lp(WRAP, WRAP))
-        titleRow.addView(dot, lp(10.dp, 10.dp).apply { marginStart = 10.dp })
+        titleRow.addView(ctx.label(Type.LABEL, Palette.text).apply { setText(R.string.net_title) }, lp(WRAP, WRAP))
+        titleRow.addView(dot, lp(10.dp, 10.dp).apply { marginStart = Space.S.dp })
         texts.addView(titleRow, lp(MATCH, WRAP))
-        texts.addView(status, lp(MATCH, WRAP).apply { topMargin = 3.dp })
+        texts.addView(status, lp(MATCH, WRAP).apply { topMargin = Space.XXS.dp })
         head.addView(texts, lp(0, WRAP, 1f))
-        head.addView(ctx.label(16f, Palette.text, Fonts.MEDIUM, gravity = Gravity.CENTER).apply {
+        head.addView(ABtn(ctx).apply {
+            kind = ABtn.Kind.TONAL
             setText(R.string.net_check)
-            background = Shapes.tonal(16f)
-            setPadding(20.dp, 0, 20.dp, 0)
-            isClickable = true
-            pressScale(0.95f)
             setOnClickListener { WifiKeeper.checkNow() }
-        }, lp(WRAP, 50.dp).apply { marginStart = 14.dp })
+        }, lp(WRAP, WRAP).apply { marginStart = Space.L.dp })
         addView(head, lp(MATCH, WRAP))
-        addView(View(ctx).apply { setBackgroundColor(Palette.stroke) }, lp(MATCH, 1).apply { topMargin = 14.dp; bottomMargin = 6.dp })
+        addView(View(ctx).apply { setBackgroundColor(Palette.stroke) }, lp(MATCH, 1).apply { topMargin = Space.M.dp; bottomMargin = Space.XS.dp })
         addView(list, lp(MATCH, WRAP))
     }
 
@@ -83,25 +81,26 @@ class InternetCard(private val ctx: Context) {
             WifiKeeper.State.PAUSED -> ctx.getString(R.string.net_paused) to Palette.text3
         }
         status.text = line
-        dot.background = Shapes.oval(color)
+        if (color != dotColor) { dotColor = color; dot.background = Shapes.oval(color) }
 
         list.removeAllViews()
         val events = WifiKeeper.log().asReversed().take(12)
         if (events.isEmpty()) {
-            list.addView(ctx.label(14.5f, Palette.text3, Fonts.REGULAR, lines = 0).apply { setText(R.string.net_log_empty) }, lp(MATCH, WRAP).apply { topMargin = 6.dp })
+            list.addView(ctx.label(Type.FOOTNOTE, Palette.text3, lines = 0).apply { setText(R.string.net_log_empty) }, lp(MATCH, WRAP).apply { topMargin = Space.S.dp })
             return
         }
         for (e in events) {
             val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.TOP }
-            row.addView(ctx.label(14.5f, Palette.text3, Fonts.REGULAR).apply {
+            row.addView(ctx.label(Type.CAPTION, Palette.text3).apply {
                 text = time(e.at)
                 textDirection = View.TEXT_DIRECTION_LTR
-            }, lp(96.dp, WRAP).apply { marginEnd = 10.dp })
-            row.addView(ctx.label(14.5f, if (e.type == "lost") Palette.text else Palette.text2, Fonts.REGULAR, lines = 2).apply {
+                fontFeatureSettings = "tnum"
+            }, lp(96.dp, WRAP).apply { marginEnd = Space.M.dp })
+            row.addView(ctx.label(Type.CAPTION, if (e.type == "lost") Palette.text else Palette.text2, lines = 2).apply {
                 text = describe(ctx, e)
                 ellipsize = TextUtils.TruncateAt.END
             }, lp(0, WRAP, 1f))
-            list.addView(row, lp(MATCH, WRAP).apply { topMargin = 7.dp })
+            list.addView(row, lp(MATCH, WRAP).apply { topMargin = Space.S.dp })
         }
     }
 

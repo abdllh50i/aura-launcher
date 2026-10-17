@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Settings › Update: under the first lines of a release's notes -->
+    <string name="upd_notes_more">عرض الكل</string>
+</resources>

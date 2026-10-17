@@ -6,17 +6,16 @@ import android.view.View
 import android.widget.LinearLayout
 import com.abdllh.aura.R
 import com.abdllh.aura.nav.offline.OfflineMaps
+import com.abdllh.aura.ui.ABtn
 import com.abdllh.aura.ui.AText
 import com.abdllh.aura.ui.Confirm
-import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Palette
-import com.abdllh.aura.ui.Shapes
+import com.abdllh.aura.ui.Space
+import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.WRAP
-import com.abdllh.aura.ui.iconView
 import com.abdllh.aura.ui.label
 import com.abdllh.aura.ui.lp
-import com.abdllh.aura.ui.pressScale
 import com.abdllh.aura.util.dp
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -24,47 +23,24 @@ import java.util.Locale
 
 /**
  * Settings › Navigation: the offline map of the Eastern Province ([OfflineMaps]): what is on the unit, the download
- * with its progress, pause, and delete.
+ * with its progress, pause, and delete. The bar is the update page's (it glides between reports; until 1.11 a
+ * weighted pair of views that jumped and laid the card out again at every report).
  */
 class OfflineCard(private val act: SettingsActivity, private val ctx: Context) {
-    private val status: AText = ctx.label(15f, Palette.text2, Fonts.REGULAR, lines = 2)
-    private val fill = View(ctx)
-    private val rest = View(ctx)
-    private val bar = LinearLayout(ctx).apply {
-        orientation = LinearLayout.HORIZONTAL
-        background = Shapes.rect(Palette.card2, 4f)
-        clipToOutline = true
-        addView(fill, lp(0, MATCH, 0f))
-        addView(rest, lp(0, MATCH, 1f))
-    }
-    private val main: AText = button(true)
-    private val remove: AText = button(false).apply { setText(R.string.off_delete) }
+    private val status: AText = ctx.label(Type.FOOTNOTE, Palette.text2, lines = 2)
+    private val bar = ProgressBar(ctx)
+    private val main = ABtn(ctx).apply { kind = ABtn.Kind.PRIMARY }
+    private val remove = ABtn(ctx).apply { kind = ABtn.Kind.TONAL; setText(R.string.off_delete) }
     private val listener: () -> Unit = { refresh() }
 
-    val view: LinearLayout = LinearLayout(ctx).apply {
+    val view: View = ctx.block(R.drawable.ic_download, ctx.getString(R.string.off_title), null, LinearLayout(ctx).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(20.dp, 16.dp, 20.dp, 16.dp)
-        background = Shapes.card(18f)
-        val head = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        head.addView(ctx.iconView(R.drawable.ic_download, 27, Palette.text2), lp(27.dp, 27.dp).apply { marginEnd = 18.dp })
-        val texts = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-        texts.addView(ctx.label(18.5f, Palette.text, Fonts.MEDIUM).apply { setText(R.string.off_title) }, lp(MATCH, WRAP))
-        texts.addView(status, lp(MATCH, WRAP).apply { topMargin = 3.dp })
-        head.addView(texts, lp(0, WRAP, 1f))
-        addView(head, lp(MATCH, WRAP))
-        addView(bar, lp(MATCH, 8.dp).apply { topMargin = 14.dp })
+        addView(bar, lp(MATCH, WRAP).apply { bottomMargin = Space.L.dp }) // (gone, its gap goes with it)
         val buttons = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        buttons.addView(main, lp(WRAP, 50.dp))
-        buttons.addView(remove, lp(WRAP, 50.dp).apply { marginStart = 12.dp })
-        addView(buttons, lp(MATCH, WRAP).apply { topMargin = 14.dp })
-    }
-
-    private fun button(primary: Boolean): AText = ctx.label(16f, if (primary) Palette.onColor(Palette.accent) else Palette.text, Fonts.MEDIUM, gravity = Gravity.CENTER).apply {
-        background = if (primary) Shapes.accent(16f) else Shapes.tonal(16f)
-        setPadding(22.dp, 0, 22.dp, 0)
-        isClickable = true
-        pressScale(0.95f)
-    }
+        buttons.addView(main, lp(WRAP, WRAP))
+        buttons.addView(remove, lp(WRAP, WRAP).apply { marginStart = Space.M.dp })
+        addView(buttons, lp(MATCH, WRAP))
+    }, live = status)
 
     fun attach() {
         OfflineMaps.listener = listener
@@ -91,16 +67,17 @@ class OfflineCard(private val act: SettingsActivity, private val ctx: Context) {
         }
         val busy = s.phase == OfflineMaps.Phase.DOWNLOADING || s.phase == OfflineMaps.Phase.INDEXING
         bar.visibility = if (busy || s.phase == OfflineMaps.Phase.PAUSED) View.VISIBLE else View.GONE
-        fill.background = Shapes.rect(Palette.accent, 4f)
-        (fill.layoutParams as LinearLayout.LayoutParams).weight = s.fraction
-        (rest.layoutParams as LinearLayout.LayoutParams).weight = 1f - s.fraction
-        bar.requestLayout()
+        // (indexing reports no share before its first step: the bar sweeps until it does)
+        if (s.phase == OfflineMaps.Phase.INDEXING && s.fraction <= 0f) bar.setIndeterminate() else bar.set(s.fraction)
         main.visibility = if (s.phase == OfflineMaps.Phase.READY) View.GONE else View.VISIBLE
         main.setText(when (s.phase) {
             OfflineMaps.Phase.DOWNLOADING, OfflineMaps.Phase.INDEXING -> R.string.off_pause
             OfflineMaps.Phase.PAUSED, OfflineMaps.Phase.FAILED -> R.string.off_resume
             else -> R.string.off_download
         })
+        // (Pause is a second choice while it downloads; Download and Resume are the card's action)
+        val k = if (busy) ABtn.Kind.TONAL else ABtn.Kind.PRIMARY
+        if (main.kind != k) main.kind = k
         main.setOnClickListener { if (busy) OfflineMaps.pause() else OfflineMaps.download() }
         remove.visibility = if (s.phase != OfflineMaps.Phase.NONE && !busy) View.VISIBLE else View.GONE
         remove.setOnClickListener {

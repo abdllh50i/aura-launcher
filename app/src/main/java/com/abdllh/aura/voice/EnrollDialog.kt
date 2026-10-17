@@ -2,27 +2,28 @@ package com.abdllh.aura.voice
 
 import android.app.Activity
 import android.app.Application
-import android.app.Dialog
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
-import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
-import android.view.Window
 import android.widget.LinearLayout
 import com.abdllh.aura.R
 import com.abdllh.aura.ui.ABtn
-import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.MATCH
+import com.abdllh.aura.ui.Modal
+import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Shapes
+import com.abdllh.aura.ui.Space
+import com.abdllh.aura.ui.Spring
+import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.WRAP
+import com.abdllh.aura.ui.anim
 import com.abdllh.aura.ui.label
 import com.abdllh.aura.ui.lp
 import com.abdllh.aura.util.dp
@@ -59,37 +60,40 @@ internal object EnrollDialog {
     fun show(act: Activity, spec: Spec, done: (Boolean) -> Unit) {
         val samples = spec.samples
         val main = Handler(Looper.getMainLooper())
-        val d = Dialog(act)
-        d.requestWindowFeature(Window.FEATURE_NO_TITLE)
-        val card = LinearLayout(act).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(28.dp, 24.dp, 28.dp, 22.dp)
-            background = Shapes.rect(Palette.sheet, 26f, if (Palette.dark) Palette.stroke else 0)
-        }
-        card.addView(act.label(22f, Palette.text, Fonts.MEDIUM, lines = 2).apply { text = spec.title }, lp(MATCH, WRAP))
-        val prompt = act.label(18f, Palette.text2, Fonts.REGULAR, lines = 3).apply { setLineSpacing(0f, 1.15f) }
-        card.addView(prompt, lp(MATCH, WRAP).apply { topMargin = 10.dp })
+        // a Modal: it comes and goes like the app's other cards (until 1.12 a bare dialog that cut in and out)
+        val card = Modal.card(act)
+        val m = Modal(act, card)
+        val d = m.dialog
+        card.addView(act.label(Type.TITLE, Palette.text, lines = 2).apply { text = spec.title }, lp(MATCH, WRAP))
+        val prompt = act.label(Type.BODY, Palette.text2, lines = 3)
+        card.addView(prompt, lp(MATCH, WRAP).apply { topMargin = Space.S.dp })
         val dots = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        val dotViews = (0 until samples).map { View(act).also { v -> dots.addView(v, lp(18.dp, 18.dp).apply { marginEnd = 10.dp }) } }
-        card.addView(dots, lp(MATCH, WRAP).apply { topMargin = 18.dp })
+        val dotViews = (0 until samples).map { View(act).also { v -> dots.addView(v, lp(18.dp, 18.dp).apply { marginEnd = Space.M.dp }) } }
+        card.addView(dots, lp(MATCH, WRAP).apply { topMargin = Space.L.dp })
         val meter = Meter(act)
-        card.addView(meter, lp(MATCH, 14.dp).apply { topMargin = 18.dp })
-        val status = act.label(15f, Palette.text3, Fonts.REGULAR, lines = 2)
-        card.addView(status, lp(MATCH, WRAP).apply { topMargin = 10.dp })
+        card.addView(meter, lp(MATCH, 14.dp).apply { topMargin = Space.L.dp })
+        val status = act.label(Type.FOOTNOTE, Palette.text3, lines = 2)
+        card.addView(status, lp(MATCH, WRAP).apply { topMargin = Space.S.dp })
         val row = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END }
         row.addView(ABtn(act).apply {
             kind = ABtn.Kind.TONAL
             setText(R.string.btn_cancel)
-            setPadding(26.dp, 0, 26.dp, 0)
-            setOnClickListener { d.dismiss() }
-        }, lp(WRAP, 56.dp))
-        card.addView(row, lp(MATCH, WRAP).apply { topMargin = 20.dp })
+            setOnClickListener { m.close() }
+        }, lp(WRAP, WRAP))
+        card.addView(row, lp(MATCH, WRAP).apply { topMargin = Space.XL.dp })
 
         val words = ArrayList<Spectrum>()
         var saved = false
         var ended = false
+        val filled = BooleanArray(samples)
         fun paint() {
-            for ((i, v) in dotViews.withIndex()) v.background = Shapes.oval(if (i < words.size) Palette.accent else Palette.withAlpha(Palette.text3, 0.35f))
+            for ((i, v) in dotViews.withIndex()) {
+                val on = i < words.size
+                v.background = Shapes.oval(if (on) Palette.accent else Palette.track)
+                // (a recording taken: its dot fills with a small pop, so the take is seen without reading the line)
+                if (on && !filled[i]) { v.scaleX = 0.6f; v.scaleY = 0.6f; v.anim(Motion.MEDIUM, Motion.EMPHASIZED).scaleX(1f).scaleY(1f).start() }
+                filled[i] = on
+            }
             prompt.text = spec.prompt(words.size + 1, samples)
         }
         paint()
@@ -129,7 +133,7 @@ internal object EnrollDialog {
                     saved = true
                     paint()
                     prompt.setText(spec.doneText)
-                    main.postDelayed({ if (!act.isFinishing && !act.isDestroyed && d.isShowing) try { d.dismiss() } catch (_: Throwable) { } }, 1200)
+                    main.postDelayed({ if (!act.isFinishing && !act.isDestroyed && d.isShowing) m.close() }, 1200)
                     return@post
                 }
                 paint()
@@ -169,27 +173,34 @@ internal object EnrollDialog {
         }
         act.application.registerActivityLifecycleCallbacks(watch)
         d.setOnDismissListener { end() }
-        d.setContentView(card)
-        d.window?.apply {
-            setBackgroundDrawable(ColorDrawable(0))
-            setLayout(560.dp, ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
-        d.show()
+        m.show()
     }
 
-    /** The microphone's level over the background. */
+    /**
+     * The microphone's level over the background, filled from the start side (the right in Arabic, as every bar of
+     * the app). The level comes with each piece of sound; a spring carries the bar between them instead of a step.
+     */
     private class Meter(c: Context) : View(c) {
-        var level = 0f
-            set(v) { field = field + (v - field) * 0.5f; invalidate() }
-        private val track = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Palette.withAlpha(Palette.text3, 0.25f) }
+        private val glide = Spring(0f, 400f, 0.9f, 0.002f) { invalidate() }
+        var level: Float
+            get() = glide.target
+            set(v) { glide.animateTo(v.coerceIn(0f, 1f)) }
+        private val track = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Palette.track }
         private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Palette.accent }
         private val r = RectF()
 
+        override fun onDetachedFromWindow() {
+            glide.cancel()
+            super.onDetachedFromWindow()
+        }
+
         override fun onDraw(c: Canvas) {
             val h = height.toFloat()
-            r.set(0f, 0f, width.toFloat(), h)
+            val w = width.toFloat()
+            r.set(0f, 0f, w, h)
             c.drawRoundRect(r, h / 2, h / 2, track)
-            r.right = (width * level).coerceAtLeast(h)
+            val len = (w * glide.value.coerceIn(0f, 1f)).coerceAtLeast(h)
+            if (layoutDirection == LAYOUT_DIRECTION_RTL) r.set(w - len, 0f, w, h) else r.set(0f, 0f, len, h)
             c.drawRoundRect(r, h / 2, h / 2, fill)
         }
     }

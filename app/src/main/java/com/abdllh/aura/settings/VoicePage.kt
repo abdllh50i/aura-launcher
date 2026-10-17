@@ -8,10 +8,14 @@ import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
 import com.abdllh.aura.R
-import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.MATCH
+import com.abdllh.aura.ui.Menu
 import com.abdllh.aura.ui.Palette
+import com.abdllh.aura.ui.Segmented
 import com.abdllh.aura.ui.Shapes
+import com.abdllh.aura.ui.Space
+import com.abdllh.aura.ui.Touch
+import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.WRAP
 import com.abdllh.aura.ui.iconView
 import com.abdllh.aura.ui.label
@@ -29,32 +33,29 @@ class VoicePage(private val act: SettingsActivity) : Page(R.string.set_voice, R.
         val intro = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(20.dp, 18.dp, 20.dp, 18.dp)
-            background = Shapes.card(18f)
+            setPaddingRelative(20.dp, Space.L.dp, 20.dp, Space.L.dp)
+            background = Shapes.card()
         }
         intro.addView(LinearLayout(ctx).apply {
             gravity = Gravity.CENTER
             background = Shapes.oval(Palette.accent)
-            addView(ctx.iconView(R.drawable.ic_mic, 30, Palette.onColor(Palette.accent)), lp(30.dp, 30.dp))
-        }, lp(58.dp, 58.dp).apply { marginEnd = 18.dp })
+            addView(ctx.iconView(R.drawable.ic_mic, 28, Palette.onColor(Palette.accent)), lp(28.dp, 28.dp))
+        }, lp(Touch.MIN.dp, Touch.MIN.dp).apply { marginEnd = 18.dp })
         val texts = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-        texts.addView(ctx.label(22f, Palette.text, Fonts.MEDIUM).apply { setText(R.string.amri_name) })
-        texts.addView(ctx.label(15f, Palette.text2, Fonts.REGULAR, lines = 0).apply {
-            setText(R.string.voice_intro)
-            setLineSpacing(0f, 1.15f)
-        }, lp(MATCH, WRAP).apply { topMargin = 4.dp })
+        texts.addView(ctx.label(Type.TITLE, Palette.text).apply { setText(R.string.amri_name) })
+        texts.addView(ctx.label(Type.FOOTNOTE, Palette.text2, lines = 0).apply { setText(R.string.voice_intro) }, lp(MATCH, WRAP).apply { topMargin = Space.XS.dp })
         intro.addView(texts, lp(0, WRAP, 1f))
-        col.addRow(intro, 0)
+        col.addRow(intro)
 
         // what the unit's firmware lacks, from the Play Store: requests need a speech recogniser, spoken answers a voice
-        if (!Amri.canRecognize(ctx)) {
-            col.addRow(ctx.settingRow(R.drawable.ic_download, ctx.getString(R.string.voice_get_google),
-                ctx.getString(R.string.voice_get_google_sub), ctx.chevron()) { VoiceSetup.openStore(ctx, VoiceSetup.GOOGLE_APP) }, 10)
-        }
-        if (!VoiceSetup.hasVoice(ctx)) {
-            col.addRow(ctx.settingRow(R.drawable.ic_download, ctx.getString(R.string.voice_get_tts),
-                ctx.getString(R.string.voice_get_tts_sub), ctx.chevron()) { VoiceSetup.openStore(ctx, VoiceSetup.GOOGLE_TTS) }, 8)
-        }
+        val needGoogle = !Amri.canRecognize(ctx)
+        val needVoice = !VoiceSetup.hasVoice(ctx)
+        if (needGoogle || needVoice) col.addRow(ctx.group(
+            if (!needGoogle) null else ctx.settingRow(R.drawable.ic_download, ctx.getString(R.string.voice_get_google),
+                ctx.getString(R.string.voice_get_google_sub), ctx.chevron()) { VoiceSetup.openStore(ctx, VoiceSetup.GOOGLE_APP) },
+            if (!needVoice) null else ctx.settingRow(R.drawable.ic_download, ctx.getString(R.string.voice_get_tts),
+                ctx.getString(R.string.voice_get_tts_sub), ctx.chevron()) { VoiceSetup.openStore(ctx, VoiceSetup.GOOGLE_TTS) }
+        ))
 
         // the microphone permission first (asked once; what was asked for goes on when it is given)
         fun withMic(then: () -> Unit) {
@@ -63,63 +64,68 @@ class VoicePage(private val act: SettingsActivity) : Page(R.string.set_voice, R.
         }
 
         val enrolled = VoiceSetup.enrolled(ctx)
-        col.addRow(ctx.switchRow(R.drawable.ic_mic, ctx.getString(R.string.voice_wake), ctx.getString(R.string.voice_wake_sub), Amri.enabled && enrolled) { on ->
-            if (!on) { Amri.enabled = false; return@switchRow }
-            // on only with the microphone and the owner's voice
-            withMic {
-                if (VoiceSetup.enrolled(ctx)) { Amri.enabled = true; act.rebuild() }
-                else VoiceSetup.enroll(act) { ok -> if (ok) Amri.enabled = true; act.rebuild() }
-            }
-        }, 14)
-        col.addRow(ctx.settingRow(R.drawable.ic_user, ctx.getString(R.string.voice_enroll),
-            ctx.getString(if (enrolled) R.string.voice_enroll_sub_done else R.string.voice_enroll_sub_none), ctx.chevron()) {
-            // (set even when it already was: the setter starts the listener with the new recordings)
-            withMic { VoiceSetup.enroll(act) { ok -> if (ok) Amri.enabled = true; act.rebuild() } }
-        }, 8)
-
-        val sens = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(20.dp, 16.dp, 20.dp, 18.dp)
-            background = Shapes.card(18f)
+        val sens = Segmented(ctx, listOf(ctx.getString(R.string.voice_sens_strict), ctx.getString(R.string.voice_sens_normal),
+            ctx.getString(R.string.voice_sens_relaxed)), equal = true, textSp = Type.BUTTON.sp) { i -> Amri.sensitivity = i }.apply {
+            trackColor = Palette.card2
+            minimumHeight = Touch.MIN.dp
+            select(Amri.sensitivity, animate = false)
         }
-        sens.addView(ctx.label(17f, Palette.text, Fonts.MEDIUM).apply { setText(R.string.voice_sens) })
-        sens.addView(ctx.label(13.5f, Palette.text2, Fonts.REGULAR, lines = 2).apply { setText(R.string.voice_sens_sub) }, lp(MATCH, WRAP).apply { topMargin = 3.dp })
-        sens.addView(Segmented(ctx, listOf(ctx.getString(R.string.voice_sens_strict), ctx.getString(R.string.voice_sens_normal),
-            ctx.getString(R.string.voice_sens_relaxed)), Amri.sensitivity) { i -> Amri.sensitivity = i }, lp(MATCH, WRAP).apply { topMargin = 14.dp })
-        col.addRow(sens, 8)
+        col.addRow(ctx.group(
+            ctx.switchRow(R.drawable.ic_mic, ctx.getString(R.string.voice_wake), ctx.getString(R.string.voice_wake_sub), Amri.enabled && enrolled) { on ->
+                if (!on) { Amri.enabled = false; return@switchRow }
+                // on only with the microphone and the owner's voice
+                withMic {
+                    if (VoiceSetup.enrolled(ctx)) { Amri.enabled = true; act.rebuild() }
+                    else VoiceSetup.enroll(act) { ok -> if (ok) Amri.enabled = true; act.rebuild() }
+                }
+            },
+            ctx.settingRow(R.drawable.ic_user, ctx.getString(R.string.voice_enroll),
+                ctx.getString(if (enrolled) R.string.voice_enroll_sub_done else R.string.voice_enroll_sub_none), ctx.chevron()) {
+                // (set even when it already was: the setter starts the listener with the new recordings)
+                withMic { VoiceSetup.enroll(act) { ok -> if (ok) Amri.enabled = true; act.rebuild() } }
+            },
+            ctx.block(R.drawable.ic_sliders, ctx.getString(R.string.voice_sens), ctx.getString(R.string.voice_sens_sub), sens)
+        ))
 
-        col.addRow(ctx.switchRow(R.drawable.ic_volume, ctx.getString(R.string.voice_speak), null, Amri.spoken) { Amri.spoken = it }, 8)
-
-        // the microphone: the system's choice, or one of the inputs (each tap: the next one)
+        // the microphone: the system's choice or one of the inputs, picked from a menu (the one in use ticked)
         val inputs = try {
             (ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager).getDevices(AudioManager.GET_DEVICES_INPUTS)
                 .filter { it.type != AudioDeviceInfo.TYPE_TELEPHONY && it.type != AudioDeviceInfo.TYPE_REMOTE_SUBMIX }
         } catch (_: Throwable) { emptyList() }
         val choices = listOf(0 to ctx.getString(R.string.voice_mic_auto)) + inputs.map { it.id to VoiceSetup.name(ctx, it) }
         val now = choices.indexOfFirst { it.first == Amri.micId }.coerceAtLeast(0)
-        col.addRow(ctx.settingRow(R.drawable.ic_mic, ctx.getString(R.string.voice_mic), null, ctx.valueText(choices[now].second)) {
-            Amri.micId = choices[(now + 1) % choices.size].first
-            act.rebuild()
-        }, 8)
-
-        col.addRow(ctx.settingRow(R.drawable.ic_zap, ctx.getString(R.string.voice_try), ctx.getString(R.string.voice_try_sub), ctx.chevron()) {
-            withMic { Amri.wake(ctx) }
-        }, 8)
+        val mic = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(ctx.valueText(choices[now].second).apply { maxWidth = 260.dp }, lp(WRAP, WRAP).apply { marginEnd = Space.XS.dp })
+            addView(ctx.chevron())
+        }
+        col.addRow(ctx.group(
+            ctx.switchRow(R.drawable.ic_volume, ctx.getString(R.string.voice_speak), null, Amri.spoken) { Amri.spoken = it },
+            ctx.settingRow(R.drawable.ic_mic, ctx.getString(R.string.voice_mic), null, mic) {
+                Menu.show(mic, choices.map { (id, name) ->
+                    Menu.Item(if (id == Amri.micId) R.drawable.ic_check else R.drawable.ic_mic, name) {
+                        if (id != Amri.micId) { Amri.micId = id; act.rebuild() }
+                    }
+                })
+            },
+            ctx.settingRow(R.drawable.ic_zap, ctx.getString(R.string.voice_try), ctx.getString(R.string.voice_try_sub), ctx.chevron()) {
+                withMic { Amri.wake(ctx) }
+            }
+        ))
 
         // requests without the internet: each taught in the owner's voice (a tick once it is)
-        col.addRow(ctx.sectionTitle(ctx.getString(R.string.voice_offline_title)), 26)
-        col.addRow(ctx.hint(ctx.getString(R.string.voice_offline_sub)), 6)
-        for (item in OfflineCommands.items) {
+        col.addSection(ctx.getString(R.string.voice_offline_title))
+        col.addHint(ctx.getString(R.string.voice_offline_sub))
+        val rows = OfflineCommands.items.map { item ->
             val taught = OfflineCommands.taught(ctx, item.id)
-            val tick = ctx.iconView(if (taught) R.drawable.ic_check else R.drawable.ic_chevron_right, 24,
-                if (taught) Palette.accent else Palette.text3).also {
-                if (!taught && ctx.resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL) it.scaleX = -1f
-            }
-            col.addRow(ctx.settingRow(null, "«${ctx.getString(item.label)}»",
+            val tick = if (taught) ctx.iconView(R.drawable.ic_check, 24, Palette.accentFg) else ctx.chevron()
+            ctx.settingRow(null, "«${ctx.getString(item.label)}»",
                 ctx.getString(if (taught) R.string.voice_cmd_taught else R.string.voice_cmd_untaught), tick) {
                 withMic { VoiceSetup.teach(act, item) { act.rebuild() } }
-            }, 8)
+            }
         }
+        col.addRow(ctx.group(*rows.toTypedArray()))
         return col
     }
 }
