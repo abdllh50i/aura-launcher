@@ -1403,7 +1403,9 @@ class MusicActivity : Activity() {
         if (!::stage.isInitialized) return
         val wide = bt && !lyricsOn // (the lyrics need the panel)
         panel.visibility = if (wide) View.GONE else View.VISIBLE
-        (left.layoutParams as LinearLayout.LayoutParams).apply {
+        // (set again, not only changed: a start / end margin is turned into left / right when the params are set, so
+        // a changed one was not seen, and the gutter stayed 0 after the Bluetooth layout)
+        left.layoutParams = (left.layoutParams as LinearLayout.LayoutParams).apply {
             weight = if (wide) 1f else 0.46f
             marginEnd = if (wide) 0 else Space.GUTTER.dp
         }
@@ -1745,7 +1747,9 @@ class MusicActivity : Activity() {
                 if (rtl) scaleX = -1f
             })
         }, lp(Touch.MIN.dp, Touch.MIN.dp))
-        source = Segmented(this, listOf(getString(R.string.music_library), getString(R.string.music_bluetooth), getString(R.string.music_youtube)), equal = false) { i ->
+        // (a step smaller than the panel's tabs: beside the two round buttons it ran 15 dp past the column in English)
+        source = Segmented(this, listOf(getString(R.string.music_library), getString(R.string.music_bluetooth), getString(R.string.music_youtube)),
+            equal = false, textSp = Type.FOOTNOTE.sp) { i ->
             val to = Src.values()[i]
             // (the music files are asked for when the owner chooses them: see onCreate)
             if (to == Src.LOCAL && !Library.hasPermission(this)) askPermission()
@@ -1761,7 +1765,7 @@ class MusicActivity : Activity() {
             setOnClickListener { toggleLyrics() }
             addView(lyricsIcon, flp(26.dp, 26.dp, Gravity.CENTER))
         }
-        top.addView(lyricsBtn, lp(Touch.MIN.dp, Touch.MIN.dp).apply { marginEnd = Space.S.dp })
+        top.addView(lyricsBtn, lp(Touch.MIN.dp, Touch.MIN.dp).apply { marginEnd = Space.XS.dp })
         top.addView(source, lp(WRAP, Touch.MIN.dp))
         left.addView(top, lp(MATCH, WRAP))
 
@@ -1817,7 +1821,8 @@ class MusicActivity : Activity() {
         tTotal = label(Type.CAPTION, Palette.text2, gravity = Gravity.END).apply { fontFeatureSettings = "tnum" }
         times.addView(tNow, lp(0, WRAP, 1f))
         times.addView(tTotal, lp(0, WRAP, 1f))
-        info.addView(times, lp(MATCH, WRAP).apply { setMargins(Space.M.dp, 0, Space.M.dp, 0) })
+        // (tucked into the strip's lower edge, below the largest knob: the room goes to the cover)
+        info.addView(times, lp(MATCH, WRAP).apply { setMargins(Space.M.dp, -Space.S.dp, Space.M.dp, 0) })
 
         val ctl = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; layoutDirection = View.LAYOUT_DIRECTION_LTR }
         shuffleBtn = ImageView(this)
