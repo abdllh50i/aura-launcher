@@ -62,9 +62,14 @@ buffer's length. Pieces are 20 s, each starting 2 s before the previous one ende
 whole in the neighbour). When the expected position and the clock differ by more than 800 ms (a seek, a tap that set a
 Bluetooth song's clock, a pause) the piece so far is sent if it has 6 s and a new one begins. One upload at a time, at
 most two waiting (the oldest is dropped when the network is slower than the song). The server answers each piece with
-how much is timed; from 70 % on the screen switches to the timing and `Lyrics.keepAligned` keeps it on the unit, from
-90 % listening stops. After the last piece the server is asked every 5 s until it has worked on everything (6 min at
-most). A song from the unit's own storage is not listened to: its file (up to 40 MB) is sent once while it plays, and
+how much is timed; from 70 % on the screen switches to the timing and `Lyrics.keepAligned` keeps it on the unit (the
+lines already heard are timed by what was heard; the line being sung is the server's guess at the song's pace until
+the next piece is worked on, about half a minute later). Listening stops when the server says the song is done: 97 %
+timed, or 90 % with no line still to come only guessed. Stopping at 90 % alone left the last lines guessed 7–14 s off
+in the emulator run below; listening to the song's end times them. After the last piece the server is asked every
+5 s until it has worked on everything (6 min at most). Every request to the server goes on a connection of its own
+(`Connection: close`, and a failed question asked once more): a kept connection went stale when the server restarted
+and the next lookup failed with "unexpected end of stream". A song from the unit's own storage is not listened to: its file (up to 40 MB) is sent once while it plays, and
 the server's progress polled. The screen says what happens in a quiet note where the sync hint would be (the two never
 show together: listening needs a known position): the microphone icon with "Listening to time the lyrics · 40 %
 timed", or "Your server is timing the lyrics" while only the server works.
@@ -95,8 +100,9 @@ by the song's pace. Not the first word's own start even when heard: the recognis
 over the pause before it (tried: the mean error grew from 0.15–0.5 s to 0.3–0.85 s). Lines in time order are kept by the
 heaviest increasing run. A line sung twice in a row is often written down once; the one heard is given to the first of
 the two (it went to the second, and the first was guessed seconds early). Lines between two timed ones are spread by
-their words (a stanza break takes the slack), the rest guessed at the song's pace, empty lines put after the line before
-them. `covered` counts the sung lines timed by their words or between two such lines.
+their words (a stanza break takes the slack), the rest guessed at the pace from one timed line to the next, pauses
+included (a sung word's own length alone made the guesses run twice too fast: 7.4 s off on average, now 2.5 s), empty
+lines put after the line before them. `covered` counts the sung lines timed by their words or between two such lines.
 
 Measured with spoken test songs (`tests/test_align.py`: edge-tts voices — ar-KW-FahedNeural for the Arabic songs —
 over made-up chords, noise and rumble with a cabin echo, sent in 20 s pieces with their positions as the car does, and
@@ -104,6 +110,12 @@ as whole files), 18 lines each, mean / max error per line:
 * voice 6 dB over the backing: "Hello" (Adele) 0.15 / 0.33 s, "الأماكن" (Mohammed Abdu, Gulf) 0.21 / 0.65 s, "بشرة
   خير" (Hussain Al Jassmi) 0.49 / 1.05 s, all 100 % covered; the whole files the same.
 * voice and backing equally loud (0 dB): 0.16 / 0.33 s, 0.30 / 0.85 s, 0.49 / 1.17 s, all 100 % covered.
+* the app itself on the emulator (its own pieces, song clock and uploads; the debug feed in place of the microphone):
+  "الأماكن" as a simulated Bluetooth song, LRCLIB's 82 plain lines (the 13-minute live recording's), spoken as a 418 s
+  test song. 22 pieces; the screen switched to the timing at 72 % (about five minutes in); at 93 %: the 73 lines timed
+  by their words 0.28 s mean, 0.83 s at most, the 3 between them 0.34 s. The switch in place (plain lines on the
+  screen, the timing arriving with the first piece worked on) was checked in a second run, frame by frame: the lines
+  stay where they are, step back around the lit one, and the lit one glides to the middle.
 Real singing through a car's microphone is harder than speech: not measured (see below).
 
 ## The screen (`LyricsView.timeLines`, `MusicActivity`)

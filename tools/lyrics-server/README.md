@@ -107,8 +107,21 @@ All answers are JSON (UTF-8). The key goes in the header `X-Lyrics-Key` (or `?ke
 shows the timing from 70 % and stops listening at 90 %.
 
 Kept on disk (in the home folder): `lyrics\` the sources' answers (timed ones two months, plain ones three days, "nobody
-has it" two days, half an hour when a source did not answer), `songs\` the words heard per song and the timing made of
-them. `config.json` holds the key and the settings.
+has it" two days; anything but a timed answer only half an hour when a source did not answer — LRCLIB's "busy" once
+turned a song it has timed into Genius's plain text), `songs\` the words heard per song and the timing made of them.
+`config.json` holds the key and the settings.
+
+## When something is wrong
+
+* *Test* in the car says "not the lyrics server": something else answers at that address. On the workshop PC another
+  program (a `pythonw`) listens on `0.0.0.0:8787`; this server's `127.0.0.1:8787` wins for the tunnel and for the PC
+  itself while it runs, but when it is stopped the other program answers. Run it on another port
+  (`lyrics-server.bat --port 8788`) and point the tunnel's service there if that gets in the way.
+* "No answer": the server window is closed, the PC asleep, or the tunnel not running (`https://…/health` in a browser
+  tells which).
+* "The key is wrong": the key in the car is not the one the server printed (a `--new-key` since?).
+* The timing by listening needs the song's position: a Bluetooth song that was already playing when the phone
+  connected is not listened to until its start is seen (the next song) or a lyric line is tapped.
 
 ## Sources, as found on 2026-10-17
 
