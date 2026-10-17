@@ -162,15 +162,30 @@ object MediaMonitor {
     // ---------------------------------------------------------------- media sessions
     private val sessionsListener = MediaSessionManager.OnActiveSessionsChangedListener { list -> onSessions(list) }
 
-    private val callback = object : MediaController.Callback() {
-        override fun onMetadataChanged(metadata: MediaMetadata?) = changed()
-        override fun onPlaybackStateChanged(state: PlaybackState?) = changed()
+    /**
+     * What each app's session last told, kept from its own callbacks. Asking the controller instead is a binder call
+     * that unparcels a new MediaMetadata, cover bitmap included, every time: the music screen's progress tick asked
+     * several times a second, and every answer was a new Bitmap, so the screen took each one for a new cover and
+     * crossfaded it again. Kept, the same metadata (and Bitmap) stays until the app really sends another.
+     */
+    private class Told(var meta: MediaMetadata?, var state: PlaybackState?)
+
+    private val told = HashMap<MediaController, Told>()
+    private val callbacks = HashMap<MediaController, MediaController.Callback>()
+
+    // (asked only of a session whose callback could not be registered)
+    private fun meta(c: MediaController): MediaMetadata? = told[c].let { if (it != null) it.meta else c.metadata }
+    private fun state(c: MediaController): PlaybackState? = told[c].let { if (it != null) it.state else c.playbackState }
+
+    private fun callbackFor(c: MediaController) = object : MediaController.Callback() {
+        override fun onMetadataChanged(metadata: MediaMetadata?) { told[c]?.meta = metadata; changed() }
+        override fun onPlaybackStateChanged(state: PlaybackState?) { told[c]?.state = state; changed() }
         override fun onSessionDestroyed() = requery() // (which one went is not told: the list is asked for again)
     }
 
     private fun changed() {
         // the home card follows the app that plays (another one may have started since the list last changed)
-        controller = others.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING }
+        controller = others.firstOrNull { state(it)?.state == PlaybackState.STATE_PLAYING }
             ?: controller?.takeIf { it in others } ?: others.firstOrNull()
         publish()
         try { com.abdllh.aura.music.YtMusic.onSession() } catch (t: Throwable) { Log.w(TAG, "yt: $t") }
@@ -185,26 +200,26 @@ object MediaMonitor {
                      val playing: Boolean, val durationMs: Long)
 
     private fun of(pkgs: Set<String>): MediaController? =
-        others.firstOrNull { it.packageName in pkgs && it.playbackState?.state == PlaybackState.STATE_PLAYING }
+        others.firstOrNull { it.packageName in pkgs && state(it)?.state == PlaybackState.STATE_PLAYING }
             ?: others.firstOrNull { it.packageName in pkgs }
 
     /** The session of the first of [pkgs] that has one (the one playing, when two do); null when none has a song. */
     fun app(pkgs: Set<String>): AppSession? {
         val c = of(pkgs) ?: return null
-        val md = c.metadata ?: return null
+        val md = meta(c) ?: return null
         val title = md.getString(MediaMetadata.METADATA_KEY_TITLE) ?: md.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE) ?: return null
         return AppSession(c.packageName, title,
             md.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: md.getString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE) ?: "",
             md.getString(MediaMetadata.METADATA_KEY_ALBUM).orEmpty(),
             md.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART) ?: md.getBitmap(MediaMetadata.METADATA_KEY_ART)
                 ?: md.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON),
-            c.playbackState?.state == PlaybackState.STATE_PLAYING,
+            state(c)?.state == PlaybackState.STATE_PLAYING,
             md.getLong(MediaMetadata.METADATA_KEY_DURATION).coerceAtLeast(0L))
     }
 
     /** Where that app's song is now (ms): its last report carried on by the clock while it plays; null when it tells none. */
     fun appPosition(pkgs: Set<String>): Long? {
-        val st = of(pkgs)?.playbackState ?: return null
+        val st = of(pkgs)?.let { state(it) } ?: return null
         if (st.position < 0L) return null
         var pos = st.position
         if (st.state == PlaybackState.STATE_PLAYING) {
@@ -223,7 +238,7 @@ object MediaMonitor {
             if (seekToMs >= 0L) t.seekTo(seekToMs) else when (what) {
                 Do.PLAY -> t.play()
                 Do.PAUSE -> t.pause()
-                Do.TOGGLE -> if (c.playbackState?.state == PlaybackState.STATE_PLAYING) t.pause() else t.play()
+                Do.TOGGLE -> if (state(c)?.state == PlaybackState.STATE_PLAYING) t.pause() else t.play()
                 Do.NEXT -> t.skipToNext()
                 Do.PREVIOUS -> t.skipToPrevious()
             }
@@ -255,21 +270,28 @@ object MediaMonitor {
     }
 
     private fun onSessions(list: List<MediaController>?) {
-        for (c in others) try { c.unregisterCallback(callback) } catch (_: Throwable) { }
+        for ((c, cb) in callbacks) try { c.unregisterCallback(cb) } catch (_: Throwable) { }
+        callbacks.clear()
+        told.clear()
         // Aura Music is read directly (auraInfo), so only other apps' sessions count here.
         others = list?.filter { it.packageName != app?.packageName }.orEmpty()
-        controller = others.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING } ?: others.firstOrNull()
-        // (each of them is listened to: AMRI Music follows one app's session, whichever the home card shows)
-        for (c in others) try { c.registerCallback(callback, main) } catch (_: Throwable) { }
+        // (each of them is listened to, with a callback of its own that keeps what it tells: AMRI Music follows one
+        // app's session, whichever the home card shows)
+        for (c in others) {
+            told[c] = Told(try { c.metadata } catch (_: Throwable) { null }, try { c.playbackState } catch (_: Throwable) { null })
+            val cb = callbackFor(c)
+            try { c.registerCallback(cb, main); callbacks[c] = cb } catch (_: Throwable) { told.remove(c) }
+        }
+        controller = others.firstOrNull { state(it)?.state == PlaybackState.STATE_PLAYING } ?: others.firstOrNull()
         changed()
     }
 
     private fun fromController(c: MediaController): NowPlaying? {
-        val md = c.metadata ?: return null
+        val md = meta(c) ?: return null
         val title = md.getString(MediaMetadata.METADATA_KEY_TITLE) ?: md.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE) ?: return null
         val artist = md.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: md.getString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE) ?: ""
         val art = md.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART) ?: md.getBitmap(MediaMetadata.METADATA_KEY_ART)
-        val playing = c.playbackState?.state == PlaybackState.STATE_PLAYING
+        val playing = state(c)?.state == PlaybackState.STATE_PLAYING
         return NowPlaying(title, artist, art, playing, c.packageName)
     }
 
@@ -292,8 +314,8 @@ object MediaMonitor {
             null -> null
             else -> {
                 val ctl = controller?.takeIf { it.packageName == c.sourcePkg } ?: return null
-                val st = ctl.playbackState ?: return null
-                val d = ctl.metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L
+                val st = state(ctl) ?: return null
+                val d = meta(ctl)?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L
                 if (d <= 0L || st.position < 0L) return null
                 var pos = st.position
                 if (st.state == PlaybackState.STATE_PLAYING) {
@@ -333,7 +355,7 @@ object MediaMonitor {
                 when (key) {
                     Key.PREV -> c.transportControls.skipToPrevious()
                     Key.NEXT -> c.transportControls.skipToNext()
-                    Key.PLAY_PAUSE -> if (c.playbackState?.state == PlaybackState.STATE_PLAYING) c.transportControls.pause() else c.transportControls.play()
+                    Key.PLAY_PAUSE -> if (state(c)?.state == PlaybackState.STATE_PLAYING) c.transportControls.pause() else c.transportControls.play()
                 }
                 return
             } catch (_: Throwable) {

@@ -17,6 +17,11 @@ class MusicService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    // (the notification in AMRI's own language, which may not be the unit's)
+    override fun attachBaseContext(base: Context) {
+        super.attachBaseContext(com.abdllh.aura.util.LocaleHelper.wrap(base))
+    }
+
     override fun onCreate() {
         super.onCreate()
         getSystemService(NotificationManager::class.java)

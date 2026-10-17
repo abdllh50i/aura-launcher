@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Music screen strings added in 1.12 (kept apart from strings.xml so parallel branches merge cleanly). -->
+<resources>
+    <string name="music_back">Back</string>
+    <string name="music_loading">Loading your music…</string>
+    <string name="lyrics_retry">Try again</string>
+    <string name="yt_clear">Clear the search</string>
+</resources>
