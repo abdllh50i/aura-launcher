@@ -92,7 +92,7 @@
     <string name="maps_end">إنهاء</string>
     <string name="maps_arrived">وصلت إلى وجهتك</string>
     <string name="maps_done">تم</string>
-    <string name="maps_voice_missing">للإرشاد الصوتي ثبّت «خدمات النطق من Google» من متجر Play</string>
+    <string name="maps_voice_missing">للإرشاد الصوتي ثبّت «خدمات النطق من \u2068Google\u2069» من متجر \u2068Play\u2069</string>
     <string name="set_connections">الاتصال</string>
     <string name="set_wifi_keeper">حافظ على إنترنت الواي فاي</string>
     <string name="set_wifi_keeper_sub">يعيد اتصال الواي فاي تلقائيًا إذا ظل متصل بدون إنترنت</string>
@@ -187,7 +187,7 @@
     <string name="set_zlink_off">ZLink (كار بلاي) يبقى طافي لين أفتحه بنفسي</string>
     <string name="set_zlink_off_sub">ما يطلع لحاله لما يتصل الجوال بالبلوتوث، وما يطفّي الواي فاي</string>
     <string name="set_bt_cover">صورة ومدة أغاني البلوتوث</string>
-    <string name="set_bt_cover_sub">تجيب صورة الأغنية ومدتها من الإنترنت باسمها واسم الفنان (يوتيوب ميوزك أول، ثم Apple Music وDeezer)</string>
+    <string name="set_bt_cover_sub">تجيب صورة الأغنية ومدتها من الإنترنت باسمها واسم الفنان: من يوتيوب ميوزك أول، وإذا ما لقتها فمن \u2068Apple Music\u2069 أو \u2068Deezer\u2069</string>
     <string name="nav_channel">الملاحة</string>
     <string name="nav_starting">جاري بدء الملاحة…</string>
     <string name="nav_title">الملاحة</string>
@@ -349,9 +349,9 @@
     <string name="voice_try">جرّبه الحين</string>
     <string name="voice_try_sub">يسمع طلبك على طول (زر المايك في الشاشة الرئيسية نفس الشي)</string>
     <string name="voice_get_google">نزّل تطبيق Google</string>
-    <string name="voice_get_google_sub">عمري يسمع اسمه بدونه، بس فهم الطلبات يحتاجه (يفتح متجر Play)</string>
+    <string name="voice_get_google_sub">عمري يسمع اسمه بدونه، بس فهم الطلبات يحتاجه (يفتح متجر \u2068Play\u2069)</string>
     <string name="voice_get_tts">للرد بالصوت: Speech Services by Google</string>
-    <string name="voice_get_tts_sub">بدونه الرد يطلع مكتوب بس (يفتح متجر Play)</string>
+    <string name="voice_get_tts_sub">بدونه الرد يطلع مكتوب بس (يفتح متجر \u2068Play\u2069)</string>
     <string name="about_role">نوع التثبيت</string>
     <string name="about_covered">شاشة أصلية غطّاها عمري عند التشغيل</string>
     <string name="about_music_key">آخر ضغطة لزر الموسيقى</string>
@@ -450,7 +450,7 @@
     <string name="yt_searching">يبحث…</string>
     <string name="yt_none">ما لقيت شي بهالاسم</string>
     <string name="yt_failed">ما قدرت أوصل ليوتيوب ميوزك. تأكد من الإنترنت وجرّب مرة ثانية.</string>
-    <string name="yt_no_app">التشغيل يحتاج تطبيق YouTube Music على الشاشة (من متجر Play، بحسابك).</string>
+    <string name="yt_no_app">التشغيل يحتاج تطبيق \u2068YouTube Music\u2069 على الشاشة، تنزّله من متجر \u2068Play\u2069 بحسابك.</string>
     <string name="yt_get_app">افتح المتجر</string>
     <string name="yt_needs_front">يوتيوب ميوزك وقف لما رجعت لموسيقى عمري: التشغيل بدون ما يكون التطبيق قدامك يحتاج اشتراك Premium.</string>
     <string name="about_cover">آخر بحث عن صورة ومدة أغنية بلوتوث</string>
