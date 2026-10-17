@@ -87,6 +87,8 @@ class SettingsActivity : Activity() {
     private var current = -1
     private lateinit var root: FrameLayout
     private lateinit var navItems: List<LinearLayout>
+    /** How much of each item the indicator covered at the last frame (-1: not tinted yet). */
+    private lateinit var navShare: FloatArray
     private lateinit var indicator: View
     private var indicatorPlaced = false
     private lateinit var indicatorSpring: Spring
@@ -191,6 +193,7 @@ class SettingsActivity : Activity() {
         }
         nav.addView(col, flp(MATCH, WRAP))
         navItems = items
+        navShare = FloatArray(items.size) { -1f }
         indicatorSpring = Spring(0f, 520f, 0.86f, 0.5f) { y -> indicator.translationY = y; tintNav(y) }
         side.addView(nav, lp(MATCH, WRAP).apply { topMargin = Space.S.dp })
         row.addView(side, lp(280.dp, MATCH))
@@ -231,11 +234,16 @@ class SettingsActivity : Activity() {
         bottomEdge.alpha = (below / h).coerceIn(0f, 1f)
     }
 
-    /** The items take the indicator's colours by how much of each it covers (it slides past the ones between). */
+    /**
+     * The items take the indicator's colours by how much of each it covers (it slides past the ones between). Only
+     * the items whose share changed are touched: a new colour filter redraws its icon even when it is the same colour.
+     */
     private fun tintNav(y: Float) {
-        for (item in navItems) {
+        for ((i, item) in navItems.withIndex()) {
             val h = item.height.coerceAtLeast(1)
             val k = (1f - abs(item.top - y) / h).coerceIn(0f, 1f)
+            if (k == navShare[i]) continue
+            navShare[i] = k
             (item.getChildAt(0) as ImageView).setColorFilter(Palette.mix(Palette.text2, Palette.accentFg, k))
             (item.getChildAt(1) as AText).setTextColor(Palette.mix(Palette.text2, Palette.text, k))
         }
