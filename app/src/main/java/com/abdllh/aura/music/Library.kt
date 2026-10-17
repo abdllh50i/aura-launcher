@@ -32,6 +32,17 @@ data class Track(
 ) {
     val uri: Uri get() = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id)
     val folder: String get() = path.substringBeforeLast('/', "")
+    // The list's second line and length, worked out once per song: a fling through a big USB library binds a new row
+    // every few frames, and joining and formatting strings in each bind was garbage the fling paid for.
+    val subtitle: String by lazy(LazyThreadSafetyMode.NONE) { listOf(artist, album).filter { it.isNotBlank() }.joinToString("  ·  ") }
+    val durationText: String by lazy(LazyThreadSafetyMode.NONE) { clockText(durationMs) }
+}
+
+/** A length or a position as the music screen shows it: 3:05, or 1:02:09 past an hour (Latin digits, as the bar). */
+internal fun clockText(ms: Long): String {
+    val s = (ms / 1000).coerceAtLeast(0)
+    return if (s >= 3600) String.format(java.util.Locale.ROOT, "%d:%02d:%02d", s / 3600, (s / 60) % 60, s % 60)
+    else String.format(java.util.Locale.ROOT, "%d:%02d", s / 60, s % 60)
 }
 
 class Group(val key: String, val title: String, val subtitle: String, val tracks: List<Track>)

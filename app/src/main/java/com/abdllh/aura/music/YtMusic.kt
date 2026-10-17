@@ -301,7 +301,11 @@ object YtMusic {
         if (s.playing) return@Runnable
         note("${s.pkg.substringAfterLast('.')} stopped once out of sight")
         val c = app ?: return@Runnable
-        try { android.widget.Toast.makeText(c, com.abdllh.aura.R.string.yt_needs_front, android.widget.Toast.LENGTH_LONG).show() } catch (_: Throwable) { }
+        // (in AMRI's own language: the bare application context speaks the unit's, which may be the other one)
+        try {
+            android.widget.Toast.makeText(com.abdllh.aura.util.LocaleHelper.wrap(c), com.abdllh.aura.R.string.yt_needs_front,
+                android.widget.Toast.LENGTH_LONG).show()
+        } catch (_: Throwable) { }
     }
 
     private var app: Context? = null
