@@ -136,6 +136,8 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
         }
         // (clear of the corner buttons the music screen puts over the lyrics)
         addView(hint, flp(WRAP, WRAP, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { setMargins(72.dp, Space.M.dp, 72.dp, 0) })
+        // the first lines start below the hint once it is measured (out of the layout pass that measured it)
+        hint.addOnLayoutChangeListener { _, _, t, _, b, _, ot, _, ob -> if (b - t != ob - ot) post { pad() } }
         done = c.label(Type.BUTTON, Palette.onColor(Palette.accent), gravity = Gravity.CENTER).apply {
             setText(R.string.lyrics_synced)
             background = doneBg
@@ -168,7 +170,8 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
         val side = (if (big) 56 else 24).dp
         val top = when {
             synced && !needSync -> (h * (if (big) 0.30f else 0.38f)).toInt()
-            needSync -> maxOf((h * 0.08f).toInt(), 64.dp) // (below the hint)
+            // (below the hint, which takes two lines in Arabic: before it is measured, room for one)
+            needSync -> maxOf((h * 0.08f).toInt(), if (hint.height > 0) hint.bottom + Space.S.dp else 64.dp)
             else -> (h * 0.08f).toInt()
         }
         val bottom = (h * 0.5f).toInt()

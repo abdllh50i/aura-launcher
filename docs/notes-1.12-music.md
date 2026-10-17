@@ -97,7 +97,8 @@ screen for the phone's music no longer starts with a system dialog.
   only when the answer takes longer than 600 ms (`lyricsLoading`). Status texts have the lyrics icon above them, and
   "failed" has a Try again button.
 - The whole-screen lyrics: lines 34 sp, a 40 dp fading edge, and lines to be read rather than followed (untimed, or
-  waiting for the owner's sync tap) start near the top instead of under 40 % of empty space; unlit lines are at 0.85
+  waiting for the owner's sync tap) start near the top instead of under 40 % of empty space (below the sync hint,
+  measured: it takes two lines in Arabic and covered the first line); unlit lines are at 0.85
   while none is lit. The hint's icon and the "synced" note take the cover's colour (`accent`).
 
 **Theme and language while open**: Music lives in its own task, so it came back from Settings in the old language and
