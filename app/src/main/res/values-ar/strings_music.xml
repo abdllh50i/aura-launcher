@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- نصوص شاشة الموسيقى المضافة في 1.12 -->
+<resources>
+    <string name="music_back">رجوع</string>
+    <string name="music_loading">أجهّز أغانيك…</string>
+    <string name="lyrics_retry">جرّب مرة ثانية</string>
+    <string name="yt_clear">امسح البحث</string>
+</resources>
