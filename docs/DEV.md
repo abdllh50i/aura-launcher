@@ -98,6 +98,94 @@ every frame of the move). Only transforms and alpha are animated anywhere; a vie
 goes through a layer (`withLayer()`), since text redrawn at a new size on every frame makes this GPU rasterise a
 new set of letters each time.
 
+## Design system (1.12)
+Everything a screen is made of comes from `ui/`: colours (`Palette.kt`), sizes (`Tokens.kt`), shapes and shadows
+(`Shapes.kt`), motion (`Motion.kt`) and the shared components. Until 1.11 only the colours and the curves were tokens;
+the app had grown 27 text sizes, 18 radii, 11 elevations, 10 press depths and ~30 animations with their own numbers,
+and the light theme (daytime, under "auto") had text at 2.4:1. A new view takes its numbers from here; an old literal
+is migrated when its file is touched. Older helpers still work and are marked below.
+
+**Colours** (`Palette`, set by `applyTheme`; a theme change rebuilds the views):
+* Surfaces: `bg` screen, `card` panels and rows, `card2` inputs/chips/round buttons/tiles, `card3` pressed tonal and
+  the slider track, `sheet` sheets and modal cards (white on the light theme, so card2 tiles on it read as tiles),
+  `glass` + `glassStroke` floating cards over the map (`Shapes.glass`), `dock`, `overlay` + `overlayStroke` the
+  system-level overlays over any screen (volume, call, voice, messages: `Shapes.overlay()`), `scrim` behind sheets
+  and modals.
+* Lines: `stroke` hairlines around dark cards, `divider` between parts of one surface (the dock's top edge),
+  `track` the empty part of thin progress bars and meters (translucent, works on any surface), `control` the off
+  track of a switch.
+* Text: `text` primary, `text2` secondary (both ≥ 4.5:1 on every surface of their theme), `text3` tertiary (≥ 4:1;
+  only at 14 sp or more, never the only sign that something can be tapped).
+* Accent: `accent` is a **fill** (primary buttons, the slider's fill, indicators, selection, the route); as a
+  **foreground** (a label, an icon, a highlighted word) use `accentFg`, which `Palette.accent = …` works out for the
+  loaded theme: the accent itself when it reads at 4.5:1 on its tint, else lighter (dark) or deeper (light) just
+  enough. `accentSoft()` / `Shapes.accentSoft(r)` is the selected chip/tile/row tint, with `accentFg` on it.
+* Status: `success`, `warn`, `danger`, themed (the light theme's are deeper: ≥ 4.5:1 on white and white on them), so
+  they serve as text and as fills; no hand-picked "light theme green" literals.
+* Text on any fill: `onColor(fill)` (WCAG: white while it has 3:1 there, else near-black: cyan, green and amber
+  accents get dark labels). `contrast(a, b)` and `luminance(c)` measure; use them to check a new pair.
+
+**Sizes** (`Tokens.kt`):
+* `Type` roles, built with `ctx.label(Type.X, colour, lines, gravity)` (wrapping text gets 1.15 line spacing for
+  Arabic's marks) or applied with `AText.textRole(Type.X)`: `CAPTION` 14 (units, captions), `FOOTNOTE` 15
+  (subtitles, hints), `BODY` 17 (running text, values), `BUTTON` 17 medium, `LABEL` 18 medium (row, list, media
+  titles), `TITLE` 21 medium (card and dialog titles), `HEADLINE` 24 medium (sheet and page headings), `DISPLAY_S` 30
+  light, `DISPLAY_M` 42 medium, `DISPLAY_L` 58 light (the clock; displays use tabular figures). Nothing under 14 sp
+  but the map attribution (`Type.ATTRIBUTION_SP` 11). `label(sizeSp, …)` stays for code not migrated yet.
+* `Radius` (dp): `XS` 8 bars and badges, `S` 12 thumbnails, `M` 16 buttons/inputs/tiles/segmented, `L` 20 cards, rows,
+  menus, `XL` 24 sheets, dialogs, the big panels and covers; pills are `Shapes.pill(fill, stroke)` (`Radius.PILL`),
+  never a radius computed from a height. A radius inside another is the outer one minus the padding between them.
+* `Elev` with `View.lift(level, overMap = false)`: `REST` 2 resting controls, `FLOAT` 6 things floating over content,
+  `OVERLAY` 12 menus, HUDs, banners, messages. On the dark theme `lift` leaves the shadow out unless `overMap`
+  (it cannot be seen on a near-black screen and is still tessellated on every outline change); over the map it is
+  the edge that keeps a panel apart from the roads. `elevate(dp)` is deprecated.
+* `Space` (dp, 4 dp grid): `XXS` 2, `XS` 4, `S` 8, `M` 12, `L` 16, `XL` 24, `XXL` 32; `GUTTER` 16 is the inset of
+  screens, panels and sheets. `Touch.MIN` 56 is the smallest tap target, `Touch.LARGE` 64 a screen's main action; a
+  smaller visual sits inside a 56 dp view (`Shapes.touchInset(drawable, visualDp)`).
+
+**Motion** (`Motion`):
+* Entrances: `Motion.MEDIUM` (280) on `EMPHASIZED`. Exits: `Motion.SHORT` (160, `XSHORT` 100 for a menu or dialog
+  card going after a choice) on `EXIT`, never slower than the entrance. Moves and fades in place: `STANDARD`.
+  `LONG` (420) only for a whole layout moving (`LayoutMove`), `AMBIENT` (600) for backdrops and cover crossfades
+  nobody waits for. No literal durations, no default (accelerate-decelerate) curves: they start slowly, which reads
+  as lag.
+* Helpers that set duration, curve and delay every time (a `ViewPropertyAnimator` keeps the last ones, so a fade-out
+  after an entrance inherited its curve and delay): `View.enter(dx, dy, scaleFrom, delay, dur, end)` (from
+  transparent and offset, in dp; called on a view that is still leaving it turns back from where it is),
+  `View.exit(dx, dy, scaleTo, dur, end)` (remove the view or make it GONE in `end`), `View.fadeTo(alpha, dur, interp,
+  delay, end)`, `riseIn` (= `enter(dy = …)`). For anything else, `View.anim(dur, interp, delay)` returns the
+  animator with all three set. All of them put a view that draws overlapping content (a view group, a view with a
+  background) in a hardware layer while it runs: **fade a view group only through these** (alone, every child is
+  blended separately on every frame). A view that fades a lot and is one flat fill says `hasOverlappingRendering()
+  = false` instead (the sheet and modal scrims).
+* Presses: `pressScale(depth)` with `Motion.PRESS_ICON` 0.92 (round icon buttons up to 64 dp), `PRESS_CONTROL` 0.95
+  (buttons, chips, pills, tiles, segmented choices, dock app tiles; the default) or `PRESS_SURFACE` 0.98 (cards,
+  rows, list cells, the media card). It sinks at once (a stiff spring without overshoot), or after the tap timeout
+  inside anything that scrolls, so a drag that starts on a row scrolls without the row sinking and bouncing back;
+  a view with text sinks through a hardware layer it takes off again at rest. `Shapes.pressable` tints at once and
+  lets go over `SHORT`, with the scale.
+* Springs (`Spring`) for what follows the hand or may be retargeted half way: presses, sheets, the switch thumb, the
+  slider, indicators. Snap them to their target in `onDetachedFromWindow`.
+* Only transforms and alpha are animated, never layout parameters; no blur.
+
+**Components**: `ABtn` (the only button: `kind` PRIMARY / TONAL / GHOST / DANGER / DANGER_FILLED, `size` M 56 dp or
+L 64 dp; replaces hand-built buttons), `Segmented` (sliding indicator; each label takes the indicator's text colour
+by how much the indicator covers it; `item(i)` gives a label its own typeface), `AuraSwitch` (spring thumb that
+stretches while pressed; off track `control`), `AuraSlider` (relative drag: a touch alone changes nothing, a clean
+tap glides to where it landed, a swipe that starts vertically is left to the page or sheet; the fill is the track's
+shape cut by a rectangle, no clip path), `Sheet` (closes with a push and hands touches back at once; drag down
+anywhere on the panel where nothing under the finger can scroll up; `onOpened()` when the open has come to rest),
+`Modal` (`Modal.card(ctx)` + `Modal(ctx, card).show()` / `close(then)`: own scrim, card in with `enter`, out with
+`exit`, Back and a scrim tap close it animated; `Confirm` is built on it), `Menu` (grows from the pressed item),
+`Snack.show(ctx, msg, long, icon, aboveDp)` (the in-app message in place of `Toast`; falls back to a Toast where
+there is no activity to show it, or the activity is about to finish or be recreated: use `Toast` itself there).
+`label()` without a gravity aligns its text to the layout's start edge whatever the script (`AText.alignStart`): a
+Latin name in the Arabic UI stands on the right with the Arabic around it.
+
+**Windows**: `Theme.Aura` has no starting window (`windowDisablePreview`): one drawn from the XML colours is the dark
+theme's, so a light-theme screen opened on near-black; the opening animation now starts on the real first frame.
+The home screen keeps its starting window (cold start only). `colors.xml` holds only what the window theme reads.
+
 ## Aura Maps (`nav/`)
 MapLibre Native **10.3.7** on purpose: it renders with OpenGL ES 2.0, which is what the unit's firmware declares
 (`ro.opengles.version=131072`); 11.x and later need ES 3.0. `MapStyle.kt` builds the style JSON (OpenFreeMap vector tiles and
