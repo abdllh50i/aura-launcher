@@ -131,7 +131,7 @@
             android:label="@string/dock_nav"
             android:launchMode="singleTask"
             android:screenOrientation="landscape"
-            android:theme="@style/Theme.Aura"
+            android:theme="@style/Theme.Aura.Heavy"
             android:windowSoftInputMode="adjustResize|stateHidden">
             <intent-filter>
                 <action android:name="com.abdllh.aura.action.MAPS" />
@@ -153,7 +153,7 @@
             android:label="@string/music_title"
             android:launchMode="singleTask"
             android:screenOrientation="landscape"
-            android:theme="@style/Theme.Aura"
+            android:theme="@style/Theme.Aura.Heavy"
             android:windowSoftInputMode="adjustNothing|stateAlwaysHidden">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

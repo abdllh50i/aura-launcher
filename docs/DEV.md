@@ -188,7 +188,10 @@ Latin name in the Arabic UI stands on the right with the Arabic around it.
 
 **Windows**: `Theme.Aura` has no starting window (`windowDisablePreview`): one drawn from the XML colours is the dark
 theme's, so a light-theme screen opened on near-black; the opening animation now starts on the real first frame.
-The home screen keeps its starting window (cold start only). `colors.xml` holds only what the window theme reads.
+The home screen keeps its starting window (cold start only), and so do Maps and Music (`Theme.Aura.Heavy`): their
+first frame comes late enough on the unit that a tap with nothing after it looked dead, which is worse than a moment
+of near-black on the light theme. Not yet timed on the unit: if Settings proves as slow there, it moves to
+`Theme.Aura.Heavy` too. `colors.xml` holds only what the window theme reads.
 
 ## Aura Maps (`nav/`)
 MapLibre Native **10.3.7** on purpose: it renders with OpenGL ES 2.0, which is what the unit's firmware declares

@@ -37,6 +37,14 @@
         <item name="android:windowDisablePreview">false</item>
     </style>
 
+    <!-- Maps and Music keep their starting window: their first frame comes after heavy work (MapLibre and its GL
+         surface; well over a thousand lines of views), long enough on the unit's SoC that, with nothing on screen
+         after the tap, it looked dead and was tapped again. Near-black for a moment on the light theme is the
+         lesser fault there. Settings, quicker to its first frame, stays without one. -->
+    <style name="Theme.Aura.Heavy" parent="Theme.Aura">
+        <item name="android:windowDisablePreview">false</item>
+    </style>
+
     <!-- BootHome: the black the boot animation ends on, until the home screen can start; nothing moves. -->
     <style name="Theme.Aura.Boot" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@android:color/black</item>
