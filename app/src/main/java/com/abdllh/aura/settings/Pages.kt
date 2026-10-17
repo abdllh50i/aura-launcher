@@ -439,13 +439,36 @@ class VehiclePage(private val act: SettingsActivity) : Page(R.string.set_vehicle
             }
             ctx.settingRow(R.drawable.ic_info, ctx.getString(R.string.set_gear_box), ctx.getString(R.string.set_gear_box_sub, box, sent))
         }
+        // the box's parser and version: one photo of this page tells whether a gear can ever come from the CAN box
+        val manager = com.abdllh.aura.system.CanGear.manager(ctx)
+        val parser = manager?.let { m ->
+            val can = when (com.abdllh.aura.system.CanGear.gearPossible(m)) {
+                true -> ctx.getString(R.string.set_gear_parser_maybe)
+                false -> ctx.getString(R.string.set_gear_parser_never)
+                null -> null
+            }
+            val version = com.abdllh.aura.system.CanGear.boxVersion(ctx)
+            ctx.settingRow(R.drawable.ic_cpu, ctx.getString(R.string.set_gear_parser),
+                listOfNotNull("⁨$m⁩", version?.let { "⁨$it⁩" }, can).joinToString("  ·  "))
+        }
+        // the handbrake wire, as the MCU reports it, and whether it is believed for P
+        val hb = com.abdllh.aura.system.Gear.handbrakeState
+        val hbState = ctx.getString(when (hb) { null -> R.string.set_gear_hb_never; true -> R.string.set_gear_hb_pulled; false -> R.string.set_gear_hb_released })
+        val hbUse = when {
+            hb == null -> null
+            com.abdllh.aura.system.Gear.handbrakeTrusted -> ctx.getString(R.string.set_gear_hb_used)
+            com.abdllh.aura.system.Gear.handbrakeFake -> ctx.getString(R.string.set_gear_hb_fake)
+            else -> ctx.getString(R.string.set_gear_hb_one_way)
+        }
         col.addRow(ctx.group(
             ctx.settingRow(R.drawable.ic_car, ctx.getString(R.string.set_gear_row), ctx.getString(when {
                 com.abdllh.aura.system.Gear.canReports -> R.string.set_gear_can
                 com.abdllh.aura.system.CanGear.supported(ctx) -> R.string.set_gear_can_waiting
                 else -> R.string.set_gear_basic
             })),
-            box
+            box,
+            parser,
+            ctx.settingRow(R.drawable.ic_info, ctx.getString(R.string.set_gear_hb), listOfNotNull(hbState, hbUse).joinToString("  ·  "))
         ))
         return col
     }

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="set_gear_parser">CAN box protocol</string>
+    <string name="set_gear_parser_maybe">can pass the gear on, if the box sends it</string>
+    <string name="set_gear_parser_never">never passes the gear on for this car</string>
+    <string name="set_gear_hb">Handbrake wire</string>
+    <string name="set_gear_hb_never">never reported</string>
+    <string name="set_gear_hb_pulled">pulled</string>
+    <string name="set_gear_hb_released">released</string>
+    <string name="set_gear_hb_used">used for P</string>
+    <string name="set_gear_hb_fake">said pulled while driving: not used</string>
+    <string name="set_gear_hb_one_way">seen one way only so far: not used yet</string>
+</resources>

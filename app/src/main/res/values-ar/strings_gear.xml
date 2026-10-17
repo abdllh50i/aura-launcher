@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="set_gear_parser">بروتوكول صندوق CAN</string>
+    <string name="set_gear_parser_maybe">يقدر يعطي القير لو الصندوق يرسله</string>
+    <string name="set_gear_parser_never">ما يعطي القير أبد لهالسيارة</string>
+    <string name="set_gear_hb">سلك الهاندبريك</string>
+    <string name="set_gear_hb_never">ما وصل منه شي</string>
+    <string name="set_gear_hb_pulled">مرفوع</string>
+    <string name="set_gear_hb_released">منزّل</string>
+    <string name="set_gear_hb_used">يُستخدم لـ P</string>
+    <string name="set_gear_hb_fake">قال مرفوع والسيارة ماشية: ما يُستخدم</string>
+    <string name="set_gear_hb_one_way">ما انشاف إلا بوضع واحد للحين: ما يُستخدم بعد</string>
+</resources>

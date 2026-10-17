@@ -31,8 +31,11 @@ class AuraNotificationListener : NotificationListenerService() {
 
     override fun onListenerConnected() {
         Log.i(TAG, "connected")
-        // what other apps posted while AMRI was not listening goes too
-        if (Notices.hideAndroid && !off) try { activeNotifications?.forEach { if (hideable(it)) cancel(it) } } catch (t: Throwable) { Log.w(TAG, "clear: $t") }
+        // what other apps posted while AMRI was not listening goes too — a moment later: the listener is bound while
+        // AMRI starts, and the start-up has the main thread then
+        main.postDelayed({
+            if (Notices.hideAndroid && !off) try { activeNotifications?.forEach { if (hideable(it)) cancel(it) } } catch (t: Throwable) { Log.w(TAG, "clear: $t") }
+        }, 2000L)
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {

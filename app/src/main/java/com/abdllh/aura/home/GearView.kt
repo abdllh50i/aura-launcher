@@ -20,8 +20,8 @@ import kotlin.math.abs
 
 /**
  * P R N D, like the gear lever: a capsule whose lit circle slides to the current gear (R in the warning colour, the
- * others in the accent) and fades out while the gear is unknown. A D only assumed (the car stopped after driving
- * forward, [Gear.Source.HELD]) gets a ring instead of a filled circle. Always left to right, also in Arabic (the
+ * others in the accent) and fades out while the gear is unknown. A gear only assumed (D held after the car stopped,
+ * [Gear.Source.HELD]; P guessed, [Gear.Source.GUESS]) gets a ring instead of a filled circle. Always left to right, also in Arabic (the
  * letters are the lever's).
  * Each letter takes its lit colour by how much of the circle is over it, frame by frame with the circle: set at once
  * (until 1.11), the new letter went white on the light capsule before the circle got there. All four letters keep one
@@ -74,7 +74,7 @@ class GearView(ctx: Context) : LinearLayout(ctx) {
 
     private fun show(animate: Boolean) {
         val g = Gear.current
-        val sure = Gear.source != Gear.Source.HELD
+        val sure = Gear.sure
         val laidOut = letters[0].width > 0
         color = if (g == Gear.Pos.R) Palette.warn else Palette.accent
         ring = g != null && !sure

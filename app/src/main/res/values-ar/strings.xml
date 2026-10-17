@@ -108,8 +108,8 @@
     <string name="set_gear">القير</string>
     <string name="set_gear_row">P R N D في الشاشة الرئيسية</string>
     <string name="set_gear_can">من السيارة (صندوق CAN يرسل وضع القير)</string>
-    <string name="set_gear_can_waiting">R من سلك الريوس، وD وقت المشي ولين توقف بعده. صندوق CAN في السيارة ما أرسل القير للحين: P وN تظهر أول ما يرسله</string>
-    <string name="set_gear_basic">R من سلك الريوس، وD وقت المشي ولين توقف بعده. P وN تحتاج وضع القير من صندوق CAN في السيارة، وتطبيق CAN في هالشاشة ما يعطيه</string>
+    <string name="set_gear_can_waiting">R من سلك الريوس، وD وقت المشي ولين توقف بعده، وP من الهاندبريك إذا الشاشة تقراه، وإلا تخمين (يطلع كحلقة) أول ما تشغّل السيارة وبعد وقفة طويلة. صندوق CAN في السيارة ما أرسل القير للحين: كل الأوضاع تظهر أول ما يرسله</string>
+    <string name="set_gear_basic">R من سلك الريوس، وD وقت المشي ولين توقف بعده، وP من الهاندبريك إذا الشاشة تقراه، وإلا تخمين (يطلع كحلقة) أول ما تشغّل السيارة وبعد وقفة طويلة. القير الحقيقي يحتاج صندوق CAN في السيارة، وتطبيق CAN في هالشاشة ما يعطيه</string>
     <string name="set_gear_box">صندوق CAN</string>
     <string name="set_gear_box_sub">%1$s · يرسل القير: %2$s</string>
     <string name="set_gear_box_yes">نعم (%1$d)</string>

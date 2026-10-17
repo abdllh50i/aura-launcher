@@ -1204,6 +1204,23 @@ The owner asked for two things: none of Android's notifications on the screen, a
   CanConfig as JSON: `canProviderName`, `carBandName`, `carTypeName`, `carYearName`, `canManagerClassName`); Settings →
   Vehicle & system shows the box, the car and whether a gear came. Without the CAN gear: D while driving (GPS) and held
   at a stop after it for up to 3 minutes (drawn lighter) unless R. `system/CanGear.kt`, `system/Gear.kt`.
+  **1.13, after the owner said the gear still showed only R and D:** read from v.26 itself (`out/gear-research/`, the
+  copy extracted from `carconfig.img`; the dumps under `re/music/` are v.24), the only writers of `CarInfo.mGear` for a
+  Changan are `RaiseCommonCanProtocalUtil.responseBasicInfo` — the generic Raise "basic info" frame, command 0x7D
+  subtype 0x06, gear at payload +2 — and other makes' managers. The Changan managers' own parsers (oudi, Changan
+  hiworld, binary, xinbas, daojun, xfeiyang, zhiqixin) never set it; the Raise Changan managers' own frames (0x20-0x54,
+  0xFF) carry no gear either. So a gear comes only from a Raise box whose firmware sends 0x7D/06. AMRI's frame offsets
+  (byte 74, parcel value 104) were confirmed. Raw box frames never leave the CAN app (`addCallBack4Outerface`'s list is
+  never broadcast), there is no gear in any Settings key and the MCU has no gear data type. What the MCU does have:
+  the handbrake wire (frame type 4 → `Settings.System mcu_hand_break`, 1 = pulled, and broadcast
+  `com.nwd.action.ACTION_HAND_BREAK_STATE_CHANGE`, `extra_hand_break_state`). `Gear` uses it for P when the car stands
+  — believed only after it was seen both pulled and released, and never again after it said "pulled" for 15 s while
+  driving over 20 km/h (an unwired input or the factory switch that lets video play reports "pulled" for ever; kept in
+  Prefs `handbrakeSeen` / `handbrakeFake`). Otherwise P is a guess drawn as a ring (`Source.GUESS`): when the unit
+  comes on (screen on, process start) until the car moves, when the held D runs out, and a minute after reversing.
+  Vehicle & system now also shows the CAN app's parser (`canManagerClassName`, short: "changan.raise"), whether that
+  parser can ever pass a gear on, the box's own version (`can_box_version` / `can_version_info`) and the handbrake
+  wire's state and use. Emulator: `am broadcast -a com.abdllh.aura.debug.GEAR --ei handbrake 0|1 --ef kmh 30`.
 * What is in front: the framework writes every activity that resumes to `Settings.System activity_starting` as
   `package,class` (`NwdPackageChecker.checkResumedPackageName`); KernelService observes it (`SourceMgr$6`: `key_top_app`
   / `key_top_cls`, `ACTION_START_NWD_ACTIVITY` / `ACTION_START_ACTIVITY` with `extra_package_name` /

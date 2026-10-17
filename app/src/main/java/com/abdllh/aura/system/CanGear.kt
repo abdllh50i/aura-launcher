@@ -71,6 +71,43 @@ object CanGear {
         null
     }
 
+    /**
+     * The CAN app's parser for this car, short ("changan.raise"), from its configuration's canManagerClassName, or
+     * null. Which one it is says whether a gear can come at all (see [gearPossible]).
+     */
+    fun manager(c: Context): String? = try {
+        val s = android.provider.Settings.System.getString(c.contentResolver, "can_config_app_cartype_json")
+        val m = if (s.isNullOrBlank()) "" else org.json.JSONObject(s).optString("canManagerClassName").trim()
+        if (m.isEmpty() || m == "null") null else {
+            // com.nwd.can.setting.carcase.changan.raise.SomeManager -> changan.raise
+            val parts = m.substringAfter("carcase.", m).split('.').filter { it.isNotEmpty() }
+            parts.filter { it.first().isLowerCase() }.joinToString(".").ifEmpty { parts.joinToString(".") }
+        }
+    } catch (_: Throwable) {
+        null
+    }
+
+    /**
+     * Can this parser ever pass a gear on? In CAN app v.26 the Changan ones fill it only through the generic Raise
+     * "basic info" frame (a Raise box that sends 0x7D subtype 6): never for the oudi, hiworld, binary, xinbas, daojun,
+     * xfeiyang or zhiqixin ones. Null: not known (another make, or no configuration).
+     */
+    fun gearPossible(manager: String?): Boolean? {
+        val m = manager ?: return null
+        if (!m.startsWith("changan")) return null
+        if (m.contains("raise")) return true
+        return if (listOf("oudi", "hiworld", "binary", "xinbas", "daojun", "xfeiyang", "zhiqixin").any { m.contains(it) }) false else null
+    }
+
+    /** What the CAN box says about itself (its version), or null. */
+    fun boxVersion(c: Context): String? = try {
+        listOf("can_box_version", "can_version_info").firstNotNullOfOrNull { k ->
+            android.provider.Settings.System.getString(c.contentResolver, k)?.trim()?.takeIf { it.isNotEmpty() && it != "null" }
+        }
+    } catch (_: Throwable) {
+        null
+    }
+
     /** Is a CAN app with a gear in its car info installed (v.26 or later)? */
     fun supported(c: Context): Boolean = try {
         val v = c.packageManager.getPackageInfo(PKG, 0).versionName.orEmpty() // "v.26.04.09A_..."
