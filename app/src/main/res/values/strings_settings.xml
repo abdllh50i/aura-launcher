@@ -2,4 +2,6 @@
 <resources>
     <!-- Settings › Update: under the first lines of a release's notes -->
     <string name="upd_notes_more">Show all</string>
+    <!-- Settings › Voice assistant: a command's words as the driver says them (each language its own quotes) -->
+    <string name="voice_cmd_quoted">“%1$s”</string>
 </resources>

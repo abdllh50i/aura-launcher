@@ -37,7 +37,6 @@
     <string name="drawer_title">Apps</string>
     <string name="home_car">Your car — drag to turn it</string>
     <string name="ctl_title">Controls</string>
-    <string name="ctl_theme">Appearance</string>
     <string name="ctl_wifi">Wi-Fi</string>
     <string name="ctl_bluetooth">Bluetooth</string>
     <string name="ctl_car">Car</string>
@@ -81,7 +80,7 @@
     <string name="maps_searching">Searching…</string>
     <string name="maps_offline">No internet connection</string>
     <string name="maps_no_results">No places found</string>
-    <string name="maps_set_place_hint">Search a place, then tap “Set as Home” or “Set as Work”</string>
+    <string name="maps_set_place_hint">Search a place, then tap “Save”</string>
     <string name="maps_recents">Recent</string>
     <string name="maps_recenter">Resume</string>
     <string name="maps_kmh">km/h</string>
@@ -170,15 +169,15 @@
     <string name="lyrics_failed">Couldn\'t get the lyrics (internet?). Trying again shortly</string>
     <string name="lyrics_instrumental">Instrumental</string>
     <string name="lyrics_nothing">Play a song to see its lyrics here</string>
-    <string name="lyrics_tap_sync">Tap the line being sung now to sync the lyrics</string>
+    <string name="lyrics_tap_sync">Tap the line being sung to sync</string>
     <string name="lyrics_synced">Lyrics synced ✓</string>
     <string name="lyrics_bigger">Lyrics on the whole screen</string>
     <string name="lyrics_smaller">Back to the song</string>
     <string name="maps_dropped_pin">Dropped pin</string>
     <string name="maps_pick_home_short">Long-press your home on the map</string>
     <string name="maps_pick_work_short">Long-press your work on the map</string>
-    <string name="maps_pick_home">Long-press your home on the map (or search for it), then tap Set as Home</string>
-    <string name="maps_pick_work">Long-press your work on the map (or search for it), then tap Set as Work</string>
+    <string name="maps_pick_home">Long-press your home on the map (or search for it), then tap Save</string>
+    <string name="maps_pick_work">Long-press your work on the map (or search for it), then tap Save</string>
     <string name="dock_pin">Add to the dock</string>
     <string name="dock_unpin">Remove from the dock</string>
     <string name="dock_pinned">%1$s is in the dock now</string>
@@ -251,8 +250,7 @@
     <string name="set_nav_auto">Automatic</string>
     <string name="set_nav_auto_sub">First installed navigation app</string>
     <string name="set_places">Saved places</string>
-    <string name="set_places_hint">Choose them on the map: long-press the spot (or search for it), then tap Home or Work. The home screen\'s Home and Work buttons drive there.</string>
-    <string name="set_address_hint">Street, city</string>
+    <string name="set_places_hint">Choose them on the map: long-press the spot (or search for it), then tap Save and choose Home or Work. The home screen\'s Home and Work buttons drive there.</string>
     <string name="v_car_settings">Car settings</string>
     <string name="v_mycar">My car</string>
     <string name="v_wheel">Steering wheel</string>
@@ -455,7 +453,7 @@
     <string name="yt_needs_front">YouTube Music stopped when AMRI Music came back: playing without the app in front needs a Premium account.</string>
     <string name="about_cover">Last Bluetooth song looked up</string>
     <string name="about_yt">Last song handed to YouTube Music</string>
-    <string name="yt_idle">Choose a song from YouTube Music</string>
+    <string name="yt_idle">Choose a song</string>
 
     <!-- "a camera here" on the maps -->
     <string name="mark_camera">Camera here</string>

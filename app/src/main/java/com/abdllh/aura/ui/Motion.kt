@@ -354,6 +354,28 @@ class LayoutMove(
     }
 }
 
+/**
+ * Runs [block] once the window this view is in (or will be in) has drawn its next frame, right after that frame (one
+ * is asked for). An
+ * entrance started from here keeps its delays and its first steps: on a cold start the first frame took up to 650 ms
+ * on the main thread, and animations started before it had run their whole course by the time anything showed.
+ */
+fun View.afterNextDraw(block: () -> Unit) {
+    viewTreeObserver.addOnDrawListener(object : ViewTreeObserver.OnDrawListener {
+        private var done = false
+        override fun onDraw() {
+            if (done) return
+            done = true
+            // (a draw listener cannot be removed while the draw is going on; the frame is over when this runs)
+            post {
+                viewTreeObserver.removeOnDrawListener(this)
+                block()
+            }
+        }
+    })
+    invalidate() // (a frame there will be, also on a screen where nothing else moves)
+}
+
 /** Fades and slides a view in (after [delayMs]): for things that appear in place of others. */
 fun View.riseIn(dyDp: Float = 14f, delayMs: Long = 0L, durationMs: Long = Motion.MEDIUM) =
     enter(dy = dyDp, delay = delayMs, dur = durationMs)

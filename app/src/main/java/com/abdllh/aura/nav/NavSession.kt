@@ -11,6 +11,7 @@ import android.os.SystemClock
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import com.abdllh.aura.R
+import com.abdllh.aura.util.LocaleHelper
 import com.abdllh.aura.util.Prefs
 import java.util.Locale
 import java.util.concurrent.CopyOnWriteArrayList
@@ -257,8 +258,10 @@ object NavSession {
         state = State.ARRIVED
         arrivedAt = SystemClock.elapsedRealtime()
         progress = progress?.let { Progress(it.position, it.bearing, it.along, it.next, 0.0, 0.0, 0.0, it.speedKmh, false) }
-        // by the place's name, unless it is only a pin's
-        val name = destination?.name?.takeIf { it != app?.getString(R.string.maps_dropped_pin) }
+        // by the place's name, unless it is only a pin's (named in AMRI's language, which the bare application
+        // context does not follow: it has the unit's)
+        val pin = app?.let { LocaleHelper.wrap(it).getString(R.string.maps_dropped_pin) }
+        val name = destination?.name?.takeIf { it != pin }
         say(Instructions.arrived(name, ttsArabic))
         changed()
         NavSim.stop()

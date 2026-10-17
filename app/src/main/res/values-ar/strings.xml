@@ -37,7 +37,6 @@
     <string name="drawer_title">التطبيقات</string>
     <string name="home_car">سيارتك — اسحب لتدويرها</string>
     <string name="ctl_title">التحكم</string>
-    <string name="ctl_theme">المظهر</string>
     <string name="ctl_wifi">واي فاي</string>
     <string name="ctl_bluetooth">بلوتوث</string>
     <string name="ctl_car">السيارة</string>
@@ -81,7 +80,7 @@
     <string name="maps_searching">جارٍ البحث…</string>
     <string name="maps_offline">لا يوجد اتصال بالإنترنت</string>
     <string name="maps_no_results">لم يتم العثور على أماكن</string>
-    <string name="maps_set_place_hint">ابحث عن مكان ثم اضغط «حفظ كمنزل» أو «حفظ كعمل»</string>
+    <string name="maps_set_place_hint">ابحث عن مكان ثم اضغط «حفظ»</string>
     <string name="maps_recents">الأخيرة</string>
     <string name="maps_recenter">متابعة الملاحة</string>
     <string name="maps_kmh">كم/س</string>
@@ -170,15 +169,15 @@
     <string name="lyrics_failed">ما قدرت أجيب الكلمات (الإنترنت؟). بحاول مرة ثانية</string>
     <string name="lyrics_instrumental">موسيقى بدون كلمات</string>
     <string name="lyrics_nothing">شغّل أغنية وتطلع كلماتها هنا</string>
-    <string name="lyrics_tap_sync">اضغط على السطر اللي ينغنى الحين عشان تمشي الكلمات معه</string>
+    <string name="lyrics_tap_sync">اضغط السطر اللي ينغنى للمزامنة</string>
     <string name="lyrics_synced">تمت المزامنة ✓</string>
     <string name="lyrics_bigger">الكلمات على الشاشة كاملة</string>
     <string name="lyrics_smaller">رجوع للأغنية</string>
     <string name="maps_dropped_pin">الموقع المحدد</string>
     <string name="maps_pick_home_short">اضغط مطوّل على مكان البيت</string>
     <string name="maps_pick_work_short">اضغط مطوّل على مكان العمل</string>
-    <string name="maps_pick_home">اضغط مطوّل على مكان البيت في الخريطة (أو ابحث عنه)، ثم اضغط «حفظ كمنزل»</string>
-    <string name="maps_pick_work">اضغط مطوّل على مكان العمل في الخريطة (أو ابحث عنه)، ثم اضغط «حفظ كعمل»</string>
+    <string name="maps_pick_home">اضغط مطوّل على مكان البيت في الخريطة (أو ابحث عنه)، ثم اضغط «حفظ»</string>
+    <string name="maps_pick_work">اضغط مطوّل على مكان العمل في الخريطة (أو ابحث عنه)، ثم اضغط «حفظ»</string>
     <string name="dock_pin">أضف للشريط</string>
     <string name="dock_unpin">شيله من الشريط</string>
     <string name="dock_pinned">صار %1$s في الشريط</string>
@@ -251,8 +250,7 @@
     <string name="set_nav_auto">تلقائي</string>
     <string name="set_nav_auto_sub">أول تطبيق ملاحة مثبّت</string>
     <string name="set_places">الأماكن المحفوظة</string>
-    <string name="set_places_hint">حدّدها على الخريطة: اضغط مطوّل على المكان (أو ابحث عنه) ثم اضغط «المنزل» أو «العمل». زرّا المنزل والعمل في الشاشة الرئيسية يوصلونك لها.</string>
-    <string name="set_address_hint">الشارع، المدينة</string>
+    <string name="set_places_hint">حدّدها على الخريطة: اضغط مطوّل على المكان (أو ابحث عنه) ثم اضغط «حفظ» واختر المنزل أو العمل. زرّا المنزل والعمل في الشاشة الرئيسية يوصلونك لها.</string>
     <string name="v_car_settings">إعدادات السيارة</string>
     <string name="v_mycar">سيارتي</string>
     <string name="v_wheel">مفاتيح المقود</string>
@@ -455,7 +453,7 @@
     <string name="yt_needs_front">يوتيوب ميوزك وقف لما رجعت لموسيقى عمري: التشغيل بدون ما يكون التطبيق قدامك يحتاج اشتراك Premium.</string>
     <string name="about_cover">آخر بحث عن صورة ومدة أغنية بلوتوث</string>
     <string name="about_yt">آخر أغنية انسلّمت ليوتيوب ميوزك</string>
-    <string name="yt_idle">اختر أغنية من يوتيوب ميوزك</string>
+    <string name="yt_idle">اختر أغنية</string>
 
     <!-- "a camera here" on the maps -->
     <string name="mark_camera">ساهر هنا</string>

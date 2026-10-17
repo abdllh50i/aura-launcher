@@ -31,7 +31,8 @@
         <item name="android:taskCloseExitAnimation">@anim/aura_close_exit</item>
     </style>
 
-    <!-- The home screen keeps its starting window: it is only seen at a cold start, where something must show at once. -->
+    <!-- The home screen keeps its starting window: it is only seen at a cold start, where something must show at once.
+         On the light theme the screen's first frame shows the same near-black and fades it off (HomeActivity.coverStart). -->
     <style name="Theme.Aura.Home" parent="Theme.Aura">
         <item name="android:windowShowWallpaper">false</item>
         <item name="android:windowDisablePreview">false</item>

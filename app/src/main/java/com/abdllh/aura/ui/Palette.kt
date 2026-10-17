@@ -123,7 +123,8 @@ object Palette {
             divider = 0x14000000
             track = 0x1A000000
             control = 0xFFC5CBD3.toInt()
-            overlay = 0xFAFFFFFF.toInt()
+            // (solid: at 98 % the dark words of the screen under a call card still showed through its white)
+            overlay = 0xFFFFFFFF.toInt()
             overlayStroke = 0x14000000
             success = 0xFF17804A.toInt()
             warn = 0xFFA86200.toInt()

@@ -34,6 +34,8 @@ object Places {
     private val io = Executors.newSingleThreadExecutor()
     private val offlineIo = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
+    /** Search results with the same name closer together than this are one place (metres). */
+    private const val SAME_PLACE_M = 100.0
     private val generation = AtomicInteger()
     const val USER_AGENT = "Aura/${BuildConfig.VERSION_NAME} (car head unit; github.com/abdllh50i/aura-launcher)"
 
@@ -112,8 +114,14 @@ object Places {
      */
     private fun rank(list: List<Place>, wide: List<Place>, query: String, latin: String?, near: LatLon?): List<Place> {
         fun key(p: Place) = "${TextMatch.norm(p.name)}|${"%.3f".format(java.util.Locale.ROOT, p.pos.lat)}|${"%.3f".format(java.util.Locale.ROOT, p.pos.lon)}"
-        val seen = HashSet<String>()
-        val unique = (list + wide).filter { seen.add(key(it)) }
+        // One name once within [SAME_PLACE_M]: to the driver the same name a few dozen metres apart is one place (the
+        // map data often has a shop twice), and listing it again read as a bug. Branches further apart stay, told
+        // apart by their street and distance.
+        val unique = ArrayList<Place>()
+        for (p in list + wide) {
+            val n = TextMatch.norm(p.name)
+            if (unique.none { TextMatch.norm(it.name) == n && Geo.distance(it.pos, p.pos) < SAME_PLACE_M }) unique.add(p)
+        }
         fun bucket(p: Place): Int {
             val s = maxOf(TextMatch.score(query, p.name), latin?.let { TextMatch.score(it, p.name) } ?: 0.0)
             // a name that holds the whole query answers it as well as one that is only the query: "Al Dawa Pharmacy"

@@ -177,12 +177,29 @@ object Router {
         for ((i, s) in steps.withIndex()) {
             val prev = steps.getOrNull(i - 1)
             val next = steps.getOrNull(i + 1)
-            val roundabout = Instructions.turn(s) == Turn.ROUNDABOUT
+            val roundabout = Instructions.entersRoundabout(s)
             val straight = s.modifier.isEmpty() || s.modifier == "straight"
             // (a straight step that still has lanes to keep to is the lanes' prompt: it stays)
             val laneHint = s.lanes.size >= 2 && s.lanes.any { !it.valid }
             s.silent = (s.type in QUIET_TYPES && straight && !laneHint) ||
-                (s.type.startsWith("exit ") && prev != null && Instructions.turn(prev) == Turn.ROUNDABOUT)
+                (s.type.startsWith("exit ") && prev != null && Instructions.entersRoundabout(prev))
+            if (s.type.startsWith("exit ") && !s.silent) {
+                // Leaving a roundabout no step brought the car into (the trip starts on it): how far the car turns
+                // from where it is (or 150 m back) onto the road out, the sign's ring then shows that way out. Added
+                // up along the line in small steps: where the trip starts on the ring, the line's first metres
+                // already curve, and one bearing there against the road out gave a way out on the wrong side.
+                val from = maxOf(prev?.at ?: 0.0, s.at - 150)
+                var heading = line.at(from).second
+                var turned = 0.0
+                var d = from + 5
+                while (d <= minOf(s.at + 30, line.length)) {
+                    val h = line.at(d).second
+                    turned += Geo.angleDiff(heading, h)
+                    heading = h
+                    d += 5
+                }
+                s.angle = turned
+            }
             if (!roundabout) continue
             // where the car leaves it: OSRM says so with an exit step; else where the way round has turned left most
             val exitAt = if (next != null && next.type.startsWith("exit ")) next.at else ringEnd(line, s.at, next?.at ?: line.length)

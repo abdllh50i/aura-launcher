@@ -139,6 +139,8 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
     private var turnAt = 0.0
     private var turnAfter = TURN_AFTER_M
     private var turnScale = 1.0
+    private var turnFrom = 0.0  // where along its line the arrow as drawn starts, and ends
+    private var turnEnd = 0.0
     private var dest: LatLon? = null
     private var routeFaded = false
     private var extrasVersion = -1
@@ -515,6 +517,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         routePts = null
         onRoute = false
         routeSeg = 0
+        trimAlong = 0.0 // (the old line's: the turn's arrow is cut there until this one is trimmed)
         carView.setNav(true)
         syncRerouting()
         pushRoute()
@@ -555,6 +558,8 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
             pushLine(MapStyle.SRC_ROUTE, if (farFrom < line.length - 1) line.tail(farFrom) else null)
         }
         pushLine(MapStyle.SRC_ROUTE_NEAR, line.slice(along, minOf(farFrom + 2.0, line.length)))
+        // the turn's arrow, cut at the car while the car is on it ([pushTurn])
+        if (turnLine === line && along > turnFrom + TURN_CUT_STEP_M && along < turnEnd) pushTurn()
     }
 
     fun setDestination(p: LatLon?) {
@@ -602,7 +607,14 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         turnScale = k
         val json = if (line == null || line.points.size < 2) EMPTY else buildString {
             val end = turnAt + maxOf(turnAfter, TURN_AFTER_M * k)
-            val pts = line.slice(turnAt - TURN_BEFORE_M * k, end)
+            // Never from behind the car: on the driven route it starts where the car is once the car is on it (it
+            // ran back through the car to a tail behind it, the way into a roundabout drawn as part of the way out),
+            // and [trimRoute] moves its start along with the car.
+            var from = turnAt - TURN_BEFORE_M * k
+            if (line === routeLine) from = maxOf(from, trimAlong).coerceAtMost(end - 1.0)
+            turnFrom = from
+            turnEnd = end
+            val pts = line.slice(from, end)
             val bearing = line.at(end).second
             // the head: a triangle in metres on the ground, so it tilts and turns with the map like the line it ends
             val tip = pts.last()
@@ -1012,6 +1024,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         // the arrow of the next turn, on the ground at street zoom (longer further out: [turnK])
         private const val TURN_ZOOM = 16.8
         private const val TURN_BEFORE_M = 45.0
+        private const val TURN_CUT_STEP_M = 3.0 // the arrow's start follows the car in steps this long (under the car)
         /** How far past the turn its arrow runs at street zoom, unless [setTurn] asks for more (a roundabout). */
         const val TURN_AFTER_M = 32.0
 

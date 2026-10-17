@@ -29,7 +29,9 @@ import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Snack
+import com.abdllh.aura.ui.Spring
 import com.abdllh.aura.ui.Theme
+import com.abdllh.aura.ui.afterNextDraw
 import com.abdllh.aura.ui.enter
 import com.abdllh.aura.ui.fadeTo
 import com.abdllh.aura.ui.lp
@@ -47,6 +49,8 @@ class HomeActivity : Activity(), HomeHost {
     private lateinit var controls: ControlsSheet
     private lateinit var drawer: AppDrawer
     private var introPlayed = false
+    /** Over the screen until its entrance starts, after a cold start on the light theme ([coverStart]). */
+    private var startCover: View? = null
     private var builtLang = ""
     private var builtAccent = 0
     private var builtDark = true
@@ -111,6 +115,10 @@ class HomeActivity : Activity(), HomeHost {
         Theme.window(this, Palette.dock)
         CarFrames.warmUp(this, resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL)
         setContentView(buildUi())
+        if (!processStarted) {
+            processStarted = true
+            if (!Palette.dark) coverStart()
+        }
         mapPanel.onCreate(savedInstanceState)
         MediaMonitor.start(this)
         NwdBridge.startStockServicesOncePerBoot(this)
@@ -127,6 +135,21 @@ class HomeActivity : Activity(), HomeHost {
             Prefs.safeModeNotice = false
             toast(getString(R.string.safe_mode_notice))
         }
+    }
+
+    /**
+     * The light theme's way out of the starting window. That window can only be drawn in the XML colours, the dark
+     * theme's, so every boot on the light theme (all day under "auto") opened on near-black and then cut to the white
+     * screen at once. The first frame now shows the same near-black over the built screen, and it fades off as the
+     * entrance starts ([animateIn]): a plain fill on top, which costs one translucent rectangle per frame while it
+     * fades (fading the whole screen in instead would draw it all through a layer).
+     */
+    private fun coverStart() {
+        // (one flat colour: faded as it is, not through an offscreen copy of the whole screen)
+        val c = object : View(this) { override fun hasOverlappingRendering() = false }
+        c.setBackgroundColor(getColor(R.color.bg))
+        root?.addView(c, MATCH, MATCH)
+        startCover = c
     }
 
     // (no backdrop view: the window's background is the theme's, and a view painting the same colour over the whole
@@ -220,7 +243,6 @@ class HomeActivity : Activity(), HomeHost {
         if (!introPlayed) {
             introPlayed = true
             animateIn()
-            root?.postDelayed({ if (!isDestroyed) mapPanel.startLive() }, LIVE_MAP_AFTER_MS)
             root?.postDelayed({ if (!isDestroyed) drawer.prewarm() }, PREWARM_AFTER_MS)
             root?.postDelayed({ if (!isFinishing) askLocationOnce() }, 2600)
         }
@@ -239,28 +261,50 @@ class HomeActivity : Activity(), HomeHost {
      * other while the car turns towards the screen. Each card fades through its own layer; the map panel only moves
      * (it holds the live map's surface, which a fade would draw through a layer at every frame) and the dock's tiles
      * only rise with the dock.
+     * Everything is put where it starts from at once, so the first frame shows that, and it all starts moving after
+     * that frame: on a cold start the first frame held the main thread for up to 650 ms, and an entrance started
+     * before it was over by the time it showed (the cards appeared all at once, with no stagger).
      */
     private fun animateIn() {
         carPanel.stage.playIntro(100)
-        // (a part hidden for now, the row while navigating, stays hidden)
-        fun rise(v: View, dy: Float, delay: Long) { if (v.visibility == View.VISIBLE) v.enter(dy = dy, delay = delay) }
-        rise(carPanel.header, -8f, 0L)
-
-        mapPanel.translationY = 16f.dp
-        mapPanel.animate().translationY(0f).setStartDelay(0L).setDuration(Motion.LONG).setInterpolator(Motion.EMPHASIZED).start()
-        // (each card on its own, so its own shadow stays outside the layer it fades in)
-        if (mapPanel.places.visibility == View.VISIBLE) {
-            for (i in 0 until mapPanel.places.childCount) rise(mapPanel.places.getChildAt(i), -8f, 80L + 30L * i)
+        // (a part hidden for now, a place button while navigating, stays hidden)
+        val cards = ArrayList<Triple<View, Float, Long>>()
+        fun rise(v: View, dy: Float, delay: Long) {
+            if (v.visibility != View.VISIBLE) return
+            v.alpha = 0f
+            v.translationY = dy.dp
+            cards.add(Triple(v, dy, delay))
         }
+        rise(carPanel.header, -8f, 0L)
+        // (each card on its own, so its own shadow stays outside the layer it fades in)
+        for (i in 0 until mapPanel.places.childCount) rise(mapPanel.places.getChildAt(i), -8f, 80L + 30L * i)
         rise(mapPanel.media, 12f, 140L)
         rise(carPanel.quick, 12f, 160L)
-
+        mapPanel.translationY = 16f.dp
         dock.translationY = DOCK_DP.dp.toFloat()
-        dock.animate().translationY(0f).setStartDelay(0L).setDuration(Motion.LONG).setInterpolator(Motion.EMPHASIZED).start()
-        for (i in 0 until dock.apps.childCount) {
-            val v = dock.apps.getChildAt(i)
-            v.translationY = 18.dp.toFloat()
-            v.animate().translationY(0f).setStartDelay(60L + 25L * i).setDuration(Motion.MEDIUM).setInterpolator(Motion.EMPHASIZED).start()
+        for (i in 0 until dock.apps.childCount) dock.apps.getChildAt(i).translationY = 18.dp.toFloat()
+
+        val r = root ?: return
+        r.afterNextDraw {
+            if (isDestroyed) return@afterNextDraw
+            for ((v, dy, delay) in cards) v.enter(dy = dy, delay = delay)
+            mapPanel.animate().translationY(0f).setStartDelay(0L).setDuration(Motion.LONG).setInterpolator(Motion.EMPHASIZED).start()
+            dock.animate().translationY(0f).setStartDelay(0L).setDuration(Motion.LONG).setInterpolator(Motion.EMPHASIZED).start()
+            for (i in 0 until dock.apps.childCount) {
+                dock.apps.getChildAt(i).animate().translationY(0f).setStartDelay(60L + 25L * i).setDuration(Motion.MEDIUM)
+                    .setInterpolator(Motion.EMPHASIZED).start()
+            }
+            // (on a spring, which steps at most a few frames' worth per frame: the frames after the first are heavy
+            // too, and a timed fade jumped from black to white across them)
+            startCover?.let { c ->
+                Spring(1f, COVER_STIFFNESS, 1f, 0.01f) { c.alpha = it }.apply {
+                    onRest = { r.removeView(c) }
+                    animateTo(0f)
+                }
+            }
+            startCover = null
+            // (counted from here too: from onResume, the first frame's wait brought it into the middle of the entrance)
+            r.postDelayed({ if (!isDestroyed) mapPanel.startLive() }, LIVE_MAP_AFTER_MS)
         }
     }
 
@@ -379,6 +423,10 @@ class HomeActivity : Activity(), HomeHost {
     }
 
     companion object {
+        /** The home screen has been built once in this process: later builds have no starting window before them. */
+        private var processStarted = false
+        /** The light theme's start cover fades on this spring: critically damped, mostly gone in about 0.4 s. */
+        private const val COVER_STIFFNESS = 100f
         /** Height of the dock (big touch targets: the unit's 1024x600 panel is about 120 dpi, 1 dp = 1 px). */
         const val DOCK_DP = 92
         /** The live map starts once the entrance has settled. */

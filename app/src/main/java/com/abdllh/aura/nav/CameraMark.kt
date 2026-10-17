@@ -93,7 +93,7 @@ class CameraMark(ctx: Context, small: Boolean = false) : LinearLayout(ctx) {
         val fresh = car != null &&
             (car.provider == LocationManager.GPS_PROVIDER || car.provider == "sim" || car.provider == "mock") &&
             SystemClock.elapsedRealtimeNanos() - car.elapsedRealtimeNanos < FRESH_NS &&
-            (!car.hasAccuracy() || car.accuracy <= 30f)
+            (!car.hasAccuracy() || car.accuracy <= MAX_ACCURACY_M)
         if (car == null || !fresh) { say(context.getString(R.string.mark_camera_no_gps), undo = false); return }
         // its speed: the limit of the marked street the car is on, when there is one
         val (spot, added) = MapExtras.addMine(LatLon(car.latitude, car.longitude), RoadWatch.state.limit)
@@ -123,6 +123,12 @@ class CameraMark(ctx: Context, small: Boolean = false) : LinearLayout(ctx) {
         private const val KEY = "markCameraButton"
         /** A fix older than this is not "here" any more (GPS gives one a second; one may come late). */
         private const val FRESH_NS = 5_000_000_000L
+        /**
+         * A GPS fix less precise than this is not used. Not checked on the unit: its GPS module may report its
+         * accuracy coarsely, so the limit is wide enough not to refuse every fix (30 m could have done that), and the
+         * network fixes it was meant against are kept out by their provider already.
+         */
+        private const val MAX_ACCURACY_M = 50f
 
         /** The switch (on by default): the button on the maps. */
         var enabled: Boolean

@@ -110,16 +110,6 @@ fun View.lift(level: Float, overMap: Boolean = false) {
     }
 }
 
-/** Soft drop shadow of any size on both themes (the shadow language before 1.12). */
-@Deprecated("Use lift() with an Elev level: it leaves out the shadows the dark theme cannot show.", ReplaceWith("lift(Elev.FLOAT)"))
-fun View.elevate(dp: Float) {
-    elevation = dp.dp
-    if (Build.VERSION.SDK_INT >= 28) {
-        outlineAmbientShadowColor = Palette.shadow
-        outlineSpotShadowColor = Palette.shadow
-    }
-}
-
 fun ImageView.icon(res: Int, tint: Int = Palette.text) {
     setImageResource(res)
     setColorFilter(tint)

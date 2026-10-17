@@ -25,40 +25,61 @@ import java.util.concurrent.Executors
  * parked, so the screen opens on the real streets and the live map takes over almost unseen. Before there is such a
  * picture it is the map's plain land colour: invented streets cross-fading over the real ones read as a ghost map.
  * In place of the live map when it cannot run ([com.abdllh.aura.nav.MapGuard], [grid]) it is a quiet street grid
- * with a park and a waterfront in the map's own colours. Made once per size into a bitmap on a background thread and
- * faded in; static afterwards.
+ * with a park and a waterfront in the map's own colours, made once per size on a background thread. Either comes in
+ * as it is when it is ready before the view's first frame, else faded in; static afterwards.
  */
-class MapBackdropView(context: Context, private val picture: File?, private val grid: Boolean) : View(context) {
+class MapBackdropView(context: Context, picture: File?, private val grid: Boolean) : View(context) {
     private var bmp: Bitmap? = null
     private var reveal = 0f
     private var generation = 0
+    private var drawnOnce = false
     private val p = Paint(Paint.FILTER_BITMAP_FLAG)
     private val land = MapStyle.tones().land
+    private val from = Rect()
+    private val to = Rect()
+
+    init {
+        // The kept picture is read from the moment the home screen is built, not once the view has its size: on a
+        // cold start that size comes with the first frame, and the picture came long after it, by when the live map
+        // was nearly up (the panel stood empty all along). It needs no size: it is scaled as it is drawn.
+        if (picture != null) {
+            val gen = generation
+            RENDER.execute {
+                val b = try { if (picture.isFile) BitmapFactory.decodeFile(picture.path) else null } catch (_: Throwable) { null }
+                MAIN.post { if (gen == generation && b != null) show(b) }
+            }
+        }
+    }
 
     // (one flat picture: faded as it is, without an offscreen copy)
     override fun hasOverlappingRendering() = false
 
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
-        if (w <= 0 || h <= 0) return
+        if (w <= 0 || h <= 0 || !grid) return
         val rtl = layoutDirection == LAYOUT_DIRECTION_RTL
         val gen = ++generation
         val tones = MapStyle.tones()
         val dark = Palette.dark
         val density = 1f.dp
-        val pic = picture
-        val streets = grid
         RENDER.execute {
-            val b = try { pic?.let { load(it, w, h) } ?: if (streets) render(w, h, tones, dark, rtl, density) else null } catch (_: Throwable) { null }
-            MAIN.post {
-                if (gen != generation || b == null) return@post
-                bmp = b
-                ValueAnimator.ofFloat(0f, 1f).apply {
-                    duration = Motion.MEDIUM
-                    interpolator = Motion.STANDARD
-                    addUpdateListener { reveal = it.animatedValue as Float; invalidate() }
-                    start()
-                }
-            }
+            val b = try { render(w, h, tones, dark, rtl, density) } catch (_: Throwable) { null }
+            MAIN.post { if (gen == generation && b != null) show(b) }
+        }
+    }
+
+    /** In at once while nothing has been drawn yet (the first frame then opens on it), else faded in over the land. */
+    private fun show(b: Bitmap) {
+        bmp = b
+        if (!drawnOnce) {
+            reveal = 1f
+            invalidate()
+            return
+        }
+        ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = Motion.MEDIUM
+            interpolator = Motion.STANDARD
+            addUpdateListener { reveal = it.animatedValue as Float; invalidate() }
+            start()
         }
     }
 
@@ -68,14 +89,26 @@ class MapBackdropView(context: Context, private val picture: File?, private val 
     }
 
     override fun onDraw(c: Canvas) {
+        drawnOnce = true
         val b = bmp
         // (the bitmap covers the whole view once it is in: no fill under it)
         if (b == null || reveal < 1f) c.drawColor(land)
         if (b != null) {
+            cover(b.width, b.height, width, height)
             p.alpha = (255 * reveal).toInt()
-            c.drawBitmap(b, 0f, 0f, p)
+            c.drawBitmap(b, from, to, p)
             p.alpha = 255
         }
+    }
+
+    /** The part of a [bw] x [bh] picture that covers the view (centred), into [from]; the view's bounds into [to]. */
+    private fun cover(bw: Int, bh: Int, w: Int, h: Int) {
+        to.set(0, 0, w, h)
+        if (w <= 0 || h <= 0) { from.set(0, 0, bw, bh); return }
+        val scale = maxOf(w / bw.toFloat(), h / bh.toFloat())
+        val sw = (w / scale).toInt().coerceAtMost(bw)
+        val sh = (h / scale).toInt().coerceAtMost(bh)
+        from.set((bw - sw) / 2, (bh - sh) / 2, (bw + sw) / 2, (bh + sh) / 2)
     }
 
     companion object {
@@ -88,20 +121,6 @@ class MapBackdropView(context: Context, private val picture: File?, private val 
         /** The home map's kept picture for the current theme and language (each draws the map differently). */
         fun pictureFile(ctx: Context): File =
             File(ctx.cacheDir, "home-map-${if (Palette.dark) "dark" else "light"}-${Locale.getDefault().language}.webp")
-
-        /** The kept picture, scaled to cover the view (centred), or null when there is none yet. */
-        private fun load(f: File, w: Int, h: Int): Bitmap? {
-            if (!f.isFile) return null
-            val src = BitmapFactory.decodeFile(f.path) ?: return null
-            val scale = maxOf(w / src.width.toFloat(), h / src.height.toFloat())
-            val sw = (w / scale).toInt().coerceAtMost(src.width)
-            val sh = (h / scale).toInt().coerceAtMost(src.height)
-            val from = Rect((src.width - sw) / 2, (src.height - sh) / 2, (src.width + sw) / 2, (src.height + sh) / 2)
-            val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-            Canvas(out).drawBitmap(src, from, Rect(0, 0, w, h), Paint(Paint.FILTER_BITMAP_FLAG))
-            src.recycle()
-            return out
-        }
 
         /** Software rendering of the street grid (runs on the render thread; touches no view state). */
         private fun render(w: Int, h: Int, k: MapStyle.Tones, dark: Boolean, rtl: Boolean, d: Float): Bitmap {

@@ -243,8 +243,10 @@ internal object CallBanner {
             line()
             val look = if (Calls.answering) null else state
             if (look != shown || first) {
-                // the line under the name says what changed (answered, ended): it comes in, the rest stays put
-                if (!first) { sub.alpha = 0f; sub.fadeTo(1f, Motion.MEDIUM) }
+                // the line under the name says what changed (answered): it comes in, the rest stays put. "Ended" is
+                // there at once: the card leaves soon after, and a line still fading in then was barely readable.
+                if (!first && state != Calls.State.ENDED) { sub.alpha = 0f; sub.fadeTo(1f, Motion.MEDIUM) }
+                else { sub.animate().cancel(); sub.alpha = 1f }
                 first = false
                 shown = look
                 removeCallbacks(tick)
@@ -311,11 +313,8 @@ internal object CallBanner {
             val number = Calls.number.trim()
             val withNumber = Calls.name.isNotBlank() && number.isNotEmpty() && state != Calls.State.ENDED
             sub.text = if (withNumber) "$what  ·  ⁦$number⁩" else what
-            sub.setTextColor(when (state) {
-                Calls.State.TALKING -> Palette.success
-                Calls.State.ENDED -> Palette.text3
-                else -> Palette.text2
-            })
+            // (ended in text2 like the rest: text3 on the light theme's white card was barely readable)
+            sub.setTextColor(if (state == Calls.State.TALKING) Palette.success else Palette.text2)
         }
 
         private fun clock(sec: Long): String {

@@ -14,9 +14,12 @@ import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.SocketTimeoutException
 import java.net.URL
 import java.net.URLDecoder
 import java.net.URLEncoder
+import java.util.concurrent.BlockingQueue
+import java.util.concurrent.LinkedBlockingDeque
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
@@ -49,11 +52,16 @@ object TileServer {
     /** The offline map, when there is one (set by [OfflineMaps]). */
     @Volatile var store: TileStore? = null
 
-    private fun pool(threads: Int, name: String) = ThreadPoolExecutor(threads, threads, 30L, TimeUnit.SECONDS, LinkedBlockingQueue()) { r ->
-        Thread({ Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND); r.run() }, name).apply { isDaemon = true }
-    }.apply { allowCoreThreadTimeOut(true) }
+    private fun pool(threads: Int, name: String, queue: BlockingQueue<Runnable> = LinkedBlockingQueue()) =
+        ThreadPoolExecutor(threads, threads, 30L, TimeUnit.SECONDS, queue) { r ->
+            Thread({ Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND); r.run() }, name).apply { isDaemon = true }
+        }.apply { allowCoreThreadTimeOut(true) }
     private val local = pool(3, "aura-tiles-disk")
-    private val online = pool(6, "aura-tiles-net")
+    // Newest first: after a quick zoom or pan on a slow link the tiles of the view left behind were fetched before
+    // those of the view now on the screen (MapLibre has given up on the old ones by then: see [gone]).
+    private val online = pool(6, "aura-tiles-net", object : LinkedBlockingDeque<Runnable>() {
+        override fun offer(e: Runnable) = offerFirst(e)
+    })
     // (glyph ranges have their own: a missing one holds up the labels of every tile that needs it, and it must not
     // wait behind a zoom's worth of tile fetches)
     private val fonts = pool(2, "aura-glyphs-net")
@@ -114,7 +122,7 @@ object TileServer {
             handed = true
             (if (path.startsWith("/f/")) fonts else online).execute {
                 s.use {
-                    try { fetchIt() } catch (t: Throwable) { Log.d(TAG, "serve: $t") }
+                    try { if (!gone(it)) fetchIt() } catch (t: Throwable) { Log.d(TAG, "serve: $t") }
                 }
             }
         } catch (t: Throwable) {
@@ -122,6 +130,21 @@ object TileServer {
         } finally {
             if (!handed) try { s.close() } catch (_: Throwable) { }
         }
+    }
+
+    /**
+     * The asker hung up while its request waited (MapLibre cancels a tile it no longer needs by closing the connection):
+     * nothing to fetch for it. Its whole request has been read, so a peek at the socket finds either its end or nothing.
+     */
+    private fun gone(s: Socket): Boolean = try {
+        s.soTimeout = 1
+        s.getInputStream().read() == -1
+    } catch (_: SocketTimeoutException) {
+        false // still open, waiting for its answer
+    } catch (_: Throwable) {
+        true // reset
+    } finally {
+        try { s.soTimeout = 20_000 } catch (_: Throwable) { }
     }
 
     /** /t/z/x/y.pbf: from the store, else (what is returned, for the online threads) streamed from OpenFreeMap. */

@@ -306,12 +306,16 @@ class MapsActivity : Activity() {
      * Builds the screen again when its look is out of date: the map's style, the panels and the car are made in the
      * theme and accent of their time, and the words in the language of theirs. A new language at once (the old
      * screen would mix the two); a theme or an accent not while the driver is choosing a place (the next minute's
-     * tick tries again). A trip being driven goes on: [NavSession] is the app's, not this screen's.
+     * tick tries again), nor while the car moves on a trip: the map and its surface are built anew, a blank map and
+     * seconds of heavy work on this SoC just when the driver may need it; it waits for a stop or the trip's end. A
+     * trip being driven goes on: [NavSession] is the app's, not this screen's.
      */
     private fun checkLook(): Boolean {
         val lang = Prefs.lang != builtLang
         if (!lang && Theme.isDarkNow() == builtDark && Prefs.accent == builtAccent) return false
         if (!lang && (resultsCard.isOn || selected != null || pickFor != null || input.hasFocus() || routing)) return false
+        val moving = NavSession.state == NavSession.State.NAVIGATING && (NavSession.progress?.speedKmh ?: 0) >= MOVING_KMH
+        if (!lang && moving) return false
         recreate()
         return true
     }
@@ -937,7 +941,7 @@ class MapsActivity : Activity() {
         }.apply {
             isVerticalScrollBarEnabled = false
             overScrollMode = View.OVER_SCROLL_NEVER
-            background = Shapes.glass(Radius.XL)
+            background = panelFill()
             lift(Elev.FLOAT, overMap = true)
             visibility = View.GONE
             addView(results, MATCH, WRAP)
@@ -981,6 +985,12 @@ class MapsActivity : Activity() {
         return root
     }
 
+    /**
+     * The fill of the cards with text over the map (results, place, trip, arrival): solid, not the shared glass. At the
+     * glass's 95 % the map's labels still showed through behind their text, clutter on a small screen in a moving car.
+     */
+    private fun panelFill() = Shapes.rect(Palette.withAlpha(Palette.glass, 1f), Radius.XL, Palette.glassStroke)
+
     private fun bottomCard() = flp(panelWidth(), WRAP, Gravity.BOTTOM or Gravity.START).apply {
         setMargins(Space.L.dp, 0, Space.L.dp, Space.L.dp); marginStart = Space.L.dp
     }
@@ -988,7 +998,7 @@ class MapsActivity : Activity() {
     private fun buildPlaceCard(): LinearLayout {
         val c = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = Shapes.glass(Radius.XL)
+            background = panelFill()
             lift(Elev.FLOAT, overMap = true)
             visibility = View.GONE
             setPaddingRelative(Space.XL.dp, Space.L.dp, Space.M.dp, Space.L.dp)
@@ -1048,7 +1058,7 @@ class MapsActivity : Activity() {
         val c = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = Shapes.glass(Radius.XL)
+            background = panelFill()
             lift(Elev.FLOAT, overMap = true)
             visibility = View.GONE
             setPaddingRelative(Space.XL.dp, Space.M.dp, Space.M.dp, Space.M.dp)
@@ -1094,7 +1104,7 @@ class MapsActivity : Activity() {
 
     private fun buildArrivedCard(): FrameLayout {
         val c = FrameLayout(this).apply {
-            background = Shapes.glass(Radius.XL)
+            background = panelFill()
             roundedClip(Radius.XL)
             lift(Elev.FLOAT, overMap = true)
             visibility = View.GONE
@@ -1214,6 +1224,8 @@ class MapsActivity : Activity() {
         private const val MAP_BTN = 66
         /** A search result's height. */
         private const val ROW_DP = 74
+        /** At this speed and above the car moves on a trip: a new theme or accent waits ([checkLook]). */
+        private const val MOVING_KMH = 3
 
         fun open(ctx: Context, extras: Intent.() -> Unit = {}) {
             try {

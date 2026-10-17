@@ -120,7 +120,7 @@ class VoicePage(private val act: SettingsActivity) : Page(R.string.set_voice, R.
         val rows = OfflineCommands.items.map { item ->
             val taught = OfflineCommands.taught(ctx, item.id)
             val tick = if (taught) ctx.iconView(R.drawable.ic_check, 24, Palette.accentFg) else ctx.chevron()
-            ctx.settingRow(null, "«${ctx.getString(item.label)}»",
+            ctx.settingRow(null, ctx.getString(R.string.voice_cmd_quoted, ctx.getString(item.label)),
                 ctx.getString(if (taught) R.string.voice_cmd_taught else R.string.voice_cmd_untaught), tick) {
                 withMic { VoiceSetup.teach(act, item) { act.rebuild() } }
             }

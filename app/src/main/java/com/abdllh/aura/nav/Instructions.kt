@@ -16,9 +16,16 @@ enum class Turn { STRAIGHT, SLIGHT_LEFT, LEFT, SHARP_LEFT, UTURN, SLIGHT_RIGHT, 
  * of phrase, no commas inside a sentence that already has one after "بعد 300 متر".
  */
 object Instructions {
+    /** The step enters a roundabout (and says which exit, or which way, it is left by). */
+    fun entersRoundabout(s: Step) = s.type == "roundabout" || s.type == "rotary" || s.type == "roundabout turn"
+
     fun turn(s: Step): Turn = when {
         s.type == "arrive" -> Turn.ARRIVE
-        s.type == "roundabout" || s.type == "rotary" || s.type == "roundabout turn" -> Turn.ROUNDABOUT
+        entersRoundabout(s) -> Turn.ROUNDABOUT
+        // Leaving a roundabout the car is already on (a trip that starts there): the ring with the way out, measured,
+        // as for one entered. OSRM's modifier for it is taken against the ring, not the way the car came: it gave a
+        // "bear left" arrow for a way out to the right, and for one nearly all the way round.
+        s.type.startsWith("exit ") && !s.angle.isNaN() -> Turn.ROUNDABOUT
         else -> when (s.modifier) {
             "slight left" -> Turn.SLIGHT_LEFT
             "left" -> Turn.LEFT

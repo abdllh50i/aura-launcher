@@ -2,7 +2,6 @@ package com.abdllh.aura.system
 
 import android.content.Context
 import android.content.Intent
-import android.media.AudioManager
 import android.net.Uri
 import android.provider.Settings
 

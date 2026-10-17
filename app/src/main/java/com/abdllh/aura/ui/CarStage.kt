@@ -253,8 +253,11 @@ class CarStage(context: Context) : FrameLayout(context) {
                     redraw()
                 }
             })
-            start()
         }
+        // Its clock starts after the next frame, not now: a cold start's first frame held the main thread for up to
+        // 650 ms, and a spin started before it showed the car already half turned.
+        val a = anim
+        afterNextDraw { if (anim === a) a?.start() }
     }
 
     /**
@@ -266,6 +269,7 @@ class CarStage(context: Context) : FrameLayout(context) {
         introWait?.let { removeCallbacks(it); introWait = null; shown = 1f }
         val a = anim
         anim = null
+        if (a != null && !a.isStarted) shown = 1f // (the intro waiting for the next frame: the car as it is)
         a?.cancel()
     }
 

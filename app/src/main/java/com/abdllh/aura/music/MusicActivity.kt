@@ -292,7 +292,10 @@ class MusicActivity : Activity() {
         if (::lyricsView.isInitialized) { lyricsView.removeCallbacks(lyricsRetry); lyricsView.removeCallbacks(lyricsLoading) }
         lyricsKey = null // looked up again when the screen comes back
         // a cover still waiting for its successor (Bluetooth): the screen comes back with whatever there is by then
-        if (root.removeCallbacks(artWait) && bt) lastArtKey = Long.MIN_VALUE
+        // (tracked in a field: removeCallbacks says nothing about whether one was waiting)
+        val waiting = artWaiting
+        cancelArtWait()
+        if (waiting && bt) lastArtKey = Long.MIN_VALUE
         super.onStop()
     }
 
@@ -839,17 +842,25 @@ class MusicActivity : Activity() {
      */
     private fun btArt() {
         val cover = BtMusic.art
-        if (lastArtKey != BT_ART) { root.removeCallbacks(artWait); btCover = cover; setArt(cover, BT_ART); return }
+        if (lastArtKey != BT_ART) { cancelArtWait(); btCover = cover; setArt(cover, BT_ART); return }
         if (cover === btCover) return
         btCover = cover
         if (cover == null && shownCover != null && BtMusic.title.isNotBlank()) {
             art.fadeTo(0.45f, Motion.SHORT)
             root.removeCallbacks(artWait)
             root.postDelayed(artWait, ART_WAIT_MS)
+            artWaiting = true
         } else setArt(cover, BT_ART)
     }
 
-    private val artWait = Runnable { if (bt && lastArtKey == BT_ART) { btCover = BtMusic.art; setArt(btCover, BT_ART) } }
+    private val artWait = Runnable { artWaiting = false; if (bt && lastArtKey == BT_ART) { btCover = BtMusic.art; setArt(btCover, BT_ART) } }
+    /** [artWait] is posted and has not run. */
+    private var artWaiting = false
+
+    private fun cancelArtWait() {
+        artWaiting = false
+        root.removeCallbacks(artWait)
+    }
 
     // the song's names as its source tells them; how they are laid out depends on the layout (paintNames)
     private var nTitle = ""
@@ -983,7 +994,7 @@ class MusicActivity : Activity() {
         shownCover = b
         coverShown = true
         lastArtKey = key
-        root.removeCallbacks(artWait)
+        cancelArtWait()
         val next = b?.let { BitmapDrawable(resources, it) }
         when {
             !changed -> setCover(next)
@@ -1168,7 +1179,7 @@ class MusicActivity : Activity() {
             if (to == Src.BT) BtMusic.activate() else BtMusic.deactivate()
             if (to == Src.YT) Player.pauseForOtherSource()
             if (was == Src.YT) MediaMonitor.appControl(YtMusic.players, MediaMonitor.Do.PAUSE)
-            root.removeCallbacks(artWait)
+            cancelArtWait()
             lastArtKey = Long.MIN_VALUE
             seekTarget = -1L
             skipAt = 0L

@@ -29,10 +29,10 @@ import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Radius
 import com.abdllh.aura.ui.Shapes
 import com.abdllh.aura.ui.Space
+import com.abdllh.aura.ui.Spring
 import com.abdllh.aura.ui.Touch
 import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.WRAP
-import com.abdllh.aura.ui.fadeTo
 import com.abdllh.aura.ui.flp
 import com.abdllh.aura.ui.iconView
 import com.abdllh.aura.ui.label
@@ -59,7 +59,7 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
     // (also when another app does the navigating: the home screen keeps its own live map)
     private val allowed = MapGuard.homeMapAllowed(ctx)
     val media = MediaCard(ctx, host)
-    /** "Where to?", Home and Work (hidden while navigating). */
+    /** "Where to?", Home and Work (each of them hidden while navigating; the row itself stays). */
     val places: LinearLayout
     /** The next manoeuvre while navigating: the Maps screen's sign, in its compact form, so both read the same. */
     private val banner = GuidanceBanner(ctx, compact = true)
@@ -75,6 +75,8 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
     private var started = false
     private var resumed = false
     private var destroyed = false
+    /** [startLive] came while the panel was stopped: the map is built at the next [onStart]. */
+    private var liveWanted = false
 
     init {
         background = Shapes.rect(Palette.mapLand, Radius.XL)
@@ -96,7 +98,9 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
             setOnClickListener { openMaps(false) }
         }, flp(MATCH, MATCH))
 
-        val top = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+        // The places row and the guidance sign share one spot, one over the other: stacked, the sign on its way out at
+        // the end of a trip was pushed down by the row coming back, and fell below it instead of leaving in place.
+        val top = FrameLayout(ctx)
         places = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         val search = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -118,13 +122,13 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
         workIcon = ctx.iconView(R.drawable.ic_briefcase, 24, Palette.accentFg)
         places.addView(place(ctx, homeIcon, R.string.home_home) { go("home") }, lp(Touch.MIN.dp, Touch.MIN.dp).apply { marginStart = Space.S.dp })
         places.addView(place(ctx, workIcon, R.string.home_work) { go("work") }, lp(Touch.MIN.dp, Touch.MIN.dp).apply { marginStart = Space.S.dp })
-        top.addView(places, lp(WRAP, WRAP))
+        top.addView(places, flp(WRAP, WRAP, Gravity.TOP or Gravity.START))
 
         // the guidance sign in the places' spot while navigating (a tap opens Maps on the trip)
         banner.isClickable = true
         banner.pressScale(Motion.PRESS_SURFACE)
         banner.setOnClickListener { openMaps(false) }
-        top.addView(banner, lp(WRAP, WRAP))
+        top.addView(banner, flp(WRAP, WRAP, Gravity.TOP or Gravity.START))
         addView(top, flp(WRAP, WRAP, Gravity.TOP or Gravity.START).apply { setMargins(INSET.dp, INSET.dp, INSET.dp, 0) })
 
         // the street's limit and the camera or bump ahead (the owner's additions to the map), and "a camera here"
@@ -152,16 +156,23 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
         created = true
     }
 
-    /** Builds the live map and brings it to where the activity is (HomeActivity calls it after the entrance). */
+    /**
+     * Builds the live map and brings it to where the activity is (HomeActivity calls it after the entrance). Only
+     * while the panel is started: building it writes MapGuard's "starting" mark, which only a drawn frame or the map's
+     * onStop clears. Built under another app that covered the home screen at boot, and the process then killed in the
+     * background, the mark stayed and counted as a crash; two such drives turned the home map off for good.
+     */
     fun startLive() {
         if (live != null || destroyed || !created) return
+        if (!started) { liveWanted = true; return }
+        liveWanted = false
         if (allowed) {
             val m = AuraMap(context, interactive = false, texture = true, guarded = true)
             m.navTopPadding = 0.08 // the player covers the lower part: keep the car in the middle of what is visible
             m.pictureFile = MapBackdropView.pictureFile(context)
             m.onDrawn = {
                 background = null // (the opaque map covers it: no fill under every frame of the map)
-                if (backdrop.visibility == View.VISIBLE) backdrop.fadeTo(0f, Motion.AMBIENT) { backdrop.visibility = View.GONE }
+                if (backdrop.visibility == View.VISIBLE) handOff()
             }
             live = m
             addView(m.view, indexOfChild(backdrop), flp(MATCH, MATCH)) // (under the picture, the press tint and the cards)
@@ -173,9 +184,22 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
         if (resumed) m.onResume()
     }
 
+    /**
+     * The picture fades off the live map under it. On a spring, which steps at most a few frames' worth of time per
+     * frame: the map's first frames are the heaviest of the start, and a timed fade jumped to its end across them
+     * (the map then popped into the panel).
+     */
+    private fun handOff() {
+        Spring(1f, HANDOFF_STIFFNESS, 1f, 0.01f) { backdrop.alpha = it }.apply {
+            onRest = { backdrop.visibility = View.GONE }
+            animateTo(0f)
+        }
+    }
+
     fun onStart() {
         started = true
-        live?.onStart()
+        // (a map asked for while stopped is built now; startLive starts it itself)
+        if (live == null && liveWanted) startLive() else live?.onStart()
         CarLocation.acquire(context, "home")
         CarLocation.addListener(fixListener)
         NavSession.addListener(navListener)
@@ -221,11 +245,15 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
     private fun syncNav() {
         val m = live
         val nav = NavSession.state == NavSession.State.NAVIGATING
-        places.visibility = if (nav) View.GONE else View.VISIBLE
         if (nav && !tripShown) { tripShown = true; banner.reset() }
         if (!nav) tripShown = false
         if (nav) banner.update()
         banner.reveal(nav, -8f)
+        // The row's buttons go and come one by one, each fading on its own (the row faded as one layer would cut off
+        // their shadows on the light theme while it played); back once the sign has left their spot.
+        for (i in 0 until places.childCount) {
+            places.getChildAt(i).reveal(!nav, -8f, delay = if (nav) 0L else Motion.SHORT + PLACES_STAGGER_MS * i)
+        }
         if (m == null) return
         if (!nav) {
             shownRoute = null
@@ -305,5 +333,8 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
 
     private companion object {
         const val INSET = 12 // dp, the cards from the panel's edges
+        const val PLACES_STAGGER_MS = 30L
+        /** The hand-off's spring: critically damped, mostly over in about half a second (the old 600 ms fade). */
+        const val HANDOFF_STIFFNESS = 80f
     }
 }

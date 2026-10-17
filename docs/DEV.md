@@ -213,7 +213,7 @@ is migrated when its file is touched. Older helpers still work and are marked be
   (it cannot be seen on a near-black screen and is still tessellated on every outline change); over the map it is
   the edge that keeps a panel apart from the roads. Elevation also orders siblings, and on the dark theme `lift`
   gives none: a view that must draw above its siblings is placed there by child order (or passes `overMap` when it
-  floats over the map), never by `lift`. `elevate(dp)` is deprecated.
+  floats over the map), never by `lift`. `lift(Elev.*)` is the only shadow API: the old `elevate(dp)` was removed in 1.12.
 * `Space` (dp, 4 dp grid): `XXS` 2, `XS` 4, `S` 8, `M` 12, `L` 16, `XL` 24, `XXL` 32; `GUTTER` 16 is the inset of
   screens, panels and sheets. `Touch.MIN` 56 is the smallest tap target, `Touch.LARGE` 64 a screen's main action; a
   smaller visual sits inside a 56 dp view (`Shapes.touchInset(drawable, visualDp)`).
@@ -240,7 +240,12 @@ is migrated when its file is touched. Older helpers still work and are marked be
   a view with text sinks through a hardware layer it takes off again at rest. `Shapes.pressable` tints at once and
   lets go over `SHORT`, with the scale.
 * Springs (`Spring`) for what follows the hand or may be retargeted half way: presses, sheets, the switch thumb, the
-  slider, indicators. Snap them to their target in `onDetachedFromWindow`.
+  slider, indicators. Snap them to their target in `onDetachedFromWindow`. A spring also steps at most 64 ms per
+  frame, so it is the fade for what plays across heavy frames (the home map's picture handing over to the live map,
+  the light theme's start cover): a timed fade jumps to its end there.
+* A screen's first entrance starts from `View.afterNextDraw { … }` (1.12): set the views where they start from at
+  once, start the animations in the block. On a cold start the first frame held the main thread for up to 650 ms, and
+  an entrance started in `onResume` had run its course before anything showed. `CarStage`'s intro waits the same way.
 * Only transforms and alpha are animated, never layout parameters; no blur.
 
 **Components**: `ABtn` (the only button: `kind` PRIMARY / TONAL / GHOST / DANGER / DANGER_FILLED, `size` M 56 dp or

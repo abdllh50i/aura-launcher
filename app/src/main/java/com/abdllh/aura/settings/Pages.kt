@@ -271,10 +271,13 @@ class NavigationPage(private val act: SettingsActivity) : Page(R.string.set_navi
         val selected = Prefs.navPackage
         for ((pkg, name) in choices) {
             val on = !builtIn && (pkg == selected || (pkg.isEmpty() && selected.isEmpty()))
-            rows.add(navRow(ctx, R.drawable.ic_nav, name, if (pkg.isEmpty()) ctx.getString(R.string.set_nav_auto_sub) else null, on) {
+            // (the firmware's navigation-app property, written again by a tap on the chosen app: something may have
+            // reset it since)
+            val push: () -> Unit = { if (pkg.isNotEmpty()) com.abdllh.aura.system.SystemProps.set("persist.sys.navi_set_by_app", pkg) }
+            rows.add(navRow(ctx, R.drawable.ic_nav, name, if (pkg.isEmpty()) ctx.getString(R.string.set_nav_auto_sub) else null, on, again = push) {
                 Prefs.builtInMaps = false
                 Prefs.navPackage = pkg
-                if (pkg.isNotEmpty()) com.abdllh.aura.system.SystemProps.set("persist.sys.navi_set_by_app", pkg)
+                push()
             })
         }
         col.addRow(ctx.group(*rows.toTypedArray()))
@@ -320,11 +323,14 @@ class NavigationPage(private val act: SettingsActivity) : Page(R.string.set_navi
         return col
     }
 
-    /** A navigation app to choose; the chosen one is ticked, in the accent. */
-    private fun navRow(ctx: Context, icon: Int, name: String, sub: String?, on: Boolean, choose: () -> Unit): View =
+    /**
+     * A navigation app to choose; the chosen one is ticked, in the accent. A tap on the ticked one changes nothing on
+     * the page; it only runs [again] (the firmware's own setting written once more, as every tap did until 1.12).
+     */
+    private fun navRow(ctx: Context, icon: Int, name: String, sub: String?, on: Boolean, again: (() -> Unit)? = null, choose: () -> Unit): View =
         ctx.settingRow(icon, name, sub, if (on) ctx.iconView(R.drawable.ic_check_circle, 26, Palette.accentFg) else null,
             if (on) Palette.accentFg else Palette.text2) {
-            if (on) return@settingRow
+            if (on) { again?.invoke(); return@settingRow }
             choose()
             act.rebuild()
         }
