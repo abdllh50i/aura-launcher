@@ -346,7 +346,8 @@ class MapsActivity : Activity() {
         val active = st != NavSession.State.IDLE
         map.setFps(if (navigating) 60 else 30) // a turning, tilted map needs the frames
         searchCard.reveal(!active, -12f)
-        if (active) { resultsCard.reveal(false, -8f); placeCard.reveal(false, 16f); hideKeyboard() }
+        // (a trip started from outside while the search was open: its keyboard-time fade must not hide the speed)
+        if (active) { resultsCard.reveal(false, -8f); placeCard.reveal(false, 16f); showControls(true) }
         banner.reveal(navigating, -16f)
         tripBar.reveal(navigating, 16f, delay = 60)
         speedBubble.reveal(navigating, 0f, scaleFrom = 0.9f)
@@ -373,7 +374,7 @@ class MapsActivity : Activity() {
             }
             return
         }
-        if (!tripShown) { tripShown = true; banner.reset() }
+        if (!tripShown) { tripShown = true; banner.reset(); hideKeyboard() } // (once: it is a call to the keyboard's service)
         val r = NavSession.route ?: return
         val p = NavSession.progress
         map.setDestination(NavSession.destination?.pos)
@@ -396,8 +397,7 @@ class MapsActivity : Activity() {
             else map.setTurn(r.line.slice(step.at - TURN_ARROW_BEFORE_M, step.at + after), r.line.at(step.at + after).second)
         }
         // how long is left first (what the driver asks), then how far and when
-        val green = if (Palette.dark) Palette.success else Palette.success
-        tripEta.setIfChanged(GuidanceBanner.styled(Units.duration(p.timeLeft, arabic), 0.5f, Palette.withAlpha(green, 0.8f)))
+        tripEta.setIfChanged(GuidanceBanner.styled(Units.duration(p.timeLeft, arabic), 0.5f, Palette.withAlpha(Palette.success, 0.8f)))
         tripLeft.setIfChanged("${Units.distance(p.remaining, arabic)} · ${getString(R.string.maps_arrival)} ${Units.arrival(p.timeLeft, Prefs.clock24)}")
         speedText.setIfChanged("${p.speedKmh}")
         showOver(RoadWatch.state.over)
