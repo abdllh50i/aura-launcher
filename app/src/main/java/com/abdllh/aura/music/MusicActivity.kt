@@ -157,6 +157,14 @@ class MusicActivity : Activity() {
     /** The button was just pressed on: the song then in front keeps their place open even when it has none ("" = no song). */
     private var lyricsAsked = false
     private var lyricsPinned: String? = null
+    /** The song whose lyrics were asked for last, as they were asked for (timed lines that come later are matched to it). */
+    private var lyricsSong: LyricSong? = null
+
+    /**
+     * A song as its lyrics are asked for: its key on this screen, its names, the length the lookup used, and where it
+     * plays from (the unit's own file, or the phone over Bluetooth).
+     */
+    private class LyricSong(val key: String, val title: String, val artist: String, val sec: Int, val track: Track? = null, val bt: Boolean = false)
     // ...or the whole screen, in large type, over a small bar with the song and its buttons
     private lateinit var root: FrameLayout
     private lateinit var content: LinearLayout
@@ -277,6 +285,8 @@ class MusicActivity : Activity() {
         Library.addListener(libraryListener)
         BtMusic.addListener(btListener)
         MediaMonitor.observe(appListener)
+        Lyrics.onTimed = timedListener
+        LyricsSync.onStatus = syncStatus
         Player.restore()
         showNowPlaying()
         showList()
@@ -289,7 +299,11 @@ class MusicActivity : Activity() {
         BtMusic.removeListener(btListener)
         MediaMonitor.unobserve(appListener)
         seek.removeCallbacks(progressTick)
-        if (::lyricsView.isInitialized) { lyricsView.removeCallbacks(lyricsRetry); lyricsView.removeCallbacks(lyricsLoading) }
+        // (listening for the lyrics' timing is the screen's: it stops with it, and starts again when it comes back)
+        if (Lyrics.onTimed === timedListener) Lyrics.onTimed = null
+        if (LyricsSync.onStatus === syncStatus) LyricsSync.onStatus = null
+        LyricsSync.end()
+        if (::lyricsView.isInitialized) { lyricsView.removeCallbacks(lyricsRetry); lyricsView.removeCallbacks(lyricsLoading); lyrics { it.note(null) } }
         lyricsKey = null // looked up again when the screen comes back
         // a cover still waiting for its successor (Bluetooth): the screen comes back with whatever there is by then
         // (tracked in a field: removeCallbacks says nothing about whether one was waiting)
@@ -667,19 +681,23 @@ class MusicActivity : Activity() {
 
     /** The lyrics of what plays now, looked up once per song while the owner wants them (see [lyricsHave]). */
     private fun refreshLyrics() {
-        if (!lyricsWanted || !::lyricsView.isInitialized) return
-        class Song(val key: String, val title: String, val artist: String, val sec: Int)
+        if (!::lyricsView.isInitialized) return
+        if (!lyricsWanted) { LyricsSync.end(); return }
         val s = if (yt) {
             // (YouTube's app tells the song's own length: the right recording's lyrics)
             MediaMonitor.app(YtMusic.players)
-                ?.let { Song("yt:${it.title}|${it.artist}", it.title, it.artist, (it.durationMs / 1000).toInt()) }
+                ?.let { LyricSong("yt:${it.title}|${it.artist}", it.title, it.artist, (it.durationMs / 1000).toInt()) }
         } else if (bt) {
             if (!BtMusic.connected || BtMusic.title.isBlank()) null
             // (once per song: the phone's own length, when it told one, helps to pick the right recording)
-            else Song("bt:${BtMusic.title}|${BtMusic.artist}", BtMusic.title, BtMusic.artist, BtMusic.phoneDurationSec)
-        } else Player.current?.let { Song("lib:${it.id}", it.title, it.artist, (it.durationMs / 1000).toInt()) }
+            else LyricSong("bt:${BtMusic.title}|${BtMusic.artist}", BtMusic.title, BtMusic.artist, BtMusic.phoneDurationSec, bt = true)
+        } else Player.current?.let { LyricSong("lib:${it.id}", it.title, it.artist, (it.durationMs / 1000).toInt(), track = it) }
         if (s?.key == lyricsKey && lyricsKey != null) return
+        // another song: what listened to the one before stops (its timing goes on being made, and is kept)
+        LyricsSync.end()
+        lyrics { it.note(null) }
         lyricsKey = s?.key
+        lyricsSong = s
         val pin = s?.key ?: ""
         if (lyricsAsked) { lyricsAsked = false; lyricsPinned = pin } else if (pin != lyricsPinned) lyricsPinned = null
         lyricsView.removeCallbacks(lyricsLoading)
@@ -687,6 +705,9 @@ class MusicActivity : Activity() {
         // (while they are looked up their place stays as it is: open with what it showed, stepped back, or closed)
         if (lyricsShown != s.key) {
             lyrics { it.dim() }
+            // (what shows is stepped back and no longer follows: back on that song before this answer comes — the
+            // phone skipping one way and back — its lines are shown again, not left dimmed)
+            lyricsShown = null
             lyricsLoadingKey = s.key
             lyricsView.postDelayed(lyricsLoading, LOADING_AFTER_MS)
         }
@@ -722,7 +743,57 @@ class MusicActivity : Activity() {
                 lyricsShown = key
                 lyrics { it.needSync = unknown; it.at(at) }
                 lyricsHave(true)
+                listenFor(r)
             }
+        }
+    }
+
+    /**
+     * Untimed lines (or a timing by listening that is not complete) for a Bluetooth song or one of the unit's own:
+     * the owner's server may time them by listening ([LyricsSync]: only with his switch on, and only while the song
+     * plays with its position known). YouTube's songs are not listened to.
+     */
+    private fun listenFor(r: Lyrics.Result) {
+        val s = lyricsSong
+        if (s == null || !r.improvable || yt || (!s.bt && s.track == null)) { LyricsSync.end(); return }
+        // (a Bluetooth song's length only when the phone told it: a catalogue's may be another recording's, and the
+        // server's alignment leans a little on where in the song's length each line should be)
+        val song = LyricsSync.Song(s.title, s.artist, s.sec, r.lines.map { it.text }, s.track,
+            lengthSec = if (s.bt) BtMusic.phoneDurationSec else s.sec)
+        val position: () -> Long? = if (s.bt) {
+            { if (bt && BtMusic.connected && BtMusic.playing && BtMusic.positionKnown && BtMusic.title == s.title) BtMusic.positionMs() else null }
+        } else {
+            { if (src == Src.LOCAL && Player.playing && Player.current?.id == s.track?.id) Player.position() else null }
+        }
+        LyricsSync.begin(this, song, position)
+    }
+
+    /**
+     * Timed lines for the song on the screen, after its untimed ones (the owner's server found them, or made them by
+     * listening): the same lines are timed where they stand ([LyricsView.timeLines]), other ones replace them.
+     */
+    private val timedListener: (String, String, Int, Lyrics.Result) -> Unit = { title, artist, sec, r ->
+        val s = lyricsSong
+        if (s != null && s.title == title && s.artist == artist && s.sec == sec && lyricsShown == s.key && !isDestroyed) {
+            // (another source's timed lyrics carry their recording's length, as LRCLIB's do: see refreshLyrics)
+            if (s.bt && r.durationSec > 0) BtMusic.offerDuration(r.durationSec, title, artist, BtMusic.FROM_LYRICS)
+            val unknown = positionUnknown
+            val at = positionNow()
+            lyrics { it.timeLines(r); it.needSync = unknown; it.at(at) }
+            if (!r.improvable) LyricsSync.end()
+        }
+    }
+
+    /** The listening at work, said in the lyrics' corner: what it does, and how much of the song is timed. */
+    private val syncStatus: (Int, Float) -> Unit = { what, covered ->
+        if (::lyricsView.isInitialized && !isDestroyed) {
+            val pct = "${(covered * 100).toInt()}%"
+            val text = when (what) {
+                LyricsSync.LISTENING -> if (covered > 0f) getString(R.string.lyrics_sync_listening_pct, pct) else getString(R.string.lyrics_sync_listening)
+                LyricsSync.WORKING -> getString(R.string.lyrics_sync_working, pct)
+                else -> null
+            }
+            lyrics { it.note(text, if (what == LyricsSync.LISTENING) R.drawable.ic_mic else R.drawable.ic_lyrics) }
         }
     }
 
