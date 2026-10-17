@@ -1,0 +1,4 @@
+# the server's home when it is run without lyrics-server.bat: the key, kept lyrics, the songs' timing
+data/
+config.json
+__pycache__/

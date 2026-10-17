@@ -191,6 +191,7 @@ class DisplaySoundPage(private val act: SettingsActivity) : Page(R.string.set_di
                 }
             }
         ))
+        LyricsCard.addTo(act, ctx, col) // the owner's lyrics server and the timing of lyrics by listening (1.13)
 
         if (com.abdllh.aura.phone.Calls.available) {
             col.addSection(ctx.getString(R.string.set_calls))

@@ -73,6 +73,10 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
     private val retry = ABtn(c).apply { kind = ABtn.Kind.TONAL; setText(R.string.lyrics_retry) }
     private val hint: LinearLayout
     private val hintIcon: ImageView
+    /** While the song is listened to for its timing (1.13): a quiet note where the sync hint would be. */
+    private val note: LinearLayout
+    private val noteIcon: ImageView
+    private val noteText: AText
     private val done: AText
     private val doneBg = Shapes.pill(Palette.accent)
     private var lines: List<Lyrics.Line> = emptyList()
@@ -137,6 +141,20 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
         addView(hint, flp(WRAP, WRAP, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { setMargins(72.dp, Space.M.dp, 72.dp, 0) })
         // the first lines start below the hint once it is measured (out of the layout pass that measured it)
         hint.addOnLayoutChangeListener { _, _, t, _, b, _, ot, _, ob -> if (b - t != ob - ot) post { pad() } }
+        noteIcon = c.iconView(R.drawable.ic_mic, 18, Palette.accentFg)
+        noteText = c.label(Type.FOOTNOTE, Palette.text2, lines = 1)
+        note = LinearLayout(c).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPaddingRelative(Space.M.dp, Space.XS.dp, Space.M.dp, Space.XS.dp)
+            minimumHeight = 32.dp
+            background = Shapes.pill(Palette.withAlpha(Palette.card, if (Palette.dark) 0.85f else 0.92f), if (Palette.dark) Palette.stroke else 0)
+            visibility = View.GONE
+            addView(noteIcon, lp(18.dp, 18.dp))
+            addView(noteText, lp(WRAP, WRAP).apply { marginStart = Space.XS.dp })
+        }
+        // (where the sync hint is: listening needs a known position, so the two never show together)
+        addView(note, flp(WRAP, WRAP, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { setMargins(72.dp, Space.M.dp, 72.dp, 0) })
         done = c.label(Type.BUTTON, Palette.onColor(Palette.accent), gravity = Gravity.CENTER).apply {
             setText(R.string.lyrics_synced)
             background = doneBg
@@ -149,8 +167,23 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
     /** The cover's colour, as the rest of the screen has it: the hint's icon and the "synced" note. */
     fun accent(fill: Int, text: Int) {
         hintIcon.setColorFilter(text)
+        noteIcon.setColorFilter(text)
         doneBg.setColor(fill)
         done.setTextColor(Palette.onColor(fill))
+    }
+
+    private var noteShown = false
+
+    /**
+     * The timing by listening at work ([text]: what it does, with how much is timed; [icon]: the microphone while it
+     * listens), or nothing (null). It comes and goes like the hint; a new text replaces the old in place.
+     */
+    fun note(text: CharSequence?, icon: Int = R.drawable.ic_mic) {
+        val want = text != null
+        if (want) { noteText.text = text; noteIcon.setImageResource(icon) }
+        if (want == noteShown) return
+        noteShown = want
+        if (want) note.enter(dy = -8f) else note.exit(dy = -6f) { if (!noteShown) note.visibility = View.GONE }
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -222,6 +255,7 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
 
     private fun drop() {
         gen++
+        shiftOnLayout = 0
         pending = null; texts = null; made = ArrayList()
         removeCallbacks(buildStep); removeCallbacks(idleBuild)
         follow.cancel()
@@ -323,8 +357,38 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
         try { setText(text) } catch (_: IllegalArgumentException) { setText(text.toString()) }
         if (synced) {
             isClickable = true
-            setOnClickListener { onLineTap?.invoke(l) }
+            setOnClickListener(tapLine)
         }
+    }
+
+    /** A tapped line: its time as the lyrics have it now (a timing by listening can be refined while it shows). */
+    private val tapLine = View.OnClickListener { v -> lines.getOrNull(views.indexOf(v))?.let { onLineTap?.invoke(it) } }
+
+    /** Pixels the lines are moved down by at the next layout (new room above them that must not move what shows). */
+    private var shiftOnLayout = 0
+
+    /**
+     * Times for the lines shown (1.13: the owner's server timed them, by listening or from another source). When they
+     * are the very lines on the screen, untimed until now, nothing is made again and nothing jumps: the lines stay
+     * where they are (the room above them grows as timed lyrics have it, and the scroll moves with it in the same
+     * frame), take taps from now on, and the line being sung lights and glides to the middle as with any timed lyrics.
+     * Lines already timed take the new times as they are. Anything else is shown anew ([show]).
+     */
+    fun timeLines(r: Lyrics.Result) {
+        if (!r.synced) return
+        val same = pending == null && views.size == r.lines.size && lines.size == r.lines.size &&
+            r.lines.indices.all { lines[it].text == r.lines[it].text }
+        if (!same) { show(r); return }
+        lines = r.lines
+        if (synced) return // (more of a timing: the next tick lights the right line)
+        synced = true
+        current = -1
+        for (v in views) { v.isClickable = true; v.setOnClickListener(tapLine) }
+        val before = list.paddingTop
+        pad()
+        centerOnLayout = false // (no jump to the lit line: it glides there when it is lit)
+        shiftOnLayout += list.paddingTop - before
+        showHint()
     }
 
     // ---- the hint and the "synced" note
@@ -426,6 +490,12 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
 
     override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
         super.onLayout(changed, l, t, r, b)
+        // the lines just timed in place: what showed stays where it was (see timeLines)
+        if (shiftOnLayout != 0) {
+            follow.cancel()
+            scroll.scrollTo(0, scroll.scrollY + shiftOnLayout)
+            shiftOnLayout = 0
+        }
         // New lines, or new room around them: the lit line is put in the middle before the first frame shows them.
         // (Lyrics that arrived while the song played left it below the screen, then whipped there at the next line.)
         if (centerOnLayout && views.isNotEmpty() && SystemClock.elapsedRealtime() - touchedAt > FOLLOW_AFTER_TOUCH_MS) {

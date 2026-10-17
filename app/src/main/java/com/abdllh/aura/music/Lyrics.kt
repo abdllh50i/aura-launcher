@@ -19,6 +19,12 @@ import kotlin.math.abs
  * A song's lyrics, timed line by line when they can be, from LRCLIB (lrclib.net: a free, open lyrics database, no key,
  * many Arabic songs among them): looked up by title, artist and length, kept on the unit (what was found, and for a
  * while that nothing was). A busy or unreachable server is not "nothing": the next play asks again.
+ *
+ * Since 1.13 the owner's own server ([LyricsServer], when one is set) comes after LRCLIB: the order is what is kept
+ * here, LRCLIB, then the server (timed lyrics first, else plain), then nothing. LRCLIB's plain lyrics show at once and
+ * the server is asked meanwhile for timed ones; when they come (found somewhere else, or made by listening:
+ * [LyricsSync]) they are kept in the song's place here and handed to the screen ([onTimed]), which then times the
+ * lines it already shows.
  */
 object Lyrics {
     private const val TAG = "AuraLyrics"
@@ -30,18 +36,36 @@ object Lyrics {
 
     /**
      * [synced]: the lines carry times. [instrumental]: a song without words. [durationSec]: the length of the recording
-     * the lines were timed on (0 when unknown).
+     * the lines were timed on (0 when unknown). [source]: "lrclib", one of the owner's server's sources, or "aligned"
+     * (timed by listening), whose [covered] says how much of the song was heard (1 for any other source).
      */
-    class Result(val synced: Boolean, val lines: List<Line>, val instrumental: Boolean = false, val durationSec: Int = 0)
+    class Result(
+        val synced: Boolean, val lines: List<Line>, val instrumental: Boolean = false, val durationSec: Int = 0,
+        val source: String = SOURCE_LRCLIB, val covered: Float = 1f
+    ) {
+        /** Worth asking the owner's server about: untimed lines, or a timing by listening that is not complete yet. */
+        val improvable: Boolean get() = !instrumental && lines.isNotEmpty() && (!synced || (source == SOURCE_ALIGNED && covered < LyricsSync.DONE_AT))
+    }
+
+    const val SOURCE_LRCLIB = "lrclib"
+    const val SOURCE_ALIGNED = "aligned"
 
     private val io = Executors.newSingleThreadExecutor()
+    /** The owner's server's later questions, apart: a slow or absent server must not hold the next song's lookup. */
+    private val serverIo = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
+
+    /**
+     * Timed lines for a song whose untimed (or partly timed) lines were already handed out, on the main thread: the
+     * song as it was asked for (title, artist, length) and the new lyrics. Set by the music screen while it is up.
+     */
+    var onTimed: ((title: String, artist: String, durationSec: Int, Result) -> Unit)? = null
 
     /**
      * The lyrics of a song ([durationSec] 0 when unknown), then [done] on the main thread: null when there are none,
      * [failed] true when the server could not be asked (no internet, busy).
      */
-    fun get(c: Context, title: String, artist: String, durationSec: Int, done: (Result?, failed: Boolean) -> Unit) {
+    fun get(c: Context, title: String, artist: String, durationSec: Int, album: String = "", done: (Result?, failed: Boolean) -> Unit) {
         val app = c.applicationContext
         if (title.isBlank()) { done(null, false); return }
         val key = key(title, artist, durationSec)
@@ -51,36 +75,99 @@ object Lyrics {
             if (wanted != key) return@execute
             val f = File(dir(app), "$key.json")
             val kept = read(f)
-            // what was found is kept; "nothing" only for a while (somebody may add the song)
-            val fresh = kept != null && (kept.result != null || System.currentTimeMillis() - f.lastModified() < RETRY_MISSING_MS)
-            val result = if (fresh) kept!!.result else fetchAndKeep(f, title, artist, durationSec)
-            val failed = !fresh && result == null && lastFailed
-            main.post { done(result, failed) }
+            val server = LyricsServer.configured
+            if (kept?.result != null) {
+                // what was found is kept (and the server may have better by now: timed lines for untimed ones)
+                val r = kept.result
+                main.post { done(r, false) }
+                if (server && r.improvable) serverIo.execute { better(f, title, artist, durationSec, album, r) }
+                return@execute
+            }
+            // "nothing" is kept for a while (somebody may add the song): LRCLIB's, and the server's when it was asked
+            val noneLately = kept != null && System.currentTimeMillis() - f.lastModified() < RETRY_MISSING_MS
+            if (noneLately && (!server || kept!!.serverAt > 0L)) { main.post { done(null, false) }; return@execute }
+            var lrclibFailed = false
+            if (!noneLately) {
+                val json = try {
+                    fetch(title, artist, durationSec)
+                } catch (t: Throwable) {
+                    Log.i(TAG, "lyrics for '$title': $t")
+                    lrclibFailed = true
+                    null
+                }
+                val r = json?.let { parse(it) }
+                if (json != null && r != null) {
+                    write(f, json)
+                    main.post { done(r, false) }
+                    if (server && r.improvable) serverIo.execute { better(f, title, artist, durationSec, album, r) }
+                    return@execute
+                }
+                // (a "none" only when every question got its answer)
+                if (!lrclibFailed) write(f, JSONObject().put("none", true))
+            }
+            if (!server || wanted != key) { main.post { done(null, lrclibFailed) }; return@execute }
+            // LRCLIB has nothing: the owner's server (timed first, else plain)
+            val found = try {
+                LyricsServer.lyrics(title, artist, album, durationSec)
+            } catch (t: Throwable) {
+                Log.i(TAG, "lyrics server for '$title': $t")
+                main.post { done(null, lrclibFailed) } // (LRCLIB's "none" stays kept: the server is asked again next time)
+                return@execute
+            }
+            val record = found?.let { serverJson(it) }
+            val r = record?.let { parse(it) }
+            if (record != null && r != null) write(f, record)
+            else if (!lrclibFailed) write(f, JSONObject().put("none", true).put("server", System.currentTimeMillis()))
+            main.post { done(r, r == null && lrclibFailed) }
         }
     }
 
-    private class Kept(val result: Result?)
+    /**
+     * The owner's server, about lyrics already handed out: timed lines for untimed ones (found by one of its sources,
+     * or made by listening), or more of a timing by listening. Kept, and given to the screen ([onTimed]).
+     */
+    private fun better(f: File, title: String, artist: String, durationSec: Int, album: String, shown: Result) {
+        val found = try { LyricsServer.lyrics(title, artist, album, durationSec) } catch (t: Throwable) { Log.i(TAG, "lyrics server: $t"); return } ?: return
+        if (found.synced == null) return
+        val r = parse(serverJson(found)) ?: return
+        if (!r.synced || (shown.synced && r.covered <= shown.covered + 0.001f)) return
+        write(f, serverJson(found))
+        main.post { onTimed?.invoke(title, artist, durationSec, r) }
+    }
 
-    @Volatile private var wanted: String? = null // the song asked for last
+    /**
+     * A timing made by listening ([LyricsSync]) kept as the song's lyrics: the next play is timed at once. [lines] are
+     * the lines shown with their times; [covered], how much of the song was heard.
+     */
+    fun keepAligned(c: Context, title: String, artist: String, durationSec: Int, lines: List<Line>, covered: Float) {
+        val f = File(dir(c.applicationContext), "${key(title, artist, durationSec)}.json")
+        val lrc = lines.joinToString("\n") { l -> "[%02d:%05.2f]%s".format(java.util.Locale.ROOT, l.ms / 60_000, (l.ms % 60_000) / 1000.0, l.text) }
+        val o = JSONObject().put("syncedLyrics", lrc).put("plainLyrics", lines.joinToString("\n") { it.text })
+            .put("source", SOURCE_ALIGNED).put("covered", covered.toDouble()).put("server", System.currentTimeMillis())
+        io.execute { write(f, o) }
+    }
 
-    private var lastFailed = false // (the io thread's)
+    /** The server's answer in the shape of an LRCLIB record (the one way lyrics are kept here). */
+    private fun serverJson(s: LyricsServer.Found): JSONObject = JSONObject().apply {
+        if (s.synced != null) put("syncedLyrics", s.synced)
+        if (s.plain != null) put("plainLyrics", s.plain)
+        if (s.duration > 0) put("duration", s.duration)
+        put("source", s.source)
+        put("covered", s.covered.toDouble())
+        put("server", System.currentTimeMillis())
+    }
 
-    private fun fetchAndKeep(f: File, title: String, artist: String, durationSec: Int): Result? {
-        lastFailed = false
-        val json = try {
-            fetch(title, artist, durationSec)
-        } catch (t: Throwable) {
-            Log.i(TAG, "lyrics for '$title': $t")
-            lastFailed = true
-            return null
-        }
-        val r = json?.let { parse(it) }
+    private fun write(f: File, o: JSONObject) {
         try {
             f.parentFile?.mkdirs()
-            f.writeText((json ?: JSONObject().put("none", true)).toString())
+            f.writeText(o.toString())
         } catch (_: Throwable) { }
-        return r
     }
+
+    /** What is kept for a song: its lyrics, or none ([result] null); [serverAt]: when the owner's server was asked. */
+    private class Kept(val result: Result?, val serverAt: Long)
+
+    @Volatile private var wanted: String? = null // the song asked for last
 
     /**
      * LRCLIB's record of the song, or null when it has none (an exception: a question went unanswered). The server
@@ -172,14 +259,17 @@ object Lyrics {
     private fun parse(o: JSONObject): Result? {
         if (o.optBoolean("none")) return null
         val sec = o.optDouble("duration", 0.0).let { if (it.isNaN()) 0 else it.toInt() }
-        if (o.optBoolean("instrumental")) return Result(false, emptyList(), instrumental = true, durationSec = sec)
+        // (kept before 1.13: LRCLIB's record as it came, no source)
+        val source = o.optString("source").ifBlank { SOURCE_LRCLIB }
+        val covered = o.optDouble("covered", 1.0).let { if (it.isNaN()) 1f else it.toFloat() }
+        if (o.optBoolean("instrumental")) return Result(false, emptyList(), instrumental = true, durationSec = sec, source = source)
         val synced = o.optString("syncedLyrics").takeIf { it.isNotBlank() && it != "null" }
         if (synced != null) {
             val lines = parseLrc(synced)
-            if (lines.isNotEmpty()) return Result(true, lines, durationSec = sec)
+            if (lines.isNotEmpty()) return Result(true, lines, durationSec = sec, source = source, covered = covered)
         }
         val plain = o.optString("plainLyrics").takeIf { it.isNotBlank() && it != "null" } ?: return null
-        return Result(false, plain.lines().map { Line(0L, it.trim()) }, durationSec = sec)
+        return Result(false, plain.lines().map { Line(0L, it.trim()) }, durationSec = sec, source = source, covered = 0f)
     }
 
     private val TAG_RE = Regex("""\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?]""")
@@ -208,7 +298,7 @@ object Lyrics {
 
     /** What was kept for the song (its result may be "none"), or null when nothing was. */
     private fun read(f: File): Kept? = try {
-        if (!f.isFile) null else Kept(parse(JSONObject(f.readText())))
+        if (!f.isFile) null else JSONObject(f.readText()).let { Kept(parse(it), it.optLong("server", 0L)) }
     } catch (_: Throwable) {
         null
     }
