@@ -14,14 +14,15 @@ import kotlin.math.max
  * radio, a word the owner says often) wakes it once.
  *
  * Kept from turning against the owner (a real "عمري" followed by silence would otherwise teach it to ignore him):
- * - only weak matches are learned ([WEAK] of the sensitivity's score limit or more) and only weak matches are refused
- *   ([REFUSE_FROM]): a "عمري" as close as most of the owner's own is never learned and never refused;
+ * - only weak matches are learned (near the sensitivity's limits, [weak]) and only weak matches are refused: a "عمري"
+ *   as close as most of the owner's own is never learned and never refused;
  * - refused only when nearer to the learned sound than [ALPHA] times its distance to the nearest recording;
  * - a wake that is confirmed (a request followed and was done) takes away every learned sound about as close to it as
  *   the recordings are ([BETA]): one real call outvotes a mistake;
  * - at most [MAX] (the oldest that never refused anything goes first), and Settings → Voice assistant forgets them.
- * Simulated on the test corpus (docs/notes-1.13-amri.md): ten real "عمري" learned as negatives cost 5% of the true
- * accepts until the next confirmed wakes, which brought them back.
+ * Simulated on the test corpus (docs/notes-1.13-amri.md): of ten real "عمري" answered with silence about four (the
+ * weak ones) were learned and cost 4 points of true accepts until the next confirmed wakes brought them back; false
+ * wakes heard again later woke 30% of the time instead of 50%.
  *
  * In "amri-wake-neg.bin" ("AMRN": count, then per sound: when, refusals, frames, mels, bands, background), spectra as
  * [WakeModel] keeps them. All calls are synchronised: the microphone's thread asks, the main thread learns.
@@ -32,10 +33,16 @@ internal object WakeNegatives {
     const val MAX = 24
     /** Refused when its distance to a learned sound is under this times its distance to the nearest recording. */
     private const val ALPHA = 0.8f
-    /** Learned only when its score was this share of the sensitivity's limit or more (a weak match). */
+    /**
+     * Learned only when it matched weakly: its score this share of the sensitivity's limit or more. (Weighing the
+     * score through its own background too, [Verdict.masked], let loud-noise mistakes be learned, but then real calls
+     * in noise were refused: true accepts fell from 67% to 28% in the simulation. Not done.)
+     */
     private const val WEAK = 0.75f
     /** Words scoring under this share of the limit are never refused (a strong match is the owner). */
     private const val REFUSE_FROM = 0.65f
+
+    private fun weak(v: Verdict, lim: Limits, share: Float) = v.score >= share * lim.score
     /** A confirmed wake takes away learned sounds nearer to it than this times its distance to the recordings. */
     private const val BETA = 1.2f
 
@@ -61,7 +68,7 @@ internal object WakeNegatives {
     @Synchronized
     fun rejects(f: File, w: Spectrum, v: Verdict, lim: Limits): Boolean {
         val list = items(f)
-        if (list.isEmpty() || v.score < REFUSE_FROM * lim.score) return false
+        if (list.isEmpty() || !weak(v, lim, REFUSE_FROM)) return false
         var best = Float.MAX_VALUE
         var hit: Item? = null
         for (it in list) {
@@ -77,7 +84,7 @@ internal object WakeNegatives {
     /** The wake [c] was not meant (nothing asked, tapped away): kept when it matched weakly. True: learned. */
     @Synchronized
     fun learn(f: File, c: WakeCandidate, lim: Limits, now: Long = System.currentTimeMillis()): Boolean {
-        if (c.verdict.score < WEAK * lim.score) return false
+        if (!weak(c.verdict, lim, WEAK)) return false
         val list = items(f)
         if (list.size >= MAX) list.removeAt(list.indexOfFirst { it.hits == 0 }.takeIf { it >= 0 } ?: 0)
         list.add(Item(c.spectrum, now, 0))
