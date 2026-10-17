@@ -180,7 +180,8 @@ class MapsActivity : Activity() {
             }
         }
         if (i?.getBooleanExtra("search", false) == true) openSearch()
-        if (BuildConfig.DEBUG) i?.getStringExtra("q")?.let { q -> openSearch(); input.setText(q); runSearch(q); hideKeyboard() } // tests
+        // a search asked for by name (the assistant's "where is the nearest petrol station", and the emulator's tests)
+        i?.getStringExtra("q")?.takeIf { it.isNotBlank() }?.let { q -> openSearch(); input.setText(q); runSearch(q); hideKeyboard() }
         i?.getStringExtra("pick")?.let { which -> // Home / Work chosen on the map, then back to the home screen
             pickFor = which
             finishAfterPick = true
@@ -189,6 +190,7 @@ class MapsActivity : Activity() {
         i?.removeExtra("go")
         i?.removeExtra("search")
         i?.removeExtra("pick")
+        i?.removeExtra("q") // (once: a recreate at sunset must not search it again)
     }
 
     private var pickFor: String? = null

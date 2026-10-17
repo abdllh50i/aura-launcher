@@ -604,10 +604,7 @@ object Amri {
         return Answer(c.getString(R.string.amri_search_place, query))
     }
 
-    /**
-     * AMRI Maps with its search open on [query]. (MapsActivity takes the query itself only in debug builds, "q"; in
-     * release builds the search opens empty, ready for it.)
-     */
+    /** AMRI Maps with its search open on [query] and its results showing (MapsActivity's "q"). */
     private fun openMapSearch(c: Context, query: String) {
         com.abdllh.aura.nav.MapsActivity.open(c) { putExtra("search", true); putExtra("q", query) }
     }
