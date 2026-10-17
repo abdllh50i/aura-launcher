@@ -214,6 +214,7 @@ class DisplaySoundPage(private val act: SettingsActivity) : Page(R.string.set_di
                 }
             ))
         }
+        col.noticesSection(ctx)
 
         col.addSection(ctx.getString(R.string.set_shortcuts))
         val stock = AppRepo.isInstalled(ctx, Known.STOCK_LAUNCHER)

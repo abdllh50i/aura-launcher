@@ -55,7 +55,7 @@ class AuraApp : Application() {
         val disabled = SystemProps.get(Device.DISABLED_PROP) == "1"
         if (disabled) {
             SystemBars.release(this); VolumeHud.release(this); Animations.release(this)
-            com.abdllh.aura.phone.Calls.release(this); MusicKeys.release()
+            com.abdllh.aura.phone.Calls.release(this); MusicKeys.release(); com.abdllh.aura.system.Notices.release(this)
         }
         else { SystemBars.apply(this); Animations.apply(this) }
         Animations.ensureAnimators()
@@ -75,6 +75,7 @@ class AuraApp : Application() {
             com.abdllh.aura.system.BetaLeftovers.removeOnce(this) // what a 1.6.1 beta left over the Bluetooth daemon
             Gear.init(this)
             com.abdllh.aura.phone.Calls.init(this) // a phone call: AMRI's own card and ring, not the stock window
+            com.abdllh.aura.system.Notices.apply(this) // Android's notifications off the screen, the phone's messages on it
             BootAnim.ensure(this) // this build's boot animation, also after an update from the screen
             AssistiveBall.offOnce(this) // the stock floating circle the owner switched on by accident
             com.abdllh.aura.system.AppRemover.removeRequestedOnce(this) // the "Vivid" launcher the owner asked to remove

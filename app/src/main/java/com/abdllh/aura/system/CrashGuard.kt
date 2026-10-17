@@ -103,9 +103,10 @@ object CrashGuard {
             if (enabled) {
                 VolumeHud.init(ctx); MusicKeys.init(ctx); HomeGuard.init(ctx); Gear.init(ctx); VolumeHud.apply(ctx)
                 com.abdllh.aura.phone.Calls.init(ctx); com.abdllh.aura.phone.Calls.apply(ctx); MusicKeys.applyRules()
+                Notices.apply(ctx)
             } else {
-                // (the stock call window, the stock ring and the firmware's own music keys with it)
-                VolumeHud.release(ctx); com.abdllh.aura.phone.Calls.release(ctx); MusicKeys.release()
+                // (the stock call window, the stock ring, the firmware's own music keys and Android's notifications with it)
+                VolumeHud.release(ctx); com.abdllh.aura.phone.Calls.release(ctx); MusicKeys.release(); Notices.release(ctx)
             }
         } catch (_: Throwable) {
         }

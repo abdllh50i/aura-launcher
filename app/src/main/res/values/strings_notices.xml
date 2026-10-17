@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="set_notices">Notifications</string>
+    <string name="set_notices_hide">Hide Android notifications</string>
+    <string name="set_notices_hide_sub">No notification from the screen\'s apps pops up over the map or the music</string>
+    <string name="set_notices_messages">Phone messages on screen</string>
+    <string name="set_notices_messages_sub">WhatsApp and other messaging apps show as an AMRI card</string>
+    <string name="set_notices_text">Show the message text</string>
+    <string name="set_notices_text_sub">Off: only who sent it</string>
+    <string name="set_notices_try">Show a sample message</string>
+    <string name="set_notices_whatsapp">To get WhatsApp messages from the iPhone: install WhatsApp on this screen from the Play Store, open it and choose “Link as companion device”, then on the iPhone go to WhatsApp → Settings → Linked devices → Link a device and scan the code shown on the screen. The screen\'s Bluetooth cannot receive the iPhone\'s notifications itself.</string>
+    <string name="notices_preview_sender">Ahmed</string>
+    <string name="notices_preview_text">Where are you? I\'m at the door</string>
+    <string name="notices_close">Close</string>
+    <string name="notices_new_message">New message</string>
+</resources>

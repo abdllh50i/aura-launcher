@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="set_notices">الإشعارات</string>
+    <string name="set_notices_hide">إخفاء إشعارات أندرويد</string>
+    <string name="set_notices_hide_sub">ما يطلع أي إشعار من تطبيقات الشاشة فوق الخريطة أو الموسيقى</string>
+    <string name="set_notices_messages">رسائل الجوال على الشاشة</string>
+    <string name="set_notices_messages_sub">رسائل واتساب والتطبيقات المشابهة تطلع كبطاقة من عمري</string>
+    <string name="set_notices_text">عرض نص الرسالة</string>
+    <string name="set_notices_text_sub">لو طفيته يطلع اسم المرسل بس</string>
+    <string name="set_notices_try">جرّب شكل الرسالة</string>
+    <string name="set_notices_whatsapp">عشان توصلك رسائل واتساب من الآيفون: نزّل واتساب على الشاشة من متجر ⁨Play⁩، افتحه واختر «ربط كجهاز مرافق»، وبعدها من الآيفون: واتساب ← الإعدادات ← الأجهزة المرتبطة ← ربط جهاز، وامسح الرمز اللي يطلع على الشاشة. بلوتوث الشاشة نفسه ما يقدر ياخذ إشعارات الآيفون.</string>
+    <string name="notices_preview_sender">أحمد</string>
+    <string name="notices_preview_text">وينك؟ أنا عند الباب</string>
+    <string name="notices_close">إغلاق</string>
+    <string name="notices_new_message">رسالة جديدة</string>
+</resources>
