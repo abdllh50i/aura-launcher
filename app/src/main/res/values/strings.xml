@@ -83,11 +83,11 @@
     <string name="maps_no_results">No places found</string>
     <string name="maps_set_place_hint">Search a place, then tap “Set as Home” or “Set as Work”</string>
     <string name="maps_recents">Recent</string>
-    <string name="maps_recenter">Recenter</string>
+    <string name="maps_recenter">Resume</string>
     <string name="maps_kmh">km/h</string>
     <string name="maps_go">Go</string>
-    <string name="maps_set_home">Home</string>
-    <string name="maps_set_work">Work</string>
+    <string name="maps_set_home">Set as Home</string>
+    <string name="maps_set_work">Set as Work</string>
     <string name="maps_saved">Saved</string>
     <string name="maps_end">End</string>
     <string name="maps_arrived">You have arrived</string>
@@ -177,8 +177,8 @@
     <string name="maps_dropped_pin">Dropped pin</string>
     <string name="maps_pick_home_short">Long-press your home on the map</string>
     <string name="maps_pick_work_short">Long-press your work on the map</string>
-    <string name="maps_pick_home">Long-press your home on the map (or search for it), then tap Home</string>
-    <string name="maps_pick_work">Long-press your work on the map (or search for it), then tap Work</string>
+    <string name="maps_pick_home">Long-press your home on the map (or search for it), then tap Set as Home</string>
+    <string name="maps_pick_work">Long-press your work on the map (or search for it), then tap Set as Work</string>
     <string name="dock_pin">Add to the dock</string>
     <string name="dock_unpin">Remove from the dock</string>
     <string name="dock_pinned">%1$s is in the dock now</string>

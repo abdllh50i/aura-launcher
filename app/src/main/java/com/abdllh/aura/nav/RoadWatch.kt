@@ -49,7 +49,10 @@ object RoadWatch {
         if (started) return
         started = true
         CarLocation.addListener { onFix(it) }
-        MapExtras.addListener { announced.clear() }
+        // A changed set keeps what was announced of it: marking or taking back a camera must not make the bump or
+        // camera just announced beep again. Spots compare by identity: the published ones are the same objects after
+        // the driver's own changed, removed ones drop out, and a newly fetched set (new objects) starts afresh.
+        MapExtras.addListener { announced.retainAll(MapExtras.spots.toHashSet()) }
     }
 
     private fun onFix(l: Location) {

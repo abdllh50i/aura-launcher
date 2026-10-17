@@ -75,7 +75,7 @@ object Places {
                 if (gen != generation.get()) return@execute
                 try { found += photon(q, near, arabic) } catch (_: Throwable) { failed++ }
             }
-            val result = if (failed == variants.size) null else rank(found, query, variants.getOrNull(1))
+            val result = if (failed == variants.size) null else rank(found, query, variants.getOrNull(1), near)
             main.post { online = result; onlineDone = true; show() }
         }
     }
@@ -92,16 +92,19 @@ object Places {
 
     private fun photon(q: String, near: LatLon?, arabic: Boolean): List<Place> {
         val enc = URLEncoder.encode(q, "UTF-8")
-        val bias = near?.let { "&lat=${it.lat}&lon=${it.lon}&location_bias_scale=0.3" } ?: ""
+        // a strong pull towards the car (0.3 still put Toronto and Rwanda before the pharmacy round the corner)
+        val bias = near?.let { "&lat=${it.lat}&lon=${it.lon}&zoom=12&location_bias_scale=0.1" } ?: ""
         val lang = if (arabic) "default" else "en"
-        return parse(get("https://photon.komoot.io/api/?q=$enc&limit=10&lang=$lang$bias"), near)
+        return parse(get("https://photon.komoot.io/api/?q=$enc&limit=10&lang=$lang$bias"), arabic)
     }
 
     /**
-     * Both result lists merged: the places whose name answers the query best (in either script) first; places that
-     * answer it about as well keep the search engine's order, which favours what is near the car.
+     * Both result lists merged: the places whose name answers the query best (in either script) first; among those
+     * that answer it about as well, the nearer first, by bands (in town, the area, the region, further), then the
+     * search engine's order. A place more than 500 km away is dropped while one under 150 km answers: "pharmacy" is
+     * asked for the nearest one, while a search for a far city still finds it.
      */
-    private fun rank(list: List<Place>, query: String, latin: String?): List<Place> {
+    private fun rank(list: List<Place>, query: String, latin: String?, near: LatLon?): List<Place> {
         val seen = HashSet<String>()
         val unique = list.filter {
             seen.add("${TextMatch.norm(it.name)}|${"%.3f".format(java.util.Locale.ROOT, it.pos.lat)}|${"%.3f".format(java.util.Locale.ROOT, it.pos.lon)}")
@@ -110,8 +113,12 @@ object Places {
             val s = maxOf(TextMatch.score(query, p.name), latin?.let { TextMatch.score(it, p.name) } ?: 0.0)
             return (s * 4).toInt()
         }
+        val km = unique.associateWith { p -> near?.let { Geo.distance(it, p.pos) / 1000.0 } ?: 0.0 }
+        fun band(p: Place): Int = km.getValue(p).let { when { it < 5 -> 0; it < 30 -> 1; it < 150 -> 2; else -> 3 } }
+        val closeOnes = unique.any { km.getValue(it) < 150 }
         return unique.withIndex()
-            .sortedWith(compareByDescending<IndexedValue<Place>> { bucket(it.value) }.thenBy { it.index })
+            .filter { !(near != null && closeOnes && km.getValue(it.value) > 500) }
+            .sortedWith(compareByDescending<IndexedValue<Place>> { bucket(it.value) }.thenBy { band(it.value) }.thenBy { it.index })
             .map { it.value }
             .take(12)
     }
@@ -124,7 +131,7 @@ object Places {
             val p = try {
                 val q = URLEncoder.encode(text.trim(), "UTF-8")
                 parse(get("https://photon.komoot.io/api/?q=$q&limit=1&lang=${if (arabic) "default" else "en"}" +
-                    (near?.let { "&lat=${it.lat}&lon=${it.lon}" } ?: "")), near).firstOrNull()
+                    (near?.let { "&lat=${it.lat}&lon=${it.lon}" } ?: "")), arabic).firstOrNull()
             } catch (_: Throwable) {
                 com.abdllh.aura.nav.offline.OfflineMaps.searchStore()?.let {
                     try { com.abdllh.aura.nav.offline.PlaceIndex.search(it, text, near, arabic, 1).firstOrNull() } catch (_: Throwable) { null }
@@ -147,7 +154,7 @@ object Places {
         }
         io.execute {
             val p = try {
-                parse(get("https://photon.komoot.io/reverse?lat=${pos.lat}&lon=${pos.lon}&limit=1&lang=${if (arabic) "default" else "en"}"), null)
+                parse(get("https://photon.komoot.io/reverse?lat=${pos.lat}&lon=${pos.lon}&limit=1&lang=${if (arabic) "default" else "en"}"), arabic)
                     .firstOrNull()?.let { Place(it.name, it.detail, pos) } // keep the exact point that was chosen
             } catch (_: Throwable) {
                 null
@@ -173,7 +180,8 @@ object Places {
         }
     }
 
-    private fun parse(body: String, near: LatLon?): List<Place> {
+    /** Photon's answer as places; the address parts joined with the UI language's comma, whatever the name's script. */
+    private fun parse(body: String, arabic: Boolean): List<Place> {
         val features = JSONObject(body).optJSONArray("features") ?: return emptyList()
         val out = ArrayList<Place>()
         val seen = HashSet<String>()
@@ -186,14 +194,15 @@ object Places {
             val name = p.optString("name").ifBlank { street }
             if (name.isBlank()) continue
             val detail = listOf(if (p.optString("name").isNotBlank()) street else "", p.optString("district"), p.optString("city"), p.optString("state"))
-                .filter { it.isNotBlank() && it != name }.distinct().joinToString("، ".takeIf { isArabic(name) } ?: ", ")
+                .filter { it.isNotBlank() && it != name }.distinct().joinToString(if (arabic) "، " else ", ")
             if (!seen.add("$name|${"%.4f".format(java.util.Locale.ROOT, pos.lat)}|${"%.4f".format(java.util.Locale.ROOT, pos.lon)}")) continue
             out.add(Place(name, detail, pos))
         }
         return out // Photon's relevance order (already biased towards the car)
     }
 
-    private fun isArabic(s: String) = s.any { it in '؀'..'ۿ' }
+    /** Written in Arabic letters (an Arabic name, or one the Arabic voice can read). */
+    fun isArabic(s: String) = s.any { it in '؀'..'ۿ' }
 
     // ---------------------------------------------------------------------------------------- saved places
     var home: Place?

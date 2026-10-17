@@ -10,9 +10,11 @@ import android.os.Looper
 import android.os.SystemClock
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import com.abdllh.aura.R
 import com.abdllh.aura.util.Prefs
 import java.util.Locale
 import java.util.concurrent.CopyOnWriteArrayList
+import kotlin.math.roundToInt
 
 /**
  * The active navigation: destination, route, live progress along it, spoken prompts, re-routing when the car leaves
@@ -44,6 +46,10 @@ object NavSession {
         private set
     var rerouting = false
         private set
+    /** When the car arrived (elapsedRealtime): the trip ends by itself [ARRIVED_HOLD_MS] later. */
+    var arrivedAt = 0L
+        private set
+    const val ARRIVED_HOLD_MS = 30_000L
 
     private var app: Context? = null
     private val main = Handler(Looper.getMainLooper())
@@ -54,8 +60,12 @@ object NavSession {
     private var nextRerouteAt = 0L
     private var trip = 0           // bumped by start/stop: answers for an older trip are dropped
     private val endAfterArrival = Runnable { if (state == State.ARRIVED) stop() }
+    private val saidEarly = HashSet<Int>()
     private val saidFar = HashSet<Int>()
     private val saidNear = HashSet<Int>()
+    private val saidLong = HashSet<Int>()
+    /** The first words of a route (a new trip, or a new route after leaving the old one) are still to be said. */
+    private var pendingIntro = false
     private var tts: TextToSpeech? = null
     private var ttsArabic = false
     private var ttsReady = false
@@ -85,8 +95,7 @@ object NavSession {
         offCount = 0
         rerouteStreak = 0
         nextRerouteAt = 0L
-        saidFar.clear()
-        saidNear.clear()
+        forgetPrompts()
         Places.addRecent(dest)
         CarLocation.acquire(c, "nav")
         CarLocation.removeListener(onFix)
@@ -134,15 +143,19 @@ object NavSession {
         if (!off) lastSeg = snap.segment
         val speed = if (l.hasSpeed()) l.speed * 3.6 else 0.0
         val along = snap.along
-        var next = r.steps.indexOfFirst { it.at > along + 3 }
+        // the next thing the driver is told (a street that only changes its name is not one); a roundabout stays the
+        // next one until the car has left it, with the distance to its exit
+        var next = r.steps.indexOfFirst { !it.silent && it.at + it.span > along + 3 }
         if (next < 0) next = r.steps.size - 1
-        val toNext = (r.steps[next].at - along).coerceAtLeast(0.0)
+        val step = r.steps[next]
+        val toNext = ((if (along > step.at) step.at + step.span else step.at) - along).coerceAtLeast(0.0)
         val remaining = (r.line.length - along).coerceAtLeast(0.0)
         // on the route the arrow follows the road (steady, and right even when a GPS module reports no heading);
         // off it, the GPS heading while moving
         val bearing = if (!off || !l.hasBearing() || speed <= 7) snap.bearing else l.bearing.toDouble()
+        // (GPS reports 1-3 km/h for a parked car: that is standing still, and a reading is rounded, not cut)
         progress = Progress(if (off) here else snap.point, bearing, along, next, toNext, remaining, r.timeLeft(along),
-            speed.toInt(), off)
+            if (speed < 3) 0 else speed.roundToInt(), off)
 
         val dest = destination
         if (remaining < 25 || (dest != null && Geo.distance(here, dest.pos) < 30)) {
@@ -152,23 +165,66 @@ object NavSession {
         // leaving the route: three bad fixes in a row while moving; retries back off while the car stays off it
         if (off) offCount++ else { offCount = 0; rerouteStreak = 0 }
         if (offCount >= 3 && speed > 5 && !rerouting && SystemClock.elapsedRealtime() >= nextRerouteAt) reroute(here, l)
-        if (!off) prompt(r, next, toNext, speed)
+        if (!off) prompt(r, next, toNext, along, speed)
         changed()
     }
 
-    private fun prompt(r: Route, next: Int, toNext: Double, speedKmh: Double) {
+    private fun forgetPrompts() {
+        saidEarly.clear()
+        saidFar.clear()
+        saidNear.clear()
+        saidLong.clear()
+        pendingIntro = true
+    }
+
+    /**
+     * The spoken prompts for the step ahead: early for a highway exit or at highway speed (crossing three lanes needs
+     * more than the 20 s the far prompt gives at 120 km/h), far, and near (8 s ahead: an Arabic sentence takes about
+     * 3 s); with the manoeuvre right after it when that one follows within 150 m. A route's first words say what comes
+     * first, and a long stretch is announced as one ("استمر لمسافة 12 كيلومترًا").
+     */
+    private fun prompt(r: Route, next: Int, toNext: Double, along: Double, speedKmh: Double) {
         if (next <= 0) return
         val step = r.steps[next]
-        val far = (speedKmh / 3.6 * 22).coerceIn(400.0, 1500.0)
-        val near = (speedKmh / 3.6 * 7).coerceIn(70.0, 260.0)
-        val legLength = step.at - r.steps[next - 1].at
-        if (toNext <= near && next !in saidNear) {
-            saidNear.add(next)
-            saidFar.add(next)
-            say(Instructions.spoken(step, if (toNext < 60) 0.0 else toNext, ttsArabic))
-        } else if (toNext <= far && toNext > near + 80 && legLength > near + 150 && next !in saidFar) {
-            saidFar.add(next)
-            say(Instructions.spoken(step, toNext, ttsArabic))
+        val v = speedKmh / 3.6
+        val far = (v * 22).coerceIn(400.0, 1500.0)
+        val near = (v * 8).coerceIn(80.0, 300.0)
+        val highway = step.type in setOf("off ramp", "on ramp", "fork", "merge") || speedKmh > 80
+        val early = if (highway) (v * 60).coerceIn(1000.0, 2000.0) else 0.0
+        // the stretch before it, from the last manoeuvre the driver was told about
+        val prev = (next - 1 downTo 0).firstOrNull { !r.steps[it].silent } ?: 0
+        val legLength = step.at - r.steps[prev].at
+        val after = r.following(next)?.takeIf { it.at - (step.at + step.span) < 150 && it.type != "arrive" }
+        val current = r.steps.indexOfLast { it.at <= along + 3 }.coerceAtLeast(0)
+        if (pendingIntro && ttsReady && voiceOn) {
+            pendingIntro = false
+            if (toNext > near) {
+                if (toNext > 3000) { saidLong.add(next); say(Instructions.continueFor(Instructions.road(r.steps[current]), toNext, ttsArabic)) }
+                else say(Instructions.spoken(step, toNext, ttsArabic))
+                if (toNext <= far) saidFar.add(next)
+                if (toNext <= early) saidEarly.add(next)
+                return
+            }
+        }
+        when {
+            toNext <= near && next !in saidNear -> {
+                saidNear.add(next); saidFar.add(next); saidEarly.add(next)
+                say(Instructions.spoken(step, if (toNext < 60) 0.0 else toNext, ttsArabic, after))
+            }
+            toNext <= far && toNext > near + 80 && legLength > near + 150 && next !in saidFar &&
+                !(step.type == "arrive" && legLength < 600) -> {
+                saidFar.add(next); saidEarly.add(next)
+                say(Instructions.spoken(step, toNext, ttsArabic))
+            }
+            highway && toNext <= early && toNext > far + 300 && next !in saidEarly -> {
+                saidEarly.add(next)
+                say(Instructions.spoken(step, toNext, ttsArabic))
+            }
+            // just past a manoeuvre, a long way to the next one: how long this road goes on
+            toNext > 3000 && next !in saidLong && along - r.steps[prev].at < 300 -> {
+                saidLong.add(next)
+                say(Instructions.continueFor(Instructions.road(r.steps[current]), toNext, ttsArabic))
+            }
         }
     }
 
@@ -177,7 +233,7 @@ object NavSession {
         rerouting = true
         // 8 s, 16 s, 32 s, then every 64 s while the car stays off the route
         nextRerouteAt = SystemClock.elapsedRealtime() + (8_000L shl rerouteStreak.coerceAtMost(3))
-        if (rerouteStreak == 0) say(if (ttsArabic) "جاري تحديث المسار" else "Rerouting") // once per detour
+        if (rerouteStreak == 0) say(if (ttsArabic) "جارٍ تحديث المسار" else "Rerouting") // once per detour
         rerouteStreak++
         changed()
         val t = trip
@@ -190,8 +246,7 @@ object NavSession {
                 route = nr
                 lastSeg = 0
                 offCount = 0
-                saidFar.clear()
-                saidNear.clear()
+                forgetPrompts() // (the new route's first manoeuvre is said at once: the driver is waiting to hear it)
                 CarLocation.last?.let { update(it) }
             }
             changed()
@@ -200,13 +255,16 @@ object NavSession {
 
     private fun arrive() {
         state = State.ARRIVED
+        arrivedAt = SystemClock.elapsedRealtime()
         progress = progress?.let { Progress(it.position, it.bearing, it.along, it.next, 0.0, 0.0, 0.0, it.speedKmh, false) }
-        say(if (ttsArabic) "وصلت إلى وجهتك" else "You have arrived")
+        // by the place's name, unless it is only a pin's
+        val name = destination?.name?.takeIf { it != app?.getString(R.string.maps_dropped_pin) }
+        say(Instructions.arrived(name, ttsArabic))
         changed()
         NavSim.stop()
         // the trip ends by itself (GPS, service and the "arrived" card are not kept for a driver who drives on)
         main.removeCallbacks(endAfterArrival)
-        main.postDelayed(endAfterArrival, 30_000)
+        main.postDelayed(endAfterArrival, ARRIVED_HOLD_MS)
     }
 
     // ------------------------------------------------------------------------------------------ voice
