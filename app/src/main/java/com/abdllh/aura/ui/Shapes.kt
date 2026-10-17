@@ -98,6 +98,9 @@ object Shapes {
  * A soft drop shadow at one of the [Elev] levels (rendered by the GPU from the view outline; the background drawable
  * defines the shape). On the dark theme only views that float over the map get one ([overMap]): elsewhere it cannot
  * be seen on the near-black screen, and it would still be tessellated on every outline change.
+ * Elevation also orders siblings, and on the dark theme this gives none: a view that must draw above the others is
+ * placed there by child order (or passes [overMap] when it floats over the map), never by lift, or it would sink
+ * under them on one theme only.
  */
 fun View.lift(level: Float, overMap: Boolean = false) {
     elevation = if (Palette.dark && !overMap) 0f else level.dp

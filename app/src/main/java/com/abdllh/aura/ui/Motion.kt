@@ -151,9 +151,6 @@ fun View.pressScale(scale: Float = Motion.PRESS_CONTROL) {
             }
         }
     }
-    val slop = ViewConfiguration.get(context).scaledTouchSlop
-    var downX = 0f
-    var downY = 0f
     var pending = false
     val sink = Runnable {
         pending = false
@@ -175,7 +172,6 @@ fun View.pressScale(scale: Float = Motion.PRESS_CONTROL) {
     setOnTouchListener { v, e ->
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                downX = e.x; downY = e.y
                 removeCallbacks(release)
                 val inScroller = generateSequence(v.parent) { it.parent }.any { it is ViewGroup && it.shouldDelayChildPressedState() }
                 if (inScroller) { pending = true; postDelayed(sink, ViewConfiguration.getTapTimeout().toLong()) } else sink.run()
@@ -188,9 +184,8 @@ fun View.pressScale(scale: Float = Motion.PRESS_CONTROL) {
             } else release.run()
             MotionEvent.ACTION_CANCEL -> release.run()
             MotionEvent.ACTION_MOVE -> {
-                // past the slop before the sink: a scroll starting (the parent takes the touch next), never sunk.
-                // Once sunk, only leaving the view lets go: a finger wobbling on a tile in a moving car is still a press.
-                if (pending && (abs(e.x - downX) > slop || abs(e.y - downY) > slop)) { removeCallbacks(sink); pending = false }
+                // Only leaving the view lets go: a finger wobbling on a tile in a moving car is still a press. A scroll
+                // needs no check of its own here: the parent that takes the touch sends ACTION_CANCEL, which lets go.
                 if (e.x < -v.width * 0.2f || e.y < -v.height * 0.2f || e.x > v.width * 1.2f || e.y > v.height * 1.2f) {
                     release.run() // slid off: no press any more, and back without the overshoot of a let-go
                     s.dampingRatio = 0.9f

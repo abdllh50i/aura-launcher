@@ -5,7 +5,6 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
 import android.util.AttributeSet
-import android.view.MotionEvent
 import android.view.View
 import com.abdllh.aura.util.dp
 
@@ -25,6 +24,7 @@ class AuraSwitch @JvmOverloads constructor(
 
     private var t = 0f // 0 off .. 1 on (a little past either end while it settles)
     private var stretch = 0f // 0 at rest .. 1 pressed
+    private var towardOn = true // where the stretch reaches: pressed, the thumb heads for the other side
     private val move = Spring(0f, 700f, 0.74f, 0.002f) { t = it; invalidate() }
     private val press = Spring(0f, 900f, 0.9f, 0.002f) { stretch = it; invalidate() }
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -46,12 +46,15 @@ class AuraSwitch @JvmOverloads constructor(
         if (notify) onToggle?.invoke(v)
     }
 
-    override fun onTouchEvent(e: MotionEvent): Boolean {
-        when (e.actionMasked) {
-            MotionEvent.ACTION_DOWN -> press.animateTo(1f)
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> press.animateTo(0f)
+    // The stretch follows the pressed state rather than the touch: Android delays it inside a scroller (a scroll that
+    // starts on the switch does not make it bulge and snap back) and clears it on a cancel or a slide-off. Where it
+    // heads is taken at the press, since the click flips [checked] while the stretch is still going down.
+    override fun setPressed(p: Boolean) {
+        if (p != isPressed) {
+            if (p) towardOn = !checked
+            press.animateTo(if (p) 1f else 0f)
         }
-        return super.onTouchEvent(e)
+        super.setPressed(p)
     }
 
     override fun onDetachedFromWindow() {
@@ -78,7 +81,6 @@ class AuraSwitch @JvmOverloads constructor(
         val travel = w - pad * 2 - d
         // the thumb (its start edge at x, in the off-to-on direction) grows by a fifth towards where it goes
         val grow = d * 0.2f * stretch
-        val towardOn = !checked // pressed now, it heads for the other side
         val along = travel * t
         val lo = along - if (towardOn) 0f else grow
         val hi = along + d + if (towardOn) grow else 0f

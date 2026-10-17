@@ -88,7 +88,7 @@ object Palette {
         if (isDark) {
             bg = 0xFF0B0C0E.toInt()
             card = 0xFF17191D.toInt()
-            card2 = 0xFF1D2024.toInt()
+            card2 = 0xFF1F2227.toInt() // (one step over card, as in 1.11: raised with card, or tonal controls fade into it)
             card3 = 0xFF292D33.toInt()
             stroke = 0xFF2A2E34.toInt()
             text = 0xFFF2F3F5.toInt()

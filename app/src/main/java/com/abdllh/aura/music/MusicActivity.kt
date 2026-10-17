@@ -1525,9 +1525,8 @@ class MusicActivity : Activity() {
         fullArtBox.addView(fullArt, flp(MATCH, MATCH))
         line.addView(fullArtBox, lp(64.dp, 64.dp))
         val names = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        // (beside the cover in every language: an English name in an Arabic layout would stand at the far end)
-        fullTitle = label(19f, Palette.text, Fonts.MEDIUM).apply { textAlignment = View.TEXT_ALIGNMENT_VIEW_START }
-        fullArtist = label(15f, Palette.text2, Fonts.REGULAR).apply { textAlignment = View.TEXT_ALIGNMENT_VIEW_START }
+        fullTitle = label(19f, Palette.text, Fonts.MEDIUM)
+        fullArtist = label(15f, Palette.text2, Fonts.REGULAR)
         names.addView(fullTitle, lp(MATCH, WRAP))
         names.addView(fullArtist, lp(MATCH, WRAP).apply { topMargin = 3.dp })
         line.addView(names, lp(0, WRAP, 1f).apply { marginStart = 16.dp; marginEnd = 12.dp })

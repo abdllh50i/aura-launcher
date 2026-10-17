@@ -96,7 +96,6 @@ class InternetCard(private val ctx: Context) {
             row.addView(ctx.label(14.5f, Palette.text3, Fonts.REGULAR).apply {
                 text = time(e.at)
                 textDirection = View.TEXT_DIRECTION_LTR
-                textAlignment = View.TEXT_ALIGNMENT_VIEW_START // the start side of the row, also in Arabic
             }, lp(96.dp, WRAP).apply { marginEnd = 10.dp })
             row.addView(ctx.label(14.5f, if (e.type == "lost") Palette.text else Palette.text2, Fonts.REGULAR, lines = 2).apply {
                 text = describe(ctx, e)
