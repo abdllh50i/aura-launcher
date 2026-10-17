@@ -8,6 +8,7 @@ import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
 import com.abdllh.aura.R
+import com.abdllh.aura.ui.Confirm
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Menu
 import com.abdllh.aura.ui.Palette
@@ -25,7 +26,10 @@ import com.abdllh.aura.voice.Amri
 import com.abdllh.aura.voice.OfflineCommands
 import com.abdllh.aura.voice.VoiceSetup
 
-/** "عمري": the wake word (on/off, the owner's recordings, sensitivity), the answers, the microphone, a try. */
+/**
+ * "عمري": the wake word (on/off, the owner's recordings, sensitivity, the sounds it learned to ignore), the answers,
+ * the microphone, a try.
+ */
 class VoicePage(private val act: SettingsActivity) : Page(R.string.set_voice, R.drawable.ic_mic) {
     override fun build(ctx: Context): View {
         val col = ctx.pageColumn()
@@ -44,6 +48,7 @@ class VoicePage(private val act: SettingsActivity) : Page(R.string.set_voice, R.
         val texts = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
         texts.addView(ctx.label(Type.TITLE, Palette.text).apply { setText(R.string.amri_name) })
         texts.addView(ctx.label(Type.FOOTNOTE, Palette.text2, lines = 0).apply { setText(R.string.voice_intro) }, lp(MATCH, WRAP).apply { topMargin = Space.XS.dp })
+        texts.addView(ctx.label(Type.FOOTNOTE, Palette.text2, lines = 0).apply { setText(R.string.voice_more) }, lp(MATCH, WRAP).apply { topMargin = Space.XS.dp })
         intro.addView(texts, lp(0, WRAP, 1f))
         col.addRow(intro)
 
@@ -70,6 +75,15 @@ class VoicePage(private val act: SettingsActivity) : Page(R.string.set_voice, R.
             minimumHeight = Touch.MIN.dp
             select(Amri.sensitivity, animate = false)
         }
+        // the sounds it learned not to take for its name (a wake not meant: nothing asked, tapped away), forgettable
+        val learned = Amri.learnedSounds(ctx)
+        val learnedRow = ctx.settingRow(R.drawable.ic_shield, ctx.getString(R.string.voice_learned),
+            if (learned == 0) ctx.getString(R.string.voice_learned_none)
+            else ctx.resources.getQuantityString(R.plurals.voice_learned_some, learned, learned),
+            if (learned == 0) null else ctx.chevron(), onClick = if (learned == 0) null else { {
+                Confirm.show(ctx, ctx.getString(R.string.voice_learned_forget_title), ctx.getString(R.string.voice_learned_forget_text),
+                    ctx.getString(R.string.voice_learned_forget)) { Amri.forgetLearnedSounds(ctx); act.rebuild() }
+            } })
         col.addRow(ctx.group(
             ctx.switchRow(R.drawable.ic_mic, ctx.getString(R.string.voice_wake), ctx.getString(R.string.voice_wake_sub), Amri.enabled && enrolled) { on ->
                 if (!on) { Amri.enabled = false; return@switchRow }
@@ -84,7 +98,8 @@ class VoicePage(private val act: SettingsActivity) : Page(R.string.set_voice, R.
                 // (set even when it already was: the setter starts the listener with the new recordings)
                 withMic { VoiceSetup.enroll(act) { ok -> if (ok) Amri.enabled = true; act.rebuild() } }
             },
-            ctx.block(R.drawable.ic_sliders, ctx.getString(R.string.voice_sens), ctx.getString(R.string.voice_sens_sub), sens)
+            ctx.block(R.drawable.ic_sliders, ctx.getString(R.string.voice_sens), ctx.getString(R.string.voice_sens_sub), sens),
+            if (enrolled) learnedRow else null
         ))
 
         // the microphone: the system's choice or one of the inputs, picked from a menu (the one in use ticked)

@@ -1,8 +1,13 @@
 package com.abdllh.aura.voice
 
+import com.abdllh.aura.R
+import com.abdllh.aura.util.TextMatch
+
 /**
  * What the owner asked for, from what the speech recogniser heard (Gulf Arabic, or English). Simple rules over the
- * normalised words, the most specific first: the sound, then the places, then the music.
+ * normalised words, the most specific first: questions (what is playing, how long to go, the date), the sound and the
+ * screen, then places, apps, then the music. Long keys also match a word one letter off (the recogniser's spellings:
+ * "الاضايه" for "الإضاءة", "بانزين" for "بنزين").
  */
 internal sealed class Command {
     object Next : Command()
@@ -22,6 +27,40 @@ internal sealed class Command {
     object HomeScreen : Command()
     object Time : Command()
     object Cancel : Command()
+    // 1.13
+    /** "وش الأغنية؟": the song and the singer. */
+    object NowPlaying : Command()
+    /** "كم باقي وأوصل؟": what is left of the route. */
+    object Eta : Command()
+    object Date : Command()
+    /** The screen brighter or dimmer by [by] percent, or set to [level] percent. */
+    data class Brightness(val up: Boolean, val by: Int = 20, val level: Int? = null) : Command()
+    object ScreenOff : Command()
+    /** "وين أقرب محطة بنزين": the nearest place of a kind. */
+    data class Nearby(val place: Place) : Command()
+    /** "ودني المطار": a place by name, on the map. */
+    data class SearchPlace(val query: String) : Command()
+    /** "افتح يوتيوب": an app by its name. */
+    data class OpenApp(val name: String) : Command()
+    /** "شغّل عبادي الجوهر": a song by name (YouTube Music). */
+    data class PlaySong(val query: String) : Command()
+    object Thanks : Command()
+    object Who : Command()
+
+    /** Kinds of places the nearby search knows: the words that name them, what is searched for, and the answer's word. */
+    enum class Place(val label: Int, val ar: String, val en: String, vararg val keys: String) {
+        FUEL(R.string.place_fuel, "محطة بنزين", "petrol station", "بنزين", "البنزين", "بانزين", "البانزين", "محطه", "المحطه", "محطات", "وقود", "الوقود", "petrol", "gas station", "fuel"),
+        PHARMACY(R.string.place_pharmacy, "صيدلية", "pharmacy", "صيدليه", "الصيدليه", "صيدليات", "pharmacy", "drugstore"),
+        RESTAURANT(R.string.place_restaurant, "مطعم", "restaurant", "مطعم", "المطعم", "مطاعم", "restaurant"),
+        CAFE(R.string.place_cafe, "كوفي", "cafe", "كوفي", "الكوفي", "قهوه", "القهوه", "مقهى", "المقهى", "كافيه", "cafe", "coffee"),
+        HOSPITAL(R.string.place_hospital, "مستشفى", "hospital", "مستشفى", "المستشفى", "مستشفيات", "طوارئ", "الطوارئ", "hospital", "emergency"),
+        MOSQUE(R.string.place_mosque, "مسجد", "mosque", "مسجد", "المسجد", "جامع", "الجامع", "مصلى", "mosque"),
+        ATM(R.string.place_atm, "صراف", "ATM", "صراف", "الصراف", "بنك", "البنك", "atm", "bank"),
+        SUPERMARKET(R.string.place_supermarket, "سوبرماركت", "supermarket", "سوبرماركت", "السوبرماركت", "سوبر ماركت", "بقاله", "البقاله", "تموينات", "supermarket", "grocery"),
+        HOTEL(R.string.place_hotel, "فندق", "hotel", "فندق", "الفندق", "فنادق", "hotel"),
+        CARWASH(R.string.place_carwash, "مغسلة سيارات", "car wash", "مغسله", "المغسله", "غسيل سيارات", "car wash"),
+        GARAGE(R.string.place_garage, "ورشة سيارات", "car repair", "ورشه", "الورشه", "ميكانيكي", "بنشر", "البنشر", "garage", "mechanic");
+    }
 
     companion object {
         /** The first of [heard] (the recogniser's guesses, best first) that is a command. */
@@ -46,13 +85,37 @@ internal sealed class Command {
 
             // "الغ الكتم" takes the mute away (and does not cancel)
             if (has("الكتم") && has("فك", "الغ", "الغاء", "شيل", "وقف", "رجع")) return Unmute
-            if (word("خلاص", "الغاء", "الغ", "cancel") || t == "لا" || t.contains("ولا شي") || t.contains("لا شي")) return Cancel
+            if (word("خلاص", "الغاء", "الغ", "cancel", "انسى", "انساها") || t == "لا" || t.contains("ولا شي") || t.contains("لا شي") ||
+                t.contains("مابي شي") || t.contains("ما ابي شي") || t.contains("لا شكرا") || t.contains("never mind")) return Cancel
+            if (words.size <= 4 && (word("شكرا", "مشكور", "تسلم", "thanks") || t.contains("يعطيك العافيه") || t.contains("thank you"))) return Thanks
+            if (t.contains("مين انت") || t.contains("وش اسمك") || t.contains("ايش اسمك") || t.contains("who are you") || t.contains("your name")) return Who
+
+            // questions
+            val ask = word("وش", "ايش", "اش", "شو", "شنو", "مين", "what", "who", "which") || has("وش اسم", "ايش اسم", "اسم الاغنيه")
+            if (ask && has("الاغنيه", "اغنيه", "هالاغنيه", "يغني", "يغنيها", "المغني", "المطرب", "الفنان", "شغال", "song", "singer", "sings", "playing")) return NowPlaying
+            if (has("كم باقي", "كم بقي", "كم باقي على", "متى اوصل", "متى نوصل", "متى بنوصل", "متى بوصل", "وقت الوصول", "كم المسافه",
+                    "how far", "how long", "eta", "when will", "arrive")) return Eta
+            if (has("التاريخ", "date") || t.contains("وش اليوم") || t.contains("اليوم كم") || t.contains("اي يوم") || t.contains("what day")) return Date
+
+            // the screen
+            val up = has("ارفع", "رفع", "علي", "زود", "زيد", "كبر", "up")
+            val down = has("نزل", "وطي", "قلل", "اخفض", "خفض", "نقص", "صغر", "خفف", "down")
+            if (has("الشاشه", "screen") && has("طف", "سكر", "اقفل", "off")) return ScreenOff
+            if (has("الاضاءه", "اضاءه", "الاضائه", "اضائه", "الاضاه", "السطوع", "سطوع", "brightness", "brighter", "dimmer", "dim") ||
+                (has("الشاشه", "screen") && (up || down))) {
+                val n = number(words)
+                return when {
+                    has("للاخر", "للاخير", "على الاخر", "اعلى شي", "full", "max") -> Brightness(true, level = 100)
+                    has("نص", "half") -> Brightness(true, level = 50)
+                    n != null -> Brightness(true, level = n.coerceIn(0, 100))
+                    down || has("dimmer", "dim", "غامق", "اغمق") -> Brightness(false)
+                    else -> Brightness(true) // "ارفع الإضاءة", "brighter", "الإضاءة ضعيفة"
+                }
+            }
 
             // the sound
             if (has("صوت", "الصوت", "volume")) {
                 val n = number(words)
-                val down = has("نزل", "وطي", "قلل", "اخفض", "خفض", "نقص", "صغر", "خفف", "down")
-                val up = has("ارفع", "رفع", "علي", "زود", "زيد", "كبر", "up")
                 return when {
                     has("للاخر", "للاخير", "الاخير", "اخر شي", "اعلى شي", "على الاخر", "فل", "full", "max") -> VolumeMax
                     has("اكتم", "كتم", "mute") -> Mute
@@ -63,14 +126,27 @@ internal sealed class Command {
                     n != null -> VolumeSet(n)
                     down -> VolumeStep(false)
                     up -> VolumeStep(true)
+                    // "الصوت عالي" (too loud), "الصوت واطي" / "ما اسمع" (too low)
+                    has("عالي", "مرتفع", "loud") -> VolumeStep(false)
+                    has("واطي", "ضعيف", "منخفض", "ما اسمع", "low") -> VolumeStep(true)
                     else -> null
                 }
             }
             if (word("اكتم", "كتم", "mute")) return Mute
 
             // places and screens
-            if (has("البيت", "بيتي", "المنزل", "home") && has("ودن", "وديني", "خذني", "روح", "نروح", "رح", "طريق", "go", "take")) return Navigate(true)
-            if (has("الدوام", "الشغل", "العمل", "work") && has("ودن", "وديني", "خذني", "روح", "نروح", "رح", "طريق", "go", "take")) return Navigate(false)
+            val go = has("ودن", "وديني", "ودينا", "خذني", "خذنا", "وصلني", "وصلنا", "روح", "نروح", "رح", "طريق", "go", "take", "navigate")
+            if (has("البيت", "بيتي", "المنزل", "home") && go && !has("home screen")) return Navigate(true)
+            if (has("الدوام", "الشغل", "العمل", "work") && go) return Navigate(false)
+            Place.values().firstOrNull { p -> has(*p.keys) }?.let { p ->
+                // "وين أقرب محطة"; also the kind alone ("صيدلية؟"), or with "أبي" / "ودني"
+                if (go || words.size <= 3 || has("اقرب", "قريب", "وين", "دور", "ابي", "ابغى", "ابغي", "فيه", "find", "nearest", "nearby", "where", "need")) return Nearby(p)
+            }
+            if (go) {
+                val dest = after(words, "ودني", "وديني", "ودنا", "ودينا", "خذني", "خذنا", "وصلني", "وصلنا", "روح", "نروح", "رح", "take", "go", "navigate",
+                    drop = setOf("على", "الى", "الي", "لين", "عند", "me", "to", "the", "يا", "لي"))
+                if (dest != null && !mapsWord(dest)) return SearchPlace(dest)
+            }
             // ("ماب" only as a whole word: "مابي" is "I don't want")
             val maps = has("الملاحه", "ملاحه", "الخريطه", "خريطه", "الخرايط", "الخرائط", "خرائط", "navigation", "maps", "gps") ||
                 word("الماب", "ماب", "map")
@@ -78,14 +154,60 @@ internal sealed class Command {
             if (has("الرئيسيه", "الشاشه الرئيسيه", "home screen")) return HomeScreen
             if (has("كم الساعه", "الساعه كم", "كم الوقت", "الوقت", "what time")) return Time
 
+            // an app by name: "افتح يوتيوب" (the music and Bluetooth screens are the requests below)
+            if (has("افتح", "افتحي", "فتح", "open", "launch")) {
+                val name = after(words, "افتح", "افتحي", "فتح", "open", "launch", drop = setOf("لي", "تطبيق", "برنامج", "app", "the"))
+                if (name != null && CAR.any { normalize(it) == name }) return null // "افتح الشباك": nothing the unit can do
+                if (name != null && !musicWord(name) && !has("بلوتوث", "البلوتوث", "bluetooth")) return OpenApp(name)
+            }
+
             // music: stopping first ("طف الموسيقى" stops it, it does not open it)
             if (stop) return Pause
             if (has("بلوتوث", "البلوتوث", "bluetooth")) return BluetoothMusic
             if (has("الموسيقى", "موسيقى", "الموسيقي", "موسيقي", "الاغاني", "اغاني", "ميوزك", "music") && !has("الاغنيه", "اغنيه")) return OpenMusic
-            if (has("غير", "غيرها", "التاليه", "التالي", "الجايه", "الجاي", "اللي بعد", "الي بعد", "بعدها", "next", "skip")) return Next
-            if (has("اللي قبل", "الي قبل", "قبلها", "السابقه", "السابق", "previous", "back")) return Previous
-            if (has("شغل", "شغلها", "كمل", "play", "resume")) return Play
+            if (has("غير", "غيرها", "التاليه", "التالي", "الجايه", "الجاي", "اللي بعد", "الي بعد", "بعدها", "طوفها", "next", "skip")) return Next
+            if (has("اللي قبل", "الي قبل", "قبلها", "السابقه", "السابق", "اللي فاتت", "رجعها", "previous", "back")) return Previous
+            if (has("شغل", "شغلها", "شغلي", "حط", "حطي", "كمل", "play", "resume")) {
+                val q = after(words, "شغل", "شغلي", "شغللي", "حط", "حطي", "play", drop = FILLERS)
+                return when {
+                    q == null -> Play
+                    CAR.any { normalize(it) == q } -> null // "شغل المكيف": not a song, and nothing the unit can do
+                    APPS.any { TextMatch.score(it, q) >= 0.9 } -> OpenApp(q) // "شغل يوتيوب", "شغل الراديو"
+                    else -> PlaySong(q)
+                }
+            }
             return null
+        }
+
+        /** Words around a song's name that are not the name ("شغل لي أغنية ...", "شغل لنا شي حلو"). */
+        private val FILLERS = setOf("لي", "لنا", "اغنيه", "الاغنيه", "اغنيات", "شي", "شيء", "حلو", "حلوه", "نسمعه", "نسمع", "اي",
+            "يا", "song", "the", "some", "something", "music", "me", "us", "a")
+
+        /** What one asks a car to switch on that is no song (the unit cannot do these). */
+        private val CAR = listOf("المكيف", "التكييف", "الشباك", "الدفايه", "الماسحات", "المساحات", "الانوار", "الفلاشر", "الكشافات")
+
+        /** Apps one "plays" ("شغل يوتيوب"). */
+        private val APPS = listOf("يوتيوب", "youtube", "الراديو", "راديو", "radio", "انغامي", "anghami", "سبوتيفاي", "spotify", "شاهد", "نتفلكس", "netflix")
+
+        private fun mapsWord(s: String) = s.split(' ').any { it in setOf("الخريطه", "الملاحه", "الماب", "map", "maps") }
+
+        private fun musicWord(s: String) = s.split(' ').any {
+            it in setOf("الموسيقى", "موسيقى", "الموسيقي", "الاغاني", "اغاني", "ميوزك", "music", "الاغنيه")
+        }
+
+        /**
+         * The words after the first of [verbs] (a word that is one, or starts with one: "شغللي"), without [drop]ped
+         * ones at their start or end; null when nothing is left.
+         */
+        private fun after(words: List<String>, vararg verbs: String, drop: Set<String>): String? {
+            val keys = verbs.map { normalize(it) }
+            val i = words.indexOfFirst { wd -> keys.any { k -> wd == k || (wd.startsWith(k) && wd.length <= k.length + 2) } }
+            if (i < 0) return null
+            val rest = words.drop(i + 1).toMutableList()
+            val dropped = drop.map { normalize(it) }.toSet()
+            while (rest.isNotEmpty() && rest.first() in dropped) rest.removeAt(0)
+            while (rest.isNotEmpty() && rest.last() in dropped) rest.removeAt(rest.size - 1)
+            return rest.joinToString(" ").trim().takeIf { it.isNotEmpty() }
         }
 
         /** Without diacritics and tatweel, one alef, ه for ة, ي for ى, western digits, lower case, single spaces. */
@@ -101,7 +223,7 @@ internal sealed class Command {
                     'ئ' -> sb.append('ي')
                     in '٠'..'٩' -> sb.append('0' + (ch - '٠'))
                     in '۰'..'۹' -> sb.append('0' + (ch - '۰'))
-                    '،', ',', '.', '!', '?', '؟', '-', '_' -> sb.append(' ')
+                    '،', ',', '.', '!', '?', '؟', '-', '_', '«', '»', '"', '\'' -> sb.append(' ')
                     else -> sb.append(ch)
                 }
             }
