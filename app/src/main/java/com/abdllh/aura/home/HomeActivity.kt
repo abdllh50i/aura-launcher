@@ -13,7 +13,6 @@ import android.os.Handler
 import android.os.Looper
 import android.view.PixelCopy
 import android.view.View
-import android.view.animation.PathInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -24,13 +23,15 @@ import com.abdllh.aura.settings.SettingsActivity
 import com.abdllh.aura.system.CarAudio
 import com.abdllh.aura.system.CrashGuard
 import com.abdllh.aura.system.NwdBridge
-import com.abdllh.aura.ui.BackdropView
 import com.abdllh.aura.ui.CarFrames
 import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.MATCH
+import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Snack
 import com.abdllh.aura.ui.Theme
+import com.abdllh.aura.ui.enter
+import com.abdllh.aura.ui.fadeTo
 import com.abdllh.aura.ui.lp
 import com.abdllh.aura.update.UpdateManager
 import com.abdllh.aura.util.LocaleHelper
@@ -52,6 +53,7 @@ class HomeActivity : Activity(), HomeHost {
     private var restyling = false
     private var resumedNow = false
     private var startedNow = false
+    private var packagesWatched = false
 
     private val tick = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
@@ -66,6 +68,15 @@ class HomeActivity : Activity(), HomeHost {
             if (!::dock.isInitialized) return
             dock.syncVolume()
             if (controls.isOpen) controls.syncVolume()
+        }
+    }
+    // A pinned app installed or removed anywhere (the system's app manager, an update): the dock follows at once,
+    // also while the home screen is in the background, since it no longer rebuilds itself on every return.
+    private val packages = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, i: Intent) {
+            if (i.getBooleanExtra(Intent.EXTRA_REPLACING, false)) return // an update: the app stays
+            val pkg = i.data?.schemeSpecificPart ?: return
+            if (::dock.isInitialized && DockPins.contains(pkg)) dock.rebuild()
         }
     }
     private val carAudio: () -> Unit = {
@@ -104,15 +115,24 @@ class HomeActivity : Activity(), HomeHost {
         MediaMonitor.start(this)
         NwdBridge.startStockServicesOncePerBoot(this)
         AppRepo.preload(this) // the app grid opens instantly instead of querying the package manager on the UI thread
+        try {
+            registerReceiver(packages, IntentFilter().apply {
+                addAction(Intent.ACTION_PACKAGE_ADDED)
+                addAction(Intent.ACTION_PACKAGE_REMOVED)
+                addDataScheme("package")
+            })
+            packagesWatched = true
+        } catch (_: Throwable) { }
         if (Prefs.safeModeNotice) {
             Prefs.safeModeNotice = false
             toast(getString(R.string.safe_mode_notice))
         }
     }
 
+    // (no backdrop view: the window's background is the theme's, and a view painting the same colour over the whole
+    // screen was a second full-screen fill in every frame of the map)
     private fun buildUi(): View {
         val r = FrameLayout(this)
-        r.addView(BackdropView(this), MATCH, MATCH)
 
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val content = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -143,11 +163,14 @@ class HomeActivity : Activity(), HomeHost {
     override fun onStop() {
         mapPanel.onStop()
         startedNow = false
+        // a sheet left open under an app opened from it (so it did not close during the app's opening) goes now
+        if (::drawer.isInitialized) closeSheets()
         super.onStop()
     }
 
     override fun onDestroy() {
         if (::mapPanel.isInitialized) mapPanel.onDestroy()
+        if (packagesWatched) try { unregisterReceiver(packages) } catch (_: Throwable) { }
         super.onDestroy()
     }
 
@@ -170,6 +193,7 @@ class HomeActivity : Activity(), HomeHost {
     override fun onResume() {
         super.onResume()
         if (builtLang != Prefs.lang) {
+            AppRepo.clear() // (the app names are the old language's)
             recreate() // the language changed in Settings
             return
         }
@@ -196,6 +220,8 @@ class HomeActivity : Activity(), HomeHost {
         if (!introPlayed) {
             introPlayed = true
             animateIn()
+            root?.postDelayed({ if (!isDestroyed) mapPanel.startLive() }, LIVE_MAP_AFTER_MS)
+            root?.postDelayed({ if (!isDestroyed) drawer.prewarm() }, PREWARM_AFTER_MS)
             root?.postDelayed({ if (!isFinishing) askLocationOnce() }, 2600)
         }
     }
@@ -203,38 +229,38 @@ class HomeActivity : Activity(), HomeHost {
     private fun refreshAll() {
         carPanel.refresh()
         mapPanel.refresh()
-        dock.rebuild()
+        dock.refresh()
         if (controls.isOpen) controls.refresh()
     }
 
-    /** Staggered entrance: the car turns towards the screen while the map, player and dock settle in. */
+    /**
+     * Entrance, settled within about half a second (it kept the player and the quick buttons out of reach for a
+     * second until 1.11): the header, the map's row and player, the quick buttons and the dock's tiles one after the
+     * other while the car turns towards the screen. Each card fades through its own layer; the map panel only moves
+     * (it holds the live map's surface, which a fade would draw through a layer at every frame) and the dock's tiles
+     * only rise with the dock.
+     */
     private fun animateIn() {
-        val ease = PathInterpolator(0.2f, 0.8f, 0.2f, 1f)
-        fun rise(v: View, dy: Int, delay: Long, dur: Long = 520) {
-            v.alpha = 0f
-            v.translationY = dy.dp.toFloat()
-            v.animate().alpha(1f).translationY(0f).setStartDelay(delay).setDuration(dur).setInterpolator(ease).start()
-        }
-        carPanel.stage.playIntro(180)
-        rise(carPanel.header, -10, 60)
-        rise(carPanel.quick, 16, 520)
+        carPanel.stage.playIntro(100)
+        // (a part hidden for now, the row while navigating, stays hidden)
+        fun rise(v: View, dy: Float, delay: Long) { if (v.visibility == View.VISIBLE) v.enter(dy = dy, delay = delay) }
+        rise(carPanel.header, -8f, 0L)
 
-        mapPanel.alpha = 0f
-        mapPanel.scaleX = 0.965f
-        mapPanel.scaleY = 0.965f
-        mapPanel.animate().alpha(1f).scaleX(1f).scaleY(1f).setStartDelay(120).setDuration(560).setInterpolator(ease).withLayer().start()
-        rise(mapPanel.search, -12, 380)
-        rise(mapPanel.chips, -12, 450)
-        rise(mapPanel.media, 22, 540)
+        mapPanel.translationY = 16f.dp
+        mapPanel.animate().translationY(0f).setStartDelay(0L).setDuration(Motion.LONG).setInterpolator(Motion.EMPHASIZED).start()
+        // (each card on its own, so its own shadow stays outside the layer it fades in)
+        if (mapPanel.places.visibility == View.VISIBLE) {
+            for (i in 0 until mapPanel.places.childCount) rise(mapPanel.places.getChildAt(i), -8f, 80L + 30L * i)
+        }
+        rise(mapPanel.media, 12f, 140L)
+        rise(carPanel.quick, 12f, 160L)
 
         dock.translationY = DOCK_DP.dp.toFloat()
-        dock.animate().translationY(0f).setStartDelay(80).setDuration(460).setInterpolator(ease).start()
+        dock.animate().translationY(0f).setStartDelay(0L).setDuration(Motion.LONG).setInterpolator(Motion.EMPHASIZED).start()
         for (i in 0 until dock.apps.childCount) {
             val v = dock.apps.getChildAt(i)
-            v.alpha = 0f
             v.translationY = 18.dp.toFloat()
-            // (one after the other, each settling without a bounce)
-            v.animate().alpha(1f).translationY(0f).setStartDelay(220L + 40L * i).setDuration(380).setInterpolator(ease).start()
+            v.animate().translationY(0f).setStartDelay(60L + 25L * i).setDuration(Motion.MEDIUM).setInterpolator(Motion.EMPHASIZED).start()
         }
     }
 
@@ -339,20 +365,25 @@ class HomeActivity : Activity(), HomeHost {
         val ui = buildUi() as FrameLayout
         setContentView(ui)
         mapPanel.onCreate(null)
+        mapPanel.startLive() // (no entrance to wait for)
         if (startedNow) mapPanel.onStart()
         if (resumedNow) mapPanel.onResume()
         refreshAll()
         if (reopen) controls.open(false)
+        ui.postDelayed({ if (!isDestroyed) drawer.prewarm() }, PREWARM_AFTER_MS)
         if (snap != null) {
             val cover = ImageView(this).apply { setImageBitmap(snap); scaleType = ImageView.ScaleType.FIT_XY }
             ui.addView(cover, MATCH, MATCH)
-            cover.animate().alpha(0f).setDuration(420).setInterpolator(PathInterpolator(0.4f, 0f, 0.2f, 1f))
-                .withEndAction { ui.removeView(cover) }.start()
+            cover.fadeTo(0f, Motion.LONG) { ui.removeView(cover) }
         }
     }
 
     companion object {
         /** Height of the dock (big touch targets: the unit's 1024x600 panel is about 120 dpi, 1 dp = 1 px). */
         const val DOCK_DP = 92
+        /** The live map starts once the entrance has settled. */
+        private const val LIVE_MAP_AFTER_MS = 700L
+        /** The app drawer's cells are built while nothing else happens. */
+        private const val PREWARM_AFTER_MS = 2500L
     }
 }

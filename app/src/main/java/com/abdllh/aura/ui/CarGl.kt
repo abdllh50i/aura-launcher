@@ -38,9 +38,7 @@ object CarEtc {
     const val HEADER = 32
     private const val VERSION = 2 // 2: the floor light's radius as drawn on the canvas (0.34 of the frame)
 
-    // the stage's background per theme (Palette) and the strength of its floor light (CarStage.floorColor)
-    const val BG_DARK = 0xFF0B0C0E.toInt()
-    const val BG_LIGHT = 0xFFECEEF1.toInt()
+    // the strength of the stage's floor light per theme (CarStage.floorColor)
     fun floorAlpha(dark: Boolean) = if (dark) 0.085f else 0.95f
 
     private val main = Handler(Looper.getMainLooper())
@@ -48,17 +46,26 @@ object CarEtc {
     private val waiting = HashMap<String, MutableList<(File?) -> Unit>>()
     private var builder: Thread? = null
 
+    // The stage's background per theme (light, dark): the Palette.bg the stage asked with, so the frames always match
+    // the screen they stand on (until 1.11 these were copies of Palette's, which a new background colour would have
+    // left the car standing in a rectangle of the old one). Until a theme has been shown, its value as of 1.12 stands
+    // in, only for building that theme's file in advance: a wrong guess just means it is built when it is shown.
+    private val bgs = intArrayOf(0xFFECEEF1.toInt(), 0xFF0B0C0E.toInt())
+
+    fun bg(dark: Boolean): Int = synchronized(lock) { bgs[if (dark) 1 else 0] }
+
     fun frameBytes(m: CarFrames.Meta) = ETC1.getEncodedDataSize(m.width, m.height)
 
     /**
-     * The frame file for the theme [dark], built first if needed (then the other theme's, at leisure). [done] runs
-     * on the main thread with the file, or null when it cannot be had.
+     * The frame file for the theme [dark] over the background [bg], built first if needed (then the other theme's, at
+     * leisure). [done] runs on the main thread with the file, or null when it cannot be had.
      */
-    fun ensure(ctx: Context, dark: Boolean, done: (File?) -> Unit) {
+    fun ensure(ctx: Context, dark: Boolean, bg: Int, done: (File?) -> Unit) {
         val app = ctx.applicationContext
         val m = CarFrames.meta(app)
         if (m == null) { main.post { done(null) }; return }
         synchronized(lock) {
+            bgs[if (dark) 1 else 0] = bg
             waiting.getOrPut(if (dark) "d" else "l") { ArrayList() }.add(done)
             if (builder != null) return
             builder = Thread({ work(app, m, dark) }, "car-etc").apply { isDaemon = true; start() }
@@ -97,7 +104,7 @@ object CarEtc {
     fun fileFor(ctx: Context, m: CarFrames.Meta, dark: Boolean): File {
         var h = ctx.assets.open("car/car.json").use { it.readBytes() }.contentHashCode()
         for (i in 0 until m.count) h = 31 * h + ctx.assets.open(CarFrames.frameAsset(i)).use { it.available() }
-        h = 31 * h + (if (dark) BG_DARK else BG_LIGHT)
+        h = 31 * h + bg(dark)
         h = 31 * h + floorAlpha(dark).toBits()
         h = 31 * h + VERSION
         return File(ctx.noBackupFilesDir, "car-etc-%08x.bin".format(java.util.Locale.ROOT, h))
@@ -117,9 +124,8 @@ object CarEtc {
         }
     }
 
-    /** What lies under the car in a frame: the background and the floor light (RGB, one int per pixel). */
-    fun under(m: CarFrames.Meta, dark: Boolean): IntArray {
-        val bg = if (dark) BG_DARK else BG_LIGHT
+    /** What lies under the car in a frame: the background [bg] and the floor light (RGB, one int per pixel). */
+    fun under(m: CarFrames.Meta, bg: Int, dark: Boolean): IntArray {
         val br = (bg shr 16) and 0xFF; val bgG = (bg shr 8) and 0xFF; val bb = bg and 0xFF
         val fa = floorAlpha(dark)
         val w = m.width; val h = m.height
@@ -181,7 +187,8 @@ object CarEtc {
         val size = HEADER + frameBytes(m).toLong() * m.count
         if (dir.usableSpace < size + 64L * 1024 * 1024) { Log.w(TAG, "no room for the GPU frames"); return false }
         val tmp = File(f.path + ".tmp")
-        val under = under(m, dark)
+        val bg = bg(dark)
+        val under = under(m, bg, dark)
         return try {
             RandomAccessFile(tmp, "rw").use { out ->
                 out.setLength(size)
@@ -220,7 +227,7 @@ object CarEtc {
                 workers.forEach { it.join() }
                 failure?.let { throw it }
                 val head = ByteBuffer.allocate(HEADER).order(ByteOrder.LITTLE_ENDIAN)
-                head.putInt(MAGIC).putInt(m.count).putInt(m.width).putInt(m.height).putInt(frameBytes(m)).putInt(if (dark) BG_DARK else BG_LIGHT)
+                head.putInt(MAGIC).putInt(m.count).putInt(m.width).putInt(m.height).putInt(frameBytes(m)).putInt(bg)
                 head.rewind()
                 ch.write(head, 0)
                 ch.force(false)
@@ -245,7 +252,7 @@ object CarEtc {
  * resting view is swapped for an uncompressed copy of its frame (crisp; compression only shows while it turns).
  * [CarStage] owns the motion and calls [render] with the state to show; until [onReady] it draws the frames itself.
  */
-class CarGlView(context: Context, private val dark: Boolean) : TextureView(context), TextureView.SurfaceTextureListener {
+class CarGlView(context: Context, private val dark: Boolean, private val bg: Int) : TextureView(context), TextureView.SurfaceTextureListener {
     class State {
         var a = 0; var b = 0; var t = 0f
         var scale = 1f; var tx = 0f; var ty = 0f
@@ -297,7 +304,15 @@ class CarGlView(context: Context, private val dark: Boolean) : TextureView(conte
     private var tex = IntArray(0)
     private var restTex = 0
     private var quad: FloatBuffer? = null
-    private val loc = HashMap<String, Int>()
+    private var quadW = -1                // the view size the quad, the viewport and u_view were set for
+    private var quadH = -1
+    // (the program's locations, looked up once: by name on every frame they were a dozen hash lookups)
+    private var aPos = 0
+    private var uView = 0
+    private var uXf = 0
+    private var uT = 0
+    private var uShown = 0
+    private var uEdge = 0
     private var lastSwap = 0L
     private var motionFrames = 0
     private var motionStart = 0L
@@ -314,7 +329,7 @@ class CarGlView(context: Context, private val dark: Boolean) : TextureView(conte
         val t = HandlerThread("car-gl", Process.THREAD_PRIORITY_DISPLAY).apply { start() }
         thread = t
         gl = Handler(t.looper)
-        CarEtc.ensure(context, dark) { f ->
+        CarEtc.ensure(context, dark, bg) { f ->
             if (f == null) fail("no frame file") else { file = f; gl?.post { tryStart() } }
         }
     }
@@ -364,7 +379,7 @@ class CarGlView(context: Context, private val dark: Boolean) : TextureView(conte
     }
 
     private var underCache: IntArray? = null
-    @Synchronized private fun underLayer(m: CarFrames.Meta): IntArray = underCache ?: CarEtc.under(m, dark).also { underCache = it }
+    @Synchronized private fun underLayer(m: CarFrames.Meta): IntArray = underCache ?: CarEtc.under(m, bg, dark).also { underCache = it }
 
     // ------------------------------------------------------------------------------------------ TextureView
     override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) {
@@ -404,7 +419,7 @@ class CarGlView(context: Context, private val dark: Boolean) : TextureView(conte
         try {
             val t0 = SystemClock.elapsedRealtime()
             initEgl(st)
-            initProgram()
+            initProgram(m)
             loadFrames(f, m)
             loaded = true
             Log.i("AuraCar", "GPU car: ${m.count} frames in ${SystemClock.elapsedRealtime() - t0} ms")
@@ -436,7 +451,11 @@ class CarGlView(context: Context, private val dark: Boolean) : TextureView(conte
         if (!EGL14.eglMakeCurrent(display, eglSurface, eglSurface, eglCtx)) throw IllegalStateException("eglMakeCurrent")
     }
 
-    private fun initProgram() {
+    /**
+     * The one program, in use for the context's whole life, with what never changes in it set once: the samplers'
+     * units, the frame size, the background and the feather (a new context comes through here again).
+     */
+    private fun initProgram(m: CarFrames.Meta) {
         val vs = shader(GLES20.GL_VERTEX_SHADER, VERTEX)
         val fs = shader(GLES20.GL_FRAGMENT_SHADER, FRAGMENT)
         program = GLES20.glCreateProgram()
@@ -446,10 +465,31 @@ class CarGlView(context: Context, private val dark: Boolean) : TextureView(conte
         val ok = IntArray(1)
         GLES20.glGetProgramiv(program, GLES20.GL_LINK_STATUS, ok, 0)
         if (ok[0] == 0) throw IllegalStateException("link: " + GLES20.glGetProgramInfoLog(program))
-        for (n in listOf("a_pos")) loc[n] = GLES20.glGetAttribLocation(program, n)
-        for (n in listOf("u_view", "u_xf", "u_frame", "u_a", "u_b", "u_t", "u_shown", "u_bg", "u_edge", "u_feather"))
-            loc[n] = GLES20.glGetUniformLocation(program, n)
+        fun u(n: String) = GLES20.glGetUniformLocation(program, n)
+        aPos = GLES20.glGetAttribLocation(program, "a_pos")
+        uView = u("u_view"); uXf = u("u_xf"); uT = u("u_t"); uShown = u("u_shown"); uEdge = u("u_edge")
+        GLES20.glUseProgram(program)
+        GLES20.glUniform1i(u("u_a"), 0)
+        GLES20.glUniform1i(u("u_b"), 1)
+        GLES20.glUniform2f(u("u_frame"), m.width.toFloat(), m.height.toFloat())
+        GLES20.glUniform3f(u("u_bg"), ((bg shr 16) and 0xFF) / 255f, ((bg shr 8) and 0xFF) / 255f, (bg and 0xFF) / 255f)
+        GLES20.glUniform2f(u("u_feather"), 6f / m.width, 6f / m.height)
         quad = ByteBuffer.allocateDirect(4 * 2 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
+        quadW = -1
+        quadH = -1
+    }
+
+    /** The quad covering the view, the viewport and u_view, for the view's size (set again only when it changes). */
+    private fun fitView(q: FloatBuffer) {
+        quadW = vw
+        quadH = vh
+        q.clear()
+        q.put(floatArrayOf(0f, 0f, vw.toFloat(), 0f, 0f, vh.toFloat(), vw.toFloat(), vh.toFloat()))
+        q.flip()
+        GLES20.glEnableVertexAttribArray(aPos)
+        GLES20.glVertexAttribPointer(aPos, 2, GLES20.GL_FLOAT, false, 0, q)
+        GLES20.glViewport(0, 0, vw, vh)
+        GLES20.glUniform2f(uView, vw.toFloat(), vh.toFloat())
     }
 
     private fun shader(type: Int, src: String): Int {
@@ -517,7 +557,6 @@ class CarGlView(context: Context, private val dark: Boolean) : TextureView(conte
     }
 
     private fun drawNow() {
-        val m = meta ?: return
         if (!loaded || vw <= 0 || vh <= 0) return
         val s = cur
         val n = tex.size
@@ -526,30 +565,16 @@ class CarGlView(context: Context, private val dark: Boolean) : TextureView(conte
         val b = if (useRest) restTex else tex[Math.floorMod(s.b, n)]
         val t = if (useRest) s.restMix else s.t
         try {
-            GLES20.glViewport(0, 0, vw, vh)
-            GLES20.glUseProgram(program)
             val q = quad!!
-            q.clear()
-            q.put(floatArrayOf(0f, 0f, vw.toFloat(), 0f, 0f, vh.toFloat(), vw.toFloat(), vh.toFloat()))
-            q.flip()
-            val ap = loc["a_pos"]!!
-            GLES20.glEnableVertexAttribArray(ap)
-            GLES20.glVertexAttribPointer(ap, 2, GLES20.GL_FLOAT, false, 0, q)
+            if (vw != quadW || vh != quadH) fitView(q)
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, a)
             GLES20.glActiveTexture(GLES20.GL_TEXTURE1)
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, b)
-            GLES20.glUniform1i(loc["u_a"]!!, 0)
-            GLES20.glUniform1i(loc["u_b"]!!, 1)
-            GLES20.glUniform2f(loc["u_view"]!!, vw.toFloat(), vh.toFloat())
-            GLES20.glUniform4f(loc["u_xf"]!!, s.scale, s.tx, s.ty, 0f)
-            GLES20.glUniform2f(loc["u_frame"]!!, m.width.toFloat(), m.height.toFloat())
-            GLES20.glUniform1f(loc["u_t"]!!, t)
-            GLES20.glUniform1f(loc["u_shown"]!!, s.shown)
-            val bg = if (dark) CarEtc.BG_DARK else CarEtc.BG_LIGHT
-            GLES20.glUniform3f(loc["u_bg"]!!, ((bg shr 16) and 0xFF) / 255f, ((bg shr 8) and 0xFF) / 255f, (bg and 0xFF) / 255f)
-            GLES20.glUniform2f(loc["u_edge"]!!, s.edge.coerceAtLeast(1f), s.edgeBottom.coerceAtLeast(1f))
-            GLES20.glUniform2f(loc["u_feather"]!!, 6f / m.width, 6f / m.height)
+            GLES20.glUniform4f(uXf, s.scale, s.tx, s.ty, 0f)
+            GLES20.glUniform1f(uT, t)
+            GLES20.glUniform1f(uShown, s.shown)
+            GLES20.glUniform2f(uEdge, s.edge.coerceAtLeast(1f), s.edgeBottom.coerceAtLeast(1f))
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
             if (!EGL14.eglSwapBuffers(display, eglSurface)) {
                 // the surface or the context went away: the stage draws until a new start succeeds (its last frame

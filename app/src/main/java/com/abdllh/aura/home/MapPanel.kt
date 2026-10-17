@@ -1,9 +1,9 @@
 package com.abdllh.aura.home
 
 import android.content.Context
-import android.content.Intent
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.GradientDrawable
 import android.location.Location
-import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
@@ -23,16 +23,23 @@ import com.abdllh.aura.nav.Places
 import com.abdllh.aura.nav.Units
 import com.abdllh.aura.settings.SettingsActivity
 import com.abdllh.aura.ui.AText
+import com.abdllh.aura.ui.Elev
 import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.MapBackdropView
+import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
+import com.abdllh.aura.ui.Radius
 import com.abdllh.aura.ui.Shapes
+import com.abdllh.aura.ui.Space
+import com.abdllh.aura.ui.Touch
+import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.WRAP
 import com.abdllh.aura.ui.elevate
 import com.abdllh.aura.ui.flp
 import com.abdllh.aura.ui.iconView
 import com.abdllh.aura.ui.label
+import com.abdllh.aura.ui.lift
 import com.abdllh.aura.ui.lp
 import com.abdllh.aura.ui.pressScale
 import com.abdllh.aura.ui.roundedClip
@@ -41,65 +48,75 @@ import com.abdllh.aura.util.dp
 import java.util.Locale
 
 /**
- * End side of the home screen: a live map with the car (Aura Maps, read-only here), the "Where to?" pill, Home/Work
- * and the floating player. While navigating it follows the route and shows the next manoeuvre. Tapping it opens Maps.
+ * End side of the home screen: a live map with the car (Aura Maps, read-only here), "Where to?" with Home and Work
+ * beside it in one row along the top, and the player along the bottom, so the map shows between them (the row and
+ * the player covered half of it until 1.11). While navigating it follows the route and shows the next manoeuvre.
+ * Tapping it opens Maps.
+ * The live map is started by [startLive], after the home screen's entrance: MapLibre's start (its library, the style,
+ * the first tiles) took the processor from the entrance and the car on every cold start, when the map could not be
+ * seen yet anyway; the placeholder shows meanwhile.
  */
 class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
     private val backdrop = MapBackdropView(ctx) // shows until the live map has drawn (and when it cannot)
     private var live: AuraMap? = null
     val media = MediaCard(ctx, host)
-    val search: LinearLayout
-    val chips: LinearLayout
+    /** "Where to?", Home and Work (hidden while navigating). */
+    val places: LinearLayout
     private val banner: LinearLayout
     private val bannerIcon: ManeuverView
     private val bannerDist: AText
     private val bannerText: AText
-    private val homeTitle: AText
-    private val workTitle: AText
     private val homeIcon: ImageView
     private val workIcon: ImageView
     private val arabic get() = Locale.getDefault().language == "ar"
 
+    // the activity's lifecycle as far as it went, replayed on the live map when it is started late
+    private var savedState: Bundle? = null
+    private var created = false
+    private var started = false
+    private var resumed = false
+    private var destroyed = false
+
     init {
-        background = Shapes.rect(Palette.mapLand, 24f)
-        roundedClip(24f)
-        if (!Palette.dark) elevate(5f) // on the light theme the map is close to the background colour
-        addView(backdrop, flp(MATCH, MATCH))
-        // (also when another app does the navigating: the home screen keeps its own live map)
-        if (MapGuard.homeMapAllowed(ctx)) {
-            val m = AuraMap(ctx, interactive = false, texture = true, guarded = true)
-            m.navTopPadding = 0.08 // the player covers the lower part: keep the car in the middle of what is visible
-            m.onFirstFrame = { post { backdrop.visibility = View.GONE } } // no need to keep drawing it under an opaque map
-            live = m
-            addView(m.view, flp(MATCH, MATCH))
+        background = Shapes.rect(Palette.mapLand, Radius.XL)
+        roundedClip(Radius.XL)
+        if (!Palette.dark) {
+            // on the light theme the map's land is close to the background colour: a hairline edge and a low shadow
+            lift(Elev.REST)
+            foreground = Shapes.rect(0, Radius.XL, Palette.stroke)
         }
-        // the map itself takes no touches: a tap anywhere opens Maps
-        addView(View(ctx).apply { isClickable = true; setOnClickListener { openMaps(false) } }, flp(MATCH, MATCH))
+        addView(backdrop, flp(MATCH, MATCH))
+        // the map itself takes no touches: a tap anywhere opens Maps (a tint shows the press: the largest target on
+        // the screen answered nothing until Maps was up)
+        addView(View(ctx).apply {
+            background = Shapes.pressable(ColorDrawable(0), ColorDrawable(Palette.press))
+            isClickable = true
+            setOnClickListener { openMaps(false) }
+        }, flp(MATCH, MATCH))
 
         val top = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-        search = LinearLayout(ctx).apply {
+        places = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        val search = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPaddingRelative(18.dp, 0, 26.dp, 0)
-            background = Shapes.glassPressable(31f)
-            elevate(6f)
+            setPaddingRelative(Space.L.dp, 0, Space.XL.dp, 0)
+            background = Shapes.glassPressable(Radius.PILL)
+            // (a low shadow, light theme only: it is drawn again with every frame of the map under it; the glass's
+            // edge does the rest)
+            lift(Elev.REST)
             isClickable = true
-            pressScale(0.98f)
+            pressScale(Motion.PRESS_SURFACE)
             setOnClickListener { openMaps(true) }
-            addView(ctx.iconView(R.drawable.ic_search, 25, Palette.text2), lp(25.dp, 25.dp))
-            addView(ctx.label(19f, Palette.text2, Fonts.REGULAR).apply { setText(R.string.home_where_to) }, lp(WRAP, WRAP).apply { marginStart = 14.dp })
+            addView(ctx.iconView(R.drawable.ic_search, 24, Palette.text2), lp(24.dp, 24.dp))
+            addView(ctx.label(Type.BODY, Palette.text2).apply { setText(R.string.home_where_to) }, lp(WRAP, WRAP).apply { marginStart = Space.M.dp })
         }
-        search.minimumWidth = 300.dp
-        top.addView(search, lp(WRAP, 62.dp))
-
-        chips = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
-        homeTitle = ctx.label(16.5f, Palette.text, Fonts.MEDIUM)
-        workTitle = ctx.label(16.5f, Palette.text, Fonts.MEDIUM)
-        homeIcon = ctx.iconView(R.drawable.ic_home, 22, Palette.accent)
-        workIcon = ctx.iconView(R.drawable.ic_briefcase, 22, Palette.accent)
-        chips.addView(chip(ctx, homeIcon, homeTitle, R.string.home_home) { go("home") }, lp(WRAP, 52.dp))
-        chips.addView(chip(ctx, workIcon, workTitle, R.string.home_work) { go("work") }, lp(WRAP, 52.dp).apply { marginStart = 10.dp })
-        top.addView(chips, lp(WRAP, WRAP).apply { topMargin = 10.dp })
+        search.minimumWidth = 240.dp
+        places.addView(search, lp(WRAP, Touch.MIN.dp))
+        homeIcon = ctx.iconView(R.drawable.ic_home, 24, Palette.accentFg)
+        workIcon = ctx.iconView(R.drawable.ic_briefcase, 24, Palette.accentFg)
+        places.addView(place(ctx, homeIcon, R.string.home_home) { go("home") }, lp(Touch.MIN.dp, Touch.MIN.dp).apply { marginStart = Space.S.dp })
+        places.addView(place(ctx, workIcon, R.string.home_work) { go("work") }, lp(Touch.MIN.dp, Touch.MIN.dp).apply { marginStart = Space.S.dp })
+        top.addView(places, lp(WRAP, WRAP))
 
         // guidance banner (navigation running)
         banner = LinearLayout(ctx).apply {
@@ -121,27 +138,52 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
         bt.addView(bannerText, lp(WRAP, WRAP))
         banner.addView(bt, lp(WRAP, WRAP).apply { marginStart = 12.dp })
         top.addView(banner, lp(WRAP, WRAP))
-        addView(top, flp(WRAP, WRAP, Gravity.TOP or Gravity.START).apply { setMargins(14.dp, 14.dp, 14.dp, 0) })
+        addView(top, flp(WRAP, WRAP, Gravity.TOP or Gravity.START).apply { setMargins(INSET.dp, INSET.dp, INSET.dp, 0) })
 
-        // the street's limit and the camera or bump ahead (the owner's additions to the map)
-        addView(com.abdllh.aura.nav.RoadHud(ctx, small = true), flp(WRAP, WRAP, Gravity.TOP or Gravity.END).apply { setMargins(14.dp, 16.dp, 14.dp, 0) })
-        // "a camera here", under the limit's sign (Settings → Navigation hides it)
-        addView(com.abdllh.aura.nav.CameraMark(ctx, small = true), flp(WRAP, WRAP, Gravity.TOP or Gravity.END).apply { setMargins(14.dp, 82.dp, 14.dp, 0) })
-        addView(media, flp(MATCH, WRAP, Gravity.BOTTOM or Gravity.START).apply { setMargins(14.dp, 0, 14.dp, 14.dp) })
-        live?.onReady = { syncNav(); CarLocation.last?.let { onFix(it) } }
+        // the street's limit and the camera or bump ahead (the owner's additions to the map), and "a camera here"
+        // under them (Settings → Navigation hides it): one column, so the camera button moves up where there is no sign
+        val hud = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.END
+            // (a gap between the two only while both show)
+            dividerDrawable = GradientDrawable().apply { setSize(0, Space.S.dp) }
+            showDividers = LinearLayout.SHOW_DIVIDER_MIDDLE
+        }
+        hud.addView(com.abdllh.aura.nav.RoadHud(ctx, small = true), lp(WRAP, WRAP))
+        hud.addView(com.abdllh.aura.nav.CameraMark(ctx, small = true), lp(WRAP, WRAP))
+        addView(hud, flp(WRAP, WRAP, Gravity.TOP or Gravity.END).apply { setMargins(INSET.dp, INSET.dp, INSET.dp, 0) })
+        // the player spans the map's width: the song's name gets twice the room it had in a card capped at 460 dp
+        addView(media, flp(MATCH, WRAP, Gravity.BOTTOM or Gravity.START).apply { setMargins(INSET.dp, 0, INSET.dp, INSET.dp) })
         refresh()
     }
 
-    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        // the player takes the map's width up to a comfortable maximum
-        (media.layoutParams as LayoutParams).width = minOf(460.dp, MeasureSpec.getSize(widthMeasureSpec) - 28.dp)
-        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+    // ------------------------------------------------------------------------------------------ lifecycle (from HomeActivity)
+    fun onCreate(b: Bundle?) {
+        savedState = b
+        created = true
     }
 
-    // ------------------------------------------------------------------------------------------ lifecycle (from HomeActivity)
-    fun onCreate(b: Bundle?) = live?.onCreate(b)
+    /** Builds the live map and brings it to where the activity is (HomeActivity calls it after the entrance). */
+    fun startLive() {
+        if (live != null || destroyed || !created) return
+        val ctx = context
+        // (also when another app does the navigating: the home screen keeps its own live map)
+        if (MapGuard.homeMapAllowed(ctx)) {
+            val m = AuraMap(ctx, interactive = false, texture = true, guarded = true)
+            m.navTopPadding = 0.08 // the player covers the lower part: keep the car in the middle of what is visible
+            m.onFirstFrame = { post { backdrop.visibility = View.GONE } } // no need to keep drawing it under an opaque map
+            live = m
+            addView(m.view, 1, flp(MATCH, MATCH)) // (over the placeholder, under the press tint and the cards)
+        }
+        val m = live ?: return
+        m.onReady = { syncNav(); CarLocation.last?.let { onFix(it) } }
+        m.onCreate(savedState)
+        if (started) m.onStart()
+        if (resumed) m.onResume()
+    }
 
     fun onStart() {
+        started = true
         live?.onStart()
         CarLocation.acquire(context, "home")
         CarLocation.addListener(fixListener)
@@ -149,10 +191,18 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
         syncNav()
     }
 
-    fun onResume() = live?.onResume()
-    fun onPause() = live?.onPause()
+    fun onResume() {
+        resumed = true
+        live?.onResume()
+    }
+
+    fun onPause() {
+        resumed = false
+        live?.onPause()
+    }
 
     fun onStop() {
+        started = false
         CarLocation.removeListener(fixListener)
         CarLocation.release("home")
         NavSession.removeListener(navListener)
@@ -161,6 +211,7 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
     }
 
     fun onDestroy() {
+        destroyed = true
         live?.onDestroy()
         live = null
     }
@@ -180,8 +231,7 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
     private fun syncNav() {
         val m = live
         val nav = NavSession.state == NavSession.State.NAVIGATING
-        search.visibility = if (nav) View.GONE else View.VISIBLE
-        chips.visibility = if (nav) View.GONE else View.VISIBLE
+        places.visibility = if (nav) View.GONE else View.VISIBLE
         banner.visibility = if (nav) View.VISIBLE else View.GONE
         if (m == null) return
         if (!nav) {
@@ -209,28 +259,23 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
         bannerText.text = Instructions.text(step, arabic)
     }
 
-    private fun chip(ctx: Context, icon: ImageView, title: AText, text: Int, onClick: () -> Unit): LinearLayout =
-        LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPaddingRelative(16.dp, 0, 20.dp, 0)
-            background = Shapes.glassPressable(26f)
-            elevate(4f)
+    /** Home or Work: a round glass button with its icon, the name for the screen reader. */
+    private fun place(ctx: Context, icon: ImageView, name: Int, onClick: () -> Unit): FrameLayout =
+        FrameLayout(ctx).apply {
+            background = Shapes.glassPressable(Radius.PILL)
+            lift(Elev.REST)
             isClickable = true
-            pressScale(0.96f)
+            contentDescription = ctx.getString(name)
+            pressScale(Motion.PRESS_ICON)
             setOnClickListener { onClick() }
-            addView(icon, lp(22.dp, 22.dp))
-            title.setText(text)
-            addView(title, lp(WRAP, WRAP).apply { marginStart = 9.dp })
+            addView(icon, flp(24.dp, 24.dp, Gravity.CENTER))
         }
 
     fun refresh() {
         val homeSet = Places.home != null || Prefs.homeAddress.isNotBlank()
         val workSet = Places.work != null || Prefs.workAddress.isNotBlank()
-        homeTitle.setTextColor(if (homeSet) Palette.text else Palette.text2)
-        workTitle.setTextColor(if (workSet) Palette.text else Palette.text2)
-        homeIcon.setColorFilter(if (homeSet) Palette.accent else Palette.text3)
-        workIcon.setColorFilter(if (workSet) Palette.accent else Palette.text3)
+        homeIcon.setColorFilter(if (homeSet) Palette.accentFg else Palette.text3)
+        workIcon.setColorFilter(if (workSet) Palette.accentFg else Palette.text3)
     }
 
     private fun openMaps(search: Boolean) {
@@ -257,5 +302,9 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
             host.toast(context.getString(R.string.home_set_address_hint, context.getString(label)), outlives = true)
             host.openSettings(SettingsActivity.PAGE_NAVIGATION)
         }
+    }
+
+    private companion object {
+        const val INSET = 12 // dp, the cards from the panel's edges
     }
 }

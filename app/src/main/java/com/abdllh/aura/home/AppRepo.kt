@@ -57,7 +57,9 @@ object AppRepo {
 
     /** Queries the package manager on a background thread and delivers the list on the main thread. */
     fun loadAsync(ctx: Context, done: (List<AppInfo>) -> Unit) {
-        val app = ctx.applicationContext
+        // in the app's own language: the application context is not wrapped like the activities, so Aura's own Maps
+        // and Music came out in English in the Arabic UI
+        val app = com.abdllh.aura.util.LocaleHelper.wrap(ctx.applicationContext)
         worker.execute {
             val list = try { load(app) } catch (_: Throwable) { emptyList() }
             if (list.isNotEmpty()) cached = list
@@ -66,6 +68,9 @@ object AppRepo {
     }
 
     fun preload(ctx: Context) = loadAsync(ctx) { }
+
+    /** The language changed: the names in [cached] are the old language's. */
+    fun clear() { cached = null }
 
     /** Drops an uninstalled [pkg] from [cached], so the grid does not show it again before the next load. */
     fun forget(pkg: String) { cached = cached?.filter { it.pkg != pkg } }
@@ -86,6 +91,7 @@ object AppRepo {
         val out = ArrayList<AppInfo>()
         for (ri in pm.queryIntentActivities(i, 0)) {
             val ai = ri.activityInfo ?: continue
+            if (ai.packageName == ctx.packageName) continue // the home screen itself (Maps and Music are added below)
             if (!seen.add(ai.packageName)) continue
             if (!includeHidden && ai.packageName in hidden) continue
             val sys = (ai.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0

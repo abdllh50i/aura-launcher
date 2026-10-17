@@ -23,10 +23,16 @@ import com.abdllh.aura.ui.AText
 import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Menu
+import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
+import com.abdllh.aura.ui.Radius
 import com.abdllh.aura.ui.Shapes
 import com.abdllh.aura.ui.Sheet
+import com.abdllh.aura.ui.Space
+import com.abdllh.aura.ui.Touch
+import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.WRAP
+import com.abdllh.aura.ui.enter
 import com.abdllh.aura.ui.flp
 import com.abdllh.aura.ui.iconView
 import com.abdllh.aura.ui.label
@@ -34,11 +40,15 @@ import com.abdllh.aura.ui.lp
 import com.abdllh.aura.ui.pressScale
 import com.abdllh.aura.util.dp
 
-/** All apps: a sheet that slides up over the home screen, with search. Long-press an app to pin it to the dock. */
+/**
+ * All apps: a sheet that slides up over the home screen, with search. Long-press an app to pin it to the dock.
+ * Closed, it stays laid out (invisible instead of gone): [prewarm] builds its cells and loads their icons a few seconds
+ * after the home screen starts, so the first open has nothing to create in the frames the sheet moves in.
+ */
 class AppDrawer(ctx: Context, private val host: HomeHost) : Sheet(ctx, true) {
     private val search: EditText
     private val grid = GridView(ctx)
-    private val empty: AText = ctx.label(16f, Palette.text3, Fonts.REGULAR, gravity = Gravity.CENTER)
+    private val empty: AText = ctx.label(Type.BODY, Palette.text3, gravity = Gravity.CENTER)
     private var all: List<AppInfo> = emptyList()
     private var shown: List<AppInfo> = emptyList()
     private val adapter = Adapter()
@@ -46,21 +56,21 @@ class AppDrawer(ctx: Context, private val host: HomeHost) : Sheet(ctx, true) {
     init {
         val content = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(26.dp, 6.dp, 26.dp, 0)
+            setPadding(Space.XL.dp, Space.XS.dp, Space.XL.dp, 0)
         }
         val top = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        top.addView(ctx.label(24f, Palette.text, Fonts.MEDIUM).apply { setText(R.string.drawer_title) }, lp(WRAP, WRAP).apply { marginEnd = 22.dp })
+        top.addView(ctx.label(Type.HEADLINE).apply { setText(R.string.drawer_title) }, lp(WRAP, WRAP).apply { marginEnd = Space.XL.dp })
         search = EditText(ctx).apply {
             setHint(R.string.drawer_search)
             setHintTextColor(Palette.text3)
             setTextColor(Palette.text)
-            textSize = 18f
-            typeface = Fonts.get(Fonts.REGULAR)
+            textSize = Type.BODY.sp
+            typeface = Fonts.get(Type.BODY.weight)
             maxLines = 1
             isSingleLine = true
             imeOptions = EditorInfo.IME_ACTION_SEARCH or EditorInfo.IME_FLAG_NO_EXTRACT_UI
-            setPaddingRelative(54.dp, 0, 18.dp, 0)
-            background = Shapes.rect(Palette.card2, 29f)
+            setPaddingRelative(52.dp, 0, Space.L.dp, 0)
+            background = Shapes.pill(Palette.card2)
             addTextChangedListener(object : TextWatcher {
                 override fun afterTextChanged(s: Editable?) = applyFilter(s?.toString().orEmpty())
                 override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -69,40 +79,32 @@ class AppDrawer(ctx: Context, private val host: HomeHost) : Sheet(ctx, true) {
         }
         val searchBox = FrameLayout(ctx)
         searchBox.addView(search, flp(MATCH, MATCH))
-        searchBox.addView(ctx.iconView(R.drawable.ic_search, 23, Palette.text3).apply {
-            layoutParams = flp(23.dp, 23.dp, Gravity.START or Gravity.CENTER_VERTICAL).apply { marginStart = 19.dp }
+        searchBox.addView(ctx.iconView(R.drawable.ic_search, 22, Palette.text3).apply {
+            layoutParams = flp(22.dp, 22.dp, Gravity.START or Gravity.CENTER_VERTICAL).apply { marginStart = 18.dp }
         })
-        top.addView(searchBox, lp(0, 58.dp, 1f))
+        top.addView(searchBox, lp(0, Touch.MIN.dp, 1f))
         val closeBtn = FrameLayout(ctx).apply {
             background = Shapes.tonalOval()
             isClickable = true
             contentDescription = ctx.getString(R.string.btn_cancel)
-            pressScale(0.9f)
+            pressScale(Motion.PRESS_ICON)
             setOnClickListener { close() }
             addView(ctx.iconView(R.drawable.ic_close, 24, Palette.text).apply { layoutParams = flp(24.dp, 24.dp, Gravity.CENTER) })
         }
-        top.addView(closeBtn, lp(58.dp, 58.dp).apply { marginStart = 14.dp })
+        top.addView(closeBtn, lp(Touch.MIN.dp, Touch.MIN.dp).apply { marginStart = Space.M.dp })
         content.addView(top, lp(MATCH, WRAP))
 
         grid.apply {
             numColumns = 8
-            verticalSpacing = 6.dp
-            horizontalSpacing = 4.dp
+            verticalSpacing = Space.S.dp
+            horizontalSpacing = Space.XS.dp
             stretchMode = GridView.STRETCH_COLUMN_WIDTH
             selector = android.graphics.drawable.ColorDrawable(0)
             isVerticalScrollBarEnabled = false
             overScrollMode = OVER_SCROLL_NEVER
             clipToPadding = false
-            setPadding(0, 14.dp, 0, 18.dp)
+            setPadding(0, Space.L.dp, 0, Space.L.dp)
             adapter = this@AppDrawer.adapter
-            // the icons come up row after row when the drawer opens
-            layoutAnimation = android.view.animation.GridLayoutAnimationController(
-                android.view.animation.AnimationSet(true).apply {
-                    addAnimation(android.view.animation.AlphaAnimation(0f, 1f))
-                    addAnimation(android.view.animation.TranslateAnimation(0f, 0f, 16f.dp, 0f))
-                    duration = 300
-                    interpolator = android.view.animation.PathInterpolator(0.05f, 0.7f, 0.1f, 1f)
-                }, 0.04f, 0.10f)
         }
         val body = FrameLayout(ctx)
         body.addView(grid, flp(MATCH, MATCH))
@@ -113,27 +115,41 @@ class AppDrawer(ctx: Context, private val host: HomeHost) : Sheet(ctx, true) {
         panel.addView(content, lp(MATCH, 0, 1f))
     }
 
+    // Closed is INVISIBLE, not GONE: the grid keeps its cells and their layout between opens (an invisible view neither
+    // draws nor takes touches; its measure is cached while nothing in it changes).
+    override fun setVisibility(v: Int) = super.setVisibility(if (v == GONE) INVISIBLE else v)
+
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
         super.onSizeChanged(w, h, ow, oh)
         grid.numColumns = ((w - 72.dp) / 126.dp).coerceIn(4, 12)
     }
 
-    override fun dragZone(): Int = 30.dp
+    /** The cells built and their icons loaded while closed (some seconds after the home screen starts). */
+    fun prewarm() {
+        if (isOpen || all.isNotEmpty()) return
+        all = AppRepo.cached ?: return
+        applyFilter("")
+    }
 
     override fun onOpen() {
-        all = AppRepo.cached ?: emptyList()
-        search.setText("")
-        applyFilter("")
+        // an unchanged list is not bound again in the frame the sheet starts moving in
+        val cached = AppRepo.cached ?: emptyList()
+        if (cached !== all || search.text.isNotEmpty()) {
+            all = cached
+            if (search.text.isNotEmpty()) search.setText("") else applyFilter("")
+        }
         if (all.isEmpty()) empty.visibility = GONE // still loading: do not claim "no apps"
-        grid.setSelection(0)
-        grid.scheduleLayoutAnimation()
+        if (grid.canScrollVertically(-1)) grid.setSelection(0)
+        // the icons come up together, a little after the sheet (one layer, drawn once, instead of a fade per cell)
+        grid.enter(dy = 12f, delay = 60L)
         AppRepo.loadAsync(context) { fresh ->
-            if (fresh.isNotEmpty() && fresh != all) {
-                all = fresh
-                applyFilter(search.text.toString())
-            } else if (fresh.isEmpty() && all.isEmpty()) {
-                applyFilter(search.text.toString())
+            if (fresh.isEmpty()) {
+                if (all.isEmpty()) applyFilter(search.text.toString())
+                return@loadAsync
             }
+            val changed = fresh != all
+            all = fresh // (the same apps: kept as the list that is now cached, so the next open binds nothing)
+            if (changed) applyFilter(search.text.toString())
         }
     }
 
@@ -149,6 +165,16 @@ class AppDrawer(ctx: Context, private val host: HomeHost) : Sheet(ctx, true) {
         empty.visibility = if (shown.isEmpty()) VISIBLE else GONE
     }
 
+    /**
+     * An app was opened from the drawer: the drawer stays while the app's window comes up over it (closing it at the
+     * same time made the sheet, the window animation and the app's start compete for this processor), and goes when
+     * the home screen stops. An app that is shown over the home screen without stopping it (a translucent window)
+     * gets the drawer closed behind it a moment later.
+     */
+    private fun leftFor() {
+        postDelayed({ if (isOpen && !hasWindowFocus()) close() }, LEAVE_CHECK_MS)
+    }
+
     private inner class Adapter : BaseAdapter() {
         override fun getCount() = shown.size
         override fun getItem(i: Int) = shown[i]
@@ -162,29 +188,29 @@ class AppDrawer(ctx: Context, private val host: HomeHost) : Sheet(ctx, true) {
 
     private inner class Cell(ctx: Context) : LinearLayout(ctx) {
         private val icon = ImageView(ctx)
-        private val name: AText = ctx.label(14f, Palette.text2, Fonts.REGULAR, gravity = Gravity.CENTER)
+        private val name: AText = ctx.label(Type.CAPTION, Palette.text2, gravity = Gravity.CENTER)
         private var tag: String? = null
 
         init {
             orientation = VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(4.dp, 10.dp, 4.dp, 10.dp)
+            setPadding(Space.XS.dp, Space.M.dp, Space.XS.dp, Space.M.dp)
             icon.scaleType = ImageView.ScaleType.FIT_CENTER
-            addView(icon, lp(68.dp, 68.dp))
-            addView(name, lp(MATCH, WRAP).apply { topMargin = 8.dp })
-            background = Shapes.ghost(18f)
+            addView(icon, lp(ICON.dp, ICON.dp))
+            addView(name, lp(MATCH, WRAP).apply { topMargin = Space.S.dp })
+            background = Shapes.ghost(Radius.L)
             isClickable = true
-            pressScale(0.92f)
+            pressScale(Motion.PRESS_CONTROL)
         }
 
         fun bind(a: AppInfo) {
             tag = a.pkg
             name.text = a.label
             icon.setImageDrawable(null)
-            IconLoader.get(context, a.pkg, 136) { bmp: Bitmap? -> if (tag == a.pkg && bmp != null) icon.setImageBitmap(bmp) }
+            // (as many pixels as it is shown with: four times as many were decoded and uploaded on the first open)
+            IconLoader.get(context, a.pkg, ICON.dp) { bmp: Bitmap? -> if (tag == a.pkg && bmp != null) icon.setImageBitmap(bmp) }
             setOnClickListener {
-                close()
-                if (!AppRepo.launch(context, a.pkg)) host.toast(context.getString(R.string.err_app_missing))
+                if (AppRepo.launch(context, a.pkg)) leftFor() else host.toast(context.getString(R.string.err_app_missing))
             }
             setOnLongClickListener { v ->
                 val items = ArrayList<Menu.Item>()
@@ -199,7 +225,7 @@ class AppDrawer(ctx: Context, private val host: HomeHost) : Sheet(ctx, true) {
                 if (!a.pkg.startsWith("aura:")) items.add(Menu.Item(R.drawable.ic_info, context.getString(R.string.drawer_app_info)) {
                     try {
                         context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${a.pkg}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                        close()
+                        leftFor()
                     } catch (_: Throwable) { }
                 })
                 // apps installed on the unit (a dealer's launcher...): removed as root, the unit's own manager cannot
@@ -223,5 +249,10 @@ class AppDrawer(ctx: Context, private val host: HomeHost) : Sheet(ctx, true) {
                 true
             }
         }
+    }
+
+    private companion object {
+        const val ICON = 68 // dp, an app's icon
+        const val LEAVE_CHECK_MS = 1000L
     }
 }

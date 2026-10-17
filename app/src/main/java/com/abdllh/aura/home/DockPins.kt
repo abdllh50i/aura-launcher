@@ -22,8 +22,8 @@ object DockPins {
     fun addListener(l: () -> Unit) { listeners.add(l) }
     fun removeListener(l: () -> Unit) { listeners.remove(l) }
 
-    /** The pins; a fresh install (or one from before pins existed) starts with Music only. */
-    fun get(): List<String> = Prefs.raw.getString(KEY, null)?.split('\n')?.filter { it.isNotBlank() } ?: listOf(MUSIC)
+    /** The pins; a fresh install (or one from before pins existed) starts with Maps and Music. */
+    fun get(): List<String> = Prefs.raw.getString(KEY, null)?.split('\n')?.filter { it.isNotBlank() } ?: listOf(MAPS, MUSIC)
 
     fun contains(id: String) = id in get()
 
@@ -45,7 +45,10 @@ object DockPins {
     }
 }
 
-/** The coloured tiles Aura draws for its own apps and the head unit's known ones (others show their own icon). */
+/**
+ * The coloured tiles Aura draws for its own apps and the head unit's known ones (others show their own icon). The
+ * corners are 0.3 of the side, in the dock and as the drawer's bitmaps alike.
+ */
 object DockTiles {
     class Style(val icon: Int, val from: Int, val to: Int, val label: Int)
 
