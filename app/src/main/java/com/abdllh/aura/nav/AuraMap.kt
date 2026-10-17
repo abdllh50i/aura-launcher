@@ -2,12 +2,15 @@ package com.abdllh.aura.nav
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import android.view.Choreographer
@@ -699,12 +702,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
             carView.translationX = tx
             carView.translationY = ty
         }
-        val r = (((carBearing - bearing) % 360 + 360) % 360).toFloat()
-        if (abs(Geo.angleDiff(carView.rotation.toDouble(), r.toDouble())) > 0.5) carView.rotation = r
-        // laid on the ground like the map around it (a little less than the map's tilt: flat on the road it would
-        // shrink to a sliver)
-        val rx = (tilt * 0.85).toFloat()
-        if (abs(carView.rotationX - rx) > 0.5f) carView.rotationX = rx
+        carView.pose((((carBearing - bearing) % 360 + 360) % 360).toFloat(), tilt.toFloat())
     }
 
     // ------------------------------------------------------------------------------------------ camera
@@ -1063,11 +1061,45 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
 }
 
 /**
- * The car, in the route's colour. Browsing it is a disc with a heading arrow, a white rim and a soft halo; while a
- * route is driven it becomes a chevron with a white edge and a contact shadow, laid on the tilted road by the map
- * ([AuraMap] tilts the view), the way navigation shows "you". With no fix for a few seconds it greys and fades a
- * little: a position that is no longer current must not look like a live one.
+ * The owner's own car on the map (1.14), the model the home screen shows, pre-rendered the way the map sees it
+ * (`tools/car3d/pack_map.py`, assets/carmap): 72 views 5° apart from 38° above the road (the navigating map's 52° tilt)
+ * and one from straight above. Tilted, the view that matches the car's heading against the map's bearing is drawn,
+ * blended with its neighbour so it turns smoothly; flat, the view from above is turned to the heading; in between the
+ * two cross-fade. The frames' centre is the point under the car's middle, so the car stands exactly where it is.
+ * Browsing, a soft halo in the route's colour lies under it so it is found at a glance. With no fix for a few seconds
+ * it greys and fades a little: a position that is no longer current must not look like a live one.
+ * Until the frames are loaded (a moment after the first map starts), and should they ever fail, the 1.13 marker is
+ * drawn instead: a disc with an arrow browsing, a chevron while a route is driven.
  */
+private object CarSprites {
+    /** The tilted views (index k: the car at yaw 5k°: 0 points right on the screen, 90 up, counter-clockwise). */
+    @Volatile var tilt: Array<Bitmap>? = null
+    @Volatile var top: Bitmap? = null
+    private var loading = false
+    private val waiting = ArrayList<View>()
+
+    /** Starts loading once; [v] is redrawn when the frames are there. Main thread. */
+    fun want(c: Context, v: View) {
+        if (tilt != null) return
+        waiting.add(v)
+        if (loading) return
+        loading = true
+        val app = c.applicationContext
+        Thread({
+            try {
+                val am = app.assets
+                fun read(n: String) = am.open("carmap/$n.webp").use { BitmapFactory.decodeStream(it) }
+                val frames = Array(72) { k -> read("t_%02d".format(java.util.Locale.ROOT, k)) }
+                top = read("top")
+                tilt = frames
+            } catch (t: Throwable) {
+                Log.w("AuraMap", "car frames: $t") // (the drawn marker stays)
+            }
+            Handler(Looper.getMainLooper()).post { for (w in waiting) w.invalidate(); waiting.clear() }
+        }, "aura-car-frames").apply { priority = Thread.MIN_PRIORITY }.start()
+    }
+}
+
 private class CarMarker(ctx: Context) : View(ctx) {
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -1086,9 +1118,39 @@ private class CarMarker(ctx: Context) : View(ctx) {
     // send every frame of it through an offscreen layer for as long as the fixes stay away)
     private val staleSpring = Spring(0f, 300f, 1f) { staleK = it; invalidate() }
 
+    /** The car's heading on the screen (degrees clockwise from up) and the map's tilt, for the 3D car. */
+    private var yaw = 0f
+    private var tiltDeg = 0f
+    private val bmp = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    private val dst = RectF()
+    private val grey = android.graphics.ColorMatrix()
+    private var greyAt = -1f
+
     init {
-        // (a far camera: the view is tilted by up to 50°, and a near one would stretch its nearer edge)
+        // (a far camera: the drawn marker's view is tilted by up to 50°, and a near one would stretch its nearer edge)
         cameraDistance = 8000 * resources.displayMetrics.density
+        CarSprites.want(ctx, this)
+    }
+
+    /**
+     * Where the car points on the screen and how far the map is tilted. The 3D car draws both itself; the drawn marker
+     * (no frames yet) is turned and laid on the road by the view, as in 1.13. Only a visible change redraws.
+     */
+    fun pose(bearing: Float, tilt: Float) {
+        if (CarSprites.tilt != null) {
+            if (rotation != 0f) rotation = 0f
+            if (rotationX != 0f) rotationX = 0f
+            if (abs(Geo.angleDiff(yaw.toDouble(), bearing.toDouble())) > 0.4 || abs(tiltDeg - tilt) > 0.5f) {
+                yaw = bearing; tiltDeg = tilt
+                invalidate()
+            }
+            return
+        }
+        if (abs(Geo.angleDiff(rotation.toDouble(), bearing.toDouble())) > 0.5) rotation = bearing
+        // laid on the ground like the map around it (a little less than the map's tilt: flat on the road it would
+        // shrink to a sliver)
+        val rx = tilt * 0.85f
+        if (abs(rotationX - rx) > 0.5f) rotationX = rx
     }
 
     fun setNav(on: Boolean) = navSpring.animateTo(if (on) 1f else 0f)
@@ -1110,6 +1172,54 @@ private class CarMarker(ctx: Context) : View(ctx) {
     }
 
     override fun onDraw(c: Canvas) {
+        val frames = CarSprites.tilt
+        val top = CarSprites.top
+        if (frames != null && top != null) { drawCar(c, frames, top); return }
+        drawMarker(c)
+    }
+
+    /** The 3D car: from above when the map is flat, the matching tilted view when it is tilted, cross-faded between. */
+    private fun drawCar(c: Canvas, frames: Array<Bitmap>, top: Bitmap) {
+        val cx = width / 2f
+        val cy = height / 2f
+        val fade = 1f - 0.4f * staleK
+        // browsing: a soft halo in the route's colour under the car (navigating, the route itself leads to it)
+        val halo = 1f - navK
+        if (halo > 0.01f) {
+            p.colorFilter = null
+            c.drawCircle(cx, cy, 30f.dp, paint(Palette.withAlpha(Palette.mix(color, Palette.text3, staleK), 0.18f), halo))
+        }
+        if (greyAt != staleK) {
+            greyAt = staleK
+            grey.setSaturation(1f - staleK)
+            bmp.colorFilter = if (staleK > 0.01f) android.graphics.ColorMatrixColorFilter(grey) else null
+        }
+        // 0 = from above, 1 = the tilted views (the map is flat while browsing, 52° navigating)
+        val k = ((tiltDeg - 12f) / 18f).coerceIn(0f, 1f).let { it * it * (3 - 2 * it) }
+        val half = width / 2f
+        dst.set(cx - half, cy - half, cx + half, cy + half)
+        if (k < 0.99f) {
+            c.save()
+            c.rotate(yaw, cx, cy)
+            bmp.alpha = (255 * fade * (1f - k)).toInt()
+            c.drawBitmap(top, null, dst, bmp)
+            c.restore()
+        }
+        if (k > 0.01f) {
+            // the frame of the heading and the next one, blended by how far between them it is
+            val y = (((90f - yaw) % 360f) + 360f) % 360f / STEP
+            val i = y.toInt() % frames.size
+            val f = y - y.toInt()
+            bmp.alpha = (255 * fade * k).toInt()
+            c.drawBitmap(frames[i], null, dst, bmp)
+            if (f > 0.02f) {
+                bmp.alpha = (255 * fade * k * f).toInt()
+                c.drawBitmap(frames[(i + 1) % frames.size], null, dst, bmp)
+            }
+        }
+    }
+
+    private fun drawMarker(c: Canvas) {
         val cx = width / 2f
         val cy = height / 2f
         val fill = Palette.mix(color, Palette.text3, staleK)
@@ -1151,7 +1261,12 @@ private class CarMarker(ctx: Context) : View(ctx) {
         }
     }
 
-    companion object { const val SIZE = 64 }
+    companion object {
+        /** The view (dp): the car's frames fill it; the drawn marker sits in its middle. */
+        const val SIZE = 92
+        /** Degrees between two tilted views. */
+        const val STEP = 5f
+    }
 }
 
 /**

@@ -397,39 +397,51 @@ object MapStyle {
     }
 
     /**
-     * The owner's additions, drawn without icons like the places: a camera is a red disc with a white eye and its
-     * word under it, a bump an amber dot with its word, a traffic signal its three lamps (three dots that keep their
-     * order whichever way the map is turned), and a street's limit is written along it.
+     * The owner's additions, drawn without icons like the places (icon images once drew black on the unit's tilted
+     * map): only circles and words, upright on the screen whichever way the map is turned or tilted.
+     *  - A camera (ساهر): a red badge with a soft red glow round it, a white ring (on either theme), and a camera's lens
+     *    in the middle (a white disc with a dark pupil), its word under it; it grows with the zoom.
+     *  - A traffic signal: a traffic light — a dark capsule with a white outline (circles laid one over the next) and its
+     *    three lamps, red over amber over green.
+     *  - A bump: an amber dot with its word.
+     * Since 1.14 a street's limit is no longer written along it (the owner found the numbers cluttered the map): it shows
+     * as the sign above the speed while driving that street ([RoadHud]).
      */
     private fun extras(dark: Boolean, halo: String, bold: String): List<String> {
         fun kind(k: String) = """["==",["get","kind"],"$k"]"""
         val ring = if (dark) "#14171B" else "#FFFFFF"
-        fun lamp(id: String, color: String, dy: Int) =
-            """{"id":"extras-signal-$id","type":"circle","source":"$SRC_EXTRAS","minzoom":14,"filter":${kind("signal")},
-               "paint":{"circle-color":"$color","circle-radius":3.6,"circle-stroke-color":"#20242B","circle-stroke-width":1.6,
-               "circle-translate":[0,$dy],"circle-translate-anchor":"viewport"}}"""
-        fun word(id: String, k: String, color: String, minzoom: Double, size: Double, dy: Double) =
+        fun dot(id: String, k: String, minzoom: Double, color: String, radius: String, dy: Double = 0.0, opacity: Double = 1.0, stroke: String = "") =
+            """{"id":"extras-$id","type":"circle","source":"$SRC_EXTRAS","minzoom":$minzoom,"filter":${kind(k)},
+               "paint":{"circle-color":"$color","circle-radius":$radius,"circle-opacity":$opacity,
+               "circle-translate":[0,$dy],"circle-translate-anchor":"viewport"$stroke}}"""
+        fun word(id: String, k: String, color: String, minzoom: Double, size: String, dy: Double) =
             """{"id":"extras-$id-name","type":"symbol","source":"$SRC_EXTRAS","minzoom":$minzoom,"filter":${kind(k)},
                "layout":{"text-field":["get","label"],"text-font":$bold,"text-size":$size,"text-anchor":"top","text-offset":[0,$dy],
                "text-allow-overlap":true,"text-ignore-placement":true},
-               "paint":{"text-color":"$color","text-halo-color":"$halo","text-halo-width":1.8}}"""
-        return listOf(
-            """{"id":"extras-speed","type":"symbol","source":"$SRC_EXTRAS","minzoom":13,"filter":${kind("speed")},
-               "layout":{"symbol-placement":"line","symbol-spacing":230,"text-field":["get","label"],"text-font":$bold,
-               "text-size":["interpolate",["linear"],["zoom"],13,12,17,16],"text-rotation-alignment":"viewport","text-keep-upright":true,
-               "text-padding":2},
-               "paint":{"text-color":"${if (dark) "#FF8A8E" else "#C9272D"}","text-halo-color":"$halo","text-halo-width":2.2}}""",
-            lamp("red", "#E5484D", -8), lamp("amber", "#F5A524", 0), lamp("green", "#2FD07A", 8),
+               "paint":{"text-color":"$color","text-halo-color":"$halo","text-halo-width":2.0}}"""
+        fun zoomed(vararg stops: Pair<Double, Double>) =
+            """["interpolate",["linear"],["zoom"],${stops.joinToString(",") { "${it.first},${it.second}" }}]"""
+        // the traffic light: its outline, its body, its lamps (each a circle; overlapping ones make the capsule)
+        val body = listOf(-9.0, -4.5, 0.0, 4.5, 9.0)
+        // (a white edge in both themes: on the dark map the light's dark body needs it to stand out from the road)
+        val outline = body.mapIndexed { i, dy -> dot("signal-edge-$i", "signal", 14.0, "#FFFFFF", "8.6", dy) }
+        val case = body.mapIndexed { i, dy -> dot("signal-body-$i", "signal", 14.0, "#1E2228", "7", dy) }
+        val lamps = listOf("#FF4D52" to -9.0, "#FFB020" to 0.0, "#34D67F" to 9.0)
+            .mapIndexed { i, (c, dy) -> dot("signal-lamp-$i", "signal", 14.0, c, "4.4", dy) }
+        val camera = listOf(
+            dot("camera-glow", "camera", 11.0, "#E5484D", zoomed(11.0 to 7.0, 14.0 to 13.0, 17.0 to 19.0), opacity = 0.22),
+            dot("camera", "camera", 10.0, "#E5484D", zoomed(10.0 to 4.5, 14.0 to 9.5, 17.0 to 13.0),
+                stroke = ""","circle-stroke-color":"#FFFFFF","circle-stroke-width":2.5"""),
+            dot("camera-lens", "camera", 12.5, "#FFFFFF", zoomed(12.5 to 2.6, 14.0 to 4.2, 17.0 to 5.8)),
+            dot("camera-pupil", "camera", 12.5, "#3A0D10", zoomed(12.5 to 1.2, 14.0 to 2.0, 17.0 to 2.8))
+        )
+        return outline + case + lamps + listOf(
             """{"id":"extras-bump","type":"circle","source":"$SRC_EXTRAS","minzoom":13.5,"filter":${kind("bump")},
                "paint":{"circle-color":"#F5A524","circle-radius":["interpolate",["linear"],["zoom"],13.5,4,17,7.5],
-               "circle-stroke-color":"$ring","circle-stroke-width":2}}""",
-            """{"id":"extras-camera","type":"circle","source":"$SRC_EXTRAS","minzoom":10,"filter":${kind("camera")},
-               "paint":{"circle-color":"#E5484D","circle-radius":["interpolate",["linear"],["zoom"],10,4,14,8,17,10.5],
-               "circle-stroke-color":"$ring","circle-stroke-width":2.2}}""",
-            """{"id":"extras-camera-eye","type":"circle","source":"$SRC_EXTRAS","minzoom":13,"filter":${kind("camera")},
-               "paint":{"circle-color":"#FFFFFF","circle-radius":["interpolate",["linear"],["zoom"],13,2.2,17,3.8]}}""",
-            word("bump", "bump", if (dark) "#F7BE5C" else "#9A6200", 15.0, 12.5, 0.75),
-            word("camera", "camera", if (dark) "#FF8A8E" else "#C9272D", 12.5, 13.5, 0.9)
+               "circle-stroke-color":"$ring","circle-stroke-width":2}}"""
+        ) + camera + listOf(
+            word("bump", "bump", if (dark) "#F7BE5C" else "#9A6200", 15.0, "12.5", 0.75),
+            word("camera", "camera", if (dark) "#FF8A8E" else "#C9272D", 12.5, zoomed(12.5 to 13.0, 17.0 to 16.0), 1.15)
         )
     }
 }

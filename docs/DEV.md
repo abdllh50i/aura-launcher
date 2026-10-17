@@ -345,7 +345,17 @@ the map drops to an even 30 for the rest of the trip ("the map drew N of 60 fps"
 between one and two vsyncs look worse than a steady 30. The emulator drops; the unit is not measured yet. 3D buildings
 start at zoom 17, closer than guidance drives (15.2–17), so a tilted map while driving never pays for fill-extrusions.
 
-**The car marker** (`CarMarker`): browsing, a disc with a heading arrow; while a route is driven (`setRouteAhead`) a
+**The owner's car on the map** (1.14, `CarMarker` + `CarSprites`): the home screen's 3D car, pre-rendered for the map by
+`CarBakerActivity` (`tools/car3d/bake.ps1`, `pack_map.py`; the commands are in pack_map.py): 72 views 5° apart from 38°
+above the road (the navigating map's 52° tilt) and one from straight above, 176 px WebP with alpha in `assets/carmap`
+(372 KB, decoded once on a low-priority thread, ~9 MB shared by every map). Bake `target=0` puts the point under the
+car's middle at each frame's centre, so the frame's centre goes where the car is. Frame k is yaw 5k° (0 points right
+on the screen, counter-clockwise): the frame for a heading r on the screen is (90 − r) / 5, blended with the next by
+the remainder so the car turns smoothly. Flat (tilt under 12°) the view from above is rotated to the heading; up to
+30° the two cross-fade. The view is 92 dp, not rotated or tilted by itself (the frames carry the perspective);
+browsing, a soft halo in the route's colour lies under it. Stale (no fix for 5 s): a desaturating colour filter and
+60 % opacity in its paint. Until the frames are loaded the 1.13 marker below is drawn.
+**The 1.13 marker** (the fallback): browsing, a disc with a heading arrow; while a route is driven (`setRouteAhead`) a
 chevron (34 × 28 dp) in the route's colour with a white edge and a contact shadow, laid on the road by `rotationX` =
 0.85 × the camera's tilt (a transform only), crossfading disc to chevron on a `Spring`. With no fix for 5 s
 (`STALE_MS`) it turns grey and 60 % opaque; the fade is in its paints, not the view's `alpha` (its shapes overlap, so a
@@ -601,8 +611,11 @@ What the map data does not have, the owner draws himself and every unit picks up
   `api.github.com/repos/{repo}/contents/additions.json?ref=mapdata` (raw; `raw.githubusercontent.com` if that fails)
   once a day when there is internet, and at once from Settings → Navigation → Map additions → Update (`ExtrasCard`).
   The repository is the updater's (`Prefs.updateRepo`). `MapStyle.extras` draws them from the GeoJSON source
-  `aura-extras`: the limit as numbers along the street, a camera as a red disc, a signal as three lamps, a bump as an
-  amber dot (circles and text, like the places: no icon symbols).
+  `aura-extras` (circles and text, like the places: no icon symbols), since 1.14: a camera as a red badge (a soft red
+  glow, a white ring on either theme, a white lens with a dark pupil, its word under it; growing with the zoom), a
+  signal as a traffic light (a dark capsule of five overlapping circles inside five white ones, three lamps on it, all
+  moved by `circle-translate` in screen pixels so they stay upright), a bump as an amber dot. The limit is no longer
+  written along its street (the owner: the numbers cluttered the map); it shows only as the sign above the speed.
 * **While driving** `RoadWatch` reads every fix: the limit of the marked street the car is on (within 24 m of the line and
   heading along it, held 4 s over gaps), and the nearest camera (600 m) or bump (180 m) ahead of it (±55°), with a tone
   the first time each comes within reach. `RoadHud` shows them on the Maps screen (the limit as its sign above the
