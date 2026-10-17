@@ -3,7 +3,7 @@
 A small program for the owner's PC that gives the car more lyrics than the unit finds by itself, and makes untimed
 lyrics timed by listening to the song in the car. The car reaches it through the owner's own domain.
 
-**Address on this PC: `http://127.0.0.1:8787`** (it listens only there; the domain is what the car uses).
+**Address on this PC: `http://127.0.0.1:8790`** (it listens only there; the domain is what the car uses).
 
 * **More sources.** The unit asks LRCLIB itself. When LRCLIB has no timed lyrics, it asks this server, which tries the
   timed sources of the open-source [`syncedlyrics`](https://github.com/moehmeni/syncedlyrics) package — Musixmatch,
@@ -30,12 +30,12 @@ Double-click **`lyrics-server.bat`**. The window shows:
 
 ```
 AMRI lyrics server 1.0
-  address : http://127.0.0.1:8787
+  address : http://127.0.0.1:8790
   key     : abcd2345ef   (in ...\lyrics-cache\server\config.json)
   model   : large-v3-turbo on 6 CPU threads
 ```
 
-Close the window to stop it. Options (after `lyrics-server.bat`): `--port 8787`, `--host 127.0.0.1`,
+Close the window to stop it. Options (after `lyrics-server.bat`): `--port 8790`, `--host 127.0.0.1`,
 `--model large-v3-turbo`, `--threads 6`, `--home DIR`, `--new-key` (a new key: the car then needs the new one).
 
 **The key** is made on the first start (10 letters and digits, no look-alikes such as 0/o or 1/l) and kept in
@@ -51,7 +51,7 @@ name servers.
 
 **From the dashboard (simplest):** Cloudflare dashboard → Zero Trust → Networks → Tunnels → *Create a tunnel* →
 Cloudflared → name it (e.g. `amri-lyrics`) → install the connector on this PC with the command it shows (Windows) →
-*Public hostname*: subdomain `lyrics`, your domain, service type `HTTP`, URL `127.0.0.1:8787` → Save.
+*Public hostname*: subdomain `lyrics`, your domain, service type `HTTP`, URL `127.0.0.1:8790` → Save.
 
 **From the command line:**
 
@@ -69,7 +69,7 @@ tunnel: amri-lyrics
 credentials-file: C:\Users\<you>\.cloudflared\<tunnel id>.json
 ingress:
   - hostname: lyrics.example.com
-    service: http://127.0.0.1:8787
+    service: http://127.0.0.1:8790
   - service: http_status:404
 ```
 
@@ -113,10 +113,10 @@ turned a song it has timed into Genius's plain text), `songs\` the words heard p
 
 ## When something is wrong
 
-* *Test* in the car says "not the lyrics server": something else answers at that address. On the workshop PC another
-  program (a `pythonw`) listens on `0.0.0.0:8787`; this server's `127.0.0.1:8787` wins for the tunnel and for the PC
-  itself while it runs, but when it is stopped the other program answers. Run it on another port
-  (`lyrics-server.bat --port 8788`) and point the tunnel's service there if that gets in the way.
+* *Test* in the car says "not the lyrics server": something else answers at that address — the tunnel points at
+  another port, or the server is not running and another program has the port. It runs on 8790 because 8790 on the
+  workshop PC belongs to another program; another free port works too (`lyrics-server.bat --port 8791`, and the
+  tunnel's service with it).
 * "No answer": the server window is closed, the PC asleep, or the tunnel not running (`https://…/health` in a browser
   tells which).
 * "The key is wrong": the key in the car is not the one the server printed (a `--new-key` since?).

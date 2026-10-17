@@ -27,7 +27,7 @@ import java.util.concurrent.Executors
 object LyricsServer {
     private const val TAG = "AuraLyricsSrv"
 
-    /** The address the owner typed ("lyrics.example.com", "https://…", or for tests "10.0.2.2:8787"). */
+    /** The address the owner typed ("lyrics.example.com", "https://…", or for tests "10.0.2.2:8790"). */
     var address: String
         get() = Prefs.raw.getString("lyricsServer", "") ?: ""
         set(v) { Prefs.raw.edit().putString("lyricsServer", v.trim()).apply() }

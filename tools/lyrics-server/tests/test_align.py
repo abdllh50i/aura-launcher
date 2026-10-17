@@ -4,7 +4,7 @@
 room echo, then sent to the server as the car would — chunks of 20 s with their song position, or the whole file — and
 the timing it makes compared with where each line was put.
 
-    python tests/test_align.py --server http://127.0.0.1:8787 --key KEY [--song "Hello|Adele" ...] [--file]
+    python tests/test_align.py --server http://127.0.0.1:8790 --key KEY [--song "Hello|Adele" ...] [--file]
     python tests/test_align.py --direct --model small            (no server: the recogniser and the alignment here)
 
 The spoken lines are kept in --work (default ../../../lyrics-cache/test, outside the repository) so a second run does
@@ -212,7 +212,7 @@ def report(name, lines, truth, times, covered, extra=""):
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser()
-    ap.add_argument("--server", default="http://127.0.0.1:8787")
+    ap.add_argument("--server", default="http://127.0.0.1:8790")
     ap.add_argument("--key")
     ap.add_argument("--song", action="append", help='"title|artist" (repeatable)')
     ap.add_argument("--lines", type=int, default=18, help="lines of each song to speak")

@@ -3,9 +3,9 @@
 lyrics made into timed ones by listening to the song in the car.
 
     lyrics-server.bat                       (the usual way: the Python environment made by setup.bat)
-    python server.py [--host 127.0.0.1] [--port 8787] [--model NAME] [--threads N] [--home DIR] [--new-key]
+    python server.py [--host 127.0.0.1] [--port 8790] [--model NAME] [--threads N] [--home DIR] [--new-key]
 
-It listens on 127.0.0.1:8787 by default: the owner publishes it through his own domain (a Cloudflare Tunnel, see
+It listens on 127.0.0.1:8790 by default: the owner publishes it through his own domain (a Cloudflare Tunnel, see
 README.md), which gives the car an https address. Every request but /health carries the shared key (header
 X-Lyrics-Key, or ?key=): it is made on the first start and kept in config.json in the home folder, printed at every
 start.
@@ -74,7 +74,7 @@ def load_config(home, args):
     if args.new_key or not cfg.get("key"):
         cfg["key"] = "".join(secrets.choice(KEY_ALPHABET) for _ in range(10))
         changed = True
-    for k, default in (("host", "127.0.0.1"), ("port", 8787), ("model", "large-v3-turbo"), ("threads", min(8, max(2, (os.cpu_count() or 4) // 2)))):
+    for k, default in (("host", "127.0.0.1"), ("port", 8790), ("model", "large-v3-turbo"), ("threads", min(8, max(2, (os.cpu_count() or 4) // 2)))):
         if k not in cfg:
             cfg[k] = default
             changed = True
@@ -366,7 +366,7 @@ def main():
         pass
     ap = argparse.ArgumentParser(description="AMRI lyrics server")
     ap.add_argument("--host", help="address to listen on (default 127.0.0.1: published through a tunnel)")
-    ap.add_argument("--port", type=int, help="port (default 8787)")
+    ap.add_argument("--port", type=int, help="port (default 8790)")
     ap.add_argument("--model", help="faster-whisper model (default large-v3-turbo)")
     ap.add_argument("--threads", type=int, help="CPU threads for the speech model")
     ap.add_argument("--home", default=os.environ.get("AMRI_LYRICS_HOME") or os.path.join(HERE, "data"),

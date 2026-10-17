@@ -6,7 +6,7 @@ These notes belong under "Aura Music" in DEV.md, after the Lyrics paragraphs of 
 ## What the owner asked for, and what was built
 The owner asked for more places to fetch lyrics from ("find lyrics": read as more lyric search sources), Genius as the
 last resort, and Genius's plain lyrics to be timed against the song by a script on his own PC, published through his
-own domain. Two halves were built. `tools/lyrics-server` is a Python program for his PC (port 8787 on 127.0.0.1, put on
+own domain. Two halves were built. `tools/lyrics-server` is a Python program for his PC (port 8790 on 127.0.0.1, put on
 his domain with a Cloudflare Tunnel; README.md / README.ar.md there say how). The app asks it after LRCLIB, and, when
 he switches it on, lets it time untimed lyrics by listening to the song in the car. The sound never comes from YouTube
 or any streaming service: for a Bluetooth song it is what the car's microphone hears, for a song on the unit it is the

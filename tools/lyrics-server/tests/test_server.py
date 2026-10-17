@@ -3,7 +3,7 @@
 source answered), what is kept (a second question answered from disk), a miss and its keeping, and the timing
 requests' refusals.
 
-    python tests/test_server.py --server http://127.0.0.1:8787 --key KEY [--fresh]
+    python tests/test_server.py --server http://127.0.0.1:8790 --key KEY [--fresh]
 
 --fresh asks every source again the first time (the second question of each song is then the kept answer).
 """
@@ -52,7 +52,7 @@ def call(method, url, key=None, body=None, ctype=None, header=True):
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser()
-    ap.add_argument("--server", default="http://127.0.0.1:8787")
+    ap.add_argument("--server", default="http://127.0.0.1:8790")
     ap.add_argument("--key", required=True)
     ap.add_argument("--fresh", action="store_true")
     a = ap.parse_args()
