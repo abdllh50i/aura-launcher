@@ -81,10 +81,8 @@ object Amri {
         get() = Prefs.raw.getInt("amriMic", 0)
         set(v) { Prefs.raw.edit().putInt("amriMic", v).apply(); app?.let { AmriService.restartMic() } }
 
-    // tried with Windows' Arabic voice through the emulator's microphone (recorded in quiet; said in quiet, in road noise
-    // and in loud road noise): "عمري" scores 0.55-0.95; "عمر", "عمرين", "سمري", "مرحبا"... 1.4 and more, but the
-    // near-homophone "حمري" 1.2 in road noise
-    fun threshold(): Float = when (sensitivity) { 0 -> 1.05f; 2 -> 1.30f; else -> 1.15f }
+    /** How close a word must come to the owner's recordings, at this sensitivity ([Limits], [WakeModel.judge]). */
+    internal fun limits(): Limits = Limits.of(sensitivity)
 
     fun hasMicPermission(c: Context) = c.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
@@ -124,6 +122,9 @@ object Amri {
                     // the wake word from files (16 kHz mono WAV): --es enroll a.wav,b.wav,...  --es detect x.wav,y.wav
                     i.getStringExtra("enroll")?.let { files -> DebugWav.enroll(c.applicationContext, files.split(',')) }
                     i.getStringExtra("detect")?.let { files -> DebugWav.detect(c.applicationContext, files.split(',')) }
+                    // sounds to ignore: --es learn x.wav (what wakes in it, learned as if not meant)   --ez forget true
+                    i.getStringExtra("learn")?.let { files -> DebugWav.learn(c.applicationContext, files.split(',')) }
+                    if (i.getBooleanExtra("forget", false)) { forgetLearnedSounds(c.applicationContext); Log.i(TAG, "learned sounds forgotten") }
                     // requests without the internet: --es teach next:a.wav,b.wav,c.wav   --es offline x.wav,y.wav
                     i.getStringExtra("teach")?.let { spec -> DebugWav.teach(c.applicationContext, spec) }
                     i.getStringExtra("offline")?.let { files -> DebugWav.offline(c.applicationContext, files.split(',')) }
@@ -164,8 +165,17 @@ object Amri {
     val reversing: Boolean get() = Gear.current == Gear.Pos.R
 
     // ------------------------------------------------------------------------------------------ a request
-    /** The wake word was heard, or the microphone tapped: listen for a request. */
-    fun wake(ctx: Context) {
+    /** This session's wake by voice (null: the microphone was tapped), until the owner shows whether he meant it. */
+    private var heardBy: WakeCandidate? = null
+    private var wokeAt = 0L
+    /** What played when the assistant was called, before it paused the music ("what's playing" answers about it). */
+    private var playingAtWake: com.abdllh.aura.media.NowPlaying? = null
+
+    /** The microphone tapped (the home screen's button, Settings): listen for a request. */
+    fun wake(ctx: Context) = wake(ctx, null)
+
+    /** The wake word was heard ([heard]: what woke it), or the microphone tapped (null): listen for a request. */
+    internal fun wake(ctx: Context, heard: WakeCandidate?) {
         val c = LocaleHelper.wrap(ctx.applicationContext) // the app's language, also for the answers
         if (state != State.IDLE || inCall || reversing) return
         if (!hasMicPermission(c)) {
@@ -174,6 +184,9 @@ object Amri {
         }
         state = State.LISTENING
         val s = ++session
+        heardBy = heard
+        wokeAt = SystemClock.elapsedRealtime()
+        playingAtWake = MediaMonitor.current
         AmriService.pauseMic() // the recogniser needs the microphone
         pausedMedia = false
         if (MediaMonitor.current?.playing == true) {
@@ -229,10 +242,40 @@ object Amri {
         main.postDelayed({
             if (session == s && state == State.LISTENING && offline != null) {
                 stopOffline()
+                if (!heard) unmeant(c, "nothing said")
                 finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_not_heard), null)
             }
         }, 8_000L)
     }
+
+    /**
+     * The owner did not mean the wake (nothing was asked, he tapped it away, he said "خلاص"): what woke it is learned
+     * as a sound to ignore, if it matched weakly ([WakeNegatives]). Once a session, wakes by voice only.
+     */
+    private fun unmeant(c: Context, why: String) {
+        val h = heardBy ?: return
+        heardBy = null
+        val f = WakeNegatives.file(c)
+        val lim = limits()
+        Thread {
+            val learned = WakeNegatives.learn(f, h, lim)
+            Log.i(TAG, "wake not meant ($why): " + if (learned) "learned (${WakeNegatives.count(f)})" else "a strong match, kept out")
+        }.start()
+    }
+
+    /** The owner meant it (a request followed and was done): learned sounds too close to it are forgotten. */
+    private fun meant(c: Context) {
+        val h = heardBy ?: return
+        heardBy = null
+        val f = WakeNegatives.file(c)
+        Thread { WakeNegatives.confirm(f, h) }.start()
+    }
+
+    /** The sounds learned so far (Settings). */
+    fun learnedSounds(c: Context): Int = WakeNegatives.count(WakeNegatives.file(c))
+
+    /** Settings: forget them. */
+    fun forgetLearnedSounds(c: Context) = WakeNegatives.clear(WakeNegatives.file(c))
 
     private fun stopOffline() {
         offline?.quit()
@@ -286,6 +329,8 @@ object Amri {
                     Chime.play { if (session == s && state == State.LISTENING) listenOffline(c, s) }
                     return
                 }
+                // nothing said after the chime: the wake was probably not meant
+                if (error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT || error == SpeechRecognizer.ERROR_NO_MATCH) unmeant(c, "recogniser $error")
                 val msg = when (error) {
                     SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT, SpeechRecognizer.ERROR_SERVER -> R.string.amri_no_network
                     SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> R.string.amri_not_heard
@@ -314,15 +359,20 @@ object Amri {
             // (the recogniser still listening: not when it gave way to the taught requests)
             if (session == s && state == State.LISTENING && recognizer === r) {
                 release()
+                unmeant(c, "no answer in 15 s")
                 finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_not_heard), null)
             }
         }, 15_000L)
     }
 
-    /** The owner tapped the pill: stop listening (or just take the answer away). */
-    fun cancel(ctx: Context) {
+    /**
+     * Stop listening (or just take the answer away): the owner tapped the pill ([byOwner]), or a call came. A tap within
+     * a few seconds of a wake by voice says it was not meant.
+     */
+    fun cancel(ctx: Context, byOwner: Boolean = false) {
         val c = LocaleHelper.wrap(ctx.applicationContext)
         if (state == State.LISTENING) {
+            if (byOwner && SystemClock.elapsedRealtime() - wokeAt < 6_000L) unmeant(c, "tapped away")
             session++
             release()
             finish(c, AmriOverlay.Mode.DONE, c.getString(R.string.amri_cancel), null, speak = false, cmd = Command.Cancel)
@@ -355,6 +405,8 @@ object Amri {
     /** Does a request (heard by Google, or matched without the internet) and answers it; [said]: shown under it. */
     private fun act(c: Context, cmd: Command, said: String?) {
         state = State.ANSWERING
+        // "خلاص" right after the chime: called by mistake; any other request: meant
+        if (cmd == Command.Cancel) unmeant(c, "cancelled") else meant(c)
         val answer = run(c, cmd)
         val what = if (cmd is Command.VolumeSet || cmd is Command.VolumeStep || cmd is Command.Navigate) cmd.toString() else cmd::class.java.simpleName
         Log.i(TAG, "request $what -> ${answer.text}")
@@ -444,6 +496,7 @@ object Amri {
                 // music the assistant paused plays on, unless the owner wanted it stopped or changed
                 if (pausedMedia && cmd != Command.Pause && cmd != Command.Mute) MediaMonitor.send(c, MediaMonitor.Key.PLAY_PAUSE)
                 pausedMedia = false
+                heardBy = null
                 state = State.IDLE
                 AmriService.resumeMic()
             }
