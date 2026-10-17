@@ -298,7 +298,7 @@ object MapStyle {
             """{"id":"rail","type":"line","source":"omt","source-layer":"transportation","minzoom":12,"filter":${cls("rail", "transit")},
                "paint":{"line-color":"${c.rail}","line-width":${width(12 to 0.6, 18 to 2.5)},"line-dasharray":[4,3]}}""",
             building3d,
-            // our route, under the labels; then the arrow of the next turn on it
+            // our route, under the labels (the arrow of the next turn is over them, further down the list)
             // (both casings under both lines: the two parts join without a seam)
             """{"id":"route-casing","type":"line","source":"$SRC_ROUTE","layout":{"line-cap":"round","line-join":"round"},
                "paint":{"line-color":"$routeCasing","line-width":${width(wRoute, 4.5)}}}""",
@@ -307,17 +307,7 @@ object MapStyle {
             """{"id":"route","type":"line","source":"$SRC_ROUTE","layout":{"line-cap":"round","line-join":"round"},
                "paint":{"line-color":"$route","line-width":${width(wRoute)}}}""",
             """{"id":"route-near","type":"line","source":"$SRC_ROUTE_NEAR","layout":{"line-cap":"round","line-join":"round"},
-               "paint":{"line-color":"$route","line-width":${width(wRoute)}}}""",
-            """{"id":"turn-casing","type":"line","source":"$SRC_TURN","filter":["==","${'$'}type","LineString"],
-               "layout":{"line-cap":"round","line-join":"round"},
-               "paint":{"line-color":"$turnCasing","line-width":${width(wTurn, 3.4)}}}""",
-            """{"id":"turn-head-casing","type":"line","source":"$SRC_TURN","filter":["==","${'$'}type","Polygon"],
-               "layout":{"line-join":"round"},"paint":{"line-color":"$turnCasing","line-width":3.4}}""",
-            """{"id":"turn","type":"line","source":"$SRC_TURN","filter":["==","${'$'}type","LineString"],
-               "layout":{"line-cap":"round","line-join":"round"},
-               "paint":{"line-color":"#FFFFFF","line-width":${width(wTurn)}}}""",
-            """{"id":"turn-head","type":"fill","source":"$SRC_TURN","filter":["==","${'$'}type","Polygon"],
-               "paint":{"fill-color":"#FFFFFF"}}"""
+               "paint":{"line-color":"$route","line-width":${width(wRoute)}}}"""
         ) + pois + extras(dark, c.roadHalo, bold) + listOf(
             // labels
             """{"id":"water-name","type":"symbol","source":"omt","source-layer":"water_name","minzoom":10,
@@ -359,7 +349,19 @@ object MapStyle {
                "paint":{"text-color":"${c.place}","text-halo-color":"${c.placeHalo}","text-halo-width":1.9}}""",
             """{"id":"place-country","type":"symbol","source":"omt","source-layer":"place","maxzoom":7,"filter":${cls("country", "state")},
                "layout":{"text-field":$name,"text-font":$bold,"text-size":${size(2 to 12.0, 6 to 17.0)},"text-max-width":7},
-               "paint":{"text-color":"${c.minorPlace}","text-halo-color":"${c.placeHalo}","text-halo-width":1.6}}"""
+               "paint":{"text-color":"${c.minorPlace}","text-halo-color":"${c.placeHalo}","text-halo-width":1.6}}""",
+            // The arrow of the next turn over every label: a name never collides with a line, and a place's name
+            // sitting on the turn hid its head (the one thing on the map the driver must see).
+            """{"id":"turn-casing","type":"line","source":"$SRC_TURN","filter":["==","${'$'}type","LineString"],
+               "layout":{"line-cap":"round","line-join":"round"},
+               "paint":{"line-color":"$turnCasing","line-width":${width(wTurn, 3.4)}}}""",
+            """{"id":"turn-head-casing","type":"line","source":"$SRC_TURN","filter":["==","${'$'}type","Polygon"],
+               "layout":{"line-join":"round"},"paint":{"line-color":"$turnCasing","line-width":3.4}}""",
+            """{"id":"turn","type":"line","source":"$SRC_TURN","filter":["==","${'$'}type","LineString"],
+               "layout":{"line-cap":"round","line-join":"round"},
+               "paint":{"line-color":"#FFFFFF","line-width":${width(wTurn)}}}""",
+            """{"id":"turn-head","type":"fill","source":"$SRC_TURN","filter":["==","${'$'}type","Polygon"],
+               "paint":{"fill-color":"#FFFFFF"}}"""
         ) + dest(route, dark)
         val empty ="""{"type":"geojson","data":{"type":"FeatureCollection","features":[]}}"""
         // tiles and glyphs through the unit's own tile server (the offline map, else OpenFreeMap), OpenFreeMap directly

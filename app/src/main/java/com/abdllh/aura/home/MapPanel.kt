@@ -74,7 +74,10 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
             val m = AuraMap(ctx, interactive = false, texture = true, guarded = true)
             m.navTopPadding = 0.08 // the player covers the lower part: keep the car in the middle of what is visible
             m.pictureFile = MapBackdropView.pictureFile(ctx)
-            m.onDrawn = { if (backdrop.visibility == View.VISIBLE) backdrop.fadeTo(0f, Motion.AMBIENT) { backdrop.visibility = View.GONE } }
+            m.onDrawn = {
+                background = null // (the opaque map covers it: no fill under every frame of the map)
+                if (backdrop.visibility == View.VISIBLE) backdrop.fadeTo(0f, Motion.AMBIENT) { backdrop.visibility = View.GONE }
+            }
             live = m
             addView(m.view, flp(MATCH, MATCH))
         }
