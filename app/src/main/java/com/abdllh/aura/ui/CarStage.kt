@@ -68,6 +68,8 @@ class CarStage(context: Context) : FrameLayout(context) {
     private var vt: VelocityTracker? = null
     private val slop = ViewConfiguration.get(context).scaledTouchSlop
     private var anim: ValueAnimator? = null
+    private var introWait: Runnable? = null   // the intro, waiting for its first frame (see playIntro)
+    private var introFirst = 0
     private var ticking = false
     private var lastFrameNs = 0L
 
@@ -89,7 +91,7 @@ class CarStage(context: Context) : FrameLayout(context) {
     private var fitCx = 0f
     private var fitCy = 0f
 
-    private val onFrameReady: () -> Unit = { if (isShown) invalidate() }
+    private val onFrameReady: () -> Unit = { introReady(); if (isShown) invalidate() }
     private val goHome = Runnable { settleHome() }
     private val frameCallback = Choreographer.FrameCallback { t -> tick(t) }
 
@@ -112,6 +114,7 @@ class CarStage(context: Context) : FrameLayout(context) {
                 gpuDrawing = true
                 CarFrames.dropRawFiles(context)
                 CarFrames.trim(emptyList()) // the CPU's decoded frames are not drawn any more (tens of MB)
+                introReady()
                 invalidate()
             }
             g.onLost = { glOn = false; restAsked = -1; restFor = -1; invalidate() }
@@ -148,6 +151,7 @@ class CarStage(context: Context) : FrameLayout(context) {
         super.onAttachedToWindow()
         CarFrames.addListener(onFrameReady)
         resolveHome()
+        introReady() // (the intro is asked for before the stage is attached: its first frame may have come meanwhile)
     }
 
     override fun onDetachedFromWindow() {
@@ -201,6 +205,32 @@ class CarStage(context: Context) : FrameLayout(context) {
         zoom = 1f
         zoomTarget = 0f
         redraw()
+        introFirst = Math.floorMod(start.roundToInt(), n)
+        if (glOn || CarFrames.frameNow(introFirst) != null) { runIntro(start, delayMs); return }
+        // The CPU draws until the GPU's frames are in, and a spin begun without its first frame showed the floor light
+        // alone, then the car popping in already turned: it waits for that frame or the GPU (at most INTRO_WAIT_MS),
+        // its delay still counted from now.
+        CarFrames.request(introFirst)
+        val asked = SystemClock.uptimeMillis()
+        val go = object : Runnable {
+            override fun run() {
+                if (introWait !== this) return
+                introWait = null
+                removeCallbacks(this)
+                runIntro(start, (delayMs - (SystemClock.uptimeMillis() - asked)).coerceAtLeast(0L))
+            }
+        }
+        introWait = go
+        postDelayed(go, INTRO_WAIT_MS)
+    }
+
+    /** Starts the waiting intro once its first frame is there (or the GPU draws). */
+    private fun introReady() {
+        val go = introWait ?: return
+        if (glOn || CarFrames.frameNow(introFirst) != null) go.run()
+    }
+
+    private fun runIntro(start: Float, delayMs: Long) {
         anim = ValueAnimator.ofFloat(0f, 1f).apply {
             // (quick enough that the home screen is all there with it; it was 1.9 s)
             duration = 1400
@@ -228,10 +258,12 @@ class CarStage(context: Context) : FrameLayout(context) {
     }
 
     /**
-     * Stops the running animation without its end action. (cancel() calls onAnimationEnd synchronously, while [anim]
-     * still points at it, so the end handlers' `anim !== a` guard only works if the reference is cleared first.)
+     * Stops the running animation without its end action, or the intro waiting for its first frame (the car is then
+     * shown as it is). (cancel() calls onAnimationEnd synchronously, while [anim] still points at it, so the end
+     * handlers' `anim !== a` guard only works if the reference is cleared first.)
      */
     private fun stopAnim() {
+        introWait?.let { removeCallbacks(it); introWait = null; shown = 1f }
         val a = anim
         anim = null
         a?.cancel()
@@ -336,8 +368,8 @@ class CarStage(context: Context) : FrameLayout(context) {
             MotionEvent.ACTION_DOWN -> {
                 removeCallbacks(goHome)
                 // a touch that only stops the car (mid-spin, swinging home, intro) is not a tap on it
-                wasMoving = vel != 0f || anim != null
-                if (anim != null) { stopAnim(); shown = 1f; kick() }
+                wasMoving = vel != 0f || anim != null || introWait != null
+                if (anim != null || introWait != null) { stopAnim(); shown = 1f; kick() }
                 vel = 0f
                 dragTo = pos
                 dragging = true
@@ -517,6 +549,7 @@ class CarStage(context: Context) : FrameLayout(context) {
         private const val MIN_DEG_S = 6.4f        // slower than this the spin stops
         private const val FRICTION = 2.4f         // per second (exponential decay of the spin)
         private const val IDLE_MS = 3200L
+        private const val INTRO_WAIT_MS = 400L    // longest the intro waits for its first frame
         private const val FOLLOW = 24f            // per second: how fast the car catches up with the finger
         const val FLOOR_Y = 262f / 360f           // the turntable floor's centre, as a fraction of the frame height
         const val FLOOR_R = 0.34f                 // radius of the floor light, as a fraction of the frame width

@@ -102,7 +102,11 @@ object CarFrames {
         return meta
     }
 
-    /** Starts decoding the frames the home screen shows first (the intro spin), for drawing them on the CPU. */
+    /**
+     * Starts decoding the frames the home screen shows first (the intro spin), for drawing them on the CPU. Also when
+     * the GPU's frames were built before: loading them takes longer than the spin (1.2-1.5 s on the emulator), and a
+     * spin decoded only on demand lost the car for a frame.
+     */
     fun warmUp(ctx: Context, rtl: Boolean) {
         val m = meta(ctx) ?: return
         val d = if (rtl) m.defaultFrameRtl else m.defaultFrame

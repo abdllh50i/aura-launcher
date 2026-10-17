@@ -121,7 +121,12 @@ class MediaCard(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
         bind(null)
     }
 
-    private fun transport(ctx: Context, res: Int, desc: Int, onClick: () -> Unit): FrameLayout = FrameLayout(ctx).apply {
+    // Dimmed while nothing plays, and then the ghost background is clear (a disabled button is not pressed): nothing
+    // overlaps, so the alpha goes straight onto the icon instead of through an offscreen buffer at every frame of the
+    // live map under the card.
+    private fun transport(ctx: Context, res: Int, desc: Int, onClick: () -> Unit): FrameLayout = object : FrameLayout(ctx) {
+        override fun hasOverlappingRendering() = false
+    }.apply {
         background = Shapes.ghostOval()
         isClickable = true
         contentDescription = ctx.getString(desc)

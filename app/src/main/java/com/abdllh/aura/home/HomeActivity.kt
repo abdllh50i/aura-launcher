@@ -23,7 +23,6 @@ import com.abdllh.aura.settings.SettingsActivity
 import com.abdllh.aura.system.CarAudio
 import com.abdllh.aura.system.CrashGuard
 import com.abdllh.aura.system.NwdBridge
-import com.abdllh.aura.ui.CarEtc
 import com.abdllh.aura.ui.CarFrames
 import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.MATCH
@@ -110,9 +109,7 @@ class HomeActivity : Activity(), HomeHost {
         builtAccent = Prefs.accent
         builtDark = Palette.dark
         Theme.window(this, Palette.dock)
-        // The CPU's car frames only matter until the GPU's are there: from the second start on they are, and decoding
-        // the intro's frames anyway took two threads through the whole entrance.
-        if (!CarEtc.builtBefore(this, Palette.dark)) CarFrames.warmUp(this, resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL)
+        CarFrames.warmUp(this, resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL)
         setContentView(buildUi())
         mapPanel.onCreate(savedInstanceState)
         MediaMonitor.start(this)

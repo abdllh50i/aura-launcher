@@ -33,9 +33,13 @@ with its tiles staggered 25 ms apart, translation only. The car's spin is 1400 m
 * The live map is built by `MapPanel.startLive()`, 700 ms after the entrance starts (at once after a restyle).
   `MapPanel` keeps the activity's lifecycle (created/started/resumed) and replays it on the map when it is built.
   The placeholder (`MapBackdropView`) shows until then, as it did until the map's first frame.
-* `CarFrames.warmUp` (the CPU's frames) runs only when the GPU's frame file for the theme has not been built before:
-  `CarEtc.builtBefore()` checks the file name kept in Prefs (`carEtc_d`, `carEtc_l`) when a build succeeded. The CPU
-  path's decoding thread runs at default priority (it was above the UI thread).
+* The CPU path's decoding threads run at default priority (they were above the UI thread). `CarFrames.warmUp` still
+  decodes the whole intro spin at every start: even with the GPU's frame file already built, loading it takes longer
+  than the spin (1.2-1.5 s on the emulator, after the window is shown), so the CPU draws most of it. Skipping the
+  warm-up then (a 1.12 test build did) showed the floor light alone, then the car popping in already turned.
+* `CarStage.playIntro` never starts the spin without a frame: on the CPU path it waits for the spin's first frame or
+  the GPU (`introReady`, from the frame listener, the GL `onReady` and attach), at most 400 ms, with its delay still
+  counted from the call. A touch during the wait shows the car at once.
 * The app drawer's cells are built and their icons loaded 2.5 s after the entrance (`AppDrawer.prewarm`).
 
 **The car's background.** `CarEtc` no longer has its own copies of the theme backgrounds: `CarStage` passes
@@ -68,7 +72,9 @@ activity's whole life (updates, `EXTRA_REPLACING`, are ignored).
 * Controls tiles on the light theme have a `stroke` hairline on the white sheet.
 
 **Player.** The play button is an accent disc with `onColor(accent)` (the white disc was the brightest thing on the
-night screen). Previous and next are dimmed (0.35) and disabled while nothing plays. A new song's names come in from
+night screen). Previous and next are dimmed (0.35) and disabled while nothing plays; their buttons
+declare no overlapping rendering (the ghost background is clear when disabled), so the dim alpha costs no offscreen
+buffer at every frame of the live map. A new song's names come in from
 the side of the button pressed (next from the right, in every language, like the transport row) within 3 s of the
 press, else rising. The movement follows the title only: Bluetooth sends the title, the artist and the cover
 separately. A new song without a cover keeps the old cover dimmed for up to 1.5 s instead of dropping to the note

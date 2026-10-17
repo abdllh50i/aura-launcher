@@ -18,7 +18,6 @@ import android.os.Process
 import android.os.SystemClock
 import android.util.Log
 import android.view.TextureView
-import com.abdllh.aura.util.Prefs
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
@@ -38,8 +37,6 @@ object CarEtc {
     private const val MAGIC = 0x31435445 // "ETC1"
     const val HEADER = 32
     private const val VERSION = 2 // 2: the floor light's radius as drawn on the canvas (0.34 of the frame)
-    private const val KEY_DARK = "carEtc_d" // (Prefs: the name of the file last built for the theme)
-    private const val KEY_LIGHT = "carEtc_l"
 
     // the strength of the stage's floor light per theme (CarStage.floorColor)
     fun floorAlpha(dark: Boolean) = if (dark) 0.085f else 0.95f
@@ -58,17 +55,6 @@ object CarEtc {
     fun bg(dark: Boolean): Int = synchronized(lock) { bgs[if (dark) 1 else 0] }
 
     fun frameBytes(m: CarFrames.Meta) = ETC1.getEncodedDataSize(m.width, m.height)
-
-    /**
-     * Whether the frame file for the theme [dark] was built before (and is still there): the stage then has the GPU's
-     * frames moments after it starts, and the CPU's need not be decoded for the entrance. A file's name alone tells
-     * nothing (it is a hash of the frames, worked out by opening every one of them), hence the name kept when it was
-     * built.
-     */
-    fun builtBefore(ctx: Context, dark: Boolean): Boolean {
-        val name = Prefs.raw.getString(if (dark) KEY_DARK else KEY_LIGHT, null) ?: return false
-        return File(ctx.noBackupFilesDir, name).length() > HEADER
-    }
 
     /**
      * The frame file for the theme [dark] over the background [bg], built first if needed (then the other theme's, at
@@ -93,7 +79,6 @@ object CarEtc {
         while (true) {
             val f = try { fileFor(ctx, m, dark) } catch (t: Throwable) { Log.w(TAG, "GPU frames: $t"); null }
             val ok = f != null && (valid(f, m) || build(ctx, m, dark, f))
-            if (ok) Prefs.raw.edit().putString(if (dark) KEY_DARK else KEY_LIGHT, f!!.name).apply()
             val cbs = synchronized(lock) { waiting.remove(if (dark) "d" else "l") }
             cbs?.forEach { cb -> main.post { cb(if (ok) f else null) } }
             if (dark != firstDark) otherDone = true
