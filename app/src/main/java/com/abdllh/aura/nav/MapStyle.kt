@@ -176,10 +176,11 @@ object MapStyle {
             """["interpolate",["exponential",1.5],["zoom"],${zw.joinToString(",") { "${it.first},${it.second}" }}]"""
         fun width(w: W, extra: Double = 0.0) = """["interpolate",["exponential",1.5],["zoom"],${w.stops.joinToString(",") { "${num(it.first)},${num(it.second + extra)}" }}]"""
 
+        // (a colour, or an expression that picks one: [byClass])
         fun road(id: String, filter: String, color: String, w: String, minzoom: Int = 0, cap: String = "round") =
             """{"id":"$id","type":"line","source":"omt","source-layer":"transportation","minzoom":$minzoom,"filter":$filter,
                "layout":{"line-cap":"$cap","line-join":"round"},
-               "paint":{"line-color":"$color","line-width":$w}}"""
+               "paint":{"line-color":${if (color.startsWith("[")) color else "\"$color\""},"line-width":$w}}"""
 
         // on the ground: neither a bridge (drawn over the roads it crosses) nor a tunnel (faint, under them)
         val ground = """["!",["match",["get","brunnel"],["bridge","tunnel"],true,false]]"""
