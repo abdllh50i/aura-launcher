@@ -6,6 +6,7 @@ import android.os.Looper
 import android.util.Log
 import android.widget.Toast
 import com.abdllh.aura.R
+import com.abdllh.aura.util.LocaleHelper
 import com.abdllh.aura.util.Prefs
 import java.io.File
 
@@ -36,7 +37,7 @@ object BetaLeftovers {
             Prefs.raw.edit().putBoolean(KEY, true).remove("btPhoneTiming").apply()
             Log.i(TAG, "the 1.6.1 betas' Bluetooth experiment is cleared: $out")
             if (out.contains("was-mounted")) Handler(Looper.getMainLooper()).post {
-                try { Toast.makeText(c, R.string.beta_cleared_restart, Toast.LENGTH_LONG).show() } catch (_: Throwable) { }
+                try { Toast.makeText(LocaleHelper.wrap(c), R.string.beta_cleared_restart, Toast.LENGTH_LONG).show() } catch (_: Throwable) { }
             }
         }.start()
     }

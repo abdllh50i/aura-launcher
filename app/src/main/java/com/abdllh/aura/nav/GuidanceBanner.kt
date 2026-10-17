@@ -244,20 +244,22 @@ class GuidanceBanner(ctx: Context, val compact: Boolean = false) : LinearLayout(
 }
 
 /**
- * The colours of guidance. The route and its sign follow the owner's accent, except where that would change their
- * meaning or their legibility: red is the End button's and the cameras' colour, amber a warning, graphite reads as
- * switched off; those guide in the default blue.
+ * The colours of guidance, one for every map and sign: the route line, the turn arrow, the car and the destination
+ * on the map ([MapStyle.routeBase]) and the sign over it, so what the sign says and what the map shows are one thing.
+ * They follow the owner's accent where it can mean "the way": blue, cyan and violet. The others would change their
+ * meaning or sink into the map: green is the parks' colour, amber the motorways' and a warning, red the End button's
+ * and the cameras', graphite the roads' and reads as switched off; those guide in the default blue.
  */
 object Guide {
-    // (the swatches themselves, as Settings offers them: amber, red, graphite; and the graphite until 1.11)
-    private val NOT_FOR_GUIDING = setOf(Palette.accents[3], Palette.accents[4], Palette.accents.last(), Palette.OLD_GRAPHITE)
+    // (the swatches themselves, as Settings offers them: blue, cyan, violet)
+    private val FOR_GUIDING = setOf(Palette.accents[0], Palette.accents[1], Palette.accents[5])
 
-    /** The route's colour (a fill: the line, the turn arrow, the car). */
-    fun color(): Int = Palette.accent.takeIf { it !in NOT_FOR_GUIDING } ?: Palette.DEFAULT_ACCENT
+    /** The route's colour (a fill: the line, the turn arrow, the car, the sign's base). */
+    fun color(): Int = Palette.accent.takeIf { it in FOR_GUIDING } ?: Palette.DEFAULT_ACCENT
 
     /**
-     * The sign's fill: [color], deepened just enough for white words on it to read at 4.5:1 (on the green and cyan
-     * accents white stood at about 2:1).
+     * The sign's fill: [color], deepened just enough for white words on it to read at 4.5:1 (on the cyan accent
+     * white stood at about 2:1).
      */
     fun sign(): Int {
         val c = color()

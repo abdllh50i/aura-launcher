@@ -1014,6 +1014,14 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         private const val TURN_BEFORE_M = 45.0
         /** How far past the turn its arrow runs at street zoom, unless [setTurn] asks for more (a roundabout). */
         const val TURN_AFTER_M = 32.0
+
+        /**
+         * The `after` to give [setTurn] for [step]: through a roundabout the arrow runs on to the exit taken (its
+         * measured [Step.span], plus the head's length), so its head shows the way out rather than the ring. The
+         * Maps screen and the home map ask the same, so both draw the same arrow.
+         */
+        fun turnAfter(step: Step): Double =
+            if (step.span > 0) (step.span + 15).coerceIn(TURN_AFTER_M, 125.0) else TURN_AFTER_M
         private const val HEAD_LENGTH_M = 15.0
         private const val HEAD_HALF_M = 9.5
         // the driven route: its short part reaches this far ahead of the car, and is made again when less is left
@@ -1123,21 +1131,34 @@ private class CarMarker(ctx: Context) : View(ctx) {
  * screen stops embedding the live map (Maps itself still opens on request).
  */
 object MapGuard {
-    // a tiny file of its own: the marker is written synchronously before the map starts
+    // the count of failed starts, in a tiny preferences file of its own (written only when it changes)
     private fun sp(c: Context) = c.getSharedPreferences("aura_mapguard", Context.MODE_PRIVATE)
+
+    // The start marker is an empty file. It must be on disk before the engine starts, because a native crash ends the
+    // process without a chance to write anything. Until 1.11 it was a preferences flag written with commit(), which
+    // waits for the disk on the main thread just as the home screen's entrance plays; a file written and closed
+    // outlives the process just the same (only a power cut in that moment loses it, which the next start shrugs off).
+    private fun marker(c: Context) = File(c.noBackupFilesDir, "map-starting")
 
     fun homeMapAllowed(c: Context): Boolean {
         val sp = sp(c)
-        if (sp.getBoolean("starting", false)) {
-            sp.edit().putInt("fails", sp.getInt("fails", 0) + 1).putBoolean("starting", false).commit()
+        val m = marker(c)
+        // (the 1.11 flag too, left by a crash before the update)
+        if (m.exists() || sp.getBoolean("starting", false)) {
+            sp.edit().putInt("fails", sp.getInt("fails", 0) + 1).remove("starting").commit()
+            m.delete()
         }
         return sp.getInt("fails", 0) < 2
     }
 
-    fun starting(c: Context) { sp(c).edit().putBoolean("starting", true).commit() }
+    fun starting(c: Context) {
+        try { marker(c).writeText("") } catch (_: Throwable) { }
+    }
 
     fun ok(c: Context) {
+        val m = marker(c)
+        if (m.exists()) m.delete()
         val sp = sp(c)
-        if (sp.getBoolean("starting", false) || sp.getInt("fails", 0) != 0) sp.edit().putBoolean("starting", false).putInt("fails", 0).apply()
+        if (sp.getInt("fails", 0) != 0) sp.edit().putInt("fails", 0).apply()
     }
 }

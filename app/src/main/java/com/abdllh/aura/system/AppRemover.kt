@@ -10,6 +10,7 @@ import android.os.Looper
 import android.util.Log
 import android.widget.Toast
 import com.abdllh.aura.R
+import com.abdllh.aura.util.LocaleHelper
 import com.abdllh.aura.util.Prefs
 import java.util.concurrent.Executors
 
@@ -66,7 +67,8 @@ object AppRemover {
                 val removed = targets.filter { remove(c, it.first) }
                 Prefs.raw.edit().putBoolean(KEY_DONE, true).apply()
                 if (removed.isNotEmpty()) main.post {
-                    Toast.makeText(c, c.getString(R.string.removed_apps, removed.joinToString("، ") { it.second }), Toast.LENGTH_LONG).show()
+                    val ui = LocaleHelper.wrap(c) // (the app's language, not the unit's)
+                    Toast.makeText(ui, ui.getString(R.string.removed_apps, removed.joinToString("، ") { it.second }), Toast.LENGTH_LONG).show()
                 }
             }
         }, 25_000L)

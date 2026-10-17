@@ -91,7 +91,7 @@ object ZLinkGuard {
                 waited += 250
                 if (waited < 8000) { main.postDelayed(this, 250); return }
                 Log.w(TAG, "ZLink did not come back")
-                try { android.widget.Toast.makeText(c, com.abdllh.aura.R.string.zlink_failed, android.widget.Toast.LENGTH_LONG).show() } catch (_: Throwable) { }
+                try { android.widget.Toast.makeText(com.abdllh.aura.util.LocaleHelper.wrap(c), com.abdllh.aura.R.string.zlink_failed, android.widget.Toast.LENGTH_LONG).show() } catch (_: Throwable) { }
             }
         }
         main.postDelayed(poll, 250)

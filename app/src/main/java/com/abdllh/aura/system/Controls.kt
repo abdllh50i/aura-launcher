@@ -22,8 +22,14 @@ object Controls {
         val raw = MIN_B + pct.coerceIn(0, 100) * (255 - MIN_B) / 100
         return try {
             if (!Settings.System.canWrite(ctx)) return false
-            Settings.System.putInt(ctx.contentResolver, Settings.System.SCREEN_BRIGHTNESS_MODE, Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL)
-            Settings.System.putInt(ctx.contentResolver, Settings.System.SCREEN_BRIGHTNESS, raw)
+            val cr = ctx.contentResolver
+            // the mode only while it is not manual yet: a drag sets the level many times, each write is a call to the
+            // settings provider, and the read is answered from Settings' own cache
+            val mode = Settings.System.getInt(cr, Settings.System.SCREEN_BRIGHTNESS_MODE, -1)
+            if (mode != Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL) {
+                Settings.System.putInt(cr, Settings.System.SCREEN_BRIGHTNESS_MODE, Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL)
+            }
+            Settings.System.putInt(cr, Settings.System.SCREEN_BRIGHTNESS, raw)
             true
         } catch (_: Throwable) {
             false
@@ -45,6 +51,4 @@ object Controls {
     @Suppress("UNUSED_PARAMETER") fun toggleMute(ctx: Context) = CarAudio.toggleMute()
     /** One step from the real level (not the 0 shown while muted), which also turns the sound back on. */
     @Suppress("UNUSED_PARAMETER") fun stepVolume(ctx: Context, dir: Int) = CarAudio.setVolume(CarAudio.volume() + dir)
-
-    fun percentText(ctx: Context, v: Int) = "${(v * 100f / volumeMax(ctx)).toInt()}%"
 }

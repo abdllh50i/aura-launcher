@@ -13,18 +13,15 @@ import android.widget.LinearLayout
 import com.abdllh.aura.R
 import com.abdllh.aura.nav.AuraMap
 import com.abdllh.aura.nav.CarLocation
-import com.abdllh.aura.nav.Instructions
+import com.abdllh.aura.nav.GuidanceBanner
 import com.abdllh.aura.nav.LatLon
-import com.abdllh.aura.nav.ManeuverView
 import com.abdllh.aura.nav.MapGuard
 import com.abdllh.aura.nav.MapsActivity
 import com.abdllh.aura.nav.NavSession
 import com.abdllh.aura.nav.Places
-import com.abdllh.aura.nav.Units
+import com.abdllh.aura.nav.reveal
 import com.abdllh.aura.settings.SettingsActivity
-import com.abdllh.aura.ui.AText
 import com.abdllh.aura.ui.Elev
-import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.MapBackdropView
 import com.abdllh.aura.ui.Motion
@@ -35,7 +32,6 @@ import com.abdllh.aura.ui.Space
 import com.abdllh.aura.ui.Touch
 import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.WRAP
-import com.abdllh.aura.ui.elevate
 import com.abdllh.aura.ui.fadeTo
 import com.abdllh.aura.ui.flp
 import com.abdllh.aura.ui.iconView
@@ -46,12 +42,12 @@ import com.abdllh.aura.ui.pressScale
 import com.abdllh.aura.ui.roundedClip
 import com.abdllh.aura.util.Prefs
 import com.abdllh.aura.util.dp
-import java.util.Locale
 
 /**
  * End side of the home screen: a live map with the car (Aura Maps, read-only here), "Where to?" with Home and Work
  * beside it in one row along the top, and the player along the bottom, so the map shows between them (the row and
- * the player covered half of it until 1.11). While navigating it follows the route and shows the next manoeuvre.
+ * the player covered half of it until 1.11). While navigating it follows the route and shows the next manoeuvre
+ * on the Maps screen's sign, in its compact form ([GuidanceBanner]).
  * Tapping it opens Maps.
  * The live map is started by [startLive], after the home screen's entrance: MapLibre's start (its library, the style,
  * the first tiles) took the processor from the entrance and the car on every cold start, when the map could not be
@@ -65,13 +61,13 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
     val media = MediaCard(ctx, host)
     /** "Where to?", Home and Work (hidden while navigating). */
     val places: LinearLayout
-    private val banner: LinearLayout
-    private val bannerIcon: ManeuverView
-    private val bannerDist: AText
-    private val bannerText: AText
+    /** The next manoeuvre while navigating: the Maps screen's sign, in its compact form, so both read the same. */
+    private val banner = GuidanceBanner(ctx, compact = true)
+    private val hud: LinearLayout
     private val homeIcon: ImageView
     private val workIcon: ImageView
-    private val arabic get() = Locale.getDefault().language == "ar"
+    /** A trip is shown: its first step comes in without the change animation. */
+    private var tripShown = false
 
     // the activity's lifecycle as far as it went, replayed on the live map when it is started late
     private var savedState: Bundle? = null
@@ -124,31 +120,16 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
         places.addView(place(ctx, workIcon, R.string.home_work) { go("work") }, lp(Touch.MIN.dp, Touch.MIN.dp).apply { marginStart = Space.S.dp })
         top.addView(places, lp(WRAP, WRAP))
 
-        // guidance banner (navigation running)
-        banner = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPaddingRelative(12.dp, 10.dp, 20.dp, 10.dp)
-            background = Shapes.glassPressable(24f)
-            elevate(8f)
-            isClickable = true
-            setOnClickListener { openMaps(false) }
-            visibility = View.GONE
-        }
-        bannerIcon = ManeuverView(ctx).apply { color = Palette.accent }
-        banner.addView(bannerIcon, lp(56.dp, 56.dp))
-        val bt = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-        bannerDist = ctx.label(24f, Palette.text, Fonts.MEDIUM)
-        bannerText = ctx.label(15f, Palette.text2, Fonts.REGULAR)
-        bt.addView(bannerDist, lp(WRAP, WRAP))
-        bt.addView(bannerText, lp(WRAP, WRAP))
-        banner.addView(bt, lp(WRAP, WRAP).apply { marginStart = 12.dp })
+        // the guidance sign in the places' spot while navigating (a tap opens Maps on the trip)
+        banner.isClickable = true
+        banner.pressScale(Motion.PRESS_SURFACE)
+        banner.setOnClickListener { openMaps(false) }
         top.addView(banner, lp(WRAP, WRAP))
         addView(top, flp(WRAP, WRAP, Gravity.TOP or Gravity.START).apply { setMargins(INSET.dp, INSET.dp, INSET.dp, 0) })
 
         // the street's limit and the camera or bump ahead (the owner's additions to the map), and "a camera here"
         // under them (Settings → Navigation hides it): one column, so the camera button moves up where there is no sign
-        val hud = LinearLayout(ctx).apply {
+        hud = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.END
             // (a gap between the two only while both show)
@@ -158,6 +139,8 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
         hud.addView(com.abdllh.aura.nav.RoadHud(ctx, small = true), lp(WRAP, WRAP))
         hud.addView(com.abdllh.aura.nav.CameraMark(ctx, small = true), lp(WRAP, WRAP))
         addView(hud, flp(WRAP, WRAP, Gravity.TOP or Gravity.END).apply { setMargins(INSET.dp, INSET.dp, INSET.dp, 0) })
+        // the sign takes what the speed sign and the camera chip leave beside it (they come and go with the road)
+        hud.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> post(::fitBanner) }
         // the player spans the map's width: the song's name gets twice the room it had in a card capped at 460 dp
         addView(media, flp(MATCH, WRAP, Gravity.BOTTOM or Gravity.START).apply { setMargins(INSET.dp, 0, INSET.dp, INSET.dp) })
         refresh()
@@ -239,7 +222,10 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
         val m = live
         val nav = NavSession.state == NavSession.State.NAVIGATING
         places.visibility = if (nav) View.GONE else View.VISIBLE
-        banner.visibility = if (nav) View.VISIBLE else View.GONE
+        if (nav && !tripShown) { tripShown = true; banner.reset() }
+        if (!nav) tripShown = false
+        if (nav) banner.update()
+        banner.reveal(nav, -8f)
         if (m == null) return
         if (!nav) {
             shownRoute = null
@@ -263,11 +249,13 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
         val step = r.steps[p.next]
         // the turn ahead as an arrow on the route, as on the Maps screen (not the start or the arrival, nor one far off)
         val turn = step.type != "arrive" && step.type != "depart" && p.toNext <= 900 && !NavSession.rerouting
-        m.setTurn(if (turn) r.line else null, step.at)
-        bannerIcon.turn = Instructions.turn(step)
-        bannerIcon.exit = step.exit
-        bannerDist.text = Units.distance(p.toNext, arabic)
-        bannerText.text = Instructions.text(step, arabic)
+        m.setTurn(if (turn) r.line else null, step.at, AuraMap.turnAfter(step))
+    }
+
+    /** The sign's widest: the panel's width less the speed sign and camera chip column beside it. */
+    private fun fitBanner() {
+        val beside = if (hud.width > 0) hud.width + Space.S.dp else 0
+        banner.maxWidthPx = maxOf(0, width - 2 * INSET.dp - beside)
     }
 
     /** Home or Work: a round glass button with its icon, the name for the screen reader. */

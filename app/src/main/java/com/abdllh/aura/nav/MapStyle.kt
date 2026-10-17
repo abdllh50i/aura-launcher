@@ -102,14 +102,13 @@ object MapStyle {
     }
 
     /**
-     * The colour of the route (and of the car on it): the owner's accent when it reads as a route on this map — blue,
-     * cyan or violet — else the default blue. Amber is the motorways' colour, red the cameras', green the parks' and
-     * graphite the roads' own: a route in those would sink into the map. The rest of the UI keeps the accent.
+     * The colour of the route (and of the turn arrow, the car on it and the destination): the guidance colour,
+     * [Guide.color], so the map and the sign over it are one colour. It is the owner's accent when that reads as a
+     * route on this map — blue, cyan or violet — else the default blue. Amber is the motorways' colour, red the
+     * cameras', green the parks' and graphite the roads' own: a route in those would sink into the map. The rest of the
+     * UI keeps the accent.
      */
-    fun routeBase(): Int {
-        val a = Palette.accent
-        return if (a == Palette.accents[0] || a == Palette.accents[1] || a == Palette.accents[5]) a else Palette.DEFAULT_ACCENT
-    }
+    fun routeBase(): Int = Guide.color()
 
     /** The route as drawn: the base colour, lighter at night so it is the brightest line among the dark roads. */
     fun routeColor(): Int = if (Palette.dark) Palette.mix(routeBase(), 0xFFFFFFFF.toInt(), 0.32f) else routeBase()

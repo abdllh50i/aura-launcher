@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.res.ColorStateList
+import android.graphics.drawable.ColorDrawable
 import android.location.Location
 import android.os.Bundle
 import android.os.SystemClock
@@ -125,6 +126,9 @@ class MapsActivity : Activity() {
         builtAccent = Prefs.accent
         builtLang = Prefs.lang
         Theme.window(this, Palette.bg)
+        // the map's land as the window's own colour, until the map has drawn (one fill: the screen is all map, so a
+        // root view's background over the window's filled it twice under every frame)
+        window.setBackgroundDrawable(ColorDrawable(Palette.mapLand))
         map = AuraMap(this, interactive = true, texture = false)
         map.startPadding = panelWidth() + 32.dp // the car sits in the part of the map the panels leave free
         map.onCreate(savedInstanceState)
@@ -395,9 +399,8 @@ class MapsActivity : Activity() {
         val turn = if (step.type == "arrive" || step.type == "depart" || p.toNext > TURN_ARROW_FROM_M || NavSession.rerouting) null else r to p.next
         if (turn != turnShown) {
             turnShown = turn
-            val after = if (step.span > 0) (step.span + 15).coerceIn(AuraMap.TURN_AFTER_M, 125.0) else AuraMap.TURN_AFTER_M
             if (turn == null) map.setTurn(null)
-            else map.setTurn(r.line, step.at, after)
+            else map.setTurn(r.line, step.at, AuraMap.turnAfter(step))
         }
         // how long is left first (what the driver asks), then how far and when
         tripEta.setIfChanged(GuidanceBanner.styled(Units.duration(p.timeLeft, arabic), 0.5f, Palette.success))
@@ -814,7 +817,6 @@ class MapsActivity : Activity() {
     // ------------------------------------------------------------------------------------------ UI
     private fun buildUi(): View {
         root = FrameLayout(this)
-        root.setBackgroundColor(Palette.mapLand)
         root.addView(map.view, MATCH, MATCH)
 
         // ---- end side: the map's controls (one layer, faded away while typing)

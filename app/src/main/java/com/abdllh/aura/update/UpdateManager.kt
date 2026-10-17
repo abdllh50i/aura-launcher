@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.Looper
 import com.abdllh.aura.BuildConfig
 import com.abdllh.aura.R
+import com.abdllh.aura.util.LocaleHelper
 import com.abdllh.aura.util.Prefs
 import java.io.File
 import java.security.MessageDigest
@@ -35,6 +36,8 @@ object UpdateManager {
         private set
 
     private lateinit var app: Context
+    /** The app's own language for the messages: the application context speaks the unit's system language. */
+    private val ui: Context get() = LocaleHelper.wrap(app)
     private val listeners = CopyOnWriteArrayList<(State) -> Unit>()
     private val io = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
@@ -140,7 +143,7 @@ object UpdateManager {
             } catch (e: UpdateException) {
                 post(State.Failed(messageFor(e), null))
             } catch (t: Throwable) {
-                post(State.Failed(app.getString(R.string.upd_err_generic, t.message ?: ""), null))
+                post(State.Failed(ui.getString(R.string.upd_err_generic, t.message ?: ""), null))
             }
         }
     }
@@ -228,7 +231,7 @@ object UpdateManager {
                 }
             } catch (t: Throwable) {
                 main.removeCallbacks(installWatchdog)
-                post(State.Failed(app.getString(R.string.upd_err_install, t.message ?: ""), rel))
+                post(State.Failed(ui.getString(R.string.upd_err_install, t.message ?: ""), rel))
             }
         }
     }
@@ -282,7 +285,7 @@ object UpdateManager {
         if (s is State.Installing) {
             ApkInstaller.abandon(app, installSession)
             installSession = -1
-            post(State.Failed(app.getString(R.string.upd_err_timeout), s.release))
+            post(State.Failed(ui.getString(R.string.upd_err_timeout), s.release))
         }
     }
 
@@ -301,25 +304,25 @@ object UpdateManager {
         val s = state as? State.Installing ?: return
         main.removeCallbacks(installWatchdog)
         installSession = -1
-        post(State.Failed(if (msg.isNullOrBlank()) app.getString(R.string.upd_err_cancelled) else app.getString(R.string.upd_err_install, msg), s.release))
+        post(State.Failed(if (msg.isNullOrBlank()) ui.getString(R.string.upd_err_cancelled) else ui.getString(R.string.upd_err_install, msg), s.release))
     }
 
     private fun messageFor(e: UpdateException): String = when (e.kind) {
-        UpdateException.Kind.NETWORK -> app.getString(R.string.upd_err_network)
-        UpdateException.Kind.TLS -> app.getString(R.string.upd_err_tls)
-        UpdateException.Kind.RATE_LIMIT -> app.getString(R.string.upd_err_rate)
-        UpdateException.Kind.NOT_FOUND -> app.getString(R.string.upd_err_notfound)
-        UpdateException.Kind.SERVER -> app.getString(R.string.upd_err_server, e.message ?: "")
-        UpdateException.Kind.PARSE -> app.getString(R.string.upd_err_parse)
-        UpdateException.Kind.NO_APK -> app.getString(R.string.upd_err_noapk)
-        UpdateException.Kind.HASH -> app.getString(R.string.upd_err_hash)
-        UpdateException.Kind.SIGNATURE -> app.getString(R.string.upd_err_signature)
-        UpdateException.Kind.VERSION -> app.getString(R.string.upd_err_version)
-        UpdateException.Kind.STORAGE -> app.getString(R.string.upd_err_storage)
-        UpdateException.Kind.REPO -> app.getString(R.string.upd_err_repo)
-        UpdateException.Kind.INCOMPLETE -> app.getString(R.string.upd_err_incomplete)
-        UpdateException.Kind.CANCELLED -> app.getString(R.string.upd_err_cancelled)
-        UpdateException.Kind.INSTALL -> app.getString(R.string.upd_err_install, e.message ?: "")
-        UpdateException.Kind.TIMEOUT -> app.getString(R.string.upd_err_timeout)
+        UpdateException.Kind.NETWORK -> ui.getString(R.string.upd_err_network)
+        UpdateException.Kind.TLS -> ui.getString(R.string.upd_err_tls)
+        UpdateException.Kind.RATE_LIMIT -> ui.getString(R.string.upd_err_rate)
+        UpdateException.Kind.NOT_FOUND -> ui.getString(R.string.upd_err_notfound)
+        UpdateException.Kind.SERVER -> ui.getString(R.string.upd_err_server, e.message ?: "")
+        UpdateException.Kind.PARSE -> ui.getString(R.string.upd_err_parse)
+        UpdateException.Kind.NO_APK -> ui.getString(R.string.upd_err_noapk)
+        UpdateException.Kind.HASH -> ui.getString(R.string.upd_err_hash)
+        UpdateException.Kind.SIGNATURE -> ui.getString(R.string.upd_err_signature)
+        UpdateException.Kind.VERSION -> ui.getString(R.string.upd_err_version)
+        UpdateException.Kind.STORAGE -> ui.getString(R.string.upd_err_storage)
+        UpdateException.Kind.REPO -> ui.getString(R.string.upd_err_repo)
+        UpdateException.Kind.INCOMPLETE -> ui.getString(R.string.upd_err_incomplete)
+        UpdateException.Kind.CANCELLED -> ui.getString(R.string.upd_err_cancelled)
+        UpdateException.Kind.INSTALL -> ui.getString(R.string.upd_err_install, e.message ?: "")
+        UpdateException.Kind.TIMEOUT -> ui.getString(R.string.upd_err_timeout)
     }
 }

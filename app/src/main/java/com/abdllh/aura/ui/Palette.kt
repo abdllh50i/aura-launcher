@@ -41,14 +41,8 @@ object Palette {
     @JvmField var warn = 0
     @JvmField var danger = 0
 
-    // map
+    // the map's land, under the map until it has drawn (the map's other colours are its style's: MapStyle)
     @JvmField var mapLand = 0
-    @JvmField var mapBlock = 0
-    @JvmField var mapPark = 0
-    @JvmField var mapWater = 0
-    @JvmField var mapRoad = 0
-    @JvmField var mapRoadMajor = 0
-    @JvmField var mapCasing = 0
 
     val DEFAULT_ACCENT = 0xFF3E6AE1.toInt()
 
@@ -110,12 +104,6 @@ object Palette {
             warn = 0xFFF5A524.toInt()
             danger = 0xFFE5484D.toInt()
             mapLand = 0xFF1D2127.toInt()
-            mapBlock = 0xFF1B1E23.toInt()
-            mapPark = 0xFF16231C.toInt()
-            mapWater = 0xFF0F1C29.toInt()
-            mapRoad = 0xFF2A2E35.toInt()
-            mapRoadMajor = 0xFF3A3F48.toInt()
-            mapCasing = 0xFF0E1013.toInt()
         } else {
             bg = 0xFFECEEF1.toInt()
             card = 0xFFFFFFFF.toInt()
@@ -141,12 +129,6 @@ object Palette {
             warn = 0xFFA86200.toInt()
             danger = 0xFFC9363B.toInt()
             mapLand = 0xFFF0EDE6.toInt()
-            mapBlock = 0xFFE1E4E8.toInt()
-            mapPark = 0xFFD3E8CF.toInt()
-            mapWater = 0xFFBCD7F0.toInt()
-            mapRoad = 0xFFFFFFFF.toInt()
-            mapRoadMajor = 0xFFFFFFFF.toInt()
-            mapCasing = 0xFFD3D7DD.toInt()
         }
         accentFg = foreground(accent)
     }
