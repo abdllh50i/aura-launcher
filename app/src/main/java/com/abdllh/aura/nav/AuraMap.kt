@@ -334,7 +334,10 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         firstFrame = Drawn().also { mapView.addOnDidFinishRenderingFrameListener(it) }
         MapExtras.addListener(extrasChanged)
         pushExtras() // (fetched while this map was not on the screen)
-        if (carPos != null) wake()
+        if (carPos != null) {
+            view.postDelayed(stale, STALE_MS) // (unless fixes come again)
+            wake()
+        }
     }
 
     fun onResume() {
@@ -387,6 +390,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         view.removeCallbacks(stale)
         view.postDelayed(stale, STALE_MS)
         carView.setStale(false)
+        syncRerouting() // (the screens give the driven route only when it changes, the fixes all the time)
         if (p == lastFix && speed == speedKmh) return
         if (lastFixAt > 0) {
             val dt = now - lastFixAt
@@ -505,7 +509,6 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
      * While a new route is being looked for, the old one is faded (it is no longer the way).
      */
     fun setRouteAhead(line: Polyline) {
-        syncRerouting()
         if (line === routeLine) return
         routeLine = line
         routePts = null
