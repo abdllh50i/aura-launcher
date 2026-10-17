@@ -872,7 +872,15 @@ server's answers are kept in LRCLIB's record shape with two more fields, `source
 not complete yet is asked about again at the next play: `Result.improvable`).
 
 #### The server's sources (`tools/lyrics-server/sources.py`)
-The timed sources of the `syncedlyrics` package are asked at once (Musixmatch, LRCLIB, Megalobiz, NetEase) and the first
+First of all, since 2026-10-18, YouTube Music's own lyrics (`YouTubeMusic`, through the `ytmusicapi` package, no
+account): the catalogue the owner plays from, licensed from LyricFind or Musixmatch (the "find lyrics" he asked for was
+LyricFind, named under YouTube Music's lyrics) and timed for most songs. On his first evening with 1.13 four of his six
+songs came back plain from Genius or not at all; YouTube Music had all six timed. Found by name and artist, the lyrics'
+browse id from the watch page, the times from the Android client ytmusicapi asks (`get_lyrics(…, timestamps=True)`);
+"♪" lines become empty timed lines. `YTMusic()` as it is: with language "ar" and location "SA" every search came back
+empty. Besides the general match, a result with the very same title is taken when its artist is the same name in the
+other script (`same_song`: "حودة" is "Houda", 0.63 alike, under the general rule's bar), never another singer's song of
+that name. Then the timed sources of the `syncedlyrics` package are asked at once (Musixmatch, LRCLIB, Megalobiz, NetEase) and the first
 of them in that order with a matching timed text wins; Genius is asked only when none has any. `syncedlyrics.search()`
 itself was not usable as it is: it returns the text of whatever it took without saying which song that was, and two of
 its sources had changed by October 2026. Musixmatch hands an anonymous client a placeholder token (all zeros) and

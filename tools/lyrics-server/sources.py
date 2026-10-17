@@ -1,5 +1,6 @@
-"""Where lyrics come from: timed (LRC) ones from the sources the open-source `syncedlyrics` package knows (Musixmatch,
-LRCLIB, Megalobiz, NetEase), then plain text from Genius as the last resort.
+"""Where lyrics come from: YouTube Music's own (LyricFind / Musixmatch, mostly timed: the owner's catalogue), the timed
+(LRC) ones of the sources the open-source `syncedlyrics` package knows (Musixmatch, LRCLIB, Megalobiz, NetEase), then
+plain text from Genius as the last resort.
 
 `syncedlyrics.search()` only returns the text of whatever it took for the best hit, without saying which song that was;
 here every source's candidates are compared with the song asked for (its name, its artist, in Arabic or Latin letters,
@@ -410,7 +411,82 @@ class Genius(Source):
         return clean_plain("\n".join(parts))
 
 
-SYNCED_ORDER = [Musixmatch, Lrclib, Megalobiz, NetEase]
+class YouTubeMusic(Source):
+    """YouTube Music's own lyrics: the catalogue the owner plays from, licensed from LyricFind or Musixmatch ("find lyrics"
+    in his words was LyricFind, the "Source:" under YouTube Music's lyrics), timed for most songs — including Arabic ones
+    no other source had (2026-10-18: all six of the owner's latest songs, four of which had come back plain from Genius
+    or not at all). Through the open-source ytmusicapi package, no account: the song is found by its name and artist,
+    its watch page names the lyrics' browse id, and the lyrics come with their times from the Android client the package
+    asks for them. (YTMusic() as it is: given language="ar" with location="SA" every search came back empty.)"""
+    name = "youtube"
+    _yt = None
+    _lock = threading.Lock()
+
+    @classmethod
+    def client(cls):
+        with cls._lock:
+            if cls._yt is None:
+                from ytmusicapi import YTMusic
+                cls._yt = YTMusic()
+            return cls._yt
+
+    @staticmethod
+    def same_song(song, title, artist, dur):
+        """The very title and an artist only spelt in the other script: YouTube Music names Arabic singers in Latin
+        letters ("حودة" is "Houda", 0.63 alike, under the general rule's bar). A different singer altogether (another
+        song of that name) stays out."""
+        if tn.norm(tn.clean(title)) != tn.norm(tn.clean(song.title)):
+            return False
+        if song.artist and tn.similarity(song.artist, artist) < 0.5:
+            return False
+        return not (song.duration and dur and abs(float(dur) - song.duration) > DURATION_SLACK)
+
+    def find(self, song):
+        try:
+            yt = self.client()
+            results = yt.search(song.term(), filter="songs", limit=10) or []
+        except Exception as e:
+            raise SourceError("youtube: %s" % e.__class__.__name__)
+        hits = []
+        for o in results:
+            vid = o.get("videoId")
+            title = o.get("title") or ""
+            artist = ", ".join(a.get("name", "") for a in o.get("artists") or [])
+            dur = o.get("duration_seconds") or 0
+            if not vid:
+                continue
+            if not matches(song, title, artist, dur) and not self.same_song(song, title, artist, dur):
+                continue
+            h = Hit(self.name, title, artist, dur, url="https://music.youtube.com/watch?v=%s" % vid)
+            h.vid = vid
+            hits.append(h)
+        hits.sort(key=lambda h: -rank(song, h))
+        for h in hits[:2]:
+            try:
+                bid = (yt.get_watch_playlist(h.vid, limit=1) or {}).get("lyrics")
+                if not bid:
+                    continue
+                ly = yt.get_lyrics(bid, timestamps=True) or {}
+            except Exception:
+                continue
+            lines = ly.get("lyrics")
+            h.provider = (ly.get("source") or "").replace("Source:", "").strip() or None
+            if ly.get("hasTimestamps") and isinstance(lines, list):
+                # ("♪" marks music without words: an empty timed line, as LRC has it)
+                lrc = "\n".join("[%02d:%05.2f]%s" % (l.start_time // 60000, (l.start_time % 60000) / 1000.0,
+                                                     "" if l.text.strip() == "♪" else l.text) for l in lines)
+                if lrc_ok(lrc):
+                    h.synced = lrc
+                    return [h]
+            elif isinstance(lines, str) and lines.strip():
+                h.plain = clean_plain(lines)
+                if h.plain:
+                    return [h]
+        return []
+
+
+# YouTube Music first: the owner's own catalogue, the same recording his phone plays
+SYNCED_ORDER = [YouTubeMusic, Musixmatch, Lrclib, Megalobiz, NetEase]
 
 
 # ---------------------------------------------------------------------------------------------- the search, kept
@@ -521,6 +597,8 @@ class Search:
             result = {"synced": pick.synced if chosen else None, "plain": clean_plain(plain) if plain else None,
                       "source": pick.source, "title": pick.title, "artist": pick.artist, "duration": pick.duration,
                       "url": pick.url}
+            if getattr(pick, "provider", None):
+                result["provider"] = pick.provider  # (YouTube Music's own source: LyricFind, Musixmatch)
         self.keep(song, result, tried)
         return {"result": result, "tried": tried, "cached": False}
 

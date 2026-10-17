@@ -1,6 +1,7 @@
 # AMRI lyrics server (versions as tested on 2026-10-17)
 faster-whisper==1.2.1
 syncedlyrics==1.0.1
+ytmusicapi==1.12.3
 rapidfuzz==3.14.6
 requests==2.34.2
 beautifulsoup4==4.15.0
