@@ -34,8 +34,19 @@ callbacks, so the Bitmap stays the same instance until the app sends new metadat
 `sameAs` once before it counts as a new cover.
 
 **Paused** the cover breathes out to 94 % (`breath`, a spring on `artSlot`, not `artBox`). `relayout` snaps it to 1
-and moves its scale onto `artBox` for the move (LayoutMove measures a view by its own scale only), and puts it back
-after the move.
+and moves its scale onto `artBox` for the move (LayoutMove measures a view by its own scale only); the slot springs back
+to 94 % while `artBox` travels to 1 (started from a pre-draw listener after the move has measured, so the move's end
+point is the slot at full size), and the paused cover lands at its size in one motion instead of growing and then
+shrinking again.
+
+**After a relayout** (`redrawAfterMove`, once, `Motion.LONG` + 32 ms after the move) every label in the song's column is
+invalidated, so each records its text anew. Without it, specks of other letters showed beside the title, the artist
+and the length until the screen was next hidden (seen on the emulator after Device & USB, then Bluetooth, and when
+the lyrics panel opened): text that travels is drawn at a new fraction of a pixel each frame, the GPU's glyph atlas
+fills and reuses its places, and a label still drawing the text it recorded before the move picks up pieces of what
+took them. Invalidating the column alone did not clear them (its children keep their recordings); re-recording the
+labels did. Until 1.12 the labels were set on every tick, which hid it. Anything new that travels with LayoutMove
+and keeps its text across the move belongs under `left` or needs the same.
 
 **The song's side** (`buildUi`): title 28 sp bold, one line beside the library (34 sp, two lines, when Bluetooth has
 the screen to itself); the album joins the artist on one line (`paintNames`), and the third line is only for the
@@ -47,7 +58,11 @@ settings" is the screen's main button (`ABtn` PRIMARY, size L, with the Bluetoot
 only ever visible inside a GONE panel, and is gone. The source control in the header is a step smaller than the
 panel's tabs (`Type.FOOTNOTE`): beside the back and lyrics buttons it ran 15 dp past its column in English.
 `applyLayout` sets the start column's params again rather than only changing them: a changed `marginEnd` is turned
-into a right margin only when params are set, so after the Bluetooth layout the gutter beside the panel stayed 0.
+into a right margin only when params are set, so after the Bluetooth layout the gutter beside the panel stayed 0. It
+does so only when the layout changes (`laidWide`): it runs on every library reload. Repeat one shows a "1" badge in
+the cover's colour on the repeat icon's corner (`repeatOne`, popping in on a change); 1.11 told ONE from ALL only by
+a 10 % alpha difference. Shuffle and repeat hide as whole buttons for Bluetooth and YouTube: hiding only the icons left
+an empty spot that still turned the unit's player's shuffle and repeat.
 
 **Progress**: the seek strip is 52 dp tall (the bar thin in its middle); held, the bar thickens and the knob grows on a
 spring (`grab`). A position that is not known (a Bluetooth song before its line is tapped, nothing loaded) shows no

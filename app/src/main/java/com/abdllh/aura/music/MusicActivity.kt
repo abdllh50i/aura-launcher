@@ -98,6 +98,9 @@ class MusicActivity : Activity() {
     private lateinit var playIcon: PlayPauseView
     private lateinit var shuffleBtn: ImageView
     private lateinit var repeatBtn: ImageView
+    /** The "1" on the repeat button's corner: the one song again, not the whole list. */
+    private lateinit var repeatOne: AText
+    private val repeatOneBg = Shapes.oval(0)
     private lateinit var prevBtn: View
     private lateinit var nextBtn: View
     private lateinit var source: Segmented
@@ -518,7 +521,29 @@ class MusicActivity : Activity() {
         // the panel itself comes in from its side
         if (hasPanel && !hadPanel) panel.enter(dx = if (rtl) -36f else 36f, delay = 60L, dur = Motion.LONG)
         move.play()
-        if (k != 1f) root.postDelayed({ breathe(nowPlaying()) }, Motion.LONG)
+        // (and back to the slot as the cover travels to its full size, so the cover lands paused in one motion; started
+        // after the move has measured where the cover arrives, with the slot still at full size)
+        if (k != 1f) afterLayout { breathe(nowPlaying()) }
+        redrawAfterMove()
+    }
+
+    /**
+     * The song's labels drawn anew once a move has settled. After a relayout, specks of other letters showed beside
+     * the title, the artist and the length until the screen was next hidden. Text that travels is drawn at a new
+     * fraction of a pixel on every frame, and the GPU's store of letters fills and reuses its places; a label still
+     * drawing the run of letters it recorded before the move then picks up pieces of what took those places (redrawing
+     * the column alone does not help: the labels inside keep their recording). Until 1.12 the labels were set again
+     * on every tick, which hid it. One frame, once per move.
+     */
+    private fun redrawAfterMove() {
+        root.removeCallbacks(redrawText)
+        root.postDelayed(redrawText, Motion.LONG + 32L)
+    }
+
+    private val redrawText = Runnable { if (!isDestroyed) rerecord(left) }
+
+    private fun rerecord(v: View) {
+        if (v is TextView) v.invalidate() else if (v is ViewGroup) for (i in 0 until v.childCount) rerecord(v.getChildAt(i))
     }
 
     /**
@@ -724,8 +749,10 @@ class MusicActivity : Activity() {
     // ------------------------------------------------------------------------------------------ now playing
     private fun showNowPlaying() {
         val local = src == Src.LOCAL
-        shuffleBtn.visibility = if (local) View.VISIBLE else View.INVISIBLE
-        repeatBtn.visibility = if (local) View.VISIBLE else View.INVISIBLE
+        // (the whole button, not only its icon: an empty spot still took taps and turned the unit's own player's
+        // shuffle and repeat while another source played)
+        (shuffleBtn.parent as View).visibility = if (local) View.VISIBLE else View.INVISIBLE
+        (repeatBtn.parent as View).visibility = if (local) View.VISIBLE else View.INVISIBLE
         seek.enabledSeek = !bt
         when (src) {
             Src.YT -> {
@@ -1096,6 +1123,8 @@ class MusicActivity : Activity() {
     // what the toggles were last painted with: only a change repaints them
     private var paintedShuffle = 0
     private var paintedRepeat = 0
+    private var paintedOne: Boolean? = null
+    private var paintedOneFill = 0
     private var paintedLyrics = 0
 
     /** Shuffle, repeat and the lyrics button: in the cover's colour when on. */
@@ -1104,6 +1133,17 @@ class MusicActivity : Activity() {
         if (sh != paintedShuffle) { paintedShuffle = sh; shuffleBtn.setColorFilter(sh) }
         val rp = if (Player.repeat != Player.Repeat.OFF) fillText else Palette.text2
         if (rp != paintedRepeat) { paintedRepeat = rp; repeatBtn.setColorFilter(rp) }
+        if (fill != paintedOneFill) { paintedOneFill = fill; repeatOneBg.setColor(fill); repeatOne.setTextColor(Palette.onColor(fill)) }
+        val one = Player.repeat == Player.Repeat.ONE
+        if (one != paintedOne) {
+            val first = paintedOne == null
+            paintedOne = one
+            when {
+                first -> repeatOne.visibility = if (one) View.VISIBLE else View.GONE
+                one -> repeatOne.enter(scaleFrom = 0.4f, dur = Motion.SHORT)
+                else -> repeatOne.exit(scaleTo = 0.4f, dur = Motion.XSHORT) { repeatOne.visibility = View.GONE }
+            }
+        }
         val ly = if (lyricsWanted) Palette.onColor(fill) else Palette.text
         if (ly != paintedLyrics) { paintedLyrics = ly; lyricsIcon.setColorFilter(ly) }
         val bg = if (lyricsWanted) lyricsOnTint.drawable else lyricsOffBg
@@ -1399,9 +1439,16 @@ class MusicActivity : Activity() {
      * Bluetooth mode has no library to show: the song takes the whole screen, the cover beside its title and controls.
      * The unit's own music keeps the cover above them, beside the library.
      */
+    /** The layout [applyLayout] last set (wide: Bluetooth's); null before the first. */
+    private var laidWide: Boolean? = null
+
     private fun applyLayout() {
         if (!::stage.isInitialized) return
         val wide = bt && !lyricsOn // (the lyrics need the panel)
+        // (only a change lays the column out again: this runs on every reload of the library, every few seconds while
+        // a USB stick is being indexed)
+        if (wide == laidWide) return
+        laidWide = wide
         panel.visibility = if (wide) View.GONE else View.VISIBLE
         // (set again, not only changed: a start / end margin is turned into left / right when the params are set, so
         // a changed one was not seen, and the gutter stayed 0 after the Bluetooth layout)
@@ -1843,7 +1890,19 @@ class MusicActivity : Activity() {
         ctl.addView(playBtn, lp(88.dp, 88.dp).apply { marginStart = Space.M.dp; marginEnd = Space.M.dp })
         nextBtn = ctlButton(R.drawable.ic_skip_fwd, 32, null, R.string.media_next) { transport(2) }
         ctl.addView(nextBtn, lp(72.dp, 72.dp).apply { marginEnd = Space.M.dp })
-        ctl.addView(ctlButton(R.drawable.ic_repeat, 26, repeatBtn, 0) { Player.cycleRepeat() }, lp(Touch.MIN.dp, Touch.MIN.dp))
+        repeatOne = label(Type.CAPTION, Palette.text, gravity = Gravity.CENTER).apply {
+            text = "1"
+            // (the Latin face in every language: the Arabic one's taller lines did not fit the badge, and the digit is
+            // the same in both)
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            includeFontPadding = false
+            background = repeatOneBg
+            visibility = View.GONE
+        }
+        ctl.addView(ctlButton(R.drawable.ic_repeat, 26, repeatBtn, 0) { Player.cycleRepeat() }.apply {
+            // (on the icon's upper corner, the side the arrows turn towards)
+            addView(repeatOne, flp(16.dp, 16.dp, Gravity.TOP or Gravity.END).apply { setMargins(0, 7.dp, 7.dp, 0) })
+        }, lp(Touch.MIN.dp, Touch.MIN.dp))
         info.addView(ctl, lp(MATCH, WRAP).apply { topMargin = Space.S.dp })
         // Bluetooth without a phone: the way to pair or connect one is the screen's main action
         btSettings = ABtn(this).apply {
