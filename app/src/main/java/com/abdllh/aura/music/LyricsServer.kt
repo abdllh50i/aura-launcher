@@ -18,8 +18,8 @@ import java.util.concurrent.Executors
 /**
  * The owner's own lyrics server (tools/lyrics-server: a program on his PC, reached through his own domain). It knows
  * more places to find lyrics than LRCLIB (Megalobiz, NetEase, Musixmatch when it answers, Genius as the last resort),
- * and it makes plain lyrics timed by listening to the song in the car ([LyricsSync]). Nothing here runs while no
- * address is set: the unit then does exactly what it did before 1.13.
+ * and it makes plain lyrics timed by listening to the song in the car ([LyricsSync]). Nothing here runs while no key
+ * (or no address) is set: the unit then does exactly what it did before 1.13.
  *
  * Every request but the health check carries the server's key (header X-Lyrics-Key), which the server prints when it
  * starts. Calls block: they are made on the lyrics' own worker threads, never on the main thread.
@@ -27,9 +27,15 @@ import java.util.concurrent.Executors
 object LyricsServer {
     private const val TAG = "AuraLyricsSrv"
 
-    /** The address the owner typed ("lyrics.example.com", "https://…", or for tests "10.0.2.2:8790"). */
+    /**
+     * The owner's own server (his PC, published through his domain on 2026-10-18): the address field starts with it, so
+     * only the key is typed on the screen. Nothing reaches it without the key.
+     */
+    private const val OWNER_ADDRESS = "https://lyric.abod50i.online"
+
+    /** The address in Settings ("lyrics.example.com", "https://…", or for tests "10.0.2.2:8790"). */
     var address: String
-        get() = Prefs.raw.getString("lyricsServer", "") ?: ""
+        get() = Prefs.raw.getString("lyricsServer", OWNER_ADDRESS) ?: OWNER_ADDRESS
         set(v) { Prefs.raw.edit().putString("lyricsServer", v.trim()).apply() }
 
     var key: String
