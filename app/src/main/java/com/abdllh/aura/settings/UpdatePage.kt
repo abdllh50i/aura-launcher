@@ -1,20 +1,24 @@
 package com.abdllh.aura.settings
 
 import android.content.Context
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import com.abdllh.aura.BuildConfig
 import com.abdllh.aura.R
 import com.abdllh.aura.ui.ABtn
 import com.abdllh.aura.ui.AText
-import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Palette
+import com.abdllh.aura.ui.Radius
 import com.abdllh.aura.ui.Shapes
+import com.abdllh.aura.ui.Space
+import com.abdllh.aura.ui.Touch
+import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.WRAP
+import com.abdllh.aura.ui.enter
 import com.abdllh.aura.ui.iconView
 import com.abdllh.aura.ui.label
 import com.abdllh.aura.ui.lp
@@ -31,52 +35,58 @@ class UpdatePage(private val act: SettingsActivity) : Page(R.string.set_update, 
     private lateinit var ctx: Context
     private var observer: ((UpdateManager.State) -> Unit)? = null
     private var lastKind: Class<*>? = null
+    // the download's bar and line, changed in place on every report (UpdateManager sends one every 400 ms)
+    private var dlBar: ProgressBar? = null
+    private var dlText: AText? = null
 
     override fun build(ctx: Context): View {
         this.ctx = ctx
+        lastKind = null
         val col = ctx.pageColumn()
 
         // header card
         val head = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(22.dp, 18.dp, 22.dp, 18.dp)
-            background = Shapes.card(22f)
+            setPaddingRelative(20.dp, Space.L.dp, 20.dp, Space.L.dp)
+            background = Shapes.card()
         }
         val badge = FrameLayout(ctx).apply { background = Shapes.oval(Palette.accentSoft()) }
-        badge.addView(ctx.iconView(R.drawable.ic_layers, 28, Palette.accent).apply { layoutParams = FrameLayout.LayoutParams(28.dp, 28.dp, Gravity.CENTER) })
-        head.addView(badge, lp(60.dp, 60.dp))
+        badge.addView(ctx.iconView(R.drawable.ic_layers, 28, Palette.accentFg).apply { layoutParams = FrameLayout.LayoutParams(28.dp, 28.dp, Gravity.CENTER) })
+        head.addView(badge, lp(Touch.MIN.dp, Touch.MIN.dp))
         val t = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-        t.addView(ctx.label(22f, Palette.text, Fonts.MEDIUM).apply { text = "${ctx.getString(R.string.app_name)} ${BuildConfig.VERSION_NAME}" })
-        t.addView(ctx.label(13.5f, Palette.text2, Fonts.REGULAR).apply {
+        t.addView(ctx.label(Type.TITLE, Palette.text).apply { text = "${ctx.getString(R.string.app_name)} ${BuildConfig.VERSION_NAME}" })
+        t.addView(ctx.label(Type.FOOTNOTE, Palette.text2).apply {
             text = ctx.getString(R.string.upd_build_line, BuildConfig.VERSION_CODE.toString(), ctx.getString(if (Prefs.updateBeta) R.string.upd_channel_beta else R.string.upd_channel_stable))
-        }, lp(MATCH, WRAP).apply { topMargin = 4.dp })
+        }, lp(MATCH, WRAP).apply { topMargin = Space.XXS.dp })
         head.addView(t, lp(0, WRAP, 1f).apply { marginStart = 18.dp })
-        col.addView(head, lp(MATCH, WRAP))
+        col.addRow(head)
 
         // dynamic status area
         holder = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(22.dp, 20.dp, 22.dp, 20.dp)
-            background = Shapes.card(22f)
+            setPaddingRelative(20.dp, Space.L.dp + Space.XS.dp, 20.dp, Space.L.dp + Space.XS.dp)
+            background = Shapes.card()
         }
-        col.addRow(holder, 14)
+        col.addRow(holder)
 
         // options
-        col.addView(ctx.sectionTitle(ctx.getString(R.string.upd_options)), lp(MATCH, WRAP).apply { topMargin = 22.dp })
-        col.addRow(ctx.switchRow(R.drawable.ic_refresh, ctx.getString(R.string.upd_auto), ctx.getString(R.string.upd_auto_sub), Prefs.updateAuto) { Prefs.updateAuto = it }, 8)
-        col.addRow(ctx.switchRow(R.drawable.ic_zap, ctx.getString(R.string.upd_beta), ctx.getString(R.string.upd_beta_sub), Prefs.updateBeta) {
-            Prefs.updateBeta = it
-            UpdateManager.forget() // a release found on the other channel must not stay on offer
-            act.rebuild()
-        }, 10)
-        col.addRow(ctx.settingRow(R.drawable.ic_github, ctx.getString(R.string.upd_source), Prefs.updateRepo, ctx.iconView(R.drawable.ic_edit, 22, Palette.text3)) {
-            InputDialog.show(ctx, ctx.getString(R.string.upd_source), "owner/repo", Prefs.updateRepo) { v ->
-                if (GitHub.isValidRepo(v)) { Prefs.updateRepo = v.trim(); UpdateManager.forget(); act.rebuild() }
-                else com.abdllh.aura.ui.Snack.show(ctx, R.string.upd_err_repo, long = true)
+        col.addSection(ctx.getString(R.string.upd_options))
+        col.addRow(ctx.group(
+            ctx.switchRow(R.drawable.ic_refresh, ctx.getString(R.string.upd_auto), ctx.getString(R.string.upd_auto_sub), Prefs.updateAuto) { Prefs.updateAuto = it },
+            ctx.switchRow(R.drawable.ic_zap, ctx.getString(R.string.upd_beta), ctx.getString(R.string.upd_beta_sub), Prefs.updateBeta) {
+                Prefs.updateBeta = it
+                UpdateManager.forget() // a release found on the other channel must not stay on offer
+                act.rebuild()
+            },
+            ctx.settingRow(R.drawable.ic_github, ctx.getString(R.string.upd_source), Prefs.updateRepo, ctx.iconView(R.drawable.ic_edit, 22, Palette.text3)) {
+                InputDialog.show(ctx, ctx.getString(R.string.upd_source), "owner/repo", Prefs.updateRepo) { v ->
+                    if (GitHub.isValidRepo(v)) { Prefs.updateRepo = v.trim(); UpdateManager.forget(); act.rebuild() }
+                    else com.abdllh.aura.ui.Snack.show(ctx, R.string.upd_err_repo, long = true)
+                }
             }
-        }, 10)
-        col.addRow(ctx.hint(ctx.getString(R.string.upd_footer)), 14)
+        ))
+        col.addHint(ctx.getString(R.string.upd_footer))
         return col
     }
 
@@ -95,35 +105,47 @@ class UpdatePage(private val act: SettingsActivity) : Page(R.string.set_update, 
     private fun render(s: UpdateManager.State) {
         if (!::holder.isInitialized) return
         val kind = s.javaClass
+        // The download's next report: the bar glides on and the line changes, nothing else. Built anew each time
+        // (until 1.11), the bar grew from empty 2.5 times a second and Cancel was a new button under a finger that
+        // had pressed the old one.
+        val bar = dlBar
+        if (s is UpdateManager.State.Downloading && lastKind == kind && bar != null && bar.isAttachedToWindow) {
+            val f = fraction(s)
+            bar.set(f)
+            val line = progressLine(s, f)
+            if (dlText?.text?.toString() != line) dlText?.text = line
+            return
+        }
+        dlBar = null
+        dlText = null
         holder.removeAllViews()
         when (s) {
-            is UpdateManager.State.Idle -> idle(null)
-            is UpdateManager.State.Checking -> busy(ctx.getString(R.string.upd_checking), null, indeterminate = true)
+            is UpdateManager.State.Idle -> idle()
+            is UpdateManager.State.Checking -> busy(ctx.getString(R.string.upd_checking), null)
             is UpdateManager.State.UpToDate -> upToDate(s.checkedAt, s.noReleases)
             is UpdateManager.State.Available -> available(s.release)
             is UpdateManager.State.Downloading -> downloading(s)
-            is UpdateManager.State.Verifying -> busy(ctx.getString(R.string.upd_verifying), s.release.tag, indeterminate = true)
-            is UpdateManager.State.Installing -> busy(ctx.getString(R.string.upd_installing), s.release.tag, indeterminate = true)
+            is UpdateManager.State.Verifying -> busy(ctx.getString(R.string.upd_verifying), s.release.tag)
+            is UpdateManager.State.Installing -> busy(ctx.getString(R.string.upd_installing), s.release.tag)
             is UpdateManager.State.Failed -> failed(s)
         }
         if (lastKind != kind) {
+            // (not on the first showing: the card is there with the page, not arriving after it)
+            if (lastKind != null) holder.enter(dy = Space.S.toFloat())
             lastKind = kind
-            holder.alpha = 0f
-            holder.translationY = 8.dp.toFloat()
-            holder.animate().alpha(1f).translationY(0f).setDuration(220).start()
         }
     }
 
-    private fun idle(error: String?) {
-        title(ctx.getString(R.string.upd_ready), Palette.text)
+    private fun idle() {
+        title(ctx.getString(R.string.upd_ready))
         subtitle(if (Prefs.lastUpdateCheck > 0) ctx.getString(R.string.upd_last_checked, Fmt.dateTime(Prefs.lastUpdateCheck)) else ctx.getString(R.string.upd_never_checked))
         checkButton()
     }
 
     private fun upToDate(at: Long, noReleases: Boolean) {
         val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        row.addView(ctx.iconView(R.drawable.ic_check_circle, 30, Palette.success), lp(30.dp, 30.dp).apply { marginEnd = 14.dp })
-        row.addView(ctx.label(21f, Palette.text, Fonts.MEDIUM).apply { setText(R.string.upd_uptodate) })
+        row.addView(ctx.iconView(R.drawable.ic_check_circle, 28, Palette.success), lp(28.dp, 28.dp).apply { marginEnd = Space.M.dp })
+        row.addView(ctx.label(Type.TITLE, Palette.text).apply { setText(R.string.upd_uptodate) })
         holder.addView(row, lp(MATCH, WRAP))
         subtitle(ctx.getString(R.string.upd_last_checked, Fmt.dateTime(at)))
         if (noReleases) subtitle(ctx.getString(R.string.upd_no_releases, Prefs.updateRepo))
@@ -132,78 +154,107 @@ class UpdatePage(private val act: SettingsActivity) : Page(R.string.set_update, 
 
     private fun available(r: Release) {
         val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        row.addView(ctx.iconView(R.drawable.ic_download, 30, Palette.accent), lp(30.dp, 30.dp).apply { marginEnd = 14.dp })
+        row.addView(ctx.iconView(R.drawable.ic_download, 28, Palette.accentFg), lp(28.dp, 28.dp).apply { marginEnd = Space.M.dp })
         val t = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-        t.addView(ctx.label(21f, Palette.text, Fonts.MEDIUM).apply { text = ctx.getString(R.string.upd_available_title, r.tag.removePrefix("v")) })
+        t.addView(ctx.label(Type.TITLE, Palette.text).apply { text = ctx.getString(R.string.upd_available_title, r.tag.removePrefix("v")) })
         val meta = buildString {
             append(Fmt.bytes(r.apkSize))
             if (r.prerelease) append("  ·  ").append(ctx.getString(R.string.upd_channel_beta))
         }
-        t.addView(ctx.label(13.5f, Palette.text2, Fonts.REGULAR).apply { text = meta }, lp(MATCH, WRAP).apply { topMargin = 3.dp })
+        t.addView(ctx.label(Type.FOOTNOTE, Palette.text2).apply { text = meta }, lp(MATCH, WRAP).apply { topMargin = Space.XXS.dp })
         row.addView(t, lp(0, WRAP, 1f))
         holder.addView(row, lp(MATCH, WRAP))
 
+        // What's new, in the page itself: the first lines, and the rest on "Show all". (It was a small box that
+        // scrolled on its own inside the scrolling page, where a swipe got stuck in one or the other.)
         val notes = cleanNotes(r.notes)
         if (notes.isNotEmpty()) {
-            holder.addView(ctx.label(13f, Palette.text3, Fonts.MEDIUM).apply { setText(R.string.upd_notes) }, lp(MATCH, WRAP).apply { topMargin = 16.dp })
-            val box = ScrollView(ctx).apply {
-                isVerticalScrollBarEnabled = false
-                background = Shapes.rect(Palette.card2, 14f, Palette.stroke)
-                setPadding(16.dp, 12.dp, 16.dp, 12.dp)
-                addView(ctx.label(14.5f, Palette.text, Fonts.REGULAR, lines = 0).apply { text = notes; setLineSpacing(0f, 1.2f) })
+            holder.addView(ctx.label(Type.CAPTION, Palette.text3).apply { setText(R.string.upd_notes) }, lp(MATCH, WRAP).apply { topMargin = Space.L.dp })
+            val box = LinearLayout(ctx).apply {
+                orientation = LinearLayout.VERTICAL
+                background = Shapes.rect(Palette.card2, Radius.M)
+                setPaddingRelative(Space.L.dp, Space.M.dp, Space.L.dp, Space.M.dp)
             }
-            holder.addView(box, lp(MATCH, 150.dp).apply { topMargin = 8.dp })
+            val text = ctx.label(Type.FOOTNOTE, Palette.text, lines = NOTES_LINES).apply { this.text = notes; ellipsize = TextUtils.TruncateAt.END }
+            box.addView(text, lp(MATCH, WRAP))
+            val more = ABtn(ctx).apply {
+                kind = ABtn.Kind.GHOST
+                setText(R.string.upd_notes_more)
+                visibility = View.GONE
+                setOnClickListener {
+                    text.maxLines = Int.MAX_VALUE
+                    visibility = View.GONE
+                }
+            }
+            box.addView(more, lp(WRAP, WRAP).apply { topMargin = Space.M.dp })
+            // (offered once the notes are laid out and found longer than what shows)
+            text.addOnLayoutChangeListener(object : View.OnLayoutChangeListener {
+                override fun onLayoutChange(v: View, l: Int, t: Int, r: Int, b: Int, ol: Int, ot: Int, or: Int, ob: Int) {
+                    text.removeOnLayoutChangeListener(this)
+                    val lay = text.layout ?: return
+                    if (lay.lineCount > 0 && lay.getEllipsisCount(lay.lineCount - 1) > 0) more.visibility = View.VISIBLE
+                }
+            })
+            holder.addView(box, lp(MATCH, WRAP).apply { topMargin = Space.S.dp })
         }
         val actions = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
         actions.addView(ABtn(ctx).apply { kind = ABtn.Kind.PRIMARY; setText(R.string.upd_download); setOnClickListener { UpdateManager.downloadAndInstall() } }, lp(WRAP, WRAP))
-        actions.addView(ABtn(ctx).apply { kind = ABtn.Kind.TONAL; setText(R.string.upd_check_again); setOnClickListener { UpdateManager.check() } }, lp(WRAP, WRAP).apply { marginStart = 12.dp })
-        holder.addView(actions, lp(MATCH, WRAP).apply { topMargin = 18.dp })
+        actions.addView(ABtn(ctx).apply { kind = ABtn.Kind.TONAL; setText(R.string.upd_check_again); setOnClickListener { UpdateManager.check() } }, lp(WRAP, WRAP).apply { marginStart = Space.M.dp })
+        holder.addView(actions, lp(MATCH, WRAP).apply { topMargin = Space.L.dp })
+    }
+
+    private fun fraction(s: UpdateManager.State.Downloading) = if (s.total > 0) s.done.toFloat() / s.total else 0f
+
+    private fun progressLine(s: UpdateManager.State.Downloading, f: Float): String {
+        val speed = if (s.bytesPerSec > 0) "  ·  ${Fmt.bytes(s.bytesPerSec)}/s" else ""
+        return "${Fmt.percent(f)}  ·  ${Fmt.bytes(s.done)} / ${Fmt.bytes(s.total)}$speed"
     }
 
     private fun downloading(s: UpdateManager.State.Downloading) {
-        val frac = if (s.total > 0) s.done.toFloat() / s.total else 0f
-        title(ctx.getString(R.string.upd_downloading, s.release.tag.removePrefix("v")), Palette.text)
-        val bar = ProgressBar(ctx).apply { set(frac) }
-        holder.addView(bar, lp(MATCH, 10.dp).apply { topMargin = 16.dp })
-        val speed = if (s.bytesPerSec > 0) "  ·  ${Fmt.bytes(s.bytesPerSec)}/s" else ""
-        val text = "${Fmt.percent(frac)}  ·  ${Fmt.bytes(s.done)} / ${Fmt.bytes(s.total)}$speed"
-        holder.addView(ctx.label(13.5f, Palette.text2, Fonts.REGULAR).apply { this.text = text }, lp(MATCH, WRAP).apply { topMargin = 10.dp })
-        holder.addView(ABtn(ctx).apply { kind = ABtn.Kind.GHOST; setText(R.string.btn_cancel); setOnClickListener { UpdateManager.cancel() } }, lp(WRAP, WRAP).apply { topMargin = 16.dp })
+        val f = fraction(s)
+        title(ctx.getString(R.string.upd_downloading, s.release.tag.removePrefix("v")))
+        val bar = ProgressBar(ctx).apply { set(f) }
+        holder.addView(bar, lp(MATCH, WRAP).apply { topMargin = Space.L.dp })
+        val line = ctx.label(Type.FOOTNOTE, Palette.text2).apply { text = progressLine(s, f); fontFeatureSettings = "tnum" }
+        holder.addView(line, lp(MATCH, WRAP).apply { topMargin = Space.S.dp })
+        holder.addView(ABtn(ctx).apply { kind = ABtn.Kind.GHOST; setText(R.string.btn_cancel); setOnClickListener { UpdateManager.cancel() } }, lp(WRAP, WRAP).apply { topMargin = Space.L.dp })
+        dlBar = bar
+        dlText = line
     }
 
-    private fun busy(text: String, tag: String?, indeterminate: Boolean) {
+    private fun busy(text: String, tag: String?) {
         val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        row.addView(Spinner(ctx, 30), lp(30.dp, 30.dp).apply { marginEnd = 16.dp })
+        row.addView(Spinner(ctx, 28), lp(28.dp, 28.dp).apply { marginEnd = Space.M.dp })
         val t = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-        t.addView(ctx.label(20f, Palette.text, Fonts.MEDIUM).apply { this.text = text })
-        if (tag != null) t.addView(ctx.label(13.5f, Palette.text2, Fonts.REGULAR).apply { this.text = tag.removePrefix("v") }, lp(MATCH, WRAP).apply { topMargin = 3.dp })
+        t.addView(ctx.label(Type.TITLE, Palette.text).apply { this.text = text })
+        if (tag != null) t.addView(ctx.label(Type.FOOTNOTE, Palette.text2).apply { this.text = tag.removePrefix("v") }, lp(MATCH, WRAP).apply { topMargin = Space.XXS.dp })
         row.addView(t, lp(0, WRAP, 1f))
         holder.addView(row, lp(MATCH, WRAP))
-        if (indeterminate) holder.addView(ProgressBar(ctx).apply { setIndeterminate() }, lp(MATCH, 10.dp).apply { topMargin = 18.dp })
+        holder.addView(ProgressBar(ctx).apply { setIndeterminate() }, lp(MATCH, WRAP).apply { topMargin = Space.L.dp })
     }
 
     private fun failed(s: UpdateManager.State.Failed) {
         val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.TOP }
-        row.addView(ctx.iconView(R.drawable.ic_alert, 28, Palette.warn), lp(28.dp, 28.dp).apply { marginEnd = 14.dp; topMargin = 2.dp })
+        row.addView(ctx.iconView(R.drawable.ic_alert, 28, Palette.warn), lp(28.dp, 28.dp).apply { marginEnd = Space.M.dp })
         val t = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-        t.addView(ctx.label(20f, Palette.text, Fonts.MEDIUM).apply { setText(R.string.upd_failed) })
-        t.addView(ctx.label(14.5f, Palette.text2, Fonts.REGULAR, lines = 0).apply { text = s.message; setLineSpacing(0f, 1.15f) }, lp(MATCH, WRAP).apply { topMargin = 6.dp })
+        t.addView(ctx.label(Type.TITLE, Palette.text).apply { setText(R.string.upd_failed) })
+        t.addView(ctx.label(Type.FOOTNOTE, Palette.text2, lines = 0).apply { text = s.message }, lp(MATCH, WRAP).apply { topMargin = Space.XS.dp })
         row.addView(t, lp(0, WRAP, 1f))
         holder.addView(row, lp(MATCH, WRAP))
         holder.addView(ABtn(ctx).apply {
             kind = ABtn.Kind.PRIMARY
             setText(R.string.upd_retry)
             setOnClickListener { if (s.release != null) UpdateManager.downloadAndInstall() else UpdateManager.check() }
-        }, lp(WRAP, WRAP).apply { topMargin = 18.dp })
+        }, lp(WRAP, WRAP).apply { topMargin = Space.L.dp })
     }
 
     // ------------------------------------------------------------------------------------ bits
-    private fun title(text: String, color: Int) {
-        holder.addView(ctx.label(21f, color, Fonts.MEDIUM).apply { this.text = text }, lp(MATCH, WRAP))
+    private fun title(text: String) {
+        holder.addView(ctx.label(Type.TITLE, Palette.text).apply { this.text = text }, lp(MATCH, WRAP))
     }
 
     private fun subtitle(text: String) {
-        holder.addView(ctx.label(14f, Palette.text2, Fonts.REGULAR).apply { this.text = text }, lp(MATCH, WRAP).apply { topMargin = 6.dp })
+        holder.addView(ctx.label(Type.FOOTNOTE, Palette.text2).apply { this.text = text }, lp(MATCH, WRAP).apply { topMargin = Space.XS.dp })
     }
 
     private fun checkButton() {
@@ -211,7 +262,7 @@ class UpdatePage(private val act: SettingsActivity) : Page(R.string.set_update, 
             kind = ABtn.Kind.PRIMARY
             setText(R.string.upd_check)
             setOnClickListener { UpdateManager.check() }
-        }, lp(WRAP, WRAP).apply { topMargin = 18.dp })
+        }, lp(WRAP, WRAP).apply { topMargin = Space.L.dp })
     }
 
     private fun cleanNotes(raw: String): String = raw
@@ -223,4 +274,9 @@ class UpdatePage(private val act: SettingsActivity) : Page(R.string.set_update, 
         .replace(Regex("(?im)^\\s*sha-?256.*$"), "")
         .trim()
         .take(1500)
+
+    private companion object {
+        /** Lines of the release notes shown before "Show all". */
+        const val NOTES_LINES = 8
+    }
 }

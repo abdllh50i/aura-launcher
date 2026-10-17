@@ -2,18 +2,17 @@ package com.abdllh.aura.settings
 
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.Toast
 import com.abdllh.aura.BuildConfig
 import com.abdllh.aura.R
 import com.abdllh.aura.home.AppRepo
 import com.abdllh.aura.home.Known
+import com.abdllh.aura.nav.MapExtras
 import com.abdllh.aura.system.Controls
 import com.abdllh.aura.system.CrashGuard
 import com.abdllh.aura.system.Device
@@ -21,10 +20,15 @@ import com.abdllh.aura.ui.ABtn
 import com.abdllh.aura.ui.AuraSlider
 import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.MATCH
+import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
+import com.abdllh.aura.ui.Segmented
 import com.abdllh.aura.ui.Shapes
 import com.abdllh.aura.ui.Snack
+import com.abdllh.aura.ui.Space
 import com.abdllh.aura.ui.Theme
+import com.abdllh.aura.ui.Touch
+import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.WRAP
 import com.abdllh.aura.ui.iconView
 import com.abdllh.aura.ui.label
@@ -33,60 +37,66 @@ import com.abdllh.aura.ui.pressScale
 import com.abdllh.aura.util.Prefs
 import com.abdllh.aura.util.dp
 
+/**
+ * A choice of the theme, the accent or the language: the control shows the choice landing first (the indicator
+ * slides, the tick comes in), then the screen takes it ([SettingsActivity.restyle]). A newer choice made before then
+ * replaces the one waiting.
+ */
+private class Later(private val v: View) {
+    private var r: Runnable? = null
+    fun then(what: () -> Unit) {
+        r?.let { v.removeCallbacks(it) }
+        r = Runnable { r = null; what() }.also { v.postDelayed(it, Motion.MEDIUM) }
+    }
+}
+
+/** A segmented choice for a settings card: equal widths, on the tonal track, a car-sized target. */
+private fun Context.choices(labels: List<String>, selected: Int, onSelect: (Int) -> Unit): Segmented =
+    Segmented(this, labels, equal = true, textSp = Type.BUTTON.sp, onSelect = onSelect).apply {
+        trackColor = Palette.card2
+        minimumHeight = Touch.MIN.dp
+        select(selected, animate = false)
+    }
+
 // ---------------------------------------------------------------------------------------------- General
 class GeneralPage(private val act: SettingsActivity) : Page(R.string.set_general, R.drawable.ic_sliders) {
     override fun build(ctx: Context): View {
         val col = ctx.pageColumn()
-        col.addView(ctx.sectionTitle(ctx.getString(R.string.set_appearance)))
+        col.addSection(ctx.getString(R.string.set_appearance))
 
-        val theme = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(20.dp, 16.dp, 20.dp, 18.dp)
-            background = Shapes.card(18f)
-        }
-        val themeHead = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        themeHead.addView(ctx.iconView(R.drawable.ic_contrast, 24, Palette.text2), lp(24.dp, 24.dp).apply { marginEnd = 16.dp })
-        val themeTitles = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-        themeTitles.addView(ctx.label(17f, Palette.text, Fonts.MEDIUM).apply { setText(R.string.set_theme) })
-        themeTitles.addView(ctx.label(13.5f, Palette.text2, Fonts.REGULAR, lines = 2).apply { setText(R.string.set_theme_sub) }, lp(MATCH, WRAP).apply { topMargin = 3.dp })
-        themeHead.addView(themeTitles, lp(0, WRAP, 1f))
-        theme.addView(themeHead)
         val modes = listOf(Theme.AUTO, Theme.LIGHT, Theme.DARK)
         val names = listOf(ctx.getString(R.string.theme_auto), ctx.getString(R.string.theme_light), ctx.getString(R.string.theme_dark))
-        theme.addView(Segmented(ctx, names, modes.indexOf(Prefs.theme).coerceAtLeast(0)) { i ->
+        var themeLater: Later? = null
+        val theme = ctx.choices(names, modes.indexOf(Prefs.theme).coerceAtLeast(0)) { i ->
+            // (kept at once; the screen changes only when the choice changes what shows now: "auto" by day on the
+            // light theme changes nothing)
             Prefs.theme = modes[i]
-            if (Theme.refresh()) act.rebuild()
-        }, lp(MATCH, WRAP).apply { topMargin = 14.dp })
-        col.addRow(theme)
-
-        val accent = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(20.dp, 16.dp, 20.dp, 18.dp)
-            background = Shapes.card(18f)
+            themeLater?.then { if (Theme.isDarkNow() != Palette.dark) act.restyle { } }
         }
-        val head = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        head.addView(ctx.iconView(R.drawable.ic_droplet, 24, Palette.text2), lp(24.dp, 24.dp).apply { marginEnd = 16.dp })
-        head.addView(ctx.label(17f, Palette.text, Fonts.MEDIUM).apply { setText(R.string.set_accent) })
-        accent.addView(head)
-        accent.addView(Swatches(ctx, Palette.accents, Prefs.accent) { Prefs.accent = it; act.rebuild() }, lp(WRAP, WRAP).apply { topMargin = 14.dp })
-        col.addRow(accent)
+        themeLater = Later(theme)
+        var accentLater: Later? = null
+        val swatches = Swatches(ctx, Palette.accents, Prefs.accent) { c -> accentLater?.then { act.restyle { Prefs.accent = c } } }
+        accentLater = Later(swatches)
+        col.addRow(ctx.group(
+            ctx.block(R.drawable.ic_contrast, ctx.getString(R.string.set_theme), ctx.getString(R.string.set_theme_sub), theme),
+            ctx.block(R.drawable.ic_droplet, ctx.getString(R.string.set_accent), null, swatches)
+        ))
+        col.addRow(ctx.group(
+            ctx.switchRow(R.drawable.ic_clock, ctx.getString(R.string.set_clock24), null, Prefs.clock24) { Prefs.clock24 = it },
+            ctx.switchRow(R.drawable.ic_list, ctx.getString(R.string.set_dock_labels), null, Prefs.dockLabels) { Prefs.dockLabels = it }
+        ))
 
-        col.addRow(ctx.switchRow(R.drawable.ic_clock, ctx.getString(R.string.set_clock24), null, Prefs.clock24) { Prefs.clock24 = it })
-        col.addRow(ctx.switchRow(R.drawable.ic_list, ctx.getString(R.string.set_dock_labels), null, Prefs.dockLabels) { Prefs.dockLabels = it })
-
-        col.addView(ctx.sectionTitle(ctx.getString(R.string.set_language)), lp(MATCH, WRAP).apply { topMargin = 22.dp })
-        val langCard = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(20.dp, 16.dp, 20.dp, 18.dp)
-            background = Shapes.card(18f)
-        }
+        col.addSection(ctx.getString(R.string.set_language))
         val codes = listOf("system", "ar", "en")
-        val seg = Segmented(ctx, listOf(ctx.getString(R.string.lang_system), "العربية", "English"), codes.indexOf(Prefs.lang).coerceAtLeast(0), arabicIndex = 1) { i ->
-            Prefs.lang = codes[i]
-            act.recreate()
+        var langLater: Later? = null
+        val lang = ctx.choices(listOf(ctx.getString(R.string.lang_system), "العربية", "English"), codes.indexOf(Prefs.lang).coerceAtLeast(0)) { i ->
+            langLater?.then { act.restyle(newLocale = true) { Prefs.lang = codes[i] } }
         }
-        langCard.addView(seg, lp(MATCH, WRAP))
-        col.addRow(langCard)
+        langLater = Later(lang)
+        // (the Arabic name in the Arabic typeface, also in the English UI; its letters are drawn smaller than Latin
+        // ones at one size, so it is a little larger to look the same size as "English" beside it)
+        lang.item(1).apply { Fonts.arabic()?.let { typeface = it }; textSize = Type.BUTTON.sp + 2f }
+        col.addRow(ctx.group(ctx.block(null, null, null, lang)))
         return col
     }
 }
@@ -110,97 +120,104 @@ class DisplaySoundPage(private val act: SettingsActivity) : Page(R.string.set_di
                 }
             }
         }
-        col.addRow(ctx.sliderRow(R.drawable.ic_sun, ctx.getString(R.string.ctl_brightness), bs, bv))
-
+        // the volume as the car's own step (the number its buttons and the dock show), not a percentage
         val vv = ctx.valueText("")
         val vs = AuraSlider(ctx).apply {
             max = Controls.volumeMax(ctx)
             setIcon(R.drawable.ic_volume)
             setProgress(Controls.volume(ctx), false)
-            vv.text = Controls.percentText(ctx, progress)
+            vv.text = "$progress"
             onChange = { v, user ->
                 if (user) Controls.setVolume(ctx, v)
-                vv.text = Controls.percentText(ctx, v)
+                vv.text = "$v"
             }
         }
-        col.addRow(ctx.sliderRow(R.drawable.ic_volume, ctx.getString(R.string.ctl_volume), vs, vv))
-        col.addRow(ctx.switchRow(R.drawable.ic_steering, ctx.getString(R.string.set_volume_hud), ctx.getString(R.string.set_volume_hud_sub),
-            com.abdllh.aura.system.VolumeHud.enabled) { on ->
-            com.abdllh.aura.system.VolumeHud.enabled = on
-            com.abdllh.aura.system.VolumeHud.apply(ctx) { ok ->
-                if (!ok) act.runOnUiThread { Snack.show(ctx, R.string.set_failed, long = true) }
-            }
-        }, 8)
+        col.addRow(ctx.group(
+            ctx.sliderRow(ctx.getString(R.string.ctl_brightness), bs, bv),
+            ctx.sliderRow(ctx.getString(R.string.ctl_volume), vs, vv)
+        ))
+        col.addRow(ctx.group(
+            ctx.switchRow(R.drawable.ic_steering, ctx.getString(R.string.set_volume_hud), ctx.getString(R.string.set_volume_hud_sub),
+                com.abdllh.aura.system.VolumeHud.enabled) { on ->
+                com.abdllh.aura.system.VolumeHud.enabled = on
+                com.abdllh.aura.system.VolumeHud.apply(ctx) { ok ->
+                    if (!ok) act.runOnUiThread { Snack.show(ctx, R.string.set_failed, long = true) }
+                }
+            },
+            ctx.switchRow(R.drawable.ic_eye_off, ctx.getString(R.string.set_hide_status), ctx.getString(R.string.set_hide_status_sub), Prefs.hideStatusBar) {
+                Prefs.hideStatusBar = it
+                if (!com.abdllh.aura.system.SystemBars.apply(ctx)) Snack.show(ctx, R.string.set_failed)
+            },
+            ctx.switchRow(R.drawable.ic_layers, ctx.getString(R.string.set_screen_anim), ctx.getString(R.string.set_screen_anim_sub), Prefs.screenAnimations) {
+                Prefs.screenAnimations = it
+                if (!com.abdllh.aura.system.Animations.apply(ctx)) Snack.show(ctx, R.string.set_failed)
+            },
+            if (!com.abdllh.aura.system.AssistiveBall.available) null
+            else ctx.switchRow(R.drawable.ic_layers, ctx.getString(R.string.set_ball), ctx.getString(R.string.set_ball_sub),
+                com.abdllh.aura.system.AssistiveBall.shown(ctx)) { on -> com.abdllh.aura.system.AssistiveBall.set(ctx, on) }
+        ))
 
-        col.addRow(ctx.switchRow(R.drawable.ic_eye_off, ctx.getString(R.string.set_hide_status), ctx.getString(R.string.set_hide_status_sub), Prefs.hideStatusBar) {
-            Prefs.hideStatusBar = it
-            if (!com.abdllh.aura.system.SystemBars.apply(ctx)) Snack.show(ctx, R.string.set_failed)
-        }, 16)
-        col.addRow(ctx.switchRow(R.drawable.ic_layers, ctx.getString(R.string.set_screen_anim), ctx.getString(R.string.set_screen_anim_sub), Prefs.screenAnimations) {
-            Prefs.screenAnimations = it
-            if (!com.abdllh.aura.system.Animations.apply(ctx)) Snack.show(ctx, R.string.set_failed)
-        }, 8)
-        if (com.abdllh.aura.system.AssistiveBall.available) {
-            col.addRow(ctx.switchRow(R.drawable.ic_layers, ctx.getString(R.string.set_ball), ctx.getString(R.string.set_ball_sub),
-                com.abdllh.aura.system.AssistiveBall.shown(ctx)) { on -> com.abdllh.aura.system.AssistiveBall.set(ctx, on) }, 8)
-        }
-
-        col.addView(ctx.sectionTitle(ctx.getString(R.string.set_music)), lp(MATCH, WRAP).apply { topMargin = 22.dp })
-        col.addRow(ctx.switchRow(R.drawable.ic_steering, ctx.getString(R.string.set_music_keys), ctx.getString(R.string.set_music_keys_sub),
-            com.abdllh.aura.system.MusicKeys.enabled) { on ->
-            com.abdllh.aura.system.MusicKeys.enabled = on
-            com.abdllh.aura.system.MusicKeys.applyRules() // (the firmware's key rules with or without the music keys)
-        }, 8)
-        col.addRow(ctx.switchRow(R.drawable.ic_disc, ctx.getString(R.string.set_bt_cover), ctx.getString(R.string.set_bt_cover_sub),
-            com.abdllh.aura.music.CoverSearch.enabled) { on -> com.abdllh.aura.music.CoverSearch.enabled = on }, 8)
-        if (com.abdllh.aura.system.StockMusic.available(ctx)) {
-            col.addRow(ctx.switchRow(R.drawable.ic_music, ctx.getString(R.string.set_music_replace), ctx.getString(R.string.set_music_replace_sub),
+        col.addSection(ctx.getString(R.string.set_music))
+        col.addRow(ctx.group(
+            ctx.switchRow(R.drawable.ic_steering, ctx.getString(R.string.set_music_keys), ctx.getString(R.string.set_music_keys_sub),
+                com.abdllh.aura.system.MusicKeys.enabled) { on ->
+                com.abdllh.aura.system.MusicKeys.enabled = on
+                com.abdllh.aura.system.MusicKeys.applyRules() // (the firmware's key rules with or without the music keys)
+            },
+            ctx.switchRow(R.drawable.ic_disc, ctx.getString(R.string.set_bt_cover), ctx.getString(R.string.set_bt_cover_sub),
+                com.abdllh.aura.music.CoverSearch.enabled) { on -> com.abdllh.aura.music.CoverSearch.enabled = on },
+            if (!com.abdllh.aura.system.StockMusic.available(ctx)) null
+            else ctx.switchRow(R.drawable.ic_music, ctx.getString(R.string.set_music_replace), ctx.getString(R.string.set_music_replace_sub),
                 com.abdllh.aura.system.StockMusic.enabled) { on ->
                 com.abdllh.aura.system.StockMusic.enabled = on
                 com.abdllh.aura.system.StockMusic.apply(ctx) { ok ->
                     if (!ok) act.runOnUiThread { Snack.show(ctx, R.string.set_failed, long = true) }
                 }
-            }, 8)
-        }
+            }
+        ))
 
         if (com.abdllh.aura.phone.Calls.available) {
-            col.addView(ctx.sectionTitle(ctx.getString(R.string.set_calls)), lp(MATCH, WRAP).apply { topMargin = 22.dp })
-            col.addRow(ctx.switchRow(R.drawable.ic_phone, ctx.getString(R.string.set_call_card), ctx.getString(R.string.set_call_card_sub),
-                com.abdllh.aura.phone.Calls.enabled) { on ->
-                com.abdllh.aura.phone.Calls.enabled = on
-                com.abdllh.aura.phone.Calls.apply(ctx) { ok ->
-                    if (!ok) act.runOnUiThread { Snack.show(ctx, R.string.set_failed, long = true) }
+            col.addSection(ctx.getString(R.string.set_calls))
+            col.addRow(ctx.group(
+                ctx.switchRow(R.drawable.ic_phone, ctx.getString(R.string.set_call_card), ctx.getString(R.string.set_call_card_sub),
+                    com.abdllh.aura.phone.Calls.enabled) { on ->
+                    com.abdllh.aura.phone.Calls.enabled = on
+                    com.abdllh.aura.phone.Calls.apply(ctx) { ok ->
+                        if (!ok) act.runOnUiThread { Snack.show(ctx, R.string.set_failed, long = true) }
+                    }
+                },
+                ctx.switchRow(R.drawable.ic_volume, ctx.getString(R.string.set_call_ring), ctx.getString(R.string.set_call_ring_sub),
+                    com.abdllh.aura.phone.Ringtone.enabled) { on ->
+                    com.abdllh.aura.phone.Ringtone.enabled = on
+                    com.abdllh.aura.phone.Ringtone.apply(ctx) { ok ->
+                        if (!ok) act.runOnUiThread { Snack.show(ctx, R.string.set_failed, long = true) }
+                    }
+                },
+                ctx.settingRow(R.drawable.ic_play, ctx.getString(R.string.set_call_ring_play), null, ctx.chevron()) {
+                    com.abdllh.aura.phone.Ringtone.play(ctx)
                 }
-            }, 8)
-            col.addRow(ctx.switchRow(R.drawable.ic_volume, ctx.getString(R.string.set_call_ring), ctx.getString(R.string.set_call_ring_sub),
-                com.abdllh.aura.phone.Ringtone.enabled) { on ->
-                com.abdllh.aura.phone.Ringtone.enabled = on
-                com.abdllh.aura.phone.Ringtone.apply(ctx) { ok ->
-                    if (!ok) act.runOnUiThread { Snack.show(ctx, R.string.set_failed, long = true) }
-                }
-            }, 8)
-            col.addRow(ctx.settingRow(R.drawable.ic_play, ctx.getString(R.string.set_call_ring_play), null, ctx.chevron()) {
-                com.abdllh.aura.phone.Ringtone.play(ctx)
-            }, 8)
+            ))
         }
 
-        col.addView(ctx.sectionTitle(ctx.getString(R.string.set_shortcuts)), lp(MATCH, WRAP).apply { topMargin = 22.dp })
-        if (AppRepo.isInstalled(ctx, "com.nwd.audioset")) {
-            col.addRow(ctx.settingRow(R.drawable.ic_sliders, ctx.getString(R.string.set_equalizer), ctx.getString(R.string.set_equalizer_sub), ctx.chevron()) {
+        col.addSection(ctx.getString(R.string.set_shortcuts))
+        val stock = AppRepo.isInstalled(ctx, Known.STOCK_LAUNCHER)
+        col.addRow(ctx.group(
+            if (!AppRepo.isInstalled(ctx, "com.nwd.audioset")) null
+            else ctx.settingRow(R.drawable.ic_sliders, ctx.getString(R.string.set_equalizer), ctx.getString(R.string.set_equalizer_sub), ctx.chevron()) {
                 if (!AppRepo.launch(ctx, "com.nwd.audioset")) Snack.show(ctx, R.string.err_app_missing)
-            })
-        }
-        if (AppRepo.isInstalled(ctx, Known.STOCK_LAUNCHER)) {
-            col.addRow(ctx.settingRow(R.drawable.ic_power, ctx.getString(R.string.ctl_screen_off), null, ctx.chevron()) {
+            },
+            if (!stock) null
+            else ctx.settingRow(R.drawable.ic_power, ctx.getString(R.string.ctl_screen_off), null, ctx.chevron()) {
                 com.abdllh.aura.home.Actions.screenOff(ctx)
-            })
-            col.addRow(ctx.settingRow(R.drawable.ic_monitor, ctx.getString(R.string.set_screensaver), null, ctx.chevron()) {
+            },
+            if (!stock) null
+            else ctx.settingRow(R.drawable.ic_monitor, ctx.getString(R.string.set_screensaver), null, ctx.chevron()) {
                 AppRepo.launchComponent(ctx, Known.STOCK_LAUNCHER, Known.ACT_LOCK)
-            })
-        }
-        col.addRow(ctx.settingRow(R.drawable.ic_monitor, ctx.getString(R.string.set_android_display), null, ctx.chevron()) {
-            try { ctx.startActivity(Intent(Settings.ACTION_DISPLAY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Throwable) { }
-        })
+            },
+            ctx.settingRow(R.drawable.ic_monitor, ctx.getString(R.string.set_android_display), null, ctx.chevron()) {
+                try { ctx.startActivity(Intent(Settings.ACTION_DISPLAY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Throwable) { }
+            }
+        ))
         return col
     }
 }
@@ -209,76 +226,92 @@ class DisplaySoundPage(private val act: SettingsActivity) : Page(R.string.set_di
 class NavigationPage(private val act: SettingsActivity) : Page(R.string.set_navigation, R.drawable.ic_nav) {
     private var offline: OfflineCard? = null
     private var extras: ExtrasCard? = null
+    /** The count of the cameras marked from the car, kept current while the page shows (they change on the map). */
+    private var myCameras: (() -> Unit)? = null
 
-    override fun onShow() { offline?.attach(); extras?.attach() }
-    override fun onHide() { offline?.detach(); extras?.detach() }
+    override fun onShow() {
+        offline?.attach(); extras?.attach()
+        myCameras?.let { MapExtras.removeListener(it); MapExtras.addListener(it); it() }
+    }
+
+    override fun onHide() {
+        offline?.detach(); extras?.detach()
+        myCameras?.let { MapExtras.removeListener(it) }
+    }
 
     override fun build(ctx: Context): View {
         val col = ctx.pageColumn()
-        col.addView(ctx.sectionTitle(ctx.getString(R.string.set_nav_app)))
+        col.addSection(ctx.getString(R.string.set_nav_app))
 
-        // Aura Maps first, then the installed navigation apps
+        // Aura Maps first, then the installed navigation apps; the chosen one has a tick (a tap on it changes nothing)
         val builtIn = Prefs.builtInMaps
-        col.addRow(ctx.settingRow(R.drawable.ic_compass, ctx.getString(R.string.set_maps_builtin), ctx.getString(R.string.set_maps_builtin_sub),
-            if (builtIn) ctx.iconView(R.drawable.ic_check_circle, 26, Palette.accent) else null,
-            if (builtIn) Palette.accent else Palette.text2) {
+        val rows = ArrayList<View>()
+        rows.add(navRow(ctx, R.drawable.ic_compass, ctx.getString(R.string.set_maps_builtin), ctx.getString(R.string.set_maps_builtin_sub), builtIn) {
             Prefs.builtInMaps = true
-            act.rebuild()
-        }, 8)
+        })
         val choices = ArrayList<Pair<String, String>>() // pkg ("" = automatic) -> label
         choices.add("" to ctx.getString(R.string.set_nav_auto))
         for (a in AppRepo.installedNavApps(ctx)) choices.add(a.pkg to a.label)
         val selected = Prefs.navPackage
         for ((pkg, name) in choices) {
             val on = !builtIn && (pkg == selected || (pkg.isEmpty() && selected.isEmpty()))
-            col.addRow(ctx.settingRow(R.drawable.ic_nav, name, if (pkg.isEmpty()) ctx.getString(R.string.set_nav_auto_sub) else null,
-                if (on) ctx.iconView(R.drawable.ic_check_circle, 26, Palette.accent) else null,
-                if (on) Palette.accent else Palette.text2) {
+            rows.add(navRow(ctx, R.drawable.ic_nav, name, if (pkg.isEmpty()) ctx.getString(R.string.set_nav_auto_sub) else null, on) {
                 Prefs.builtInMaps = false
                 Prefs.navPackage = pkg
                 if (pkg.isNotEmpty()) com.abdllh.aura.system.SystemProps.set("persist.sys.navi_set_by_app", pkg)
-                act.rebuild()
-            }, 8)
+            })
         }
+        col.addRow(ctx.group(*rows.toTypedArray()))
         // Google's own map, roads and shops, without internet: only its app can keep them (how, in one place)
-        if (AppRepo.isInstalled(ctx, Known.MAPS)) col.addRow(ctx.hint(ctx.getString(R.string.set_nav_google_hint)), 10)
+        if (AppRepo.isInstalled(ctx, Known.MAPS)) col.addHint(ctx.getString(R.string.set_nav_google_hint))
 
-        col.addView(ctx.sectionTitle(ctx.getString(R.string.set_places)), lp(MATCH, WRAP).apply { topMargin = 22.dp })
-        col.addRow(placeRow(ctx, R.drawable.ic_home, R.string.home_home, "home"))
-        col.addRow(placeRow(ctx, R.drawable.ic_briefcase, R.string.home_work, "work"))
-        col.addRow(ctx.hint(ctx.getString(R.string.set_places_hint)), 12)
+        col.addSection(ctx.getString(R.string.set_places))
+        col.addRow(ctx.group(placeRow(ctx, R.drawable.ic_home, R.string.home_home, "home"), placeRow(ctx, R.drawable.ic_briefcase, R.string.home_work, "work")))
+        col.addHint(ctx.getString(R.string.set_places_hint))
 
-        col.addView(ctx.sectionTitle(ctx.getString(R.string.off_section)), lp(MATCH, WRAP).apply { topMargin = 22.dp })
+        col.addSection(ctx.getString(R.string.off_section))
         val card = OfflineCard(act, ctx).also { offline = it }
-        col.addRow(card.view, 8)
-        col.addRow(ctx.hint(ctx.getString(R.string.off_hint)), 10)
+        col.addRow(ctx.group(card.view))
+        col.addHint(ctx.getString(R.string.off_hint))
         card.attach()
 
         // what the owner added to the map: cameras, bumps, signals, streets' limits
         val more = ExtrasCard(ctx).also { extras = it }
-        col.addRow(more.view, 14)
-        col.addRow(ctx.hint(ctx.getString(R.string.extras_hint)), 10)
+        col.addRow(ctx.group(more.view))
+        col.addHint(ctx.getString(R.string.extras_hint))
         more.attach()
 
         // "a camera here": the button on the maps, and the cameras marked with it
-        col.addRow(ctx.switchRow(R.drawable.ic_speed_camera, ctx.getString(R.string.set_mark_camera), ctx.getString(R.string.set_mark_camera_sub),
-            com.abdllh.aura.nav.CameraMark.enabled) { on -> com.abdllh.aura.nav.CameraMark.enabled = on }, 14)
         val count = ctx.valueText("")
-        fun myCameras() {
-            val n = com.abdllh.aura.nav.MapExtras.mine.size
+        val refresh = {
+            val n = MapExtras.mine.size
             count.text = if (n == 0) ctx.getString(R.string.set_my_cameras_none) else ctx.getString(R.string.set_my_cameras, "$n")
         }
-        myCameras()
-        col.addRow(ctx.settingRow(R.drawable.ic_trash, ctx.getString(R.string.set_my_cameras_clear), null, count) {
-            if (com.abdllh.aura.nav.MapExtras.mine.isEmpty()) return@settingRow
-            com.abdllh.aura.ui.Confirm.show(ctx, ctx.getString(R.string.set_my_cameras_clear_title), ctx.getString(R.string.set_my_cameras_clear_text),
-                ctx.getString(R.string.set_my_cameras_clear)) {
-                com.abdllh.aura.nav.MapExtras.clearMine()
-                myCameras()
+        refresh()
+        myCameras = refresh
+        col.addRow(ctx.group(
+            ctx.switchRow(R.drawable.ic_speed_camera, ctx.getString(R.string.set_mark_camera), ctx.getString(R.string.set_mark_camera_sub),
+                com.abdllh.aura.nav.CameraMark.enabled) { on -> com.abdllh.aura.nav.CameraMark.enabled = on },
+            ctx.settingRow(R.drawable.ic_trash, ctx.getString(R.string.set_my_cameras_clear), null, count) {
+                if (MapExtras.mine.isEmpty()) return@settingRow
+                com.abdllh.aura.ui.Confirm.show(ctx, ctx.getString(R.string.set_my_cameras_clear_title), ctx.getString(R.string.set_my_cameras_clear_text),
+                    ctx.getString(R.string.set_my_cameras_clear)) {
+                    MapExtras.clearMine()
+                    refresh()
+                }
             }
-        }, 8)
+        ))
         return col
     }
+
+    /** A navigation app to choose; the chosen one is ticked, in the accent. */
+    private fun navRow(ctx: Context, icon: Int, name: String, sub: String?, on: Boolean, choose: () -> Unit): View =
+        ctx.settingRow(icon, name, sub, if (on) ctx.iconView(R.drawable.ic_check_circle, 26, Palette.accentFg) else null,
+            if (on) Palette.accentFg else Palette.text2) {
+            if (on) return@settingRow
+            choose()
+            act.rebuild()
+        }
 
     /** Home / Work: chosen on the map (a long press drops the pin). */
     private fun placeRow(ctx: Context, icon: Int, title: Int, which: String): View {
@@ -318,84 +351,91 @@ class VehiclePage(private val act: SettingsActivity) : Page(R.string.set_vehicle
         for ((i, t) in tiles.withIndex()) {
             if (i % 3 == 0) {
                 row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
-                col.addView(row, lp(MATCH, WRAP).apply { topMargin = 12.dp })
+                col.addView(row, lp(MATCH, WRAP).apply { if (i > 0) topMargin = Space.M.dp })
             }
-            row!!.addView(tile(ctx, t), lp(0, 124.dp, 1f).apply { if (i % 3 != 0) marginStart = 12.dp })
+            row!!.addView(tile(ctx, t), lp(0, 120.dp, 1f).apply { if (i % 3 != 0) marginStart = Space.M.dp })
         }
         // pad the last row so tiles keep their width
         val rem = tiles.size % 3
-        if (rem != 0) for (k in 0 until 3 - rem) row!!.addView(View(ctx), lp(0, 124.dp, 1f).apply { marginStart = 12.dp })
-        col.addRow(ctx.hint(ctx.getString(R.string.v_hint)), 14)
+        if (rem != 0) for (k in 0 until 3 - rem) row!!.addView(View(ctx), lp(0, 120.dp, 1f).apply { marginStart = Space.M.dp })
+        col.addHint(ctx.getString(R.string.v_hint))
 
-        col.addView(ctx.sectionTitle(ctx.getString(R.string.set_connections)), lp(MATCH, WRAP).apply { topMargin = 22.dp })
-        col.addRow(ctx.switchRow(R.drawable.ic_wifi, ctx.getString(R.string.set_wifi_keeper), ctx.getString(R.string.set_wifi_keeper_sub),
-            com.abdllh.aura.system.WifiKeeper.enabled) { on ->
-            com.abdllh.aura.system.WifiKeeper.enabled = on
-            com.abdllh.aura.system.WifiKeeper.apply(ctx)
-        }, 8)
-        col.addRow(ctx.switchRow(R.drawable.ic_wifi, ctx.getString(R.string.set_wifi_on_start), ctx.getString(R.string.set_wifi_on_start_sub),
-            com.abdllh.aura.system.WifiOnStart.enabled) { on ->
-            com.abdllh.aura.system.WifiOnStart.enabled = on
-            if (on) com.abdllh.aura.system.WifiOnStart.ensure("switch")
-        }, 8)
-        if (com.abdllh.aura.system.ZLinkGuard.available(ctx)) {
-            col.addRow(ctx.switchRow(R.drawable.ic_smartphone, ctx.getString(R.string.set_zlink_off), ctx.getString(R.string.set_zlink_off_sub),
+        col.addSection(ctx.getString(R.string.set_connections))
+        internet = InternetCard(ctx)
+        col.addRow(ctx.group(
+            ctx.switchRow(R.drawable.ic_wifi, ctx.getString(R.string.set_wifi_keeper), ctx.getString(R.string.set_wifi_keeper_sub),
+                com.abdllh.aura.system.WifiKeeper.enabled) { on ->
+                com.abdllh.aura.system.WifiKeeper.enabled = on
+                com.abdllh.aura.system.WifiKeeper.apply(ctx)
+            },
+            ctx.switchRow(R.drawable.ic_wifi, ctx.getString(R.string.set_wifi_on_start), ctx.getString(R.string.set_wifi_on_start_sub),
+                com.abdllh.aura.system.WifiOnStart.enabled) { on ->
+                com.abdllh.aura.system.WifiOnStart.enabled = on
+                if (on) com.abdllh.aura.system.WifiOnStart.ensure("switch")
+            },
+            if (!com.abdllh.aura.system.ZLinkGuard.available(ctx)) null
+            else ctx.switchRow(R.drawable.ic_smartphone, ctx.getString(R.string.set_zlink_off), ctx.getString(R.string.set_zlink_off_sub),
                 com.abdllh.aura.system.ZLinkGuard.enabled) { on ->
                 com.abdllh.aura.system.ZLinkGuard.enabled = on
                 com.abdllh.aura.system.ZLinkGuard.apply(ctx)
-            }, 8)
-        }
-        internet = InternetCard(ctx).also { col.addRow(it.view, 8) }
-        col.addRow(ctx.hint(ctx.getString(R.string.net_hint)), 10)
+            }
+        ))
+        col.addRow(ctx.group(internet!!.view))
+        col.addHint(ctx.getString(R.string.net_hint))
 
-        if (com.abdllh.aura.system.Power.available || com.abdllh.aura.BuildConfig.DEBUG) {
-            col.addView(ctx.sectionTitle(ctx.getString(R.string.set_power)), lp(MATCH, WRAP).apply { topMargin = 22.dp })
-            col.addRow(ctx.switchRow(R.drawable.ic_power, ctx.getString(R.string.set_full_off), ctx.getString(R.string.set_full_off_sub),
-                com.abdllh.aura.system.Power.fullOffOnAccOff) { on ->
-                com.abdllh.aura.system.Power.fullOffOnAccOff = on
-                com.abdllh.aura.system.Power.apply(ctx)
-            }, 8)
-            col.addRow(ctx.settingRow(R.drawable.ic_power, ctx.getString(R.string.set_off_now), ctx.getString(R.string.set_off_now_sub),
-                ctx.chevron(), Palette.danger) {
-                com.abdllh.aura.ui.Confirm.show(act, ctx.getString(R.string.off_now_title), ctx.getString(R.string.off_now_text),
-                    ctx.getString(R.string.off_now_action)) {
-                    com.abdllh.aura.system.Power.powerOffNow(ctx) {
-                        Snack.show(ctx, R.string.off_now_not_taken, long = true)
+        if (com.abdllh.aura.system.Power.available || BuildConfig.DEBUG) {
+            col.addSection(ctx.getString(R.string.set_power))
+            col.addRow(ctx.group(
+                ctx.switchRow(R.drawable.ic_power, ctx.getString(R.string.set_full_off), ctx.getString(R.string.set_full_off_sub),
+                    com.abdllh.aura.system.Power.fullOffOnAccOff) { on ->
+                    com.abdllh.aura.system.Power.fullOffOnAccOff = on
+                    com.abdllh.aura.system.Power.apply(ctx)
+                },
+                ctx.settingRow(R.drawable.ic_power, ctx.getString(R.string.set_off_now), ctx.getString(R.string.set_off_now_sub),
+                    ctx.chevron(), Palette.danger) {
+                    com.abdllh.aura.ui.Confirm.show(act, ctx.getString(R.string.off_now_title), ctx.getString(R.string.off_now_text),
+                        ctx.getString(R.string.off_now_action)) {
+                        com.abdllh.aura.system.Power.powerOffNow(ctx) {
+                            Snack.show(ctx, R.string.off_now_not_taken, long = true)
+                        }
                     }
                 }
-            }, 8)
-            col.addRow(ctx.hint(ctx.getString(R.string.set_power_hint)), 10)
+            ))
+            col.addHint(ctx.getString(R.string.set_power_hint))
         }
 
-        col.addView(ctx.sectionTitle(ctx.getString(R.string.set_gear)), lp(MATCH, WRAP).apply { topMargin = 22.dp })
-        col.addRow(ctx.settingRow(R.drawable.ic_car, ctx.getString(R.string.set_gear_row), ctx.getString(when {
-            com.abdllh.aura.system.Gear.canReports -> R.string.set_gear_can
-            com.abdllh.aura.system.CanGear.supported(ctx) -> R.string.set_gear_can_waiting
-            else -> R.string.set_gear_basic
-        })), 8)
+        col.addSection(ctx.getString(R.string.set_gear))
         // which CAN box the CAN app is set up for, and whether a gear came from it (P and N need one)
-        com.abdllh.aura.system.CanGear.boxInfo(ctx)?.let { box ->
+        val box = com.abdllh.aura.system.CanGear.boxInfo(ctx)?.let { box ->
             val sent = when {
                 com.abdllh.aura.system.CanGear.raw >= 0 -> ctx.getString(R.string.set_gear_box_yes, com.abdllh.aura.system.CanGear.raw)
                 com.abdllh.aura.system.CanGear.messages > 0 -> ctx.getString(R.string.set_gear_box_no)
                 else -> ctx.getString(R.string.set_gear_box_silent)
             }
-            col.addRow(ctx.settingRow(R.drawable.ic_info, ctx.getString(R.string.set_gear_box), ctx.getString(R.string.set_gear_box_sub, box, sent)), 8)
+            ctx.settingRow(R.drawable.ic_info, ctx.getString(R.string.set_gear_box), ctx.getString(R.string.set_gear_box_sub, box, sent))
         }
+        col.addRow(ctx.group(
+            ctx.settingRow(R.drawable.ic_car, ctx.getString(R.string.set_gear_row), ctx.getString(when {
+                com.abdllh.aura.system.Gear.canReports -> R.string.set_gear_can
+                com.abdllh.aura.system.CanGear.supported(ctx) -> R.string.set_gear_can_waiting
+                else -> R.string.set_gear_basic
+            })),
+            box
+        ))
         return col
     }
 
     private fun tile(ctx: Context, t: Tile): LinearLayout = LinearLayout(ctx).apply {
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER
-        background = Shapes.clickableCard(20f)
+        background = Shapes.clickableCard()
         isClickable = true
-        pressScale(0.96f)
+        pressScale(Motion.PRESS_CONTROL)
         setOnClickListener {
             try { t.run(ctx) } catch (_: Throwable) { Snack.show(ctx, R.string.err_app_missing) }
         }
-        addView(ctx.iconView(t.icon, 36, Palette.text), lp(36.dp, 36.dp))
-        addView(ctx.label(16f, Palette.text2, Fonts.MEDIUM, gravity = Gravity.CENTER).apply { setText(t.label) }, lp(WRAP, WRAP).apply { topMargin = 10.dp })
+        addView(ctx.iconView(t.icon, 34, Palette.text), lp(34.dp, 34.dp))
+        addView(ctx.label(Type.BUTTON, Palette.text2, gravity = Gravity.CENTER).apply { setText(t.label) }, lp(WRAP, WRAP).apply { topMargin = Space.M.dp })
     }
 }
 
@@ -403,7 +443,13 @@ class VehiclePage(private val act: SettingsActivity) : Page(R.string.set_vehicle
 class AboutPage(private val act: SettingsActivity) : Page(R.string.set_about, R.drawable.ic_info) {
     override fun build(ctx: Context): View {
         val col = ctx.pageColumn()
-        fun info(icon: Int, title: Int, value: String) = col.addRow(ctx.settingRow(icon, ctx.getString(title), null, ctx.valueText(value)), 8)
+        val rows = ArrayList<View>()
+        // A short value at the row's end; a long one (the notes from the unit) under the title, where it has the
+        // row's width and three lines, instead of squeezing the title to "…" and being cut itself.
+        fun info(icon: Int, title: Int, value: String) {
+            rows.add(if (value.length > 28) ctx.settingRow(icon, ctx.getString(title), value)
+                else ctx.settingRow(icon, ctx.getString(title), null, ctx.valueText(value)))
+        }
 
         // the logo: Arabic or English with the interface, white letters on dark, ink letters on light
         val arabic = ctx.resources.configuration.locales.get(0).language == "ar"
@@ -416,19 +462,19 @@ class AboutPage(private val act: SettingsActivity) : Page(R.string.set_about, R.
         val brand = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(24.dp, 30.dp, 24.dp, 24.dp)
-            background = Shapes.card(22f)
+            setPadding(Space.XL.dp, Space.XXL.dp, Space.XL.dp, Space.XL.dp)
+            background = Shapes.card()
         }
         brand.addView(android.widget.ImageView(ctx).apply {
             setImageResource(logo)
             scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
             adjustViewBounds = true
         }, lp(if (arabic) 230.dp else 300.dp, WRAP))
-        brand.addView(ctx.label(14.5f, Palette.text3, Fonts.REGULAR, gravity = Gravity.CENTER).apply {
+        brand.addView(ctx.label(Type.FOOTNOTE, Palette.text3, gravity = Gravity.CENTER).apply {
             text = "Automotive Modern Responsive Interface"
             letterSpacing = 0.04f
-        }, lp(MATCH, WRAP).apply { topMargin = 16.dp })
-        col.addView(brand, lp(MATCH, WRAP))
+        }, lp(MATCH, WRAP).apply { topMargin = Space.L.dp })
+        col.addRow(brand)
 
         info(R.drawable.ic_car, R.string.about_device, Device.model)
         info(R.drawable.ic_cpu, R.string.about_android, "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
@@ -453,31 +499,33 @@ class AboutPage(private val act: SettingsActivity) : Page(R.string.set_about, R.
         com.abdllh.aura.music.CoverSearch.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_disc, R.string.about_cover, it) }
         // how the last song handed to YouTube's app went (it could not be tried before the unit)
         com.abdllh.aura.music.YtMusic.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_music, R.string.about_yt, it) }
+        col.addRow(ctx.group(*rows.toTypedArray()))
 
         // Home-app control (car unit only)
         if (Device.isNwd) {
-            col.addView(ctx.sectionTitle(ctx.getString(R.string.about_home_app)), lp(MATCH, WRAP).apply { topMargin = 22.dp })
+            col.addSection(ctx.getString(R.string.about_home_app))
             val cur = Device.homePackage()
             val isAura = cur == ctx.packageName
             val btn = ABtn(ctx).apply {
                 kind = if (isAura) ABtn.Kind.TONAL else ABtn.Kind.PRIMARY
                 setText(if (isAura) R.string.about_use_stock else R.string.about_use_aura)
                 setOnClickListener {
-                    // also moves the boot-time kill switch, otherwise the next boot would undo the choice
+                    // also moves the boot-time kill switch, otherwise the next boot would undo the choice; the message
+                    // outlives this screen (the home screen changes under it)
                     val ok = CrashGuard.setAuraEnabled(ctx, !isAura, "user")
-                    Toast.makeText(ctx, if (ok) R.string.about_home_changed else R.string.about_home_failed, Toast.LENGTH_LONG).show()
+                    Snack.show(ctx, if (ok) R.string.about_home_changed else R.string.about_home_failed, long = true, outlives = true)
                     act.rebuild()
                 }
             }
-            col.addRow(ctx.settingRow(R.drawable.ic_home, ctx.getString(R.string.about_home_now), if (isAura) ctx.getString(R.string.app_name) else cur.ifEmpty { "-" }, btn), 8)
+            col.addRow(ctx.group(ctx.settingRow(R.drawable.ic_home, ctx.getString(R.string.about_home_now), if (isAura) ctx.getString(R.string.app_name) else cur.ifEmpty { "-" }, btn)))
         }
 
         CrashGuard.lastCrash(ctx)?.let {
-            col.addView(ctx.sectionTitle(ctx.getString(R.string.about_diag)), lp(MATCH, WRAP).apply { topMargin = 22.dp })
-            col.addRow(ctx.settingRow(R.drawable.ic_alert, ctx.getString(R.string.about_last_crash), it.lineSequence().take(3).joinToString("\n"), null, Palette.warn), 8)
+            col.addSection(ctx.getString(R.string.about_diag))
+            col.addRow(ctx.group(ctx.settingRow(R.drawable.ic_alert, ctx.getString(R.string.about_last_crash), it.lineSequence().take(3).joinToString("\n"), null, Palette.warn)))
         }
 
-        col.addRow(ctx.hint(ctx.getString(R.string.about_credit)), 22)
+        col.addView(ctx.hint(ctx.getString(R.string.about_credit)), lp(MATCH, WRAP).apply { topMargin = Space.XXL.dp })
         return col
     }
 }
@@ -489,3 +537,4 @@ fun Context.scrolled(content: View): ScrollView = ScrollView(this).apply {
     isFillViewport = false
     addView(content, MATCH, WRAP)
 }
+
