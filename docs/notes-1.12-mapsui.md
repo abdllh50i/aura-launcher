@@ -73,6 +73,8 @@ bottom cards +16 dp with a 60 ms delay (after the top one), the recenter pill an
   over a line that runs out in the 30 s before the trip ends by itself. The line steps once a second with a
   `Motion.SHORT` glide (`arrivedTick`, cleared when the card goes and in `onStop`): one 30 s animation drew a frame
   at every vsync, about 60 a second, for a parked car.
+- Messages (`toast`, a `Snack`) stand above the bottom card that shows; one revealed in the same pass has no height
+  yet and is measured at the panel width (the "no voice" hint at a trip's start covered End).
 - The ETA's green unit (trip bar, place card) is full `Palette.success`, smaller only: at 80 % it was 3.5:1 on the
   light glass.
 - The speed disc rounds the speed (under 3 km/h is 0: GPS reports 1-3 for a parked car) and turns red with one beat
