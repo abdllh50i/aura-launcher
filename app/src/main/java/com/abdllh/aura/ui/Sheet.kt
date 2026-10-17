@@ -2,6 +2,7 @@ package com.abdllh.aura.ui
 
 import android.content.Context
 import android.graphics.Outline
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.VelocityTracker
@@ -35,6 +36,7 @@ open class Sheet(ctx: Context, fullHeight: Boolean) : FrameLayout(ctx) {
     private var downX = 0f
     private var downY = 0f
     private var dragging = false
+    private var touching = false // a finger came down while the sheet was open and is not up yet
     private var vt: VelocityTracker? = null
     private var finished = true // closed and reported (onClosed) since the last open
     private var closeFrom = 1f // how far open the panel was when the close began
@@ -109,6 +111,15 @@ open class Sheet(ctx: Context, fullHeight: Boolean) : FrameLayout(ctx) {
     private fun close(velocity: Float) {
         if (!isOpen) return
         isOpen = false
+        if (touching && !dragging) {
+            // closed under a finger (Back, Home, the host): what it was on is told the touch is over, since the rest
+            // of the gesture no longer reaches it (a drag of the sheet itself finishes in onTouchEvent instead)
+            touching = false
+            val now = SystemClock.uptimeMillis()
+            val c = MotionEvent.obtain(now, now, MotionEvent.ACTION_CANCEL, 0f, 0f, 0)
+            super.dispatchTouchEvent(c)
+            c.recycle()
+        }
         closeFrom = (1f - panel.translationY / travel()).coerceIn(0f, 1f)
         onClose()
         // quicker than the open, and moving from the first frame: from rest a spring starts slowly, so it is given
@@ -132,8 +143,15 @@ open class Sheet(ctx: Context, fullHeight: Boolean) : FrameLayout(ctx) {
     // (the panel moves under the finger now: its children show their press only once a tap is clear, as in a list)
     override fun shouldDelayChildPressedState() = true
 
-    override fun dispatchTouchEvent(e: MotionEvent): Boolean =
-        if (!isOpen && !dragging) false else super.dispatchTouchEvent(e)
+    // Closed, a sheet takes no new touch; one that began while it was open is cancelled once when it closes (see
+    // [close]), so the control under the finger hears it end: a slider let go, a tile's press undone, no long-press.
+    override fun dispatchTouchEvent(e: MotionEvent): Boolean {
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> { if (!isOpen) return false; touching = true }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> touching = false
+        }
+        return if (!isOpen && !dragging) false else super.dispatchTouchEvent(e)
+    }
 
     /** Whether a view under ([x], [y]) (in this sheet's coordinates) can still scroll up. */
     private fun scrollsUpAt(v: View, x: Float, y: Float): Boolean {
