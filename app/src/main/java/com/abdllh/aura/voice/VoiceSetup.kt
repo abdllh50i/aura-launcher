@@ -37,8 +37,14 @@ object VoiceSetup {
         }
     }
 
-    /** Records the wake word ([done] true when all recordings were taken). */
-    fun enroll(act: Activity, done: (Boolean) -> Unit) = EnrollDialog.show(act, done)
+    /**
+     * Records the wake word ([done] true when all recordings were taken). New recordings start without learned sounds
+     * (they were weighed against the old ones, and the owner records again when it stopped hearing him).
+     */
+    fun enroll(act: Activity, done: (Boolean) -> Unit) = EnrollDialog.show(act) { ok ->
+        if (ok) WakeNegatives.clear(WakeNegatives.file(act))
+        done(ok)
+    }
 
     /** Records a request for use without the internet. */
     internal fun teach(act: Activity, item: OfflineCommands.Item, done: (Boolean) -> Unit) =

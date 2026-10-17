@@ -135,6 +135,22 @@ internal object Features {
         }
     }
 
+    /**
+     * How far the word [s] stands over its background in the voice's band (mel bands 4..20, about 500 Hz - 4 kHz),
+     * dB: the louder half of its frames (the background taken off them already) against the background before it.
+     */
+    fun snr(s: Spectrum): Float {
+        if (s.frames == 0) return 0f
+        val e = FloatArray(s.frames) { f -> var x = 0f; for (m in 4..20) x += s.bands[f][m]; x }
+        e.sort()
+        var top = 0.0
+        for (i in e.size / 2 until e.size) top += e[i]
+        top /= (e.size - e.size / 2)
+        var n = 0.0
+        for (m in 4..20) n += s.noise[m]
+        return (10 * log10((top + 1e-3) / (n + 1e-3))).toFloat()
+    }
+
     /** In-place radix-2 FFT ([re] and [im] of power-of-two length). */
     internal fun fft(re: FloatArray, im: FloatArray) {
         val n = re.size
@@ -296,6 +312,72 @@ internal object Dtw {
         }
         return prev[m] / (n + m)
     }
+
+    /**
+     * The same alignment, and the cost of each step along it (from the words' starts to their ends): where two words
+     * differ, not only how much. Kept whole (n x m), so only for the few words that come close to the recordings.
+     */
+    fun path(a: Array<FloatArray>, b: Array<FloatArray>): FloatArray {
+        val n = a.size
+        val m = b.size
+        if (n == 0 || m == 0) return FloatArray(0)
+        val band = max(abs(n - m), (max(n, m) * 0.3f).toInt()) + 1
+        val inf = Float.MAX_VALUE / 4
+        val d = Array(n + 1) { FloatArray(m + 1) { inf } }
+        val c = Array(n + 1) { FloatArray(m + 1) }
+        d[0][0] = 0f
+        for (i in 1..n) {
+            val jc = (i.toLong() * m / n).toInt()
+            val x = a[i - 1]
+            for (j in max(1, jc - band)..min(m, jc + band)) {
+                val y = b[j - 1]
+                var s = 0f
+                for (k in x.indices) { val t = x[k] - y[k]; s += t * t }
+                val cost = sqrt(s)
+                c[i][j] = cost
+                d[i][j] = cost + min(d[i - 1][j - 1], min(d[i - 1][j], d[i][j - 1]))
+            }
+        }
+        val out = FloatArray(n + m)
+        var k = 0
+        var i = n
+        var j = m
+        while (i > 0 && j > 0) {
+            out[k++] = c[i][j]
+            val diag = d[i - 1][j - 1]
+            val up = d[i - 1][j]
+            val left = d[i][j - 1]
+            if (diag <= up && diag <= left) { i--; j-- } else if (up <= left) i-- else j--
+        }
+        out.reverse(0, k)
+        return out.copyOf(k)
+    }
+}
+
+/** Takes the microphone's sound as it comes ([MicLoop] reads into it). */
+internal fun interface SoundSink {
+    fun feed(buf: ShortArray, n: Int)
+}
+
+/**
+ * The voice's band, 500 Hz - 3 kHz (Butterworth, 2nd order band-pass: two biquads, coefficients for 16 kHz from
+ * scipy.signal.butter(2, [500, 3000], "band", fs=16000, output="sos")), sample by sample (transposed direct form II).
+ */
+internal class VoiceBand {
+    private var a1 = 0.0
+    private var a2 = 0.0
+    private var b1 = 0.0
+    private var b2 = 0.0
+
+    fun next(x: Double): Double {
+        val y = 0.13993928686685161 * x + a1
+        a1 = 0.27987857373370323 * x + 0.6282667885001253 * y + a2
+        a2 = 0.13993928686685161 * x - 0.33247170708425344 * y
+        val z = y + b1
+        b1 = -2.0 * y + 1.738073384438362 * z + b2
+        b2 = y - 0.7805030329242779 * z
+        return z
+    }
 }
 
 /**
@@ -304,21 +386,45 @@ internal object Dtw {
  * 10 dB over it, and ends after 0.2 s that are back near the background or 24 dB under the word's own peak (a fading
  * tail is not the word). Words longer than [maxMs] are not passed on (sentences, music). [onLevel]: the level over the
  * background, 0..1, for meters.
+ *
+ * The level is a first difference's (it takes away the road's rumble). [band] (the wake word's second listener, 1.13)
+ * follows the voice's band ([VoiceBand]) beside it: a word also starts when that rises 10 dB over its own floor, and
+ * goes on while every level that rose like a word for it (10 dB, 3 hops) is still up. On the motorway a voice stands
+ * 4-5 dB higher over the noise in that band than in the first difference: "عمري" said 5 dB(A) over the road was found
+ * in 44-61% of the tries by the first difference alone and in nearly all by the band (Python copy, synthetic road).
+ * In quiet both levels rise together and the word ends where the first difference ends it (the owner's recordings
+ * were cut that way); with music the band stays up longer, which is why the plain listener keeps running beside it.
  */
 internal class Segmenter(
     private val maxMs: Int = 1600,
     private val onLevel: ((Float) -> Unit)? = null,
     /** Hops of quiet that end a word (a request of two words takes longer pauses than the wake word). */
     private val endHops: Int = END_HOPS,
-    /** A word, and the background just before it (for [Features.spectrum]'s noise). */
+    /** Also follow the voice's band (see the class). */
+    private val band: Boolean = false,
+    /** A word, and the background just before it (for [Features.spectrum]'s noise); [info] describes it meanwhile. */
     private val onWord: (word: ShortArray, noise: ShortArray) -> Unit
-) {
+) : SoundSink {
+    /** The word being passed to [onWord]: where it is in the stream and how what came before it stood. */
+    class Info {
+        /** Sample positions (since the first sample this listener got). */
+        var start = 0L
+        var end = 0L
+        /** The background before the word: the 4th quietest level of the 1.5 s before it (dB, first difference). */
+        var floor = 0f
+        /** How far the 0.3 s before the word (the "background" it is measured against) stood over that, mean dB. */
+        var preRise = 0f
+    }
+
+    val info = Info()
+
     private val ring = ShortArray(Features.RATE * 4)
     private var written = 0L          // samples ever written to the ring
     private val hop = ShortArray(Features.HOP)
     private var hopFill = 0
     private val history = FloatArray(HISTORY) // the last hops' levels (dB)
     private val sorted = FloatArray(HISTORY)
+    private val levels = FloatArray(LEVELS)   // every hop's level by its number, for [Info]
     private var hops = 0L
     private var settle = 0
     private var above = 0
@@ -326,13 +432,23 @@ internal class Segmenter(
     private var inWord = false
     private var start = 0L
     private var peak = 0f
+    // the voice's band (with [band])
+    private val filter = if (band) VoiceBand() else null
+    private var bandEnergy = 0.0
+    private val history2 = if (band) FloatArray(HISTORY) else null
+    private val sorted2 = if (band) FloatArray(HISTORY) else null
+    private var above2 = 0
+    private var peak2 = 0f
+    private var use1 = true                   // the levels that end this word
+    private var use2 = false
 
-    fun feed(buf: ShortArray, n: Int) {
+    override fun feed(buf: ShortArray, n: Int) {
         for (i in 0 until n) {
             ring[(written % ring.size).toInt()] = buf[i]
             written++
             hop[hopFill++] = buf[i]
-            if (hopFill == hop.size) { hopFill = 0; step() }
+            if (filter != null) { val y = filter.next(buf[i].toDouble()); bandEnergy += y * y }
+            if (hopFill == hop.size) { hopFill = 0; step(); bandEnergy = 0.0 }
         }
     }
 
@@ -343,9 +459,12 @@ internal class Segmenter(
         var e = 0.0
         for (s in hop) { val v = s - 0.95f * last; last = s.toFloat(); e += v.toDouble() * v }
         val db = (10 * log10(e / hop.size + 1.0)).toFloat()
+        val db2 = if (filter != null) (10 * log10(bandEnergy / hop.size + 1.0)).toFloat() else 0f
+        levels[((written / Features.HOP - 1) % LEVELS).toInt()] = db
         // a recording that is only starting gives near silence for a moment (half a second on the emulator)
         if (hops == 0L && db < SILENT_DB && settle++ < SETTLE_HOPS) return
         history[(hops % HISTORY).toInt()] = db
+        history2?.set((hops % HISTORY).toInt(), db2)
         hops++
         // the quietest moment, past a few odd hops (the one half filled as the sound starts, a stream's dropout): they
         // would hold the background too low for 1.5 s, and the next sound would look like a word
@@ -353,24 +472,44 @@ internal class Segmenter(
         System.arraycopy(history, 0, sorted, 0, n)
         java.util.Arrays.sort(sorted, 0, n)
         val floor = max(sorted[min(OUTLIERS, n - 1)], 15f)
+        var floor2 = 0f
+        if (history2 != null && sorted2 != null) {
+            System.arraycopy(history2, 0, sorted2, 0, n)
+            java.util.Arrays.sort(sorted2, 0, n)
+            floor2 = max(sorted2[min(OUTLIERS, n - 1)], 15f)
+        }
         onLevel?.invoke(((db - floor) / 30f).coerceIn(0f, 1f))
         if (hops < WARMUP) return // the background is not known yet
         if (!inWord) {
             if (db > floor + 10f) above++ else above = 0
-            if (above >= 3) {
+            if (filter != null) { if (db2 > floor2 + 10f) above2++ else above2 = 0 }
+            if (above >= 3 || above2 >= 3) {
                 inWord = true
                 below = 0
                 peak = db
+                peak2 = db2
+                use1 = above >= 3
+                use2 = above2 >= 3
                 start = max(written - (3 + PRE_HOPS) * Features.HOP, written - ring.size + Features.HOP)
             }
             return
         }
         peak = max(peak, db)
-        if (db < max(floor + 6f, peak - 24f)) below++ else below = 0
+        peak2 = max(peak2, db2)
+        val down = if (filter == null) {
+            db < max(floor + 6f, peak - 24f)
+        } else {
+            // a level counts for the word's end once it has risen like a word in it
+            if (!use1) { above = if (db > floor + 10f) above + 1 else 0; use1 = above >= 3 }
+            if (!use2) { above2 = if (db2 > floor2 + 10f) above2 + 1 else 0; use2 = above2 >= 3 }
+            (!use1 || db < max(floor + 6f, peak - 24f)) && (!use2 || db2 < max(floor2 + 6f, peak2 - 24f))
+        }
+        if (down) below++ else below = 0
         val len = written - start
         if (below >= endHops) {
             inWord = false
             above = 0
+            above2 = 0
             val end = written - (below - POST_HOPS) * Features.HOP
             val n = (end - start).toInt()
             if (n in MIN_SAMPLES..(maxMs * Features.RATE / 1000)) {
@@ -380,17 +519,38 @@ internal class Segmenter(
                 val from = max(start - NOISE_SAMPLES, max(0L, written - ring.size))
                 val noise = ShortArray((start - from).toInt().coerceAtLeast(0))
                 for (i in noise.indices) noise[i] = ring[((from + i) % ring.size).toInt()]
+                describe(start, end, from)
                 onWord(word, noise)
             }
         } else if (len > maxMs * Features.RATE / 1000 + endHops * Features.HOP) {
             // longer than a word can be (a sentence, music): not passed on; listen again from here
             inWord = false
             above = 0
+            above2 = 0
         }
+    }
+
+    /** [info] for the word from [start] to [end], its background from [from]. */
+    private fun describe(start: Long, end: Long, from: Long) {
+        info.start = start
+        info.end = end
+        val h0 = start / Features.HOP
+        val lo = max(0L, h0 - HISTORY)
+        val k = (h0 - lo).toInt()
+        info.floor = if (k <= 0) 15f else {
+            val tmp = FloatArray(k) { levels[((lo + it) % LEVELS).toInt()] }
+            tmp.sort()
+            max(tmp[min(OUTLIERS, k - 1)], 15f)
+        }
+        val h1 = from / Features.HOP
+        var sum = 0.0
+        for (h in h1 until h0) sum += levels[(h % LEVELS).toInt()]
+        info.preRise = if (h0 > h1) (sum / (h0 - h1) - info.floor).toFloat() else 0f
     }
 
     companion object {
         private const val HISTORY = 150   // 1.5 s
+        private const val LEVELS = 512    // 5.1 s of levels (the ring holds 4 s)
         private const val OUTLIERS = 3    // the quietest hops passed over for the background
         private const val SILENT_DB = 6f  // under any microphone's own noise
         private const val SETTLE_HOPS = 200 // at most 2 s of silence while the recording starts
@@ -458,17 +618,106 @@ internal class WakeModel(val words: List<Spectrum>) {
      * road noise), relative to [spread]. Tried on recordings: "عمري" 0.6-0.95 and other words 1.4 and more, whether
      * it was recorded or said in quiet or in loud road noise.
      */
-    fun score(w: Spectrum): Float {
+    fun score(w: Spectrum): Float = score(w, null)
+
+    /** [score] from [d], [w]'s [distances] when they are known already. */
+    fun score(w: Spectrum, d: FloatArray?): Float {
         if (words.isEmpty() || spread <= 0f) return Float.MAX_VALUE
         // a word of a very different length is something else
-        if (words.none { val r = w.frames.toFloat() / it.frames; r in 0.6f..1.7f }) return Float.MAX_VALUE
+        if (!lengthOk(w)) return Float.MAX_VALUE
+        val s = (d ?: distances(w)).sortedArray()
+        val best = if (s.size >= 2) (s[0] + s[1]) / 2 else s[0]
+        return best / spread
+    }
+
+    private fun lengthOk(w: Spectrum) = words.any { val r = w.frames.toFloat() / it.frames; r in 0.6f..1.7f }
+
+    /** [w]'s distance to each recording, through the louder of the two backgrounds (DTW units, in their order). */
+    fun distances(w: Spectrum): FloatArray {
         val common = FloatArray(Features.MELS)
-        val d = words.map { t ->
+        return FloatArray(words.size) { i ->
+            val t = words[i]
             for (m in common.indices) common[m] = max(w.noise[m], t.noise[m])
             Dtw.distance(Features.cepstra(w, common), Features.cepstra(t, common))
-        }.sorted()
-        val best = if (d.size >= 2) (d[0] + d[1]) / 2 else d[0]
-        return best / spread
+        }
+    }
+
+    /**
+     * The recordings' own mean distance seen through [noise] too (pair by pair, the loudest of it and the two
+     * recordings' backgrounds). Loud noise hides most of what tells words apart: through it the recordings come closer
+     * together, and so does everything else; [spread] alone (their distance through their own, quieter backgrounds)
+     * then makes any word in the noise look like the wake word.
+     */
+    fun spreadThrough(noise: FloatArray): Float {
+        var s = 0f
+        var n = 0
+        val common = FloatArray(Features.MELS)
+        for (i in words.indices) for (j in i + 1 until words.size) {
+            for (m in common.indices) common[m] = max(noise[m], max(words[i].noise[m], words[j].noise[m]))
+            s += Dtw.distance(Features.cepstra(words[i], common), Features.cepstra(words[j], common))
+            n++
+        }
+        return if (n == 0) 0f else s / n
+    }
+
+    /**
+     * The worst fifth of [w]'s alignment with the recording [i] (the mean step cost over it), relative to [spread]:
+     * a word that is the wake word in most of its length and something else in one part ("عمرين", a sentence's
+     * piece) is far there, however close it is on average.
+     */
+    fun worstPart(w: Spectrum, i: Int): Float {
+        val t = words[i]
+        val common = FloatArray(Features.MELS) { max(w.noise[it], t.noise[it]) }
+        val costs = Dtw.path(Features.cepstra(w, common), Features.cepstra(t, common))
+        if (costs.isEmpty() || spread <= 0f) return Float.MAX_VALUE
+        val k = max(1, costs.size / 5)
+        var sum = 0.0
+        for (x in 0 until k) sum += costs[x]
+        var worst = sum
+        for (x in k until costs.size) {
+            sum += costs[x] - costs[x - k]
+            if (sum > worst) worst = sum
+        }
+        return (worst / k / spread).toFloat()
+    }
+
+    /**
+     * Is [w] (the word [pcm], its background [noise], [info] from the listener) the wake word? Stage 1 is [score]
+     * (cheap: six alignments, every word). The few words that come close then have to pass the rest, and every cue
+     * was measured on the test corpus (TTS voices enrolled like the owner, near words, sentences, songs, car sounds
+     * on road, idle, city and music backgrounds; docs/notes-1.13-amri.md):
+     * - [VoiceCheck]: a voice at all (bumps, bangs, clicks).
+     * - The score again with the recordings seen through the word's own background ([spreadThrough]): on the
+     *   motorway and with music, words that were not the wake word scored as close as the wake word itself (masking);
+     *   relative to how close the recordings themselves come through that noise, they stand apart again.
+     * - The worst part of the alignment ([worstPart]).
+     * - Context: a word barely over its "background" (under 6 dB in the voice band) while that background stood
+     *   well over the listener's floor (over 4 dB) is a piece of continuous speech or song; the owner says the name
+     *   after a pause.
+     * Rejections say why ([Verdict.why]); [lim] holds the sensitivity's limits.
+     */
+    fun judge(w: Spectrum, pcm: ShortArray, noise: ShortArray, info: Segmenter.Info?, lim: Limits): Verdict {
+        if (words.isEmpty() || spread <= 0f || !lengthOk(w)) return Verdict(Float.MAX_VALUE, why = "length")
+        val d = distances(w)
+        val score = score(w, d)
+        var nearest = 0
+        for (i in d.indices) if (d[i] < d[nearest]) nearest = i
+        if (score >= lim.score) return Verdict(score, d[nearest], why = "far")
+        val (voiced, band) = VoiceCheck.measure(pcm, noise)
+        if (!VoiceCheck.ok(voiced, band)) return Verdict(score, d[nearest], voiced = voiced, band = band, why = "not a voice")
+        val s = d.sortedArray()
+        val through = spreadThrough(w.noise)
+        val masked = if (through > 0f) (if (s.size >= 2) (s[0] + s[1]) / 2 else s[0]) / through else Float.MAX_VALUE
+        val worst = worstPart(w, nearest)
+        val snr = Features.snr(w)
+        val rise = info?.preRise ?: 0f
+        val why = when {
+            masked >= lim.masked -> "background"
+            worst > lim.worst -> "part"
+            snr < Limits.CONTEXT_SNR && rise > Limits.CONTEXT_RISE -> "mid-speech"
+            else -> ""
+        }
+        return Verdict(score, d[nearest], masked, worst, snr, rise, voiced, band, why)
     }
 
     companion object {
@@ -523,13 +772,113 @@ internal class WakeModel(val words: List<Spectrum>) {
     }
 }
 
+/** How close a word must come, per sensitivity ([WakeModel.judge]). */
+internal class Limits(
+    /** Stage 1: [WakeModel.score] under this (until 1.13 the only test: 1.05 / 1.15 / 1.30). */
+    val score: Float,
+    /** The score with the recordings seen through the word's background ([WakeModel.spreadThrough]) under this. */
+    val masked: Float,
+    /** The worst fifth of the alignment ([WakeModel.worstPart]) at most this. */
+    val worst: Float
+) {
+    companion object {
+        val STRICT = Limits(1.05f, 1.40f, 2.85f)
+        val NORMAL = Limits(1.15f, 1.50f, 3.0f)
+        val RELAXED = Limits(1.30f, 1.65f, 3.3f)
+
+        /** 0 strict, 1 normal, 2 relaxed (Settings). */
+        fun of(sensitivity: Int) = when (sensitivity) { 0 -> STRICT; 2 -> RELAXED; else -> NORMAL }
+
+        /** A word under this over its background (dB, voice band) ... */
+        const val CONTEXT_SNR = 6f
+        /** ... while that background stood this far over the floor (dB) is in the middle of speech. */
+        const val CONTEXT_RISE = 4f
+    }
+}
+
+/** What [WakeModel.judge] made of a word: its measures (for the log), and [why] it was refused ("" when it was not). */
+internal class Verdict(
+    val score: Float,
+    /** The nearest recording's distance (DTW units): learned sounds are weighed against it ([WakeNegatives]). */
+    val nearest: Float = Float.MAX_VALUE,
+    val masked: Float = Float.NaN,
+    val worst: Float = Float.NaN,
+    val snr: Float = Float.NaN,
+    val preRise: Float = Float.NaN,
+    val voiced: Float = Float.NaN,
+    val band: Float = Float.NaN,
+    val why: String
+) {
+    val ok get() = why.isEmpty()
+
+    override fun toString() = "score %.2f masked %.2f worst %.2f snr %.1f pre %.1f voiced %.2f band %.2f%s".format(
+        java.util.Locale.ROOT, score, masked, worst, snr, preRise, voiced, band, if (ok) "" else " -> $why")
+}
+
 /**
- * The microphone, read on its own thread at 16 kHz and passed to [Segmenter]. [device]: a chosen input (null: the
- * system's choice). Stops with [quit] (the thread ends after the current read).
+ * A word that woke the assistant, kept until the owner shows whether he meant it ([WakeNegatives]); [start], [end]:
+ * where it was in the listener's stream (samples).
+ */
+internal class WakeCandidate(val spectrum: Spectrum, val verdict: Verdict, val start: Long = 0, val end: Long = 0)
+
+/**
+ * The wake word in a stream of sound, on the microphone's thread: two listeners (the plain [Segmenter] and the one
+ * that also follows the voice's band, which finds the name in road noise), every word they pass on judged by the
+ * owner's recordings ([WakeModel.judge]) and then the sounds learned not to be it ([WakeNegatives]); 1.5 s at least
+ * between two wakes. Both listeners cut most words alike (in quiet, always): such a word is judged once.
+ */
+internal class WakeDetector(
+    private val model: WakeModel,
+    private val limits: () -> Limits,
+    /** The learned sounds' file (null: none). */
+    private val negatives: java.io.File?,
+    /** Every judged word (the log). */
+    private val onVerdict: ((Verdict) -> Unit)? = null,
+    private val onWake: (WakeCandidate) -> Unit
+) : SoundSink {
+    private val plain = Segmenter(maxMs = 1500) { w, n -> word(w, n, 0) }
+    private val banded = Segmenter(maxMs = 1500, band = true) { w, n -> word(w, n, 1) }
+    private var lastStart = -1L
+    private var lastEnd = -1L
+    private var lastWake = -REFRACTORY
+
+    override fun feed(buf: ShortArray, n: Int) {
+        plain.feed(buf, n)
+        banded.feed(buf, n)
+    }
+
+    private fun word(pcm: ShortArray, noise: ShortArray, which: Int) {
+        val info = if (which == 0) plain.info else banded.info
+        if (info.end - lastWake < REFRACTORY) return
+        // the other listener's cut of the same word (within 20 ms at both ends): judged already
+        if (abs(info.start - lastStart) <= 2 * Features.HOP && abs(info.end - lastEnd) <= 2 * Features.HOP) return
+        lastStart = info.start
+        lastEnd = info.end
+        val s = Features.spectrum(pcm, noise)
+        val lim = limits()
+        val v = model.judge(s, pcm, noise, info, lim)
+        if (v.ok && negatives != null && WakeNegatives.rejects(negatives, s, v, lim)) {
+            onVerdict?.invoke(Verdict(v.score, v.nearest, v.masked, v.worst, v.snr, v.preRise, v.voiced, v.band, "learned"))
+            return
+        }
+        onVerdict?.invoke(v)
+        if (!v.ok) return
+        lastWake = info.end
+        onWake(WakeCandidate(s, v, info.start, info.end))
+    }
+
+    companion object {
+        private const val REFRACTORY = Features.RATE * 3L / 2 // 1.5 s
+    }
+}
+
+/**
+ * The microphone, read on its own thread at 16 kHz and passed to [sink] (a [Segmenter], a [WakeDetector]). [device]:
+ * a chosen input (null: the system's choice). Stops with [quit] (the thread ends after the current read).
  */
 internal class MicLoop(
     private val device: AudioDeviceInfo?,
-    private val segmenter: Segmenter,
+    private val sink: SoundSink,
     /** Recording (on this thread). */
     private val onStarted: (() -> Unit)? = null,
     private val onError: (String) -> Unit
@@ -567,7 +916,7 @@ internal class MicLoop(
                 val n = r.read(buf, 0, buf.size)
                 if (n < 0) { if (running) onError("mic read $n"); break }
                 if (n > 0 && running) {
-                    segmenter.feed(buf, n)
+                    sink.feed(buf, n)
                     MicTap.listener?.invoke(buf, n, Features.RATE)
                 }
             }

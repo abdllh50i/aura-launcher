@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The voice assistant "Amri" (1.13): learned sounds, new requests. Arabic in values-ar/strings_amri.xml. -->
+<resources>
+    <!-- Settings -> Voice assistant: more of what it understands (under the intro) -->
+    <string name="voice_more">Also: “what\'s playing?”, “how much longer?”, “nearest petrol station”, “brighter”, “open YouTube”, “play Abadi Al Johar”.</string>
+
+    <!-- Settings -> Voice assistant: sounds it learned to ignore -->
+    <string name="voice_learned">Sounds it learned to ignore</string>
+    <string name="voice_learned_none">None yet. When it wakes by mistake and you say nothing, or tap it away, it learns that sound</string>
+    <plurals name="voice_learned_some">
+        <item quantity="one">%1$d sound. Tap to forget it</item>
+        <item quantity="other">%1$d sounds. Tap to forget them</item>
+    </plurals>
+    <string name="voice_learned_forget_title">Forget the learned sounds?</string>
+    <string name="voice_learned_forget_text">Amri may wake on them again until it learns them anew. Do it if it stopped answering your call.</string>
+    <string name="voice_learned_forget">Forget</string>
+
+    <!-- requests and answers -->
+    <string name="amri_now_playing">This is “%1$s” by %2$s</string>
+    <string name="amri_now_playing_title">This is “%1$s”</string>
+    <string name="amri_nothing_playing">Nothing is playing</string>
+    <string name="amri_eta">%1$s to go, there at %2$s</string>
+    <string name="amri_eta_none">No route is running</string>
+    <string name="amri_eta_other_app">I can\'t tell: another app is navigating</string>
+    <string name="amri_nearby_looking">Looking for the nearest %1$s…</string>
+    <string name="amri_nearby_found">Nearest %1$s: %2$s, %3$s away</string>
+    <string name="amri_nearby_map">The nearest %1$s, on the map</string>
+    <string name="amri_nearby_none">I found no %1$s nearby</string>
+    <string name="amri_search_place">Looking for %1$s on the map</string>
+    <string name="amri_brighter">Brighter: %1$d%%</string>
+    <string name="amri_dimmer">Dimmer: %1$d%%</string>
+    <string name="amri_brightness_now">Brightness %1$d%%</string>
+    <string name="amri_brightness_permission">Allow AMRI to change system settings, then ask again</string>
+    <string name="amri_open_app">Opening %1$s</string>
+    <string name="amri_app_missing">No app called %1$s</string>
+    <string name="amri_song_looking">Looking for %1$s…</string>
+    <string name="amri_song_playing">“%1$s” by %2$s</string>
+    <string name="amri_song_none">I couldn\'t find %1$s</string>
+    <string name="amri_song_no_app">Playing a song by name needs the YouTube Music app</string>
+    <string name="amri_song_offline">No internet to look for songs</string>
+    <string name="amri_date">Today is %1$s</string>
+    <string name="amri_thanks">You\'re welcome</string>
+    <string name="amri_who">I\'m Amri, your car\'s assistant</string>
+    <string name="amri_slow">That took too long</string>
+
+    <!-- what the nearby search looks for (spoken in the answers) -->
+    <string name="place_fuel">petrol station</string>
+    <string name="place_pharmacy">pharmacy</string>
+    <string name="place_restaurant">restaurant</string>
+    <string name="place_cafe">café</string>
+    <string name="place_hospital">hospital</string>
+    <string name="place_mosque">mosque</string>
+    <string name="place_atm">ATM</string>
+    <string name="place_supermarket">supermarket</string>
+    <string name="place_hotel">hotel</string>
+    <string name="place_carwash">car wash</string>
+    <string name="place_garage">car repair shop</string>
+</resources>

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- المساعد الصوتي «عمري» (1.13): الأصوات اللي تعلّمها، والطلبات الجديدة -->
+<resources>
+    <!-- الإعدادات ← المساعد الصوتي: وش يفهم بعد (تحت المقدمة) -->
+    <string name="voice_more">وبعد: «وش الأغنية؟»، «كم باقي وأوصل؟»، «وين أقرب محطة بنزين»، «ارفع الإضاءة»، «افتح يوتيوب»، «شغّل عبادي الجوهر».</string>
+
+    <!-- الإعدادات ← المساعد الصوتي: أصوات تعلّم يتجاهلها -->
+    <string name="voice_learned">أصوات تعلّم يتجاهلها</string>
+    <string name="voice_learned_none">ولا شي للحين. إذا صحى بالغلط وسكتّ، أو ضغطت عليه تلغيه، يتعلّم هالصوت</string>
+    <plurals name="voice_learned_some">
+        <item quantity="zero">ولا صوت</item>
+        <item quantity="one">صوت واحد. اضغط عشان ينساه</item>
+        <item quantity="two">صوتين. اضغط عشان ينساهم</item>
+        <item quantity="few">%1$d أصوات. اضغط عشان ينساها</item>
+        <item quantity="many">%1$d صوت. اضغط عشان ينساها</item>
+        <item quantity="other">%1$d صوت. اضغط عشان ينساها</item>
+    </plurals>
+    <string name="voice_learned_forget_title">ينسى الأصوات اللي تعلّمها؟</string>
+    <string name="voice_learned_forget_text">يمكن يصحى عليها مرة ثانية لين يتعلّمها من جديد. سوّها لو صار ما يرد عليك لما تناديه.</string>
+    <string name="voice_learned_forget">انسَها</string>
+
+    <!-- الطلبات والردود -->
+    <string name="amri_now_playing">هذي «%1$s» لـ %2$s</string>
+    <string name="amri_now_playing_title">هذي «%1$s»</string>
+    <string name="amri_nothing_playing">ما فيه شي شغّال</string>
+    <string name="amri_eta">باقي %1$s، توصل الساعة %2$s</string>
+    <string name="amri_eta_none">ما فيه طريق شغّال</string>
+    <string name="amri_eta_other_app">ما أدري، الملاحة في تطبيق ثاني</string>
+    <string name="amri_nearby_looking">أدوّر على أقرب %1$s…</string>
+    <string name="amri_nearby_found">أقرب %1$s: %2$s، على بعد %3$s</string>
+    <string name="amri_nearby_map">أبشر، أقرب %1$s على الخريطة</string>
+    <string name="amri_nearby_none">ما لقيت %1$s قريب</string>
+    <string name="amri_search_place">أدوّر على %1$s في الخريطة</string>
+    <string name="amri_brighter">رفعت الإضاءة: %1$d٪</string>
+    <string name="amri_dimmer">خففت الإضاءة: %1$d٪</string>
+    <string name="amri_brightness_now">الإضاءة %1$d٪</string>
+    <string name="amri_brightness_permission">اسمح لـ ⁨AMRI⁩ يعدّل إعدادات النظام، واطلبها مرة ثانية</string>
+    <string name="amri_open_app">أبشر، أفتح %1$s</string>
+    <string name="amri_app_missing">ما لقيت تطبيق اسمه %1$s</string>
+    <string name="amri_song_looking">أدوّر على %1$s…</string>
+    <string name="amri_song_playing">«%1$s» لـ %2$s</string>
+    <string name="amri_song_none">ما لقيت %1$s</string>
+    <string name="amri_song_no_app">تشغيل أغنية بالاسم يبي له تطبيق ⁨YouTube Music⁩</string>
+    <string name="amri_song_offline">ما فيه إنترنت عشان أدوّر على الأغاني</string>
+    <string name="amri_date">اليوم %1$s</string>
+    <string name="amri_thanks">العفو، تامر أمر</string>
+    <string name="amri_who">أنا عمري، مساعدك في السيارة</string>
+    <string name="amri_slow">طوّلت عليك، جرّب مرة ثانية</string>
+
+    <!-- اللي يدوّر عليه البحث القريب (يقولها في الرد) -->
+    <string name="place_fuel">محطة بنزين</string>
+    <string name="place_pharmacy">صيدلية</string>
+    <string name="place_restaurant">مطعم</string>
+    <string name="place_cafe">كوفي</string>
+    <string name="place_hospital">مستشفى</string>
+    <string name="place_mosque">مسجد</string>
+    <string name="place_atm">صرّاف</string>
+    <string name="place_supermarket">سوبرماركت</string>
+    <string name="place_hotel">فندق</string>
+    <string name="place_carwash">مغسلة سيارات</string>
+    <string name="place_garage">ورشة سيارات</string>
+</resources>

@@ -81,10 +81,8 @@ object Amri {
         get() = Prefs.raw.getInt("amriMic", 0)
         set(v) { Prefs.raw.edit().putInt("amriMic", v).apply(); app?.let { AmriService.restartMic() } }
 
-    // tried with Windows' Arabic voice through the emulator's microphone (recorded in quiet; said in quiet, in road noise
-    // and in loud road noise): "عمري" scores 0.55-0.95; "عمر", "عمرين", "سمري", "مرحبا"... 1.4 and more, but the
-    // near-homophone "حمري" 1.2 in road noise
-    fun threshold(): Float = when (sensitivity) { 0 -> 1.05f; 2 -> 1.30f; else -> 1.15f }
+    /** How close a word must come to the owner's recordings, at this sensitivity ([Limits], [WakeModel.judge]). */
+    internal fun limits(): Limits = Limits.of(sensitivity)
 
     fun hasMicPermission(c: Context) = c.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
@@ -124,6 +122,9 @@ object Amri {
                     // the wake word from files (16 kHz mono WAV): --es enroll a.wav,b.wav,...  --es detect x.wav,y.wav
                     i.getStringExtra("enroll")?.let { files -> DebugWav.enroll(c.applicationContext, files.split(',')) }
                     i.getStringExtra("detect")?.let { files -> DebugWav.detect(c.applicationContext, files.split(',')) }
+                    // sounds to ignore: --es learn x.wav (what wakes in it, learned as if not meant)   --ez forget true
+                    i.getStringExtra("learn")?.let { files -> DebugWav.learn(c.applicationContext, files.split(',')) }
+                    if (i.getBooleanExtra("forget", false)) { forgetLearnedSounds(c.applicationContext); Log.i(TAG, "learned sounds forgotten") }
                     // requests without the internet: --es teach next:a.wav,b.wav,c.wav   --es offline x.wav,y.wav
                     i.getStringExtra("teach")?.let { spec -> DebugWav.teach(c.applicationContext, spec) }
                     i.getStringExtra("offline")?.let { files -> DebugWav.offline(c.applicationContext, files.split(',')) }
@@ -164,8 +165,17 @@ object Amri {
     val reversing: Boolean get() = Gear.current == Gear.Pos.R
 
     // ------------------------------------------------------------------------------------------ a request
-    /** The wake word was heard, or the microphone tapped: listen for a request. */
-    fun wake(ctx: Context) {
+    /** This session's wake by voice (null: the microphone was tapped), until the owner shows whether he meant it. */
+    private var heardBy: WakeCandidate? = null
+    private var wokeAt = 0L
+    /** What played when the assistant was called, before it paused the music ("what's playing" answers about it). */
+    private var playingAtWake: com.abdllh.aura.media.NowPlaying? = null
+
+    /** The microphone tapped (the home screen's button, Settings): listen for a request. */
+    fun wake(ctx: Context) = wake(ctx, null)
+
+    /** The wake word was heard ([heard]: what woke it), or the microphone tapped (null): listen for a request. */
+    internal fun wake(ctx: Context, heard: WakeCandidate?) {
         val c = LocaleHelper.wrap(ctx.applicationContext) // the app's language, also for the answers
         if (state != State.IDLE || inCall || reversing) return
         if (!hasMicPermission(c)) {
@@ -174,6 +184,9 @@ object Amri {
         }
         state = State.LISTENING
         val s = ++session
+        heardBy = heard
+        wokeAt = SystemClock.elapsedRealtime()
+        playingAtWake = MediaMonitor.current
         AmriService.pauseMic() // the recogniser needs the microphone
         pausedMedia = false
         if (MediaMonitor.current?.playing == true) {
@@ -229,10 +242,40 @@ object Amri {
         main.postDelayed({
             if (session == s && state == State.LISTENING && offline != null) {
                 stopOffline()
+                if (!heard) unmeant(c, "nothing said")
                 finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_not_heard), null)
             }
         }, 8_000L)
     }
+
+    /**
+     * The owner did not mean the wake (nothing was asked, he tapped it away, he said "خلاص"): what woke it is learned
+     * as a sound to ignore, if it matched weakly ([WakeNegatives]). Once a session, wakes by voice only.
+     */
+    private fun unmeant(c: Context, why: String) {
+        val h = heardBy ?: return
+        heardBy = null
+        val f = WakeNegatives.file(c)
+        val lim = limits()
+        Thread {
+            val learned = WakeNegatives.learn(f, h, lim)
+            Log.i(TAG, "wake not meant ($why): " + if (learned) "learned (${WakeNegatives.count(f)})" else "a strong match, kept out")
+        }.start()
+    }
+
+    /** The owner meant it (a request followed and was done): learned sounds too close to it are forgotten. */
+    private fun meant(c: Context) {
+        val h = heardBy ?: return
+        heardBy = null
+        val f = WakeNegatives.file(c)
+        Thread { WakeNegatives.confirm(f, h) }.start()
+    }
+
+    /** The sounds learned so far (Settings). */
+    fun learnedSounds(c: Context): Int = WakeNegatives.count(WakeNegatives.file(c))
+
+    /** Settings: forget them. */
+    fun forgetLearnedSounds(c: Context) = WakeNegatives.clear(WakeNegatives.file(c))
 
     private fun stopOffline() {
         offline?.quit()
@@ -286,6 +329,8 @@ object Amri {
                     Chime.play { if (session == s && state == State.LISTENING) listenOffline(c, s) }
                     return
                 }
+                // nothing said after the chime: the wake was probably not meant
+                if (error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT || error == SpeechRecognizer.ERROR_NO_MATCH) unmeant(c, "recogniser $error")
                 val msg = when (error) {
                     SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT, SpeechRecognizer.ERROR_SERVER -> R.string.amri_no_network
                     SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> R.string.amri_not_heard
@@ -314,15 +359,20 @@ object Amri {
             // (the recogniser still listening: not when it gave way to the taught requests)
             if (session == s && state == State.LISTENING && recognizer === r) {
                 release()
+                unmeant(c, "no answer in 15 s")
                 finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_not_heard), null)
             }
         }, 15_000L)
     }
 
-    /** The owner tapped the pill: stop listening (or just take the answer away). */
-    fun cancel(ctx: Context) {
+    /**
+     * Stop listening (or just take the answer away): the owner tapped the pill ([byOwner]), or a call came. A tap within
+     * a few seconds of a wake by voice says it was not meant.
+     */
+    fun cancel(ctx: Context, byOwner: Boolean = false) {
         val c = LocaleHelper.wrap(ctx.applicationContext)
         if (state == State.LISTENING) {
+            if (byOwner && SystemClock.elapsedRealtime() - wokeAt < 6_000L) unmeant(c, "tapped away")
             session++
             release()
             finish(c, AmriOverlay.Mode.DONE, c.getString(R.string.amri_cancel), null, speak = false, cmd = Command.Cancel)
@@ -355,13 +405,37 @@ object Amri {
     /** Does a request (heard by Google, or matched without the internet) and answers it; [said]: shown under it. */
     private fun act(c: Context, cmd: Command, said: String?) {
         state = State.ANSWERING
+        // "خلاص" right after the chime: called by mistake; any other request: meant
+        if (cmd == Command.Cancel) unmeant(c, "cancelled") else meant(c)
         val answer = run(c, cmd)
-        val what = if (cmd is Command.VolumeSet || cmd is Command.VolumeStep || cmd is Command.Navigate) cmd.toString() else cmd::class.java.simpleName
+        val what = cmd.toString().let { if ('@' in it) cmd::class.java.simpleName else it } // (a data class says its values)
         Log.i(TAG, "request $what -> ${answer.text}")
-        finish(c, AmriOverlay.Mode.DONE, answer.text, said, answer.speak, cmd)
+        val later = answer.later
+        if (later == null) {
+            finish(c, if (answer.error) AmriOverlay.Mode.ERROR else AmriOverlay.Mode.DONE, answer.text, said, answer.speak, cmd)
+            return
+        }
+        // an answer that takes a moment (a search on the internet): its first words meanwhile, the answer when it comes
+        val s = session
+        AmriOverlay.show(c, AmriOverlay.Mode.DONE, answer.text, sub = said)
+        var given = false
+        val give = { a: Answer ->
+            if (!given && session == s) {
+                given = true
+                Log.i(TAG, "request $what -> ${a.text}")
+                finish(c, if (a.error) AmriOverlay.Mode.ERROR else AmriOverlay.Mode.DONE, a.text, said, a.speak, cmd)
+            }
+        }
+        main.postDelayed({ give(Answer(c.getString(R.string.amri_slow), error = true)) }, 12_000L)
+        later { a -> main.post { give(a) } }
     }
 
-    private class Answer(val text: String, val speak: Boolean = true)
+    /**
+     * What to show and say. [error]: shown as a failure (and not said). [later]: the answer comes later (searches
+     * on the internet); [text] is shown meanwhile and [later] is given what to answer when it is known.
+     */
+    private class Answer(val text: String, val speak: Boolean = true, val error: Boolean = false,
+                         val later: (((Answer) -> Unit) -> Unit)? = null)
 
     /** Does [cmd]; the answer to show (and to say). */
     private fun run(c: Context, cmd: Command): Answer {
@@ -412,6 +486,179 @@ object Amri {
                 Answer(s(R.string.amri_time, now.get(Calendar.HOUR).let { if (it == 0) 12 else it }, now.get(Calendar.MINUTE)))
             }
             Command.Cancel -> Answer(s(R.string.amri_cancel), speak = false)
+            Command.NowPlaying -> {
+                // what played when it was called (the pause since may have handed the screen to an older source)
+                val np = (playingAtWake ?: MediaMonitor.current)?.takeIf { it.title.isNotBlank() }
+                when {
+                    np == null -> Answer(s(R.string.amri_nothing_playing), error = true)
+                    np.artist.isBlank() -> Answer(s(R.string.amri_now_playing_title, np.title))
+                    else -> Answer(s(R.string.amri_now_playing, np.title, np.artist))
+                }
+            }
+            Command.Eta -> eta(c)
+            Command.Date -> Answer(s(R.string.amri_date, today()))
+            is Command.Brightness -> brightness(c, cmd)
+            Command.ScreenOff -> { com.abdllh.aura.home.Actions.screenOff(c); Answer(s(R.string.amri_cancel), speak = false) }
+            is Command.Nearby -> nearby(c, cmd.place)
+            is Command.SearchPlace -> searchPlace(c, cmd.query)
+            is Command.OpenApp -> openApp(c, cmd.name)
+            is Command.PlaySong -> playSong(c, cmd.query)
+            Command.Thanks -> Answer(s(R.string.amri_thanks))
+            Command.Who -> Answer(s(R.string.amri_who))
+        }
+    }
+
+    private val arabic get() = Locale.getDefault().language == "ar"
+
+    /** What is left of the route on AMRI Maps (another navigation app does not say). */
+    private fun eta(c: Context): Answer {
+        val nav = com.abdllh.aura.nav.NavSession
+        val none = c.getString(if (com.abdllh.aura.util.Prefs.builtInMaps) R.string.amri_eta_none else R.string.amri_eta_other_app)
+        if (nav.state != com.abdllh.aura.nav.NavSession.State.NAVIGATING) return Answer(none, error = true)
+        // (no progress yet just after the start, before a fix: the whole route)
+        val p = nav.progress
+        val m = p?.remaining ?: nav.route?.distance ?: return Answer(none, error = true)
+        val sec = p?.timeLeft ?: nav.route?.duration ?: 0.0
+        val units = com.abdllh.aura.nav.Units
+        return Answer(c.getString(R.string.amri_eta, units.spokenDistance(m, arabic),
+            units.arrival(sec, com.abdllh.aura.util.Prefs.clock24, arabic)))
+    }
+
+    /** The day and date ("السبت 18 أكتوبر"), and the Hijri date in Arabic (Umm al-Qura, as the Kingdom counts it). */
+    private fun today(): String {
+        val loc = Locale.getDefault()
+        val day = java.text.SimpleDateFormat("EEEE d MMMM", loc).format(java.util.Date())
+        if (!arabic) return day
+        return try {
+            val f = android.icu.text.SimpleDateFormat("d MMMM", android.icu.util.ULocale("ar_SA@calendar=islamic-umalqura"))
+            "$day، ${f.format(java.util.Date())}"
+        } catch (_: Throwable) {
+            day
+        }
+    }
+
+    /** The screen brighter or dimmer (Android's brightness: AMRI needs "modify system settings" for it). */
+    private fun brightness(c: Context, cmd: Command.Brightness): Answer {
+        val ctl = com.abdllh.aura.system.Controls
+        val now = ctl.brightnessPercent(c)
+        val to = (cmd.level ?: (now + if (cmd.up) cmd.by else -cmd.by)).coerceIn(5, 100)
+        if (!ctl.setBrightnessPercent(c, to)) {
+            ctl.requestWriteSettings(c)
+            return Answer(c.getString(R.string.amri_brightness_permission), error = true)
+        }
+        val id = when {
+            cmd.level != null -> R.string.amri_brightness_now
+            cmd.up -> R.string.amri_brighter
+            else -> R.string.amri_dimmer
+        }
+        return Answer(c.getString(id, to))
+    }
+
+    /**
+     * The nearest place of a kind: with AMRI Maps, searched near the car and the nearest one said, then the map's
+     * search opened on it; with another navigation app (Settings), that app's own search.
+     */
+    private fun nearby(c: Context, place: Command.Place): Answer {
+        val kind = c.getString(place.label)
+        val query = if (arabic) place.ar else place.en
+        if (!com.abdllh.aura.util.Prefs.builtInMaps) {
+            return if (searchWithApp(c, query)) Answer(c.getString(R.string.amri_nearby_map, kind))
+            else Answer(c.getString(R.string.amri_nearby_none, kind), error = true)
+        }
+        val car = com.abdllh.aura.nav.CarLocation.lastKnown()
+        if (car == null) { // no position yet: the map's search, around where the map is
+            openMapSearch(c, query)
+            return Answer(c.getString(R.string.amri_nearby_map, kind))
+        }
+        return Answer(c.getString(R.string.amri_nearby_looking, kind)) { give ->
+            var best: com.abdllh.aura.nav.Place? = null
+            var told = false
+            fun tell() {
+                if (told) return
+                told = true
+                val b = best
+                if (b == null) give(Answer(c.getString(R.string.amri_nearby_none, kind), error = true))
+                else {
+                    openMapSearch(c, query)
+                    val far = com.abdllh.aura.nav.Units.spokenDistance(com.abdllh.aura.nav.Geo.distance(car, b.pos), arabic)
+                    give(Answer(c.getString(R.string.amri_nearby_found, kind, b.name, far)))
+                }
+            }
+            // the offline map's answer may come first and the internet's later (the list grows): the nearest of all
+            // that came within a moment of the first
+            com.abdllh.aura.nav.Places.search(query, car, arabic) { list ->
+                if (told) return@search
+                if (list == null) { tell(); return@search }
+                list.minByOrNull { com.abdllh.aura.nav.Geo.distance(car, it.pos) }?.let { p ->
+                    val b = best
+                    if (b == null || com.abdllh.aura.nav.Geo.distance(car, p.pos) < com.abdllh.aura.nav.Geo.distance(car, b.pos)) best = p
+                }
+                main.postDelayed({ tell() }, 1500)
+            }
+        }
+    }
+
+    /** "ودني المطار": the map's search on it (or the navigation app's). */
+    private fun searchPlace(c: Context, query: String): Answer {
+        if (com.abdllh.aura.util.Prefs.builtInMaps) openMapSearch(c, query) else searchWithApp(c, query)
+        return Answer(c.getString(R.string.amri_search_place, query))
+    }
+
+    /**
+     * AMRI Maps with its search open on [query]. (MapsActivity takes the query itself only in debug builds, "q"; in
+     * release builds the search opens empty, ready for it.)
+     */
+    private fun openMapSearch(c: Context, query: String) {
+        com.abdllh.aura.nav.MapsActivity.open(c) { putExtra("search", true); putExtra("q", query) }
+    }
+
+    /** The navigation app chosen in Settings, searching [query] around the car (Google Maps: geo:, Waze: its link). */
+    private fun searchWithApp(c: Context, query: String): Boolean {
+        val pkg = com.abdllh.aura.home.AppRepo.navPackage(c) ?: return false
+        val car = com.abdllh.aura.nav.CarLocation.lastKnown()
+        val at = car?.let { String.format(Locale.ROOT, "%.6f,%.6f", it.lat, it.lon) } ?: "0,0"
+        val uri = if (pkg == "com.waze") "waze://?q=${android.net.Uri.encode(query)}" else "geo:$at?q=${android.net.Uri.encode(query)}"
+        com.abdllh.aura.system.HomeGuard.launching(pkg)
+        return try {
+            c.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(uri)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            true
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    /** An app by its name: the installed app whose label is closest (Arabic or Latin: "يوتيوب" finds YouTube). */
+    private fun openApp(c: Context, name: String): Answer {
+        val repo = com.abdllh.aura.home.AppRepo
+        val apps = repo.cached ?: try { repo.load(c) } catch (_: Throwable) { emptyList() }
+        val best = apps.maxByOrNull { com.abdllh.aura.util.TextMatch.score(name, it.label) }
+        if (best == null || com.abdllh.aura.util.TextMatch.score(name, best.label) < 0.8 || !repo.launch(c, best.pkg)) {
+            return Answer(c.getString(R.string.amri_app_missing, name), error = true)
+        }
+        pausedMedia = false // another app in front: the music stays as the owner left it
+        return Answer(c.getString(R.string.amri_open_app, best.label))
+    }
+
+    /** A song by name: YouTube Music's search, its first song handed to the YouTube Music app (AMRI Music's source). */
+    private fun playSong(c: Context, query: String): Answer {
+        val yt = com.abdllh.aura.music.YtMusic
+        if (yt.player(c) == null) { yt.openStore(c); return Answer(c.getString(R.string.amri_song_no_app), error = true) }
+        if (!online(c)) return Answer(c.getString(R.string.amri_song_offline), error = true)
+        return Answer(c.getString(R.string.amri_song_looking, query)) { give ->
+            yt.search(query) { songs ->
+                val song = songs?.firstOrNull()
+                when {
+                    songs == null -> give(Answer(c.getString(R.string.amri_song_offline), error = true))
+                    song == null -> give(Answer(c.getString(R.string.amri_song_none, query), error = true))
+                    !yt.play(c, song) { com.abdllh.aura.music.MusicActivity.open(c) } ->
+                        give(Answer(c.getString(R.string.amri_song_no_app), error = true))
+                    else -> {
+                        pausedMedia = false // it plays on its own; the music paused for the request stays paused
+                        give(Answer(if (song.artist.isBlank()) c.getString(R.string.amri_now_playing_title, song.title)
+                            else c.getString(R.string.amri_song_playing, song.title, song.artist)))
+                    }
+                }
+            }
         }
     }
 
@@ -444,6 +691,7 @@ object Amri {
                 // music the assistant paused plays on, unless the owner wanted it stopped or changed
                 if (pausedMedia && cmd != Command.Pause && cmd != Command.Mute) MediaMonitor.send(c, MediaMonitor.Key.PLAY_PAUSE)
                 pausedMedia = false
+                heardBy = null
                 state = State.IDLE
                 AmriService.resumeMic()
             }

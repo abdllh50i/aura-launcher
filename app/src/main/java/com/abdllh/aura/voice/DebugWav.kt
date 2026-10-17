@@ -14,26 +14,34 @@ import java.util.Locale
 internal object DebugWav {
     private const val TAG = "AuraAmri"
 
-    private fun words(path: String, maxMs: Int = 1600, endHops: Int = 20): List<Pair<ShortArray, ShortArray>> {
-        val b = try { File(path).readBytes() } catch (t: Throwable) { Log.i(TAG, "wav $path: $t"); return emptyList() }
+    /** The samples of a WAV file's "data" chunk (16 kHz, 16-bit mono), or null. */
+    private fun read(path: String): ShortArray? {
+        val b = try { File(path).readBytes() } catch (t: Throwable) { Log.i(TAG, "wav $path: $t"); return null }
         val bb = ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN)
-        // the "data" chunk
         var p = 12
         while (p + 8 <= b.size) {
             val id = String(b, p, 4, Charsets.US_ASCII)
             val len = bb.getInt(p + 4)
             if (id == "data") {
                 val n = minOf(len, b.size - p - 8) / 2
-                val pcm = ShortArray(n) { bb.getShort(p + 8 + it * 2) }
-                val out = ArrayList<Pair<ShortArray, ShortArray>>()
-                val seg = Segmenter(maxMs = maxMs, endHops = endHops) { w, noise -> out.add(w to noise) }
-                seg.feed(pcm, pcm.size)
-                seg.feed(ShortArray(Features.RATE / 2), Features.RATE / 2) // a pause to end the last word
-                return out
+                return ShortArray(n) { bb.getShort(p + 8 + it * 2) }
             }
             p += 8 + len + (len and 1)
         }
-        return emptyList()
+        return null
+    }
+
+    /** [pcm], then half a second of silence that ends its last word, into [sink]. */
+    private fun play(pcm: ShortArray, sink: SoundSink) {
+        sink.feed(pcm, pcm.size)
+        sink.feed(ShortArray(Features.RATE / 2), Features.RATE / 2)
+    }
+
+    private fun words(path: String, maxMs: Int = 1600, endHops: Int = 20): List<Pair<ShortArray, ShortArray>> {
+        val pcm = read(path) ?: return emptyList()
+        val out = ArrayList<Pair<ShortArray, ShortArray>>()
+        play(pcm, Segmenter(maxMs = maxMs, endHops = endHops) { w, noise -> out.add(w to noise) })
+        return out
     }
 
     fun enroll(c: Context, files: List<String>) {
@@ -116,18 +124,30 @@ internal object DebugWav {
         }
     }
 
+    /** The wake word in files, judged as the listener judges the microphone (both listeners, the learned sounds). */
     fun detect(c: Context, files: List<String>) {
         val m = WakeModel.load(c) ?: run { Log.i(TAG, "detect: no model"); return }
         for (f in files) {
-            val ws = words(f)
-            val scores = ws.map { m.score(Features.spectrum(it.first, it.second)) }
-            val best = scores.minOrNull()
-            val bestWord = best?.let { ws[scores.indexOf(it)] }
-            val (v, b) = bestWord?.let { VoiceCheck.measure(it.first, it.second) } ?: (0f to 0f)
-            val wake = best != null && best < Amri.threshold() && VoiceCheck.ok(v, b)
-            Log.i(TAG, "detect ${File(f).name}: ${ws.size} word(s) ${ws.map { it.first.size * 1000 / Features.RATE }} ms, " +
-                "score ${best?.let { "%.2f".format(Locale.ROOT, it) } ?: "-"}, voiced %.2f band %.2f -> ${if (wake) "WAKE" else "no"}"
-                    .format(Locale.ROOT, v, b))
+            val pcm = read(f) ?: continue
+            val verdicts = ArrayList<Verdict>()
+            var wakes = 0
+            play(pcm, WakeDetector(m, { Amri.limits() }, WakeNegatives.file(c), onVerdict = { verdicts.add(it) }) { wakes++ })
+            Log.i(TAG, "detect ${File(f).name}: ${verdicts.size} word(s) -> ${if (wakes > 0) "WAKE x$wakes" else "no"}")
+            for (v in verdicts) Log.i(TAG, "  $v")
+        }
+    }
+
+    /** What wakes in each file, learned as a sound to ignore (as if the owner had not meant it). */
+    fun learn(c: Context, files: List<String>) {
+        val m = WakeModel.load(c) ?: run { Log.i(TAG, "learn: no model"); return }
+        for (f in files) {
+            val pcm = read(f) ?: continue
+            var heard: WakeCandidate? = null
+            play(pcm, WakeDetector(m, { Amri.limits() }, null) { if (heard == null) heard = it })
+            val h = heard
+            val learned = h != null && WakeNegatives.learn(WakeNegatives.file(c), h, Amri.limits())
+            Log.i(TAG, "learn ${File(f).name}: ${h?.verdict ?: "no wake"} -> " +
+                (if (learned) "learned (${WakeNegatives.count(WakeNegatives.file(c))})" else "not learned"))
         }
     }
 }

@@ -89,9 +89,13 @@ class AmriService : Service() {
             model = WakeModel.load(this) ?: return
             modelStamp = f.lastModified()
         }
-        val seg = Segmenter(maxMs = 1500) { word, noise -> onWord(word, noise) }
+        val m = model ?: return
+        val detector = WakeDetector(m, { Limits.of(Amri.sensitivity) }, WakeNegatives.file(this), onVerdict = { v ->
+            lastScore = v.score
+            if (v.score < 2f) Log.d(TAG, "word: $v")
+        }) { c -> onWake(c) }
         lateinit var l: MicLoop
-        l = MicLoop(device(this, Amri.micId), seg, onError = { err ->
+        l = MicLoop(device(this, Amri.micId), detector, onError = { err ->
             Log.w(TAG, err)
             main.post {
                 if (loop !== l) return@post
@@ -112,25 +116,13 @@ class AmriService : Service() {
         try { l.join(300) } catch (_: InterruptedException) { }
     }
 
-    /** A word was heard (microphone thread): the wake word? */
-    private fun onWord(pcm: ShortArray, noise: ShortArray) {
-        val m = model ?: return
+    /** The wake word was heard (microphone thread; [WakeDetector] judged it). */
+    private fun onWake(c: WakeCandidate) {
         if (Amri.inCall || Amri.reversing) return // until the watch takes the microphone away
         val now = SystemClock.elapsedRealtime()
         if (now - lastWake < 1500) return
-        val score = m.score(Features.spectrum(pcm, noise))
-        lastScore = score
-        Log.d(TAG, "word ${pcm.size * 1000 / Features.RATE} ms, score ${"%.2f".format(java.util.Locale.ROOT, score)}")
-        if (score < Amri.threshold()) {
-            // close to the recordings, but is it a voice at all (a bump in the road can come close)?
-            val (v, b) = VoiceCheck.measure(pcm, noise)
-            if (!VoiceCheck.ok(v, b)) {
-                Log.d(TAG, "not a voice: voiced %.2f, voice band %.2f".format(java.util.Locale.ROOT, v, b))
-                return
-            }
-            lastWake = now
-            main.post { Amri.wake(this) }
-        }
+        lastWake = now
+        main.post { Amri.wake(this, c) }
     }
 
     companion object {

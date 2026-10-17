@@ -175,7 +175,7 @@ internal object AmriOverlay {
             texts.addView(sub, lp(MATCH, WRAP))
             addView(texts, lp(0, WRAP, 1f).apply { marginStart = Space.L.dp })
             isClickable = true
-            setOnClickListener { Amri.cancel(context) }
+            setOnClickListener { Amri.cancel(context, byOwner = true) }
         }
 
         fun set(m: Mode, text: String, subText: String?) {
