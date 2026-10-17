@@ -47,8 +47,13 @@ object MapExtras {
     /** A street (or a stretch of one) and its limit. */
     class Speed(val name: String, val kmh: Int, val lines: List<List<LatLon>>)
 
+    // Every field below is written on the main thread only (the io thread reads and parses, then hands the result
+    // over): a fetch that finished while a camera was being marked could otherwise put the old set back.
+
     /** Everything the map and the road watch use: what was published, and the cameras marked on this unit. */
     @Volatile var spots: List<Spot> = emptyList(); private set
+    /** Counts every change of [spots] or [speeds]: a map draws a set again only when it has not drawn this one. */
+    @Volatile var version = 0; private set
     @Volatile private var published: List<Spot> = emptyList()
     /** The cameras marked on this unit (Settings → Navigation lists and clears them). */
     @Volatile var mine: List<Spot> = emptyList(); private set
@@ -115,10 +120,10 @@ object MapExtras {
                     // nothing published yet: not a failure, there is just nothing to show
                     Prefs.raw.edit().putLong(KEY_FETCHED, System.currentTimeMillis()).apply()
                 } else {
-                    apply(text) // (throws on anything that is not the format above: the kept file stays)
+                    val got = apply(text) // (throws on anything that is not the format above: the kept file stays)
                     File(c.filesDir, "$FILE.tmp").apply { writeText(text) }.renameTo(File(c.filesDir, FILE))
                     Prefs.raw.edit().putLong(KEY_FETCHED, System.currentTimeMillis()).apply()
-                    Log.i(TAG, "additions: ${spots.size} spots, ${speeds.size} streets")
+                    Log.i(TAG, "additions: $got")
                 }
             } catch (t: Throwable) {
                 error = t.message ?: t.javaClass.simpleName
@@ -164,8 +169,11 @@ object MapExtras {
         throw last ?: IllegalStateException("no answer")
     }
 
-    /** Reads the format and makes it what the map and the road watch use. Throws on a file that is not the format. */
-    private fun apply(text: String) {
+    /**
+     * Reads the format (io thread) and makes it what the map and the road watch use (on the main thread). Throws on a
+     * file that is not the format; returns what it holds, for the log.
+     */
+    private fun apply(text: String): String {
         val o = JSONObject(text)
         if (o.optInt("version", 0) != 1) throw IllegalStateException("unknown version")
         fun pos(j: JSONObject): LatLon {
@@ -210,12 +218,17 @@ object MapExtras {
                 if (cell != lastCell) { g.getOrPut(cell) { ArrayList() }.add(piece); lastCell = cell }
             }
         }
-        published = newSpots
-        spots = newSpots + mine
-        speeds = newSpeeds
-        grid = g
-        updatedAt = o.optLong("updated", 0L)
-        main.post { for (l in listeners) l() }
+        val upd = o.optLong("updated", 0L)
+        main.post {
+            published = newSpots
+            spots = newSpots + mine
+            speeds = newSpeeds
+            grid = g
+            updatedAt = upd
+            version++
+            for (l in listeners) l()
+        }
+        return "${newSpots.size} spots, ${newSpeeds.size} streets"
     }
 
     // ------------------------------------------------------------------------------------------ cameras marked here
@@ -250,6 +263,7 @@ object MapExtras {
 
     private fun changedMine() {
         spots = published + mine
+        version++
         // (at once, on this thread: a road watch told now does not announce the camera the car is standing at)
         for (l in listeners) l()
         val c = app ?: return
@@ -280,9 +294,12 @@ object MapExtras {
                 val lon = o.getDouble("lon")
                 if (lat in -90.0..90.0 && lon in -180.0..180.0) out.add(Spot(Kind.CAMERA, LatLon(lat, lon), o.optInt("kmh", 0).coerceIn(0, 200), mine = true))
             }
-            mine = out
-            spots = published + out
-            main.post { for (l in listeners) l() }
+            main.post {
+                mine = out
+                spots = published + out
+                version++
+                for (l in listeners) l()
+            }
         } catch (t: Throwable) {
             Log.w(TAG, "my cameras unreadable: $t")
         }
@@ -319,8 +336,24 @@ object MapExtras {
     private const val REACH_M = 24.0
     private const val ALONG_DEG = 38.0
 
-    /** Everything as GeoJSON for the map's layers ([MapStyle]): `kind` camera / signal / bump / speed, and a `label`. */
-    fun geoJson(arabic: Boolean): String = buildString {
+    // the text of the last set asked for: the home map and Maps both ask at every start, mostly for the same set
+    private var jsonKey = -1 to false
+    private var json = ""
+
+    /**
+     * Everything as GeoJSON for the map's layers ([MapStyle]): `kind` camera / signal / bump / speed, and a `label`.
+     * Main thread; made once per set and language (the owner's streets can be thousands of points).
+     */
+    fun geoJson(arabic: Boolean): String {
+        val key = version to arabic
+        if (key != jsonKey) {
+            json = makeJson(arabic)
+            jsonKey = key
+        }
+        return json
+    }
+
+    private fun makeJson(arabic: Boolean): String = buildString {
         append("""{"type":"FeatureCollection","features":[""")
         var first = true
         fun sep() { if (first) first = false else append(',') }
