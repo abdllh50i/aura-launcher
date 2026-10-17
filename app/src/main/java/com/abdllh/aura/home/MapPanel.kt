@@ -69,7 +69,7 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
         // (also when another app does the navigating: the home screen keeps its own live map)
         val allowed = MapGuard.homeMapAllowed(ctx)
         // the live map as it was last seen, while it starts and draws; it fades out once the map has drawn its streets
-        backdrop = MapBackdropView(ctx, if (allowed) MapBackdropView.pictureFile(ctx) else null)
+        backdrop = MapBackdropView(ctx, if (allowed) MapBackdropView.pictureFile(ctx) else null, grid = !allowed)
         if (allowed) {
             val m = AuraMap(ctx, interactive = false, texture = true, guarded = true)
             m.navTopPadding = 0.08 // the player covers the lower part: keep the car in the middle of what is visible

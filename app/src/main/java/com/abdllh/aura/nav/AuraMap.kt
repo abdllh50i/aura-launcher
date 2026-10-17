@@ -137,6 +137,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
     private var trimAt = 0L
     private var turnLine: Polyline? = null
     private var turnAt = 0.0
+    private var turnAfter = TURN_AFTER_M
     private var turnScale = 1.0
     private var dest: LatLon? = null
     private var routeFaded = false
@@ -201,7 +202,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
             view.removeCallbacks(late)
             drawn = true
             onDrawn?.invoke()
-            if (pictureFile != null) view.postDelayed(keepPicture, PICTURE_REST_MS)
+            if (pictureFile != null && pictureWorthy()) view.postDelayed(keepPicture, PICTURE_REST_MS)
             view.post { mapView.removeOnDidFinishRenderingFrameListener(this) }
         }
         fun cancel() = view.removeCallbacks(late)
@@ -572,12 +573,14 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
     /**
      * The arrow of the next turn, drawn on the route: the turn is [at] metres along [line]; null for none. The arrow
      * is made here, in metres on the ground but longer the further out the map is (at motorway zoom a fixed length
-     * shrank to a blob just when exits come quickly); navigating, the camera also closes in on it as it nears.
+     * shrank to a blob just when exits come quickly); navigating, the camera also closes in on it as it nears. It
+     * runs on at least [after] metres past the turn (through a roundabout: to its exit, so the head shows the way out).
      */
-    fun setTurn(line: Polyline?, at: Double = 0.0) {
-        if (line === turnLine && at == turnAt) return
+    fun setTurn(line: Polyline?, at: Double = 0.0, after: Double = TURN_AFTER_M) {
+        if (line === turnLine && at == turnAt && after == turnAfter) return
         turnLine = line
         turnAt = at
+        turnAfter = after
         pushTurn()
     }
 
@@ -598,12 +601,13 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         val k = turnK()
         turnScale = k
         val json = if (line == null || line.points.size < 2) EMPTY else buildString {
-            val pts = line.slice(turnAt - TURN_BEFORE_M * k, turnAt + TURN_AFTER_M * k)
-            val bearing = line.at(turnAt + TURN_AFTER_M * k).second
+            val end = turnAt + maxOf(turnAfter, TURN_AFTER_M * k)
+            val pts = line.slice(turnAt - TURN_BEFORE_M * k, end)
+            val bearing = line.at(end).second
             // the head: a triangle in metres on the ground, so it tilts and turns with the map like the line it ends
-            val end = pts.last()
-            val head = listOf(Geo.offset(end, bearing - 90, HEAD_HALF_M * k), Geo.offset(end, bearing, HEAD_LENGTH_M * k),
-                Geo.offset(end, bearing + 90, HEAD_HALF_M * k))
+            val tip = pts.last()
+            val head = listOf(Geo.offset(tip, bearing - 90, HEAD_HALF_M * k), Geo.offset(tip, bearing, HEAD_LENGTH_M * k),
+                Geo.offset(tip, bearing + 90, HEAD_HALF_M * k))
             fun coords(list: List<LatLon>) = list.joinToString(",") { "[${it.lon},${it.lat}]" }
             append("""{"type":"FeatureCollection","features":[""")
             append("""{"type":"Feature","properties":{},"geometry":{"type":"LineString","coordinates":[${coords(pts)}]}},""")
@@ -908,7 +912,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         if (moving || steering || changing) Choreographer.getInstance().postFrameCallback(frame)
         else {
             looping = false
-            if (pictureFile != null && drawn && now - pictureAt > PICTURE_EVERY_MS) view.postDelayed(keepPicture, PICTURE_REST_MS)
+            if (pictureFile != null && drawn && pictureWorthy() && now - pictureAt > PICTURE_EVERY_MS) view.postDelayed(keepPicture, PICTURE_REST_MS)
         }
     }
 
@@ -932,7 +936,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
     private fun takePicture() {
         val f = pictureFile ?: return
         val m = map ?: return
-        if (!started || !drawn) return
+        if (!started || !drawn || !pictureWorthy()) return
         pictureAt = SystemClock.uptimeMillis()
         try {
             m.snapshot { bmp ->
@@ -950,6 +954,13 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         } catch (_: Throwable) {
         }
     }
+
+    /**
+     * Only the view the next start opens on is worth keeping: following the car, north up and flat, with no trip on it.
+     * A picture taken at a red light while navigating (tilted, heading up, the route and its arrow) cross-faded into
+     * that view as a double exposure, with a route that was no longer there.
+     */
+    private fun pictureWorthy() = camera == Camera.FOLLOW && routeLine == null && routePts == null && dest == null
 
     /** A camera: target, zoom, tilt, bearing and the four paddings (left, top, right, bottom, in pixels). */
     private class Cam(val lat: Double, val lon: Double, val zoom: Double, val tilt: Double, val bearing: Double,
@@ -1001,7 +1012,8 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         // the arrow of the next turn, on the ground at street zoom (longer further out: [turnK])
         private const val TURN_ZOOM = 16.8
         private const val TURN_BEFORE_M = 45.0
-        private const val TURN_AFTER_M = 32.0
+        /** How far past the turn its arrow runs at street zoom, unless [setTurn] asks for more (a roundabout). */
+        const val TURN_AFTER_M = 32.0
         private const val HEAD_LENGTH_M = 15.0
         private const val HEAD_HALF_M = 9.5
         // the driven route: its short part reaches this far ahead of the car, and is made again when less is left
@@ -1032,7 +1044,9 @@ private class CarMarker(ctx: Context) : View(ctx) {
     private var navK = 0f
     private var staleK = 0f
     private val navSpring = Spring(0f, 520f, 1f) { navK = it; invalidate() }
-    private val staleSpring = Spring(0f, 300f, 1f) { staleK = it; alpha = 1f - 0.4f * it; invalidate() }
+    // (the fade is in the paints, not the view's alpha: the marker's shapes overlap, and a view alpha below 1 would
+    // send every frame of it through an offscreen layer for as long as the fixes stay away)
+    private val staleSpring = Spring(0f, 300f, 1f) { staleK = it; invalidate() }
 
     init {
         // (a far camera: the view is tilted by up to 50°, and a near one would stretch its nearer edge)
@@ -1053,7 +1067,7 @@ private class CarMarker(ctx: Context) : View(ctx) {
 
     private fun paint(c: Int, a: Float): Paint {
         p.color = c
-        p.alpha = (Color.alpha(c) * a).toInt()
+        p.alpha = (Color.alpha(c) * a * (1f - 0.4f * staleK)).toInt()
         return p
     }
 
@@ -1093,7 +1107,7 @@ private class CarMarker(ctx: Context) : View(ctx) {
             path.lineTo(cx - 14f.dp, cy + 15f.dp)
             path.close()
             c.drawPath(path, paint(fill, navK))
-            edge.alpha = (255 * navK).toInt()
+            edge.alpha = (255 * navK * (1f - 0.4f * staleK)).toInt()
             c.drawPath(path, edge)
             c.restore()
         }

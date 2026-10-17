@@ -57,7 +57,8 @@ pays for fill-extrusions, the most expensive layer this GPU draws; browsing clos
 Browsing, it is a disc with a heading arrow. While a route is driven (`setRouteAhead`) it becomes a chevron (34 × 28 dp) in
 the route's colour, with a white edge and a contact shadow. It is laid on the road with `rotationX` = 0.85 × the
 camera's tilt, which is a transform only, and it crossfades disc to chevron on a `Spring`. With no fix for 5 s
-(`STALE_MS`) it turns grey and 60 % opaque, and the next fix brings it back. `placeOverlays()` writes translation,
+(`STALE_MS`) it turns grey and 60 % opaque, and the next fix brings it back. The fade is in its paints, not the
+view's `alpha`: its shapes overlap, so a view alpha below 1 would draw it through an offscreen layer on every frame. `placeOverlays()` writes translation,
 rotation and tilt only when they changed (0.5 px / 0.5°), because a view that moves makes the window draw again.
 Not done: callers still pass bearing 0 for a fix without one. That only matters above 6 km/h, where a fix nearly
 always has a bearing. Below that the last heading is kept anyway.
@@ -83,19 +84,23 @@ always has a bearing. Below that the last heading is kept anyway.
 * **Navigating** hides `poi-b`, `poi-c`, `poi-d` and the house numbers (`MapStyle.NAV_HIDDEN`, applied in
   `AuraMap.syncLayers` on every camera mode change and after a style load). Band a (the most important places,
   fuel among them) stays.
-* **Buildings** are drawn after the roads: a street in front of a building passes behind its walls instead of being
-  painted across them. Flat footprints show from zoom 13 with no upper limit; 3D starts at 17 (see Frame rate). The
-  style has a `light` (intensity 0.3 at night, 0.4 by day) so lit roofs do not glare.
+* **Buildings**: the 3D buildings (from zoom 17, see Frame rate) are drawn after the roads, so a street in front of
+  a building passes behind its walls instead of being painted across them. The flat footprints stay under the roads,
+  from zoom 13 with no upper limit. The style has a `light` (intensity 0.3 at night, 0.4 by day) so lit roofs do not
+  glare.
 * **Bridges, ramps, tunnels**: roads on the ground exclude both bridges and tunnels. `bridge-casing` and `bridge`
-  draw every flyover over all ground roads, in its class's colour and width (`classWidth`, made from the same
-  `W` stops as the class layers). Motorway slip roads (`ramp=1`) are 60 % wide. Main tunnels are a quiet band of
-  their own width (`tunnel-major`); small ones keep the dashed line.
+  draw every flyover (motorway down to service and track) over all ground roads, in its class's colour and width
+  (`classWidth`, made from the same `W` stops as the class layers, from zoom 5 like the motorways, so a viaduct
+  shows wherever its class does). Motorway slip roads (`ramp=1`) are 60 % wide, on a bridge too: most of an
+  interchange's ramps are flyovers. Main tunnels are a quiet band of their own width (`tunnel-major`); small ones
+  keep the dashed line.
 * **Labels**: street names stand up to the viewer on the tilted map (`text-pitch-alignment: viewport`); flat, they
   were squashed to about 60 % while driving. They are a little larger, and every text size is ×1.12 in Arabic
   (`ts()`), whose letters read about a size smaller than Latin at the same pixel size.
-* **The turn arrow** is built by `AuraMap.setTurn(line, at)` (it was a slice made by MapsActivity). It is 45 m
-  before and 32 m after the turn at zoom 16.8, scaled by 2^(16.8 − zoom) up to ×3, and rebuilt when the zoom has
-  changed that scale by more than 15 %. At motorway zoom it no longer shrinks to a blob. Its layers are **over the
+* **The turn arrow** is built by `AuraMap.setTurn(line, at, after)` (it was a slice made by MapsActivity). It is
+  45 m before and 32 m (`AuraMap.TURN_AFTER_M`) after the turn at zoom 16.8, scaled by 2^(16.8 − zoom) up to ×3,
+  and rebuilt when the zoom has changed that scale by more than 15 %. `after` makes it run on further (a
+  roundabout, to its exit): the arrow ends at `max(after, 32 m × scale)`. At motorway zoom it no longer shrinks to a blob. Its layers are **over the
   labels**: a place's name sitting on the turn hid its head. The home map shows it too (MapPanel, same rule: within
   900 m, not depart/arrive, not while rerouting).
 * **The destination** is drawn by the map (`SRC_DEST`, three circle layers lying on the ground: halo, ring, core in
@@ -107,11 +112,14 @@ always has a bearing. Below that the last heading is kept anyway.
   after its first frame (offline, tiles that never come). `MapGuard.ok` still fires on the first frame. It replaces
   `onFirstFrame`, which fired on the first frame of land colour before any tile.
 * The home map keeps a picture of itself (`pictureFile`, `cacheDir/home-map-{dark|light}-{lang}.webp`, WebP 80). It
-  is taken with `MapboxMap.snapshot` 3 s after the map came to rest, at most once a minute. At the next start
-  `MapBackdropView` shows that picture over the live map until `onDrawn`, then fades it out over `Motion.AMBIENT`.
-  The car is usually still where it was parked, so the screen opens on the real streets. The synthetic street grid is
-  only for the very first start and for the `MapGuard` fallback, and it now uses the style's own colours
-  (`MapStyle.tones()`).
+  is taken with `MapboxMap.snapshot` 3 s after the map came to rest, at most once a minute, and only of the view the
+  next start opens on (`pictureWorthy()`: FOLLOW, no route, no destination). A picture taken at a red light while
+  navigating (tilted, heading up, with the route) cross-faded into the north-up start as a double exposure.
+* At the next start `MapBackdropView` shows that picture over the live map until `onDrawn`, then fades it out over
+  `Motion.AMBIENT`. The car is usually still where it was parked, so the screen opens on the real streets. With no
+  picture yet (first start for a theme and language, or `cacheDir` cleared) it is the plain land colour: the
+  synthetic street grid ghosted over the real streets during the fade. The grid (`grid = true`) is only for the
+  `MapGuard` fallback, and it now uses the style's own colours (`MapStyle.tones()`).
 * The backdrop is no longer shown again at `onStop`. The TextureView keeps its last frame across stop, which I
   checked on the emulator going home from Maps: the map was there at once, with no flash.
 * Once the map has drawn, the panel's own `mapLand` fill is removed. It sat under an opaque map on every map frame.
@@ -125,10 +133,31 @@ always has a bearing. Below that the last heading is kept anyway.
   rebuilt and reparsed at every start of the home screen and of Maps.
 
 ## TileServer
-There are two small pools of background-priority threads instead of a cached pool at the UI's priority. Three answer
-from the disk, and six fetch online, so a stored tile never waits behind a fetch. A zoom asks for dozens of tiles at
+There are small pools of background-priority threads instead of a cached pool at the UI's priority. Three answer
+from the disk, six fetch tiles online and two fetch glyph ranges online, so a stored tile never waits behind a fetch
+and a missing glyph range (which holds up the labels of every tile that needs it) never waits behind tiles. A zoom asks for dozens of tiles at
 once; in 1.11 each got a thread of its own, and that burst competed with the gesture that caused it. If map loading
 feels slower on the unit, raise the online pool first.
+
+## Merging with the home and maps-UI branches
+Two hunks here are outside this area's files, and both meet changes on the other branches. Neither merges by
+itself; resolve them by hand as follows.
+* **`home/MapPanel.kt` (rd-home)** builds the live map late, in `startLive()`, still sets `m.onFirstFrame` (gone
+  from `AuraMap`: it no longer compiles) and adds the map *over* the placeholder. The hand-off needs the opposite
+  order: the backdrop over the live map, faded by `onDrawn`. In the merged file:
+  * keep `MapGuard.homeMapAllowed(ctx)` in a field `allowed`, declared before the backdrop, and make the backdrop
+    `MapBackdropView(ctx, if (allowed) MapBackdropView.pictureFile(ctx) else null, grid = !allowed)`;
+  * in `startLive()`, `if (allowed)`: set `m.pictureFile = MapBackdropView.pictureFile(ctx)` and
+    `m.onDrawn = { background = null; if (backdrop.visibility == View.VISIBLE) backdrop.fadeTo(0f, Motion.AMBIENT) { backdrop.visibility = View.GONE } }`,
+    drop the `onFirstFrame` line, and add the map under the backdrop: `addView(m.view, indexOfChild(backdrop), flp(MATCH, MATCH))`;
+  * drop rd-home's `backdrop.visibility = View.VISIBLE` in `onStop()` (see above: the TextureView keeps its frame, and
+    after `fadeTo` the backdrop's alpha is 0, so the line would show nothing anyway);
+  * keep this branch's `setTurn` lines in `syncNav()` (`m.setTurn(null)` when the trip ends, and the turn ahead
+    within 900 m, not depart or arrive, not while rerouting).
+* **`nav/MapsActivity.kt` (rd-mapsui)** runs the arrow through a roundabout to its exit
+  (`after = (step.span + 15).coerceIn(TURN_ARROW_AFTER_M, 125.0)`) and calls the 1.11 `setTurn(List<LatLon>, bearing)`.
+  In the merged file call `map.setTurn(r.line, step.at, after)`, with that `after` computed from `step.span` and
+  `AuraMap.TURN_AFTER_M` in place of `TURN_ARROW_AFTER_M`; `TURN_ARROW_BEFORE_M` and `TURN_ARROW_AFTER_M` go.
 
 ## For other files (not changed here)
 * `Palette.mapBlock`, `mapPark`, `mapWater`, `mapRoad`, `mapRoadMajor` and `mapCasing` are no longer used (the

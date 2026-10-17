@@ -200,12 +200,16 @@ object MapStyle {
         // A slip road is a single lane: drawn at 60 % of its motorway, not as a second motorway beside it.
         fun motorWidth(extra: Double) = """["interpolate",["exponential",1.5],["zoom"],${wMotor.stops.joinToString(",") {
             """${num(it.first)},["+",["*",["case",["==",["get","ramp"],1],0.6,1],${num(it.second)}],${num(extra)}]""" }}]"""
-        // A road drawn by its class in one layer (bridges, main tunnels): each class at the width of its own layer.
-        fun classWidth(extra: Double) = """["interpolate",["exponential",1.5],["zoom"],${listOf(10.0, 12.0, 14.0, 16.0, 18.0).joinToString(",") { z ->
-            """${num(z)},["match",["get","class"],["motorway","trunk"],${num(wMotor.at(z) + extra)},"primary",${num(wPrimary.at(z) + extra)},""" +
-            """"secondary",${num(wSecondary.at(z) + extra)},"tertiary",${num(wTertiary.at(z) + extra)},${num(wMinor.at(z) + extra)}]""" }}]"""
-        fun byClass(motorway: String, primary: String, secondary: String, tertiary: String, other: String) =
-            """["match",["get","class"],["motorway","trunk"],"$motorway","primary","$primary","secondary","$secondary","tertiary","$tertiary","$other"]"""
+        // A road drawn by its class in one layer (bridges, main tunnels): each class at the width of its own layer, a
+        // slip road too (most of an interchange's ramps are flyovers: at motorway width they swelled on every bridge).
+        // Stops from zoom 5, where the motorways start, so a viaduct shows wherever its class does.
+        fun classWidth(extra: Double) = """["interpolate",["exponential",1.5],["zoom"],${listOf(5.0, 7.0, 9.0, 10.0, 12.0, 14.0, 16.0, 18.0).joinToString(",") { z ->
+            """${num(z)},["match",["get","class"],["motorway","trunk"],["+",["*",["case",["==",["get","ramp"],1],0.6,1],${num(wMotor.at(z))}],${num(extra)}],""" +
+            """"primary",${num(wPrimary.at(z) + extra)},"secondary",${num(wSecondary.at(z) + extra)},"tertiary",${num(wTertiary.at(z) + extra)},""" +
+            """["service","track"],${num(wService.at(z) + extra)},${num(wMinor.at(z) + extra)}]""" }}]"""
+        fun byClass(motorway: String, primary: String, secondary: String, tertiary: String, service: String, other: String) =
+            """["match",["get","class"],["motorway","trunk"],"$motorway","primary","$primary","secondary","$secondary","tertiary","$tertiary",""" +
+            """["service","track"],"$service","$other"]"""
 
         // The route is wider than the road it is on at driving zoom (a stripe down the middle of a wider road read as
         // a detail, not as "your road"), and stays a clear line when the map is far out.
@@ -291,10 +295,10 @@ object MapStyle {
             road("road-primary", all(ground, cls("primary")), c.primary, width(wPrimary), 7),
             road("road-motorway", all(ground, cls("motorway", "trunk")), c.motorway, motorWidth(0.0), 5),
             // bridges over all of them: a flyover crosses the motorway under it instead of being cut by it
-            road("bridge-casing", all("""["==",["get","brunnel"],"bridge"]""", cls("motorway", "trunk", "primary", "secondary", "tertiary", "minor")),
-                byClass(c.motorwayCasing, c.primaryCasing, c.casing, c.casing, c.casing), classWidth(2.4), 12, "butt"),
-            road("bridge", all("""["==",["get","brunnel"],"bridge"]""", cls("motorway", "trunk", "primary", "secondary", "tertiary", "minor")),
-                byClass(c.motorway, c.primary, c.secondary, c.tertiary, c.minor), classWidth(0.0), 12),
+            road("bridge-casing", all("""["==",["get","brunnel"],"bridge"]""", cls("motorway", "trunk", "primary", "secondary", "tertiary", "minor", "service", "track")),
+                byClass(c.motorwayCasing, c.primaryCasing, c.casing, c.casing, c.casing, c.casing), classWidth(2.4), 5, "butt"),
+            road("bridge", all("""["==",["get","brunnel"],"bridge"]""", cls("motorway", "trunk", "primary", "secondary", "tertiary", "minor", "service", "track")),
+                byClass(c.motorway, c.primary, c.secondary, c.tertiary, c.service, c.minor), classWidth(0.0), 5),
             """{"id":"rail","type":"line","source":"omt","source-layer":"transportation","minzoom":12,"filter":${cls("rail", "transit")},
                "paint":{"line-color":"${c.rail}","line-width":${width(12 to 0.6, 18 to 2.5)},"line-dasharray":[4,3]}}""",
             building3d,

@@ -29,8 +29,8 @@ import java.util.zip.GZIPInputStream
  * new version of the planet every week under a new address: tiles kept under those addresses (MapLibre's own offline
  * regions) would stop being found a week after the download. Here a tile is just z/x/y.
  *  - A fixed port keeps the addresses (and so MapLibre's cache of them) the same across restarts.
- *  - Two small pools of background-priority threads: one answers from the disk, the other fetches online, so a tile
- *    on disk never waits behind one that is being fetched. A zoom asks for dozens of tiles at once: until 1.11 each
+ *  - Small pools of background-priority threads: one answers from the disk, the others fetch online (tiles, glyphs),
+ *    so a tile on disk never waits behind one that is being fetched. A zoom asks for dozens of tiles at once: until 1.11 each
  *    got a thread of its own at the UI thread's priority, and that burst competed with the gesture that caused it.
  *  - When the internet is down, OpenFreeMap is not asked again for half a minute (no 5-15 s waits per tile), and the
  *    tile address is refreshed in the background, never while a tile waits.
@@ -54,6 +54,9 @@ object TileServer {
     }.apply { allowCoreThreadTimeOut(true) }
     private val local = pool(3, "aura-tiles-disk")
     private val online = pool(6, "aura-tiles-net")
+    // (glyph ranges have their own: a missing one holds up the labels of every tile that needs it, and it must not
+    // wait behind a zoom's worth of tile fetches)
+    private val fonts = pool(2, "aura-glyphs-net")
     @Volatile private var template: String? = null
     @Volatile private var templateAt = 0L
     private val refreshing = AtomicBoolean(false)
@@ -109,7 +112,7 @@ object TileServer {
                 else -> { write(out, Reply(404, cache = false)); null }
             } ?: return
             handed = true
-            online.execute {
+            (if (path.startsWith("/f/")) fonts else online).execute {
                 s.use {
                     try { fetchIt() } catch (t: Throwable) { Log.d(TAG, "serve: $t") }
                 }

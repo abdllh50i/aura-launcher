@@ -22,12 +22,13 @@ import java.util.concurrent.Executors
 /**
  * What the home screen's map panel shows until the live map has drawn: the picture of the live map kept the last time
  * it came to rest ([picture], see [com.abdllh.aura.nav.AuraMap.pictureFile]) — the car is usually still where it was
- * parked, so the screen opens on the real streets and the live map takes over almost unseen — or, before there is
- * such a picture (and in place of the live map when it cannot run, [com.abdllh.aura.nav.MapGuard]), a quiet street
- * grid with a park and a waterfront in the map's own colours. Made once per size into a bitmap on a background thread
- * and faded in; static afterwards.
+ * parked, so the screen opens on the real streets and the live map takes over almost unseen. Before there is such a
+ * picture it is the map's plain land colour: invented streets cross-fading over the real ones read as a ghost map.
+ * In place of the live map when it cannot run ([com.abdllh.aura.nav.MapGuard], [grid]) it is a quiet street grid
+ * with a park and a waterfront in the map's own colours. Made once per size into a bitmap on a background thread and
+ * faded in; static afterwards.
  */
-class MapBackdropView(context: Context, private val picture: File?) : View(context) {
+class MapBackdropView(context: Context, private val picture: File?, private val grid: Boolean) : View(context) {
     private var bmp: Bitmap? = null
     private var reveal = 0f
     private var generation = 0
@@ -45,8 +46,9 @@ class MapBackdropView(context: Context, private val picture: File?) : View(conte
         val dark = Palette.dark
         val density = 1f.dp
         val pic = picture
+        val streets = grid
         RENDER.execute {
-            val b = try { pic?.let { load(it, w, h) } ?: render(w, h, tones, dark, rtl, density) } catch (_: Throwable) { null }
+            val b = try { pic?.let { load(it, w, h) } ?: if (streets) render(w, h, tones, dark, rtl, density) else null } catch (_: Throwable) { null }
             MAIN.post {
                 if (gen != generation || b == null) return@post
                 bmp = b
