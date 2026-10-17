@@ -929,6 +929,10 @@ class Installer:
                       '  done < $A\n'
                       '  rm -f $A\n'
                       'fi\n'
+                      # Android's heads-up notifications, kept by Aura when it switched them off (1.13)
+                      'H=/data/data/com.abdllh.aura/files/heads-up-before\n'
+                      'if [ -f $H ]; then settings put global heads_up_notifications_enabled "$(cat $H)" >/dev/null 2>&1; rm -f $H; fi\n'
+                      'cmd notification disallow_listener com.abdllh.aura/com.abdllh.aura.media.AuraNotificationListener >/dev/null 2>&1\n'
                       '[ "$(settings get system phone_connect_style 2>/dev/null)" = "0" ] && '
                       'settings put system phone_connect_style 3 && settings put system recheck_phone_connect_style 1\n'
                       'setprop persist.nwd.launcher.default com.android.launcher\n'

@@ -246,6 +246,9 @@ if [ -f $A ]; then
   done < $A
   rm -f $A
 fi
+H=/data/data/com.abdllh.aura/files/heads-up-before
+if [ -f $H ]; then settings put global heads_up_notifications_enabled "$(cat $H)" >/dev/null 2>&1; rm -f $H; fi
+cmd notification disallow_listener com.abdllh.aura/com.abdllh.aura.media.AuraNotificationListener >/dev/null 2>&1
 [ "$(settings get system phone_connect_style 2>/dev/null)" = "0" ] && settings put system phone_connect_style 3 && settings put system recheck_phone_connect_style 1
 setprop persist.nwd.launcher.default com.android.launcher
 pm uninstall com.abdllh.aura >/dev/null 2>&1

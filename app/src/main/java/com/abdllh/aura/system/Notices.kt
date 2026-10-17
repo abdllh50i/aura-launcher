@@ -6,6 +6,7 @@ import android.content.Context
 import android.provider.Settings
 import android.util.Log
 import com.abdllh.aura.util.Prefs
+import java.io.File
 import java.util.concurrent.Executors
 
 /**
@@ -33,8 +34,8 @@ object Notices {
     private const val KEY_HIDE = "hideAndroidNotices"
     private const val KEY_MESSAGES = "showPhoneMessages"
     private const val KEY_TEXT = "showMessageText"
-    /** The heads-up setting from before AMRI switched it off (-1: AMRI has not touched it). */
-    private const val KEY_HEADS_UP_BEFORE = "headsUpBefore"
+    /** The heads-up setting from before AMRI switched it off (no file: AMRI has not touched it). */
+    private const val BEFORE_FILE = "heads-up-before"
     private const val HEADS_UP = "heads_up_notifications_enabled"
 
     private val worker = Executors.newSingleThreadExecutor() // the root shell: one change at a time, never on main
@@ -87,18 +88,20 @@ object Notices {
 
     /**
      * Heads-up cards off (what was set before is kept), or back to what they were — only when AMRI switched them off:
-     * an owner who had turned them off himself keeps that.
+     * an owner who had turned them off himself keeps that. The value from before is kept in a file of its own
+     * (files/heads-up-before), which the ROM's restore reads too, as it does the animation scales.
      */
     private fun headsUp(c: Context, off: Boolean) {
         val cr = c.contentResolver
         val now = try { Settings.Global.getInt(cr, HEADS_UP, 1) } catch (_: Throwable) { 1 }
-        val before = Prefs.raw.getInt(KEY_HEADS_UP_BEFORE, -1)
+        val kept = File(c.filesDir, BEFORE_FILE)
+        val before = try { kept.readText().trim().toInt() } catch (_: Throwable) { -1 }
         if (off) {
             if (now == 0) return
-            if (putGlobal(c, HEADS_UP, 0)) Prefs.raw.edit().putInt(KEY_HEADS_UP_BEFORE, now).apply()
+            if (putGlobal(c, HEADS_UP, 0)) try { kept.writeText("$now") } catch (t: Throwable) { Log.w(TAG, "keep: $t") }
         } else {
             if (before < 0) return
-            if (now != 0 || putGlobal(c, HEADS_UP, before)) Prefs.raw.edit().remove(KEY_HEADS_UP_BEFORE).apply()
+            if (now != 0 || putGlobal(c, HEADS_UP, before)) kept.delete()
         }
     }
 
