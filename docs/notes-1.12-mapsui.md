@@ -80,8 +80,12 @@ bottom cards +16 dp with a 60 ms delay (after the top one), the recenter pill an
 - Search keeps the old rows, dimmed, with a spinner in the clear button's place, until the answer replaces them (the
   card no longer collapses and grows on every letter). Without a fix it biases to the map's centre. Photon's bias is
   stronger (`zoom=12`, `location_bias_scale=0.1`), and `Places.rank` orders equally good names by distance band
-  (< 5, 30, 150 km, further) and drops results over 500 km away while one under 150 km answers.
-- Address parts are joined with the UI language's comma ("، " in Arabic), whatever the name's script.
+  (< 5, 30, 150 km, further) and drops results over 500 km away while one under 150 km answers. A name that holds
+  the whole query counts as good as the query itself, so "Al Dawa Pharmacy" 230 m away comes before "Pharmacy" in
+  Dammam.
+- Address parts are joined with the UI language's comma ("، " in Arabic), whatever the name's script, and the detail
+  lines read in the UI's direction (`TEXT_DIRECTION_LOCALE`): an address starting with a Latin street name turned the
+  whole Arabic line around.
 - The results card measures its room in its own measure pass and re-measures when the keyboard comes or goes; it is
   cut at half a row so the cut reads as "more below".
 - The clear button follows the field's text (also a place's name put there), not only typing.

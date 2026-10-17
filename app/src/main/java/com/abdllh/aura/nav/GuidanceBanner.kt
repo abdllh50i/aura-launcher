@@ -211,7 +211,8 @@ class GuidanceBanner(ctx: Context, val compact: Boolean = false) : LinearLayout(
             then.at - (step.at + step.span) < maxOf(250.0, p.speedKmh / 3.6 * 12)
         if (soon && then != null) {
             thenIcon?.show(then)
-            thenText?.setIfChanged("${context.getString(R.string.maps_then)} ${Instructions.action(then, ar)}")
+            val next = Instructions.action(then, ar)
+            thenText?.setIfChanged("${context.getString(R.string.maps_then)} ${if (ar) next else next.replaceFirstChar { it.lowercase() }}")
         }
         thenRow?.reveal(soon, -6f)
     }
