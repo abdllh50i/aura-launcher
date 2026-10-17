@@ -20,6 +20,11 @@ fun lp(w: Int, h: Int, weight: Float = 0f): LinearLayout.LayoutParams = LinearLa
 
 fun flp(w: Int, h: Int, gravity: Int = Gravity.NO_GRAVITY): FrameLayout.LayoutParams = FrameLayout.LayoutParams(w, h, gravity)
 
+/**
+ * A label at a literal size. Prefer the overload that takes a [Type] role; this one stays for the screens that have
+ * not moved to the roles yet.
+ * Without a [gravity] its text starts at the layout's start edge whatever script it is in (see [AText.alignStart]).
+ */
 fun Context.label(
     sizeSp: Float,
     color: Int = Palette.text,
@@ -34,7 +39,29 @@ fun Context.label(
         maxLines = lines
         ellipsize = TextUtils.TruncateAt.END
     }
+    alignStart = true
     if (gravity != Gravity.NO_GRAVITY) this.gravity = gravity
+}
+
+/**
+ * A label in one of the [Type] roles (the preferred way since 1.12). Text that may wrap ([lines] other than 1) gets
+ * 1.15 line spacing: Arabic's marks above and below the letters touch the next line at 1.0.
+ */
+fun Context.label(
+    role: Type.Role,
+    color: Int = Palette.text,
+    lines: Int = 1,
+    gravity: Int = Gravity.NO_GRAVITY
+): AText = label(role.sp, color, role.weight, lines, gravity).apply {
+    if (role.tabular) fontFeatureSettings = "tnum"
+    if (lines != 1) setLineSpacing(0f, 1.15f)
+}
+
+/** Gives an existing label a [Type] role (size, weight, figures). */
+fun AText.textRole(role: Type.Role) {
+    textSize = role.sp
+    weight = role.weight
+    fontFeatureSettings = if (role.tabular) "tnum" else null
 }
 
 fun Context.iconView(res: Int, sizeDp: Int, tint: Int = Palette.text): ImageView = ImageView(this).apply {
@@ -49,10 +76,11 @@ fun Context.spacer(wDp: Int = 0, hDp: Int = 0, weight: Float = 0f): View = View(
 }
 
 /**
- * Round icon button (quick toggles). [active] tints the icon with the accent colour. [flat]: no surface of its own
- * (it sits in a strip that has one); active, a soft accent circle shows.
+ * Round icon button (quick toggles). [active] tints the icon with the accent colour (its foreground form,
+ * [Palette.accentFg]). [flat]: no surface of its own (it sits in a strip that has one); active, a soft accent circle
+ * shows.
  */
-class RoundBtn(context: Context, private val res: Int, private val sizeDp: Int = 56, private val flat: Boolean = false) : FrameLayout(context) {
+class RoundBtn(context: Context, private val res: Int, private val sizeDp: Int = Touch.MIN, private val flat: Boolean = false) : FrameLayout(context) {
     private val img = ImageView(context)
     var active = false
         set(v) { field = v; restyle() }
@@ -66,7 +94,7 @@ class RoundBtn(context: Context, private val res: Int, private val sizeDp: Int =
         val pad = (sizeDp * 0.27f).toInt().dp
         addView(img, flp(MATCH, MATCH).also { it.setMargins(pad, pad, pad, pad) })
         restyle()
-        pressScale(0.92f)
+        pressScale(Motion.PRESS_ICON)
     }
 
     fun setIcon(r: Int) { img.setImageResource(r) }
@@ -74,7 +102,7 @@ class RoundBtn(context: Context, private val res: Int, private val sizeDp: Int =
     private fun restyle() {
         if (flat) {
             background = Shapes.pressable(Shapes.oval(if (active) Palette.accentSoft() else 0), Shapes.oval(Palette.press))
-            img.setColorFilter(if (active) Palette.accent else Palette.text)
+            img.setColorFilter(if (active) Palette.accentFg else Palette.text)
             return
         }
         // light theme: white buttons lifted by a soft shadow; dark theme: flat tonal buttons
@@ -83,8 +111,8 @@ class RoundBtn(context: Context, private val res: Int, private val sizeDp: Int =
             else Shapes.oval(if (Palette.dark) Palette.card2 else Palette.card),
             Shapes.oval(Palette.card3)
         )
-        elevate(if (Palette.dark) 0f else 3f)
-        img.setColorFilter(if (active) Palette.accent else Palette.text)
+        lift(Elev.REST)
+        img.setColorFilter(if (active) Palette.accentFg else Palette.text)
     }
 
     fun refreshTheme() = restyle()

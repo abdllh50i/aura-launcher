@@ -11,8 +11,10 @@ object Prefs {
 
     fun init(ctx: Context) {
         sp = ctx.getSharedPreferences("aura", Context.MODE_PRIVATE)
-        // 1.0 offered a near-white accent, which disappears on the light theme: it became "graphite"
-        if (sp.getInt("accent", 0) == 0xFFE8EAED.toInt()) accent = 0xFF8E959F.toInt()
+        // 1.0 offered a near-white accent, which disappears on the light theme: it became "graphite". 1.12 darkened
+        // graphite (white labels on the old one were 3:1), so a saved old one would match no swatch any more.
+        val saved = sp.getInt("accent", 0)
+        if (saved == 0xFFE8EAED.toInt() || saved == Palette.OLD_GRAPHITE) accent = Palette.accents.last()
         Palette.accent = accent
     }
 

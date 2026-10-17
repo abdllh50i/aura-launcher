@@ -7,11 +7,15 @@ import android.graphics.RectF
 import android.view.Gravity
 import android.widget.LinearLayout
 import com.abdllh.aura.util.dp
+import kotlin.math.max
+import kotlin.math.min
 
 /**
  * Choices side by side in a pill; the chosen one sits on a filled indicator that slides to a new choice (its two edges
  * on springs of their own, so it stretches a little on the way, like a drop of liquid). [equal]: all choices as wide
- * (tabs); otherwise each as wide as its label.
+ * (tabs); otherwise each as wide as its label. Give it at least [Touch.MIN] of height.
+ * A label takes the colour of the indicator's text as the indicator comes over it, by how much of it is covered:
+ * recoloured at the tap, the new label showed white on the light track (unreadable) until the indicator arrived.
  */
 class Segmented(
     ctx: Context,
@@ -27,18 +31,18 @@ class Segmented(
     private var edgeL = 0f
     private var edgeR = 0f
     private var placed = false
-    private val leftSpring = Spring(0f, 520f, 0.82f, 0.5f) { edgeL = it; invalidate() }
-    private val rightSpring = Spring(0f, 520f, 0.82f, 0.5f) { edgeR = it; invalidate() }
+    private val leftSpring = Spring(0f, 520f, 0.82f, 0.5f) { edgeL = it; moved() }
+    private val rightSpring = Spring(0f, 520f, 0.82f, 0.5f) { edgeR = it; moved() }
     var selected = 0
         private set
     var indicator = Palette.accent
-        set(v) { if (v != field) { field = v; restyleText(); invalidate() } }
+        set(v) { if (v != field) { field = v; tint(); invalidate() } }
     /** Text on the indicator ([Palette.onColor] of it when 0). */
     var onIndicator = 0
-        set(v) { field = v; restyleText() }
+        set(v) { field = v; tint() }
     var trackColor = 0
         set(v) { field = v; invalidate() }
-    private val pad = 4.dp
+    private val pad = Space.XS.dp
 
     init {
         orientation = HORIZONTAL
@@ -49,18 +53,21 @@ class Segmented(
                 text = s
                 isClickable = true
                 setPadding(18.dp, 0, 18.dp, 0)
+                pressScale(Motion.PRESS_CONTROL)
                 setOnClickListener { if (i != selected) { select(i); onSelect(i) } }
             }
         }
         for (v in items) addView(v, if (equal) lp(0, MATCH, 1f) else lp(WRAP, MATCH))
-        restyleText()
+        tint()
     }
+
+    /** The label of choice [i] (to give one its own typeface, as the language picker's "العربية"). */
+    fun item(i: Int): AText = items[i]
 
     fun select(i: Int, animate: Boolean = true) {
         selected = i.coerceIn(0, items.size - 1)
-        restyleText()
         val v = items[selected]
-        if (v.width == 0) { placed = false; requestLayout(); return } // placed when laid out
+        if (v.width == 0) { placed = false; tint(); requestLayout(); return } // placed when laid out
         val l = v.left.toFloat()
         val rt = v.right.toFloat()
         if (!animate || !placed || !isShown) {
@@ -88,9 +95,19 @@ class Segmented(
         }
     }
 
-    private fun restyleText() {
+    private fun moved() {
+        tint()
+        invalidate()
+    }
+
+    /** Each label in the indicator's text colour by the share of it the indicator covers (before placing: the chosen one). */
+    private fun tint() {
         val on = if (onIndicator != 0) onIndicator else Palette.onColor(indicator)
-        for ((i, v) in items.withIndex()) v.setTextColor(if (i == selected) on else Palette.text2)
+        for ((i, v) in items.withIndex()) {
+            val cover = if (!placed || v.width == 0) (if (i == selected) 1f else 0f)
+            else ((min(edgeR, v.right.toFloat()) - max(edgeL, v.left.toFloat())).coerceAtLeast(0f) / v.width)
+            v.setTextColor(Palette.mix(Palette.text2, on, cover))
+        }
     }
 
     override fun dispatchDraw(c: Canvas) {

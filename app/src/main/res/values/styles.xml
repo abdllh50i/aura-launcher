@@ -12,6 +12,10 @@
         <item name="android:forceDarkAllowed">false</item>
         <item name="android:windowContentTransitions">false</item>
         <item name="android:windowAnimationStyle">@style/Aura.ScreenChange</item>
+        <!-- No starting window: it can only be drawn in these XML colours, the dark theme's, so on the light theme
+             (all day under "auto") every screen opened on near-black for the whole of its onCreate. The opening
+             animation starts on the screen's real first frame instead; the press on what opened it answered the tap. -->
+        <item name="android:windowDisablePreview">true</item>
     </style>
 
     <!-- Opening and closing AMRI's screens (they play while the system's transition animations are on: see
@@ -27,8 +31,10 @@
         <item name="android:taskCloseExitAnimation">@anim/aura_close_exit</item>
     </style>
 
+    <!-- The home screen keeps its starting window: it is only seen at a cold start, where something must show at once. -->
     <style name="Theme.Aura.Home" parent="Theme.Aura">
         <item name="android:windowShowWallpaper">false</item>
+        <item name="android:windowDisablePreview">false</item>
     </style>
 
     <!-- BootHome: the black the boot animation ends on, until the home screen can start; nothing moves. -->

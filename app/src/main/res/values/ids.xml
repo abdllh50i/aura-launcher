@@ -2,4 +2,12 @@
 <resources>
     <!-- a view's press spring (ui/Motion.kt pressScale) -->
     <item name="aura_press_spring" type="id" />
+    <!-- set while pressScale holds the view in a hardware layer it put there itself (taken off when it is back at rest) -->
+    <item name="aura_press_layer" type="id" />
+    <!-- set while ui/Motion.kt exit() runs: an enter() then turns back from where the view is -->
+    <item name="aura_exiting" type="id" />
+    <!-- a resizing view's own elevation, kept while a LayoutMove plays without it -->
+    <item name="aura_move_elevation" type="id" />
+    <!-- the message an activity shows (ui/Snack.kt), on its content view -->
+    <item name="aura_snack" type="id" />
 </resources>
