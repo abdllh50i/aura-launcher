@@ -1045,6 +1045,48 @@ com.abdllh.aura.debug.CALL --es state ring|talk|end …`; `com.abdllh.aura.debug
 `com.abdllh.aura.debug.AMRI --es say "…"`. The overlays need the overlay permission (`appops set com.abdllh.aura
 SYSTEM_ALERT_WINDOW allow` on the emulator).
 
+### Notifications (1.13: `system/Notices.kt`, `media/AuraNotificationListener.kt`, `phone/MessageBanner.kt`)
+The owner asked for two things: none of Android's notifications on the screen, and the phone's messages on it
+(WhatsApp's in his example). Settings → Display & sound → Notifications holds both switches (on by default) and
+"show the message text".
+* Hidden: Android's heads-up cards are switched off (`Settings.Global heads_up_notifications_enabled` 0, through the
+  API with WRITE_SECURE_SETTINGS, else root `settings put`); the value from before is kept in `files/heads-up-before`,
+  put back when the switch goes off, by the kill switch (`CrashGuard`, `AuraApp`) and by the ROM's restore. AMRI's
+  notification listener (the one that already existed for other apps' media sessions, `AuraNotificationListener`)
+  cancels every clearable notification another app posts, and those already there when it connects. Ongoing ones
+  (a foreground service, Android's "displaying over other apps") cannot be cancelled; they stay in the shade, which
+  nothing opens here. With the kill switch on, the listener does nothing.
+* Allowing the listener: since Android 8 the allowed listeners are the notification service's own list; the secure
+  setting `enabled_notification_listeners` is only migrated once and writing it does nothing (tried: the setting
+  changed, the service never bound). `NotificationManager.setNotificationListenerAccessGranted` is a system API AMRI
+  cannot reach (NoSuchMethod through reflection on the emulator), so it is root `cmd notification allow_listener
+  com.abdllh.aura/com.abdllh.aura.media.AuraNotificationListener`; `isNotificationListenerAccessGranted` tells whether it
+  is needed. Android binds the listener by itself from then on.
+* The phone's messages: an iPhone gives WhatsApp's notifications only to CarPlay and to a Bluetooth LE accessory with
+  an ANCS client. The unit's Bluetooth daemon (`gocsdk_8800`, BTstack-based) has a GATT server for ZLink's pairing
+  (`CQ_CMD_GATT_REGISTER_APP`, `…_ADD_SERVICE`, `…_START_ADV`, `…_SEND_INDICATION`) but no GATT client and no ANCS
+  (no `7905F431…` service UUID, no "ancs" anywhere); it does log "Incoming SMS" (MAP), and com.bt.bc03's callback has
+  `onGetSMS` — SMS / iMessage over MAP would be the only Bluetooth way, not WhatsApp. So WhatsApp runs on the unit
+  itself as a linked device of the owner's account (Play Store → WhatsApp → "Link as companion device", the iPhone
+  scans the code: WhatsApp → Settings → Linked devices); its notifications then reach the listener like any app's.
+* A message is a notification from a known messaging app (WhatsApp, WhatsApp Business, Telegram, Messages, Signal,
+  Viber, LINE, imo, Discord, Messenger, Instagram, Teams, Skype…), Android's `CATEGORY_MESSAGE`, or `MessagingStyle`;
+  not ongoing ones nor group summaries (WhatsApp's "checking for new messages", the "3 messages from 2 chats" line).
+  Sender and text come from the newest `EXTRA_MESSAGES` bundle (in a group the conversation title is the group),
+  else `EXTRA_TITLE` / `EXTRA_TEXT`; the same app + sender + text within 90 s is not shown again (apps post updates
+  of the same notification). It is shown before it is cancelled, so hiding Android's never hides a message.
+* `MessageBanner`: an overlay card at the top like the call card (`Shapes.overlay()`, `lift(Elev.OVERLAY)`, enter from
+  above): the app's icon, its name (and the group), the sender, two lines of the message (or "New message" with the
+  text switch off), a close button; gone after 6 s plus 45 ms a letter (at most 12 s). A newer message replaces the
+  words in place; a tap opens the conversation (the notification's content intent, kept after the cancel), a flick
+  up or the close button dismisses it; a finger on it holds the timer. During a call the call card has the top: a
+  message waits and comes 0.8 s after the call ends if the call took under 2 minutes.
+* Emulator: the listener needs the root shell (`fake_adbd.py`, `setprop debug.aura.adb 10.0.2.2:15555`). The workshop
+  emulator's adb runs as root, and Android does not post `cmd notification post` from root as the shell: use
+  `su 2000 cmd notification post -t "Ahmed" tag "text"` (in a script through `scripts/emu-run.ps1`), with `setprop
+  debug.aura.msgpkg com.android.shell` so a debug build takes the shell's notifications as messages. Android 10's
+  `-S messaging` style fails to post from the shell.
+
 ## Facts about the firmware (from the dump)
 * No `avb` flag in the vendor fstab → no dm-verity on system/vendor/product; vbmeta uses the public AOSP test keys.
 * `persist.nwd.launcher.default=<pkg>` makes the patched PackageManager return that package as HOME.
@@ -1251,9 +1293,12 @@ SYSTEM_ALERT_WINDOW allow` on the emulator).
     `/data/ringtones/ring.ogg`, `/system/ring.mp3` (there: 19 s, peaks at −9.6 dBFS), `/mtc/ring.mp3` — unless
     `ro.nwd.internal.path` + `/ring.mp3` exists (`/mnt/media_rw/sdcard`, which init links to the primary storage:
     a `ring.mp3` in the root of the internal storage), looked for at every ring. `phone/Ringtone.kt` puts AMRI's ring
-    there as root (`res/raw/aura_ring.mp3`, made by `design/sound/make_ring.py`: a marimba phrase in E major, 4.6 s
-    with a quiet end, −6 dBFS), with its MD5 in `.aura-ring` beside it; an owner's own `ring.mp3` is kept as
-    `ring.mp3.pre-aura` and comes back. A second player from AMRI would only sound over the firmware's.
+    there as root (`res/raw/aura_ring.mp3`, made by `design/sound/make_ring.py`: since 1.13 a bright marimba figure
+    in A major at 116 bpm, the owner asked for a ring like the iPhone's — composed here, no other ringtone's melody;
+    modal marimba bars (×1, ×3.98, ×9.86 partials), a mallet tick, roots below; 4.66 s ending on a faded rest,
+    −6.5 dBFS peak, −19.7 dBFS RMS), with its MD5 in `.aura-ring` beside it; an owner's own `ring.mp3` is kept as
+    `ring.mp3.pre-aura` and comes back. A second player from AMRI would only sound over the firmware's. A changed
+    file reaches the unit by itself: `Ringtone.apply` compares the MD5 at every start.
   - Emulator: `am broadcast -a com.abdllh.aura.debug.CALL --es state ring|talk|end --es number … --es name …`.
 * The backlight: `com.nwd.action.ACTION_SET_BACKLIGHT_SWITCH`, boolean `extra_backlight_switch` (the setting service's
   `AbsBackLightManager`; off until the panel is touched). The stock launcher's "screen off" icon sends it and never
