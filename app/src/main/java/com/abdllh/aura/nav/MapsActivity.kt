@@ -334,7 +334,7 @@ class MapsActivity : Activity() {
         if (turn != turnShown) {
             turnShown = turn
             if (turn == null) map.setTurn(null)
-            else map.setTurn(r.line.slice(step.at - TURN_ARROW_BEFORE_M, step.at + TURN_ARROW_AFTER_M), r.line.at(step.at + TURN_ARROW_AFTER_M).second)
+            else map.setTurn(r.line, step.at)
         }
         // how long is left first (what the driver asks), then how far and when
         tripEta.text = Units.duration(p.timeLeft, arabic)
@@ -859,11 +859,8 @@ class MapsActivity : Activity() {
     }
 
     companion object {
-        /** The turn's arrow is on the map from this far before it, */
+        /** The turn's arrow is on the map from this far before it (its size is the map's: [AuraMap.setTurn]). */
         private const val TURN_ARROW_FROM_M = 900.0
-        /** along this much of the route before the turn and after it. */
-        private const val TURN_ARROW_BEFORE_M = 45.0
-        private const val TURN_ARROW_AFTER_M = 32.0
 
         fun open(ctx: Context, extras: Intent.() -> Unit = {}) {
             try {

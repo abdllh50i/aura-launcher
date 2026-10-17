@@ -1,5 +1,6 @@
 package com.abdllh.aura.nav.offline
 
+import android.os.Process
 import android.os.SystemClock
 import android.util.Log
 import com.abdllh.aura.nav.Places
@@ -16,7 +17,9 @@ import java.net.Socket
 import java.net.URL
 import java.net.URLDecoder
 import java.net.URLEncoder
-import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.zip.GZIPInputStream
 
@@ -26,7 +29,9 @@ import java.util.zip.GZIPInputStream
  * new version of the planet every week under a new address: tiles kept under those addresses (MapLibre's own offline
  * regions) would stop being found a week after the download. Here a tile is just z/x/y.
  *  - A fixed port keeps the addresses (and so MapLibre's cache of them) the same across restarts.
- *  - Every connection has its own thread: a tile on disk never waits behind one that is being fetched online.
+ *  - Small pools of background-priority threads: one answers from the disk, the others fetch online (tiles, glyphs),
+ *    so a tile on disk never waits behind one that is being fetched. A zoom asks for dozens of tiles at once: until 1.11 each
+ *    got a thread of its own at the UI thread's priority, and that burst competed with the gesture that caused it.
  *  - When the internet is down, OpenFreeMap is not asked again for half a minute (no 5-15 s waits per tile), and the
  *    tile address is refreshed in the background, never while a tile waits.
  */
@@ -44,7 +49,14 @@ object TileServer {
     /** The offline map, when there is one (set by [OfflineMaps]). */
     @Volatile var store: TileStore? = null
 
-    private val pool = Executors.newCachedThreadPool()
+    private fun pool(threads: Int, name: String) = ThreadPoolExecutor(threads, threads, 30L, TimeUnit.SECONDS, LinkedBlockingQueue()) { r ->
+        Thread({ Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND); r.run() }, name).apply { isDaemon = true }
+    }.apply { allowCoreThreadTimeOut(true) }
+    private val local = pool(3, "aura-tiles-disk")
+    private val online = pool(6, "aura-tiles-net")
+    // (glyph ranges have their own: a missing one holds up the labels of every tile that needs it, and it must not
+    // wait behind a zoom's worth of tile fetches)
+    private val fonts = pool(2, "aura-glyphs-net")
     @Volatile private var template: String? = null
     @Volatile private var templateAt = 0L
     private val refreshing = AtomicBoolean(false)
@@ -71,7 +83,7 @@ object TileServer {
             while (true) {
                 try {
                     val s = ss.accept()
-                    pool.execute { serve(s) }
+                    local.execute { serve(s) }
                 } catch (t: Throwable) {
                     Log.w(TAG, "accept: $t")
                     try { Thread.sleep(200) } catch (_: InterruptedException) { }
@@ -84,56 +96,69 @@ object TileServer {
 
     private class Reply(val code: Int, val body: ByteArray = ByteArray(0), val cache: Boolean = true)
 
+    /** Answers from the disk at once; what has to come from the internet is handed to the online threads. */
     private fun serve(s: Socket) {
-        s.use { sock ->
-            try {
-                sock.soTimeout = 20_000
-                val inp = BufferedInputStream(sock.getInputStream())
-                val request = line(inp) ?: return
-                while (true) { val h = line(inp) ?: break; if (h.isEmpty()) break } // headers: not needed
-                val path = request.split(' ').getOrNull(1) ?: return
-                val out = sock.getOutputStream()
-                when {
-                    path.startsWith("/t/") -> tile(path, out)
-                    path.startsWith("/f/") -> write(out, glyphs(path))
-                    else -> write(out, Reply(404, cache = false))
+        var handed = false
+        try {
+            s.soTimeout = 20_000
+            val inp = BufferedInputStream(s.getInputStream())
+            val request = line(inp) ?: return
+            while (true) { val h = line(inp) ?: break; if (h.isEmpty()) break } // headers: not needed
+            val path = request.split(' ').getOrNull(1) ?: return
+            val out = s.getOutputStream()
+            val fetchIt = when {
+                path.startsWith("/t/") -> tile(path, out)
+                path.startsWith("/f/") -> glyphs(path, out)
+                else -> { write(out, Reply(404, cache = false)); null }
+            } ?: return
+            handed = true
+            (if (path.startsWith("/f/")) fonts else online).execute {
+                s.use {
+                    try { fetchIt() } catch (t: Throwable) { Log.d(TAG, "serve: $t") }
                 }
-            } catch (t: Throwable) {
-                Log.d(TAG, "serve: $t")
             }
+        } catch (t: Throwable) {
+            Log.d(TAG, "serve: $t")
+        } finally {
+            if (!handed) try { s.close() } catch (_: Throwable) { }
         }
     }
 
-    /** /t/z/x/y.pbf: from the store, else streamed from OpenFreeMap. */
-    private fun tile(path: String, out: OutputStream) {
+    /** /t/z/x/y.pbf: from the store, else (what is returned, for the online threads) streamed from OpenFreeMap. */
+    private fun tile(path: String, out: OutputStream): (() -> Unit)? {
         val p = path.removePrefix("/t/").removeSuffix(".pbf").split('/')
         val z = p.getOrNull(0)?.toIntOrNull()
         val x = p.getOrNull(1)?.toIntOrNull()
         val y = p.getOrNull(2)?.toIntOrNull()
-        if (z == null || x == null || y == null) { write(out, Reply(404, cache = false)); return }
+        if (z == null || x == null || y == null) { write(out, Reply(404, cache = false)); return null }
         store?.let { st -> try { st.tile(TileMath.key(z, x, y)) } catch (_: Throwable) { null } }?.let {
-            write(out, if (it.isEmpty()) Reply(204) else Reply(200, it)); return
+            write(out, if (it.isEmpty()) Reply(204) else Reply(200, it)); return null
         }
-        val t = tileTemplate()
-        if (t == null || upstreamDown()) { write(out, Reply(503, cache = false)); return }
-        stream(t.replace("{z}", "$z").replace("{x}", "$x").replace("{y}", "$y"), out)
+        if (upstreamDown()) { write(out, Reply(503, cache = false)); return null }
+        return {
+            val t = tileTemplate()
+            if (t == null || upstreamDown()) write(out, Reply(503, cache = false))
+            else stream(t.replace("{z}", "$z").replace("{x}", "$x").replace("{y}", "$y"), out)
+        }
     }
 
-    /** /f/{fontstack}/{range}.pbf (the font stack URL-encoded by MapLibre) */
-    private fun glyphs(path: String): Reply {
+    /** /f/{fontstack}/{range}.pbf (the font stack URL-encoded by MapLibre); like [tile], the online part is returned. */
+    private fun glyphs(path: String, out: OutputStream): (() -> Unit)? {
         val rest = path.removePrefix("/f/")
         val cut = rest.lastIndexOf('/')
-        if (cut <= 0) return Reply(404, cache = false)
+        if (cut <= 0) { write(out, Reply(404, cache = false)); return null }
         val stack = URLDecoder.decode(rest.substring(0, cut), "UTF-8")
         val range = rest.substring(cut + 1).removeSuffix(".pbf")
         val name = "$stack/$range"
-        store?.let { st -> try { st.glyph(name) } catch (_: Throwable) { null } }?.let { return Reply(200, it) }
+        store?.let { st -> try { st.glyph(name) } catch (_: Throwable) { null } }?.let { write(out, Reply(200, it)); return null }
         // not on the unit and no internet: "no glyphs here" lets the map draw (a missing range would hold up every
         // tile whose labels need it), asked again next time
-        if (upstreamDown()) return Reply(204, cache = false)
-        val r = fetch(glyphUrl(stack, range))
-        if (r.code == 200) store?.let { st -> try { st.putGlyph(name, r.body) } catch (_: Throwable) { } } // small, kept for offline
-        return if (r.code == 503) Reply(204, cache = false) else r
+        if (upstreamDown()) { write(out, Reply(204, cache = false)); return null }
+        return {
+            val r = fetch(glyphUrl(stack, range))
+            if (r.code == 200) store?.let { st -> try { st.putGlyph(name, r.body) } catch (_: Throwable) { } } // small, kept for offline
+            write(out, if (r.code == 503) Reply(204, cache = false) else r)
+        }
     }
 
     fun glyphUrl(stack: String, range: String) = FONTS + URLEncoder.encode(stack, "UTF-8").replace("+", "%20") + "/$range.pbf"
@@ -153,7 +178,7 @@ object TileServer {
             if (now - templateAt >= TEMPLATE_MAX_AGE_MS && !upstreamDown() &&
                 SystemClock.elapsedRealtime() - lastRefreshTry > 10 * 60_000L && refreshing.compareAndSet(false, true)) {
                 lastRefreshTry = SystemClock.elapsedRealtime()
-                pool.execute { try { freshTemplate() } finally { refreshing.set(false) } }
+                online.execute { try { freshTemplate() } finally { refreshing.set(false) } }
             }
             return known
         }

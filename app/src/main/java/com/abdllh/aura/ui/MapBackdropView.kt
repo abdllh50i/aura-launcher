@@ -3,48 +3,58 @@ package com.abdllh.aura.ui
 import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.Rect
 import android.graphics.RectF
 import android.os.Handler
 import android.os.Looper
 import android.view.View
+import com.abdllh.aura.nav.MapStyle
 import com.abdllh.aura.util.dp
+import java.io.File
+import java.util.Locale
 import java.util.Random
 import java.util.concurrent.Executors
 
 /**
- * Decorative map behind the navigation panel: a quiet street grid, a park and a waterfront. It is drawn once per
- * size/theme into a bitmap on a background thread and faded in, and is static afterwards (the car's position is a
- * separate small [MapPuck], so its pulse does not redraw the whole map). A stand-in until a real map can be
- * embedded: tapping the panel opens the navigation app.
+ * What the home screen's map panel shows until the live map has drawn: the picture of the live map kept the last time
+ * it came to rest ([picture], see [com.abdllh.aura.nav.AuraMap.pictureFile]) — the car is usually still where it was
+ * parked, so the screen opens on the real streets and the live map takes over almost unseen. Before there is such a
+ * picture it is the map's plain land colour: invented streets cross-fading over the real ones read as a ghost map.
+ * In place of the live map when it cannot run ([com.abdllh.aura.nav.MapGuard], [grid]) it is a quiet street grid
+ * with a park and a waterfront in the map's own colours. Made once per size into a bitmap on a background thread and
+ * faded in; static afterwards.
  */
-class MapBackdropView(context: Context) : View(context) {
+class MapBackdropView(context: Context, private val picture: File?, private val grid: Boolean) : View(context) {
     private var bmp: Bitmap? = null
     private var reveal = 0f
     private var generation = 0
     private val p = Paint(Paint.FILTER_BITMAP_FLAG)
+    private val land = MapStyle.tones().land
 
-    private class Colors(
-        val land: Int, val block: Int, val park: Int, val water: Int,
-        val road: Int, val major: Int, val casing: Int, val dark: Boolean
-    )
+    // (one flat picture: faded as it is, without an offscreen copy)
+    override fun hasOverlappingRendering() = false
 
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
         if (w <= 0 || h <= 0) return
         val rtl = layoutDirection == LAYOUT_DIRECTION_RTL
         val gen = ++generation
-        val colors = Colors(Palette.mapLand, Palette.mapBlock, Palette.mapPark, Palette.mapWater,
-            Palette.mapRoad, Palette.mapRoadMajor, Palette.mapCasing, Palette.dark)
+        val tones = MapStyle.tones()
+        val dark = Palette.dark
         val density = 1f.dp
+        val pic = picture
+        val streets = grid
         RENDER.execute {
-            val b = try { render(w, h, colors, rtl, density) } catch (_: Throwable) { null }
+            val b = try { pic?.let { load(it, w, h) } ?: if (streets) render(w, h, tones, dark, rtl, density) else null } catch (_: Throwable) { null }
             MAIN.post {
                 if (gen != generation || b == null) return@post
                 bmp = b
                 ValueAnimator.ofFloat(0f, 1f).apply {
-                    duration = 360
+                    duration = Motion.MEDIUM
+                    interpolator = Motion.STANDARD
                     addUpdateListener { reveal = it.animatedValue as Float; invalidate() }
                     start()
                 }
@@ -58,10 +68,12 @@ class MapBackdropView(context: Context) : View(context) {
     }
 
     override fun onDraw(c: Canvas) {
-        c.drawColor(Palette.mapLand)
-        bmp?.let {
+        val b = bmp
+        // (the bitmap covers the whole view once it is in: no fill under it)
+        if (b == null || reveal < 1f) c.drawColor(land)
+        if (b != null) {
             p.alpha = (255 * reveal).toInt()
-            c.drawBitmap(it, 0f, 0f, p)
+            c.drawBitmap(b, 0f, 0f, p)
             p.alpha = 255
         }
     }
@@ -73,8 +85,26 @@ class MapBackdropView(context: Context) : View(context) {
         private val RENDER = Executors.newSingleThreadExecutor()
         private val MAIN = Handler(Looper.getMainLooper())
 
-        /** Software rendering of the static map (runs on the render thread; touches no view state). */
-        private fun render(w: Int, h: Int, k: Colors, rtl: Boolean, d: Float): Bitmap {
+        /** The home map's kept picture for the current theme and language (each draws the map differently). */
+        fun pictureFile(ctx: Context): File =
+            File(ctx.cacheDir, "home-map-${if (Palette.dark) "dark" else "light"}-${Locale.getDefault().language}.webp")
+
+        /** The kept picture, scaled to cover the view (centred), or null when there is none yet. */
+        private fun load(f: File, w: Int, h: Int): Bitmap? {
+            if (!f.isFile) return null
+            val src = BitmapFactory.decodeFile(f.path) ?: return null
+            val scale = maxOf(w / src.width.toFloat(), h / src.height.toFloat())
+            val sw = (w / scale).toInt().coerceAtMost(src.width)
+            val sh = (h / scale).toInt().coerceAtMost(src.height)
+            val from = Rect((src.width - sw) / 2, (src.height - sh) / 2, (src.width + sw) / 2, (src.height + sh) / 2)
+            val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            Canvas(out).drawBitmap(src, from, Rect(0, 0, w, h), Paint(Paint.FILTER_BITMAP_FLAG))
+            src.recycle()
+            return out
+        }
+
+        /** Software rendering of the street grid (runs on the render thread; touches no view state). */
+        private fun render(w: Int, h: Int, k: MapStyle.Tones, dark: Boolean, rtl: Boolean, d: Float): Bitmap {
             val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
             val c = Canvas(bmp)
             if (rtl) { c.translate(w.toFloat(), 0f); c.scale(-1f, 1f) }
@@ -125,7 +155,7 @@ class MapBackdropView(context: Context) : View(context) {
             // minor streets
             p.style = Paint.Style.STROKE
             p.strokeCap = Paint.Cap.ROUND
-            if (!k.dark) {
+            if (!dark) {
                 p.color = k.casing
                 p.strokeWidth = 5.5f * d
                 for (cx in cols) c.drawLine(cx, y0, cx, y1, p)
