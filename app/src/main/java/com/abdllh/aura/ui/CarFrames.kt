@@ -216,7 +216,9 @@ object CarFrames {
     }
 
     private fun work() {
-        Process.setThreadPriority(Process.THREAD_PRIORITY_DISPLAY + 2)
+        // (the CPU path is the stand-in until the GPU draws: above the UI thread, its decoding took the processor from
+        // the home screen's entrance)
+        Process.setThreadPriority(Process.THREAD_PRIORITY_DEFAULT)
         while (true) {
             val i = try { queue.takeFirst() } catch (_: InterruptedException) { return }
             val m = meta ?: continue

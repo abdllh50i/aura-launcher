@@ -33,6 +33,8 @@ import kotlin.math.sign
  * out to frame the whole turntable, and back in when it returns. Adjacent frames are cross-faded during motion.
  * The GPU draws it ([CarGlView], under this view's own drawing) once its frames are in; until then, or if it fails,
  * this view draws the frames on its canvas.
+ * Both paths fade the car into [Palette.bg] and the GPU's frames are composed over it: the stage must stand directly on
+ * the screen's background, never on a card, or it shows as a rectangle of another colour.
  */
 class CarStage(context: Context) : FrameLayout(context) {
     var onTap: (() -> Unit)? = null
@@ -92,7 +94,7 @@ class CarStage(context: Context) : FrameLayout(context) {
     private val frameCallback = Choreographer.FrameCallback { t -> tick(t) }
 
     // the GPU path
-    private val glView: CarGlView? = meta?.let { CarGlView(context, Palette.dark) }
+    private val glView: CarGlView? = meta?.let { CarGlView(context, Palette.dark, Palette.bg) }
     private var glOn = false          // the GPU draws the car
     private val glState = CarGlView.State()
     private var restAsked = -1        // frame whose crisp copy was asked for (resting there)
@@ -119,7 +121,8 @@ class CarStage(context: Context) : FrameLayout(context) {
                     restFor = i
                     restAnim?.cancel()
                     restAnim = ValueAnimator.ofFloat(0f, 1f).apply {
-                        duration = 180
+                        duration = Motion.SHORT
+                        interpolator = Motion.STANDARD
                         addUpdateListener { restMix = it.animatedValue as Float; redraw() }
                         start()
                     }
@@ -199,9 +202,10 @@ class CarStage(context: Context) : FrameLayout(context) {
         zoomTarget = 0f
         redraw()
         anim = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 1900
+            // (quick enough that the home screen is all there with it; it was 1.9 s)
+            duration = 1400
             startDelay = delayMs
-            interpolator = PathInterpolator(0.2f, 0.0f, 0.0f, 1.0f)
+            interpolator = Motion.STANDARD
             addUpdateListener {
                 val f = it.animatedValue as Float
                 pos = start + (home - start) * f
