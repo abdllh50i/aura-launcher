@@ -10,12 +10,15 @@ import android.widget.LinearLayout
 import com.abdllh.aura.R
 import com.abdllh.aura.system.Controls
 import com.abdllh.aura.ui.AText
-import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.MATCH
+import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
+import com.abdllh.aura.ui.Radius
 import com.abdllh.aura.ui.Shapes
+import com.abdllh.aura.ui.Space
+import com.abdllh.aura.ui.Touch
+import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.WRAP
-import com.abdllh.aura.ui.elevate
 import com.abdllh.aura.ui.flp
 import com.abdllh.aura.ui.iconView
 import com.abdllh.aura.ui.label
@@ -27,7 +30,8 @@ import com.abdllh.aura.util.dp
 
 /**
  * Bottom bar: the controls button on the start side, colourful app tiles in the middle, and volume (‹ level ›)
- * plus settings on the end side.
+ * plus settings on the end side. The three parts are a row, so the tiles are centred in the room the two sides
+ * leave: centred on the whole bar (until 1.11), six pins and Apps ran under the volume capsule.
  */
 class Dock(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
 
@@ -37,22 +41,30 @@ class Dock(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
     private val pinsListener: () -> Unit = { post { rebuild() } }
 
     val apps = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
-    private val volText: AText = ctx.label(18f, Palette.text, Fonts.MEDIUM, gravity = Gravity.CENTER)
+    private val volText: AText = ctx.label(Type.LABEL, Palette.text, gravity = Gravity.CENTER)
     private val volIcon = ImageView(ctx).apply { scaleType = ImageView.ScaleType.FIT_CENTER }
     private val badge: View
+    private var builtKey = "" // what the tiles were built from (see refresh)
 
     init {
         setBackgroundColor(Palette.dock)
-        // the light dock floats on a soft shadow; the dark one is set off by a hairline (a shadow does not show there)
-        if (Palette.dark) addView(View(ctx).apply { setBackgroundColor(0xFF17191C.toInt()) }, flp(MATCH, 1.dp.coerceAtLeast(1), Gravity.TOP))
-        else elevate(10f)
-        setPaddingRelative(16.dp, 0, 14.dp, 0)
+        // set off from the screen above by a hairline on both themes: a shadow along the whole width was redrawn with
+        // every frame of the map above it, and could not be seen on the dark theme anyway
+        addView(View(ctx).apply { setBackgroundColor(Palette.divider) }, flp(MATCH, 1.dp.coerceAtLeast(1), Gravity.TOP))
+
+        val row = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            // the start edge is the clock's above it; the end edge lines up with the map panel's
+            setPaddingRelative(20.dp, 0, Space.M.dp, 0)
+        }
 
         // start: controls
-        val controls = button(ctx, R.drawable.ic_sliders, R.string.ctl_title, round = true) { host.openControls() }
-        addView(controls, flp(60.dp, 60.dp, Gravity.START or Gravity.CENTER_VERTICAL))
+        row.addView(button(ctx, R.drawable.ic_sliders, R.string.ctl_title, round = true) { host.openControls() }, lp(60.dp, 60.dp))
 
-        addView(apps, flp(WRAP, MATCH, Gravity.CENTER))
+        val mid = FrameLayout(ctx)
+        mid.addView(apps, flp(WRAP, MATCH, Gravity.CENTER))
+        row.addView(mid, lp(0, MATCH, 1f).apply { marginStart = Space.M.dp; marginEnd = Space.M.dp })
 
         // end: volume ‹ level › in one capsule (always left = quieter, like a physical knob) and settings
         val end = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
@@ -60,37 +72,38 @@ class Dock(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             layoutDirection = LAYOUT_DIRECTION_LTR
-            background = Shapes.rect(Palette.card2, 30f)
+            background = Shapes.pill(Palette.card2)
         }
-        vol.addView(button(ctx, R.drawable.ic_chevron_left, R.string.ctl_vol_down) { step(-1) }, lp(56.dp, 60.dp))
+        vol.addView(button(ctx, R.drawable.ic_chevron_left, R.string.ctl_vol_down) { step(-1) }, lp(Touch.MIN.dp, 60.dp))
         val level = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             isClickable = true
-            pressScale(0.92f)
+            pressScale(Motion.PRESS_ICON)
             setOnClickListener { Controls.toggleMute(context); syncVolume() }
         }
         level.addView(volIcon.apply { setColorFilter(Palette.text) }, lp(26.dp, 26.dp))
-        level.addView(volText, lp(38.dp, WRAP).apply { marginStart = 4.dp })
+        level.addView(volText, lp(38.dp, WRAP).apply { marginStart = Space.XS.dp })
         vol.addView(level, lp(WRAP, 60.dp))
-        vol.addView(button(ctx, R.drawable.ic_chevron_right, R.string.ctl_vol_up) { step(+1) }, lp(56.dp, 60.dp))
+        vol.addView(button(ctx, R.drawable.ic_chevron_right, R.string.ctl_vol_up) { step(+1) }, lp(Touch.MIN.dp, 60.dp))
         end.addView(vol, lp(WRAP, WRAP))
 
         val settingsWrap = FrameLayout(ctx)
         settingsWrap.addView(button(ctx, R.drawable.ic_settings, R.string.dock_settings, round = true) { host.openSettings(0) }, flp(60.dp, 60.dp, Gravity.CENTER))
         badge = View(ctx).apply { background = Shapes.oval(Palette.accent, Palette.dock, 2) }
         settingsWrap.addView(badge, flp(14.dp, 14.dp, Gravity.TOP or Gravity.END).apply { setMargins(0, 2.dp, 2.dp, 0); marginEnd = 2.dp })
-        end.addView(settingsWrap, lp(64.dp, 64.dp).apply { marginStart = 12.dp })
-        addView(end, flp(WRAP, MATCH, Gravity.END or Gravity.CENTER_VERTICAL))
+        end.addView(settingsWrap, lp(64.dp, 64.dp).apply { marginStart = Space.M.dp })
+        row.addView(end, lp(WRAP, MATCH))
+        addView(row, flp(MATCH, MATCH))
         rebuild()
     }
 
     /** [round]: a button of its own (a tonal circle); otherwise a bare icon inside a capsule that has the surface. */
     private fun button(ctx: Context, icon: Int, desc: Int, round: Boolean = false, onClick: () -> Unit): FrameLayout = FrameLayout(ctx).apply {
-        background = if (round) Shapes.tonalOval() else Shapes.ghost(30f)
+        background = if (round) Shapes.tonalOval() else Shapes.ghost(Radius.PILL)
         isClickable = true
         contentDescription = ctx.getString(desc)
-        pressScale(0.88f)
+        pressScale(Motion.PRESS_ICON)
         setOnClickListener { onClick() }
         val s = if (round) 28 else 26
         addView(ctx.iconView(icon, s, Palette.text).apply { layoutParams = flp(s.dp, s.dp, Gravity.CENTER) })
@@ -101,6 +114,7 @@ class Dock(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
         syncVolume()
     }
 
+    /** The volume as the car's own step number (what the steering-wheel keys and the knob move by one). */
     fun syncVolume() {
         val v = Controls.volume(context)
         volText.text = "$v"
@@ -131,9 +145,11 @@ class Dock(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
                 }
             }
         }
-        list.add(App(null, ctx.getString(R.string.dock_apps), DockTiles.Style(R.drawable.ic_grid, 0xFF6C7380.toInt(), 0xFF4A505B.toInt(), R.string.dock_apps), null) {
-            host.openDrawer()
-        })
+        // a deliberate dark neutral (ink on the light theme): the slate grey it replaces read as a disabled button
+        // beside the bright app tiles
+        val apps = if (Palette.dark) DockTiles.Style(R.drawable.ic_grid, 0xFF3A3F4A.toInt(), 0xFF262A31.toInt(), R.string.dock_apps)
+        else DockTiles.Style(R.drawable.ic_grid, 0xFF2B2F36.toInt(), 0xFF15171B.toInt(), R.string.dock_apps)
+        list.add(App(null, ctx.getString(R.string.dock_apps), apps, null) { host.openDrawer() })
         return list
     }
 
@@ -147,10 +163,27 @@ class Dock(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
         super.onDetachedFromWindow()
     }
 
+    /**
+     * Back on the home screen: the tiles are built again only when what they show has changed. Rebuilding them on
+     * every return (until 1.11) asked the package manager about every pin and laid the dock out again in the very
+     * frames of the window animation, so coming home hitched. Pins changing and apps installed or removed elsewhere
+     * call [rebuild] themselves.
+     */
+    fun refresh() {
+        if (key() != builtKey) rebuild()
+        else {
+            syncVolume()
+            refreshBadge()
+        }
+    }
+
+    private fun key() = DockPins.get().joinToString("|") + "|" + Prefs.dockLabels
+
     fun rebuild() {
+        builtKey = key()
         apps.removeAllViews()
         for ((i, it) in items().withIndex()) {
-            apps.addView(tile(context, it), lp(WRAP, MATCH).apply { if (i > 0) marginStart = 8.dp })
+            apps.addView(tile(context, it), lp(WRAP, MATCH).apply { if (i > 0) marginStart = Space.S.dp })
         }
         syncVolume()
         refreshBadge()
@@ -163,29 +196,27 @@ class Dock(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
     private fun tile(ctx: Context, item: App): LinearLayout = LinearLayout(ctx).apply {
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER
-        setPadding(8.dp, 0, 8.dp, 0)
+        val labels = Prefs.dockLabels
+        val size = if (labels) 52 else 62
+        // a fixed width: a long name is cut short instead of widening its tile and pushing the others aside
+        minimumWidth = (size + if (labels) 24 else 16).dp
+        setPadding(Space.S.dp, 0, Space.S.dp, 0)
         isClickable = true
         contentDescription = item.label
-        pressScale(0.86f)
+        pressScale(Motion.PRESS_CONTROL)
         setOnClickListener { item.action() }
         val id = item.id
         if (id != null) setOnLongClickListener { v ->
             com.abdllh.aura.ui.Menu.show(v, listOf(com.abdllh.aura.ui.Menu.Item(R.drawable.ic_close, ctx.getString(R.string.dock_unpin)) { DockPins.remove(id) }))
             true
         }
-        val labels = Prefs.dockLabels
-        val size = if (labels) 52 else 62
         val s = item.style
+        // flat tiles on both themes: a shadow in each tile's own colour was one more caster per tile redrawn under the
+        // live map's frames, and the gradients read on white without it
         val icon: View = if (s != null) FrameLayout(ctx).apply {
             background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(s.from, s.to)).apply { cornerRadius = (size * 0.3f).dp }
-            // lifted on a shadow of its own colour (light theme)
-            if (!Palette.dark) {
-                elevate(5f)
-                if (android.os.Build.VERSION.SDK_INT >= 28) { outlineSpotShadowColor = s.to; outlineAmbientShadowColor = s.to }
-            }
-            addView(ctx.iconView(s.icon, if (labels) 28 else 33, 0xFFFFFFFF.toInt()).apply {
-                layoutParams = flp((if (labels) 28 else 33).dp, (if (labels) 28 else 33).dp, Gravity.CENTER)
-            })
+            val g = if (labels) 28 else 33
+            addView(ctx.iconView(s.icon, g, 0xFFFFFFFF.toInt()).apply { layoutParams = flp(g.dp, g.dp, Gravity.CENTER) })
         } else ImageView(ctx).apply {
             scaleType = ImageView.ScaleType.FIT_CENTER
             val pkg = item.pkg
@@ -193,11 +224,9 @@ class Dock(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
         }
         addView(icon, lp(size.dp, size.dp))
         if (labels) {
-            addView(ctx.label(12.5f, Palette.text2, Fonts.REGULAR, gravity = Gravity.CENTER).apply {
-                text = item.label
-                maxLines = 1
-                ellipsize = android.text.TextUtils.TruncateAt.END
-            }, lp(WRAP, WRAP).apply { topMargin = 4.dp })
+            addView(ctx.label(Type.CAPTION, Palette.text2, gravity = Gravity.CENTER).apply { text = item.label }, lp(MATCH, WRAP).apply { topMargin = Space.XS.dp })
         }
     }
+
 }
+
