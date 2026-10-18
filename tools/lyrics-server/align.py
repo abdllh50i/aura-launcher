@@ -207,8 +207,10 @@ def _sim_matrix(rec, lyr):
     return s
 
 
-def align(lines, heard, duration=0.0):
-    """Times for [lines] from the words [heard] ([(text, start, end, prob)], song time in s).
+def align(lines, heard, duration=0.0, words_out=None):
+    """Times for [lines] from the words [heard] ([(text, start, end, prob)], song time in s). [words_out], a dict, gets
+    the lyric words matched clearly: (line, word position as textnorm.words counts them) -> (start, end), for the word
+    by word lyrics (words.from_heard).
 
     Returns (times, kinds, covered): a time (s) for every line, how each was found ("anchor": its own words heard,
     "between": spread between two anchored lines, "guess": before the first / after the last at the song's pace;
@@ -296,6 +298,10 @@ def align(lines, heard, duration=0.0):
         else:
             j -= 1
     pairs.reverse()
+    if words_out is not None:
+        for i, j, s in pairs:
+            if s >= 0.8 and len(lyr[j][0]) >= 2:
+                words_out[(lyr[j][1], lyr[j][2])] = (rec[i][1], rec[i][2])
     return _time_lines(lines, lyr, rec, pairs, duration)
 
 
@@ -513,10 +519,22 @@ class Songs:
             return s
 
     def realign(self, s):
-        times, kinds, covered = align(s.get("lines") or [], s.get("words") or [], s.get("duration") or 0)
+        heard = {}
+        times, kinds, covered = align(s.get("lines") or [], s.get("words") or [], s.get("duration") or 0, heard)
         s["times"] = [None if t is None else round(t, 2) for t in times]
         s["kinds"] = kinds
         s["covered"] = round(covered, 3)
+        # the words heard, of the lines timed by their own words only, and inside the line's own time (a word matched in
+        # a line the order check left out would fight that line's time)
+        word_at = []
+        for (k, p), (st, en) in sorted(heard.items()):
+            if kinds[k] != "anchor" or times[k] is None:
+                continue
+            nxt = next((times[x] for x in range(k + 1, len(times)) if times[x] is not None and times[x] > times[k]), None)
+            if st < times[k] - 0.6 or (nxt is not None and st >= nxt):
+                continue
+            word_at.append([k, p, round(st, 2), round(en, 2)])
+        s["word_at"] = word_at
 
     def add_words(self, i, words, t0, t1, edges, kind):
         with self.lock:
@@ -528,6 +546,16 @@ class Songs:
             self.realign(s)
             self.save(s)
             return s
+
+    @staticmethod
+    def enhanced(s):
+        """The timing made by listening as an enhanced LRC, word by word (heard words at their times), or None."""
+        times = s.get("times")
+        if not times or not any(t is not None for t in times):
+            return None
+        import words as w
+        lines = s.get("lines") or []
+        return w.enhanced(lines, times, w.from_heard(lines, times, s.get("word_at")))
 
     @staticmethod
     def state(s, pending=0):

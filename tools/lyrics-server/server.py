@@ -14,6 +14,7 @@ start.
   GET  /api/ping                               the key is right
   GET  /api/lyrics?title=&artist=&album=&duration=
        {"synced": LRC or null, "plain": text or null, "source", "id", "covered", "tried": [...], "cached"}
+       with words=1 also "enhanced": the LRC word by word (<mm:ss.xx> before each word) and "words": heard | estimated
   POST /api/sync/start      {title, artist, duration, lines: [...]}        the song's timing so far
   POST /api/sync/chunk?id=&pos=&rate=16000     body: 16-bit mono PCM the car heard from song position pos (ms)
   POST /api/sync/file?id=&name=                body: the song's file from the unit (deleted once decoded)
@@ -42,6 +43,7 @@ sys.path.insert(0, HERE)
 
 import align  # noqa: E402
 import sources  # noqa: E402
+import words  # noqa: E402
 
 VERSION = "1.0"
 KEY_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"  # no 0/o, 1/l/i: read off a screen and typed on the car's
@@ -236,7 +238,11 @@ class Handler(BaseHTTPRequestHandler):
                 if s is None:
                     raise Bad(404, "unknown song")
                 note = "%.0f%% timed" % (100 * s.get("covered", 0))
-                return self.send(200, align.Songs.state(s, pending(i)))
+                st = align.Songs.state(s, pending(i))
+                if arg(q, "words") == "1" and st.get("lrc"):
+                    st["enhanced"] = align.Songs.enhanced(s)
+                    st["words"] = "heard"
+                return self.send(200, st)
             raise Bad(404, "not found")
         except Bad as e:
             note = note or str(e)
@@ -293,6 +299,14 @@ def lyrics(q):
                         "plain": out["plain"] or "\n".join(s.get("lines") or [])})
         elif s:
             out["covered"] = s.get("covered", 0.0)
+    if arg(q, "words") == "1" and out["synced"]:
+        # word by word (1.15): heard words for a timing made by listening, else spread over each line by their weight
+        if out["source"] == "aligned":
+            out["enhanced"] = align.Songs.enhanced(s)
+            out["words"] = "heard"
+        else:
+            out["enhanced"] = words.enhance_lrc(out["synced"])
+            out["words"] = "estimated"
     note = "'%s' / %s -> %s%s%s" % (song.title, song.artist, out["source"], " (timed)" if out["synced"] else (" (plain)" if out["plain"] else ""),
                                      " [kept]" if found["cached"] else "")
     return out, note
