@@ -771,14 +771,22 @@ class MusicActivity : Activity() {
      * Untimed lines (or a timing by listening that is not complete) for a Bluetooth song or one of the unit's own:
      * the owner's server may time them by listening ([LyricsSync]: only with his switch on, and only while the song
      * plays with its position known). YouTube's songs are not listened to.
+     * 1.16: timed lines whose words have no real times are listened to as well, for their words only, while the word
+     * effect is on ("timed": the server keeps the lines' times and finds each line's words around its own time). The
+     * times it is given are the song's clock, the one the pieces of sound are placed on: the shown time minus the
+     * owner's correction of a Bluetooth song's timing.
      */
     private fun listenFor(r: Lyrics.Result) {
         val s = lyricsSong
-        if (s == null || !r.improvable || yt || (!s.bt && s.track == null)) { LyricsSync.end(); return }
+        val words = !r.improvable && r.synced && r.wantsWords && Words.on
+        if (s == null || (!r.improvable && !words) || yt || (!s.bt && s.track == null)) { LyricsSync.end(); return }
+        val shift = lyricsShift
         // (a Bluetooth song's length only when the phone told it: a catalogue's may be another recording's, and the
         // server's alignment leans a little on where in the song's length each line should be)
         val song = LyricsSync.Song(s.title, s.artist, s.sec, r.lines.map { it.text }, s.track,
-            lengthSec = if (s.bt) BtMusic.phoneDurationSec else s.sec)
+            lengthSec = if (s.bt) BtMusic.phoneDurationSec else s.sec,
+            times = if (words) r.lines.map { l -> (l.ms - shift).takeIf { it >= 0L } } else null,
+            shown = if (words) r else null, offsetMs = if (words) shift else 0L)
         val position: () -> Long? = if (s.bt) {
             { if (bt && BtMusic.connected && BtMusic.playing && BtMusic.positionKnown && BtMusic.title == s.title) BtMusic.positionMs() else null }
         } else {
@@ -789,7 +797,9 @@ class MusicActivity : Activity() {
 
     /**
      * Timed lines for the song on the screen, after its untimed ones (the owner's server found them, or made them by
-     * listening): the same lines are timed where they stand ([LyricsView.timeLines]), other ones replace them.
+     * listening): the same lines are timed where they stand ([LyricsView.timeLines]), other ones replace them. Since
+     * 1.16 also the words heard for timed lines (the same lines, the same correction, their words new). Listening goes
+     * on while what shows still wants it ([listenFor]: the same song's listening is kept as it is).
      */
     private val timedListener: (String, String, Int, Lyrics.Result) -> Unit = { title, artist, sec, r ->
         val s = lyricsSong
@@ -802,17 +812,26 @@ class MusicActivity : Activity() {
             lyricsOffset = r.offsetMs
             val at = positionNow() + lyricsShift
             lyrics { it.timeLines(r); it.needSync = unknown; it.at(at) }
-            if (!r.improvable) LyricsSync.end()
+            listenFor(r)
         }
     }
 
-    /** The listening at work, said in the lyrics' corner: what it does, and how much of the song is timed. */
+    /**
+     * The listening at work, said in the lyrics' corner: what it does, and how much of the song is timed (since 1.16
+     * for timed lyrics: how many of the lines have their words).
+     */
     private val syncStatus: (Int, Float) -> Unit = { what, covered ->
         if (::lyricsView.isInitialized && !isDestroyed) {
             val pct = "${(covered * 100).toInt()}%"
+            val words = LyricsSync.wordsOnly
             val text = when (what) {
-                LyricsSync.LISTENING -> if (covered > 0f) getString(R.string.lyrics_sync_listening_pct, pct) else getString(R.string.lyrics_sync_listening)
-                LyricsSync.WORKING -> getString(R.string.lyrics_sync_working, pct)
+                LyricsSync.LISTENING -> when {
+                    words && covered > 0f -> getString(R.string.cap_words_listening_pct, pct)
+                    words -> getString(R.string.cap_words_listening)
+                    covered > 0f -> getString(R.string.lyrics_sync_listening_pct, pct)
+                    else -> getString(R.string.lyrics_sync_listening)
+                }
+                LyricsSync.WORKING -> getString(if (words) R.string.cap_words_working else R.string.lyrics_sync_working, pct)
                 else -> null
             }
             lyrics { it.note(text, if (what == LyricsSync.LISTENING) R.drawable.ic_mic else R.drawable.ic_lyrics) }
@@ -843,6 +862,8 @@ class MusicActivity : Activity() {
                 Lyrics.keepOffset(this, s.title, s.artist, s.sec, lyricsOffset, r.lines)
                 lyrics { it.at(clock + lyricsOffset) }
                 Snack.show(this, R.string.kar_timing_saved, aboveDp = snackAbove)
+                // (listening for the words: every line moved on the song's clock, so the server is told anew)
+                if (LyricsSync.wordsOnly) listenFor(r)
                 return
             }
             // the clock unknown: the tap says where the song is (with the song's kept correction, the lyrics land on
@@ -874,6 +895,7 @@ class MusicActivity : Activity() {
         val at = positionNow()
         lyrics { it.at(at) }
         Snack.show(this, R.string.kar_timing_reset, aboveDp = snackAbove)
+        if (LyricsSync.wordsOnly) listenFor(r) // (the lines' clock times moved back: see onLineTap)
         return true
     }
 

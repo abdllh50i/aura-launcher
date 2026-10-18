@@ -314,40 +314,117 @@ class Megalobiz(Source):
 
 
 class NetEase(Source):
-    """NetEase Cloud Music, through syncedlyrics' provider (its session and cookies)."""
+    """NetEase Cloud Music, through syncedlyrics' provider (its session and cookies). Since 1.16 also its "yrc" lyrics,
+    timed word by word (by hand, for the songs its listeners sing along to: Western standards and pop among them —
+    Bobby Darin's "Call Me Irresponsible" has them; Arabic songs, so far, not), from the lyrics endpoint the app uses.
+    Searched through "cloudsearch" first: the older search endpoint answered "Fly Me To The Moon Frank Sinatra" with
+    code -462 and nothing, now and then."""
     name = "netease"
+    LYRICS_V1 = "https://music.163.com/api/song/lyric/v1"
+    CLOUDSEARCH = "https://music.163.com/api/cloudsearch/pc"
 
     def __init__(self):
         super().__init__()
         from syncedlyrics.providers import NetEase as P
         self.p = P()
         self.session = self.p.session
+        self.session.headers.setdefault("Referer", "https://music.163.com/")
+
+    def _songs(self, term):
+        for url in (self.CLOUDSEARCH, self.p.API_ENDPOINT_METADATA):
+            r = self.get(url, params={"limit": 10, "type": 1, "offset": 0, "s": term})
+            try:
+                d = r.json()
+            except ValueError:
+                raise SourceError("netease: not JSON")
+            songs = (d.get("result") or {}).get("songs") or []
+            if songs:
+                return songs
+        return []
 
     def find(self, song):
-        r = self.get(self.p.API_ENDPOINT_METADATA, params={"limit": 10, "type": 1, "offset": 0, "s": song.term()})
-        try:
-            songs = (r.json().get("result") or {}).get("songs") or []
-        except ValueError:
-            raise SourceError("netease: not JSON")
         hits = []
-        for s in songs:
-            artist = ", ".join(a.get("name", "") for a in s.get("artists") or [])
-            if not matches(song, s.get("name"), artist, (s.get("duration") or 0) / 1000.0):
-                continue
-            h = Hit(self.name, s.get("name"), artist, (s.get("duration") or 0) / 1000.0)
-            h.id = s.get("id")
-            hits.append(h)
+        seen = set()
+        for term in (song.term(), ("%s %s" % (song.artist, tn.clean(song.title))).strip()):
+            for s in self._songs(term):
+                if s.get("id") in seen:
+                    continue
+                seen.add(s.get("id"))
+                # (cloudsearch names the artists "ar" and the length "dt"; the older search "artists" and "duration")
+                artist = ", ".join(a.get("name", "") for a in (s.get("artists") or s.get("ar") or []))
+                dur = (s.get("duration") or s.get("dt") or 0) / 1000.0
+                if not matches(song, s.get("name"), artist, dur):
+                    continue
+                h = Hit(self.name, s.get("name"), artist, dur)
+                h.id = s.get("id")
+                hits.append(h)
+            if hits:
+                break
         hits.sort(key=lambda h: -rank(song, h))
-        for h in hits[:2]:
-            lr = self.get(self.p.API_ENDPOINT_LYRICS, params={"id": h.id, "lv": 1})
+        out = []
+        for h in hits[:3]:
+            lr = self.get(self.LYRICS_V1, params={"id": h.id, "lv": 0, "kv": 0, "tv": 0, "rv": 0, "yv": 0, "ytv": 0,
+                                                  "yrv": 0, "cp": "false"})
             try:
-                text = (lr.json().get("lrc") or {}).get("lyric")
+                d = lr.json()
             except ValueError:
                 continue
+            text = (d.get("lrc") or {}).get("lyric")
             if lrc_ok(text):
                 h.synced = text
-                return [h]
-        return []
+            words = word_lines((d.get("yrc") or {}).get("lyric"))
+            if len(words) >= 3:
+                h.words = words
+            if h.synced or getattr(h, "words", None):
+                out.append(h)
+            if h.synced and getattr(h, "words", None):
+                break
+        # (the one timed word by word first: its lines are as good, and it brings the words)
+        out.sort(key=lambda h: (not getattr(h, "words", None), not h.synced))
+        return out
+
+
+# ---------------------------------------------------------------------------------------------- word-timed formats (1.16)
+_WL_LINE = re.compile(r"^\[(\d+),(\d+)\](.*)$")
+_YRC_SYL = re.compile(r"\((\d+),(\d+),-?\d+\)")   # NetEase: (start ms, length ms, 0) before each piece, start absolute
+# credits some sources put in as lines of their own ("作词 : …" lyricist, "作曲" composer, "编曲" arranger, …)
+_CREDIT = re.compile(r"^\s*(作词|作曲|编曲|制作|监制|混音|录音|和声|吉他|贝斯|鼓|母带|出品|发行|词|曲)\s*[:：]")
+
+
+def word_lines(text):
+    """[(line start s, [(token, start s, end s), ...]), ...] of a NetEase yrc text. The pieces a word is sung in
+    ("Be" "liev" "er ") are joined into the whitespace-separated tokens of the line, each from its first piece's
+    start to its last one's end. Header lines and credits are left out."""
+    out = []
+    for raw in (text or "").splitlines():
+        m = _WL_LINE.match(raw.strip())
+        if not m:
+            continue
+        start = int(m.group(1))
+        body = m.group(3)
+        marks = list(_YRC_SYL.finditer(body))
+        if not marks:
+            continue
+        full = ""
+        spans = []
+        for i, mk in enumerate(marks):
+            piece = body[mk.end(): marks[i + 1].start() if i + 1 < len(marks) else len(body)]
+            st = int(mk.group(1)) / 1000.0
+            a = len(full)
+            full += piece
+            spans.append((a, len(full), st, st + int(mk.group(2)) / 1000.0))
+        if _CREDIT.match(full):
+            continue
+        toks = []
+        for w in re.finditer(r"\S+", full):
+            a, b = w.span()
+            hit = [(st, en) for (x, y, st, en) in spans if x < b and y > a]
+            if hit:
+                toks.append((w.group(), min(h[0] for h in hit), max(h[1] for h in hit)))
+        if toks:
+            out.append((start / 1000.0, toks))
+    out.sort(key=lambda x: x[0])
+    return out
 
 
 class Genius(Source):
@@ -485,8 +562,11 @@ class YouTubeMusic(Source):
         return []
 
 
-# YouTube Music first: the owner's own catalogue, the same recording his phone plays
+# YouTube Music first: the owner's own catalogue, the same recording his phone plays (1.16: the chosen lines' word
+# times come from NetEase's word-timed lyrics, see Search._words).
 SYNCED_ORDER = [YouTubeMusic, Musixmatch, Lrclib, Megalobiz, NetEase]
+# what a kept answer was made with: answers kept before 1.16 had no word times, so they are looked up again once
+CACHE_V = 2
 
 
 # ---------------------------------------------------------------------------------------------- the search, kept
@@ -516,6 +596,8 @@ class Search:
             return None
         age = time.time() - kept.get("at", 0)
         r = kept.get("result")
+        if r and r.get("synced") and kept.get("v") != CACHE_V:
+            return None
         if r and r.get("synced"):
             limit = KEEP_SYNCED
         elif kept.get("errors"):
@@ -529,7 +611,7 @@ class Search:
 
     def keep(self, song, result, tried):
         errors = [t["source"] for t in tried if t["result"] == "error"]
-        kept = {"at": time.time(), "song": vars(song), "result": result, "tried": tried, "errors": errors}
+        kept = {"at": time.time(), "v": CACHE_V, "song": vars(song), "result": result, "tried": tried, "errors": errors}
         path = self._path(song)
         tmp = path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
@@ -571,11 +653,14 @@ class Search:
             name, hits, err, sec = f.result()
             answers[name] = (hits, err, sec)
         chosen = None
+        word_hits = []
         for cls in SYNCED_ORDER:  # the first source in this order with a timed match wins
             hits, err, sec = answers.get(cls.name, ([], "no answer", 0))
             synced = next((h for h in hits if lrc_ok(h.synced)), None)
             plain = next((h for h in hits if h.plain), None)
+            word_hits += [h for h in hits if getattr(h, "words", None)]
             tried.append({"source": cls.name, "ms": int(sec * 1000), "result": outcome(err, synced, plain),
+                          **({"words": True} if any(getattr(h, "words", None) for h in hits) else {}),
                           **({"error": err[5:] if err.startswith("off: ") else err} if err else {})})
             if synced and chosen is None:
                 chosen = synced
@@ -599,8 +684,34 @@ class Search:
                       "url": pick.url}
             if getattr(pick, "provider", None):
                 result["provider"] = pick.provider  # (YouTube Music's own source: LyricFind, Musixmatch)
+            if chosen is not None and word_hits:
+                self._words(result, chosen, word_hits)
         self.keep(song, result, tried)
         return {"result": result, "tried": tried, "cached": False}
+
+    @staticmethod
+    def _words(result, chosen, word_hits):
+        """The real word times of the chosen timed lines (1.16), from the word-timed source that covers most of them:
+        result["wt"] (one entry per line of words.parse_lrc(result["synced"])), "words_from", "words_covered". A
+        source whose recording is not the chosen one's (lengths more than 3 s apart) is not used."""
+        import words as w
+        pairs = w.parse_lrc(result["synced"])
+        lines = [l for _, l in pairs]
+        times = [t for t, _ in pairs]
+        best = None
+        for h in word_hits:
+            if chosen.duration and h.duration and abs(chosen.duration - h.duration) > 3:
+                continue
+            wt, covered, offset = w.map_words(lines, times, h.words)
+            if wt and (best is None or covered > best[1]):
+                best = (wt, covered, offset, h)
+        if best is None:
+            return
+        wt, covered, offset, h = best
+        result["wt"] = wt
+        result["words_from"] = h.source
+        result["words_covered"] = round(covered, 3)
+        result["words_offset"] = round(offset, 3)
 
 
 def lrc_to_plain(lrc):

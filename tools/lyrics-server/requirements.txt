@@ -6,5 +6,13 @@ rapidfuzz==3.14.6
 requests==2.34.2
 beautifulsoup4==4.15.0
 numpy==2.4.6
-# only for tests/test_align.py (spoken test songs)
+# 1.16, word times by listening (tested 2026-10-18 on an RTX 3090, driver 610). setup.bat installs torch and
+# torchaudio first: the CUDA 12.4 builds when the PC has an NVIDIA card (they also carry the cuBLAS / cuDNN 9 that
+# faster-whisper needs on the card), the CPU builds otherwise. torchaudio 2.5 still has the MMS_FA aligner pipeline
+# (later versions deprecate and drop torchaudio's alignment parts).
+torch==2.5.1
+torchaudio==2.5.1
+demucs==4.0.1
+uroman==1.3.1.1
+# only for tests/test_align.py and tests/test_words.py (spoken test songs)
 edge-tts==7.3.1

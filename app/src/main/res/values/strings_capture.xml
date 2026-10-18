@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 1.16 lyrics: timed lyrics listened to for their words, and the last-listening diagnostics (kept apart from
+     strings.xml so parallel branches merge cleanly). -->
+<resources>
+    <!-- Music screen: timed lyrics whose words are being timed by listening (a small note above the lyrics) -->
+    <string name="cap_words_listening">Listening to time the words</string>
+    <string name="cap_words_listening_pct">Listening to time the words · %1$s of the lines done</string>
+    <string name="cap_words_working">Your server is timing the words · %1$s</string>
+
+    <!-- Settings › Display & sound › Music › Lyrics server: one quiet line under the listening switch -->
+    <string name="cap_last">Last listening: %1$s, %2$s, %3$s</string>
+    <string name="cap_last_short">Last listening: %1$s, %2$s</string>
+    <string name="cap_src_mic">the microphone</string>
+    <string name="cap_level">%1$s dB</string>
+    <plurals name="cap_words">
+        <item quantity="one">%1$d word heard</item>
+        <item quantity="other">%1$d words heard</item>
+    </plurals>
+</resources>

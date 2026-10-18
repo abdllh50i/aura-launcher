@@ -12,6 +12,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import com.abdllh.aura.R
 import com.abdllh.aura.music.LyricsServer
+import com.abdllh.aura.music.LyricsSync
 import com.abdllh.aura.ui.ABtn
 import com.abdllh.aura.ui.AText
 import com.abdllh.aura.ui.Fonts
@@ -29,6 +30,8 @@ import com.abdllh.aura.ui.label
 import com.abdllh.aura.ui.lp
 import com.abdllh.aura.util.dp
 import com.abdllh.aura.voice.Amri
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * Settings › Display & sound › Music: the owner's own lyrics server (1.13; tools/lyrics-server on his PC, published
@@ -68,8 +71,8 @@ class LyricsCard private constructor(private val act: SettingsActivity, private 
             }
         },
         // (on by default since 1.15; shown on only where it can work: without the microphone permission it listens to
-        // nothing, and turning it on asks for that permission)
-        ctx.switchRow(R.drawable.ic_mic, ctx.getString(R.string.lyr_srv_listen), ctx.getString(R.string.lyr_srv_listen_sub),
+        // nothing — Android asks it for the car's own sound too — and turning it on asks for that permission)
+        withLastHeard(ctx.switchRow(R.drawable.ic_mic, ctx.getString(R.string.lyr_srv_listen), ctx.getString(R.string.lyr_srv_listen_sub),
             LyricsServer.listen && Amri.hasMicPermission(ctx)) { on ->
             when {
                 !on -> LyricsServer.listen = false
@@ -81,10 +84,30 @@ class LyricsCard private constructor(private val act: SettingsActivity, private 
                     act.requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), SettingsActivity.REQ_MIC)
                 }
             }
-        }
+        })
     )
 
     init { refresh(null) }
+
+    /**
+     * The last listening in one quiet line under the switch's own words (1.16), when there was one: how loud the last
+     * piece was and how many words the server wrote down ("Last listening: the microphone, −23 dB, 41 words heard").
+     * The log has every piece and the server's own numbers.
+     */
+    private fun withLastHeard(row: SettingRow): SettingRow {
+        val h = LyricsSync.lastHeard() ?: return row
+        val how = ctx.getString(R.string.cap_src_mic)
+        // (a true minus sign: a hyphen reads as a dash beside a number)
+        val db = ctx.getString(R.string.cap_level, "−" + abs(h.db.coerceIn(-96.0, 0.0).roundToInt()))
+        val text = if (h.words >= 0) ctx.getString(R.string.cap_last, how, db, ctx.resources.getQuantityString(R.plurals.cap_words, h.words, h.words))
+            else ctx.getString(R.string.cap_last_short, how, db)
+        // (the row's text column: its title and its words, beside the switch)
+        val column = (0 until row.childCount).map { row.getChildAt(it) }
+            .firstOrNull { it is LinearLayout && it.orientation == LinearLayout.VERTICAL } as? LinearLayout ?: return row
+        column.addView(ctx.label(Type.FOOTNOTE, Palette.text3, lines = 2).apply { this.text = text },
+            lp(MATCH, WRAP).apply { topMargin = Space.XS.dp })
+        return row
+    }
 
     /** Does the server answer, with this key? The answer stays under the title until the address or key changes. */
     private fun check() {

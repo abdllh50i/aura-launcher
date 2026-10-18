@@ -989,6 +989,7 @@ as whole files), 18 lines each, mean / max error per line:
 Real singing through a car's microphone is harder than speech: not measured (see below).
 
 #### Word times (1.15, `tools/lyrics-server/words.py`)
+(Since 1.16 nothing is estimated and the heard words are placed by forced alignment: see "Real word times only (1.16)".)
 Asked with `words=1` (GET /api/lyrics and GET /api/sync), the server adds `"enhanced"`: the timed lyrics word by word, an
 LRC with `<mm:ss.xx>` before each of a line's whitespace-separated words and one after the last (where the line's
 singing ends), and `"words"`: `heard` or `estimated`. A timing made by listening knows when each clearly matched word
@@ -1041,6 +1042,7 @@ server. The server's half (word times by listening alignment, its own estimate w
 `tools/lyrics-server`; these notes are the app's half.
 
 #### Where a word's time comes from (`Words.kt`, `Lyrics.parse`, `LyricsServer`)
+(Since 1.16 the app estimates nothing and the effect is drawn differently: see "Real word times only (1.16)".)
 The app adds `words=1` to `GET /api/lyrics` and `GET /api/sync`. A server that knows it answers with two more fields:
 `enhanced`, the timed lyrics as enhanced LRC (`[mm:ss.xx]` per line, `<mm:ss.xx>` before each of the line's
 whitespace-separated words, a last tag where the last word's singing ends, which may be missing), and `words`,
@@ -1160,6 +1162,119 @@ switch shows on only when the pref is on and the permission is given, and turnin
   record took that path. `/api/sync`'s state with `enhanced` while listening is untested end to end.
 * Arabic marks that stand far outside a word's advance (a shadda over a final letter) lit with the neighbouring word's
   strength at the very edge: not seen in the songs tried.
+
+### Real word times only (1.16: `Words`, `LyricsView`, `Lyrics`, `LyricsSync`, `tools/lyrics-server`)
+The owner, after 1.15: the word light was "made up" (a singer sang half a line, paused, went on, and the light ran on
+as if there had been no pause), and the word being sung was not clear enough. The cause: 1.15 spread a line's words over
+its time by their length whenever no real times were known, and that was every song in the car — the two listening
+sessions the unit sent after 1.15 heard 0 words ("بتقولي أنسى اللي فات", "12 to 12"), and the owner's latest songs
+(Sinatra, Bobby Darin) were timed line by line only. Since 1.16 **only real word times light words**; a line without
+them is lit whole, as before 1.15. There is no estimate any more, in the app or on the server (`words.estimate` stays
+only for 1.15 servers' callers; nothing calls it).
+
+#### Where real word times come from
+* **NetEase's word-timed lyrics** ("yrc", `sources.NetEase`, `sources.word_lines`): timed word by word by hand for the
+  songs its listeners sing along to — Western standards and pop among them, Arabic songs not so far. Searched through
+  its `cloudsearch` endpoint (the older search answered some queries with code −462 and nothing). The pieces a word is
+  sung in are joined into the line's whitespace tokens; credit lines are left out.
+* They are put on the lines the app shows (`Search._words` → `words.map_words`): those are usually YouTube Music's text
+  and timing of the recording the phone plays. The two timings may differ by a constant (another copy of the
+  recording): the offset most line pairs of the same words agree on (similarity 0.85+, within 0.35 s, at least 3 lines
+  and 30 % of them) is taken, else the source is another recording and gives nothing. Each shown line then takes its
+  twin's words (starting within 1.2 s after the offset, the same words in order, spelling aside); a line with fewer than
+  75 % of its words found gets none; a word found in only one of the two texts gets a time between its found neighbours.
+  The answer keeps `wt` (one entry per line), `words_from`, `words_covered`, `words_offset`. Answers kept before 1.16
+  are looked up again once (`CACHE_V` 2).
+  Measured: "Call Me Irresponsible" (Bobby Darin) 95 % of its lines, "Fly Me To The Moon" (Sinatra) 74 %; "12 to 12",
+  "Believer" (its album recording; NetEase's word-timed copy is another, 16 s longer, and was refused), "Shape of You",
+  "Tamally Maak": none. Two hand-timed sources compared on the same lines differed by 0.27 s a word on average (0.58 s
+  at the 90th percentile): what the server hears is believed first.
+* **The server hearing the song** (listening, below): the car's microphone, or the unit's own song file.
+
+`/api/lyrics?words=1` (`server.add_words`): the words heard of this very song before (its record, the same words
+starting within a second; heard times are the song's own and are not moved with the line), then a source's for the
+other lines; when the record has (nearly) all its lines' words and the answer has not, the record's own lines are
+answered (source "aligned": they are what the car showed when it listened). `enhanced` carries word tags only on lines
+with real word times; `words` says "source", "heard" or "source+heard". `words.tagged` writes it: a pause (a word's end
+known, the next word more than 0.25 s later) is an empty tag where the singing stopped,
+`[00:23.44]<00:23.44>In <00:23.80>other <00:24.10>words, <00:24.90> <00:27.20>hold …` (1.15 apps skip it).
+
+#### The server's listening (`listen.py`, `vocals.py`, `wordtimes.py`, `gpu.py`)
+* On the PC's RTX 3090 (`gpu.py`): whisper with int8 weights, htdemucs (the voice alone), torchaudio's MMS_FA forced
+  aligner in float16. About 2.4 GB of the card's memory and 5 GB of the PC's with all three loaded (other programs use
+  most of the card); loaded at the first piece (about 26 s), kept. A job the card has no memory for is done on the
+  processor (never a crash); without a usable card everything runs there (about 16 s a 12 s piece; with pieces waiting
+  the voice separation is skipped to keep up). Model caches and temporary files live beside the repository, not on C:.
+* A piece: its levels for the diagnostics (the sound is never kept on disk), the voice separated, whisper on the voice
+  (its words time an untimed song's lines, as before), the voice kept in memory (the last 45 s of the session, dropped
+  three minutes after its last piece), then every line whose window has been heard whole gets its words placed: its
+  known text, written in the aligner's letters (uroman for Arabic, as written), forced onto the voice inside the line's
+  window, with a wildcard before and after it. A word ends where its voice dies away (a held note lasts, a pause shows);
+  a line placed unsurely gets nothing (another text, no singing, the wrong place); a line placed again replaces its words
+  only when surer.
+* Timed sessions (`times` in `/api/sync/start`, at least 3): the given line times are kept and only words are looked for.
+  A line's window runs from its time −1.2 s to the next line's +1.2 s; once three lines are placed surely the session's
+  clock offset (the median of first word − given time) moves the windows and narrows the slack to 0.8 s, and the words
+  are kept on the song's clock (an offset of 0.35 s or more taken off wholly, under 0.15 s not at all — it cannot be told
+  from the source's own error — evenly between), so the next play, with another clock error, still shows them in step.
+* Untimed sessions: as before, and a line whose words were placed starts with its first word (a line with a pause in it
+  was timed seconds late by the middle of its heard words).
+* Repeats: a line with the same words as one already placed, and a span within about 10 % of it, gets that timing at
+  its own start (`"from": "repeat"`) until it is heard itself: a chorus has its words on the first play.
+* Diagnostics: each piece's `rms`, `peak`, `vocal` (dBFS), `asr` (words written down), `aligned` (lines given words),
+  `offset`, `ms`, `src`, in the song's record, in `diag` of every answer, and one log line per piece.
+* Measured (no real music exists on the PC — the song files in `dl/songs` are silent placeholders — so on test songs made
+  by `tests/songmaker.py`: real lyrics of an English and an Arabic song spoken by edge-tts and made more like singing,
+  held notes, pauses inside lines, reverb, a band; every word's true time known): word starts median 0.02–0.04 s, 90th
+  percentile 0.06–0.09 s, 91–98 % within 0.1 s; pauses inside lines found 8–9 of 9; through simulated car microphone
+  (motorway noise, highs cut, −30 dBFS) at 10 dB and 0 dB signal to noise 23–24 of 24 lines; the wrong lyrics placed no
+  line; whisper's own word times on the same sound were 0.12 s off (median). A 12 s piece takes 0.6–1.0 s on the card.
+  `tests/test_units.py` and `tests/test_wordsrc.py` need no server, sound or card.
+
+#### The app
+* `Words`: no estimate. A line's pauses come from the empty tags (`Lyrics.Line.ends`). `attach` gives a line the
+  server's words for the same text starting within 1.5 s and does not move them with the line (both are the same
+  clock's); a line whose first word is sung before its own time is lit from that word (at most 2 s earlier, never before
+  the line ahead of it).
+* `Lyrics`: `Result.wordsCovered`, `wantsWords` (under `WORDS_DONE`, 0.9). Timed lyrics without word times ask the
+  owner's server for them (`asks`, with the word effect on); an answer with more words replaces the lyrics shown, and
+  keeps the owner's saved correction when its lines are the same.
+* The effect (`LyricsView.Line.onDraw`): the words sung at full strength, those to come at 50 % (`UPCOMING`; 1.15's 60 %
+  read as nearly the same in the car); the word being sung stands on a pill of the cover's colour (`accent`: 26 % on a
+  light screen, 34 % on a dark one) and fills with that colour in its reading direction. The pill glides to the next
+  word in 150 ms when the two follow each other on a row, else comes in over 120 ms; when a pause begins (the word's end)
+  it and the word's colour let go over 180 ms, and the light waits for the next word. Nothing is drawn at another size
+  (a scaled word costs this GPU a new set of letters every frame). Lyrics that come while a line is being sung light it
+  word by word at once.
+* Listening for words (`LyricsSync`, timed mode): timed lyrics that want words, with the word effect on, are listened to
+  through the car's microphone under the 1.13 rules (only with the switch on, a server set, those lyrics on the music
+  screen and the song's position known; never in a call, while the assistant listens or answers, while the wake word is
+  recorded, or while reversing). The line times go to the server on the song's clock (shown time minus the owner's
+  correction); its words come back shifted by the correction and are attached to the shown lines, which keep their
+  times, source and correction. Pieces are 12 s with 2 s overlap (`&src=mic`); a piece of nothing but silence is not
+  sent; the server is told of the song first and its first answer is waited for up to 3 s, so a song it already knows
+  gets its words at once and the microphone is never opened. Listening stops when the server says done (0.9 of the
+  lines) or the lyrics no longer want words, and starts again with the new times after a correction.
+* Diagnostics on the unit: each piece's level and the server's `diag` in the log (`AuraLyricsSync`), and in Settings →
+  Display & sound → Music under the listening switch the last listening's level and words heard.
+* The unit's Bluetooth music cannot be heard digitally: the daemon that plays it (`gocsdk_8800`) runs as root, and
+  Android 10 does not let an app's playback capture hear a uid without a package (measured on the emulator: silence).
+  Going around that protection was not done; the microphone is the way in.
+
+#### Checked on the emulator
+* "Call Me Irresponsible" as a simulated Bluetooth song: the server's NetEase words on YouTube Music's lines; the pill
+  on the word being sung in the panel and on the whole screen, light and dark; a line without word times lit whole.
+* Listening, end to end, with the merged server on the card and the English test song through the debug feed (16 kHz
+  WAV in place of the microphone), its lines shown as timed lyrics without word times: words for 22 of 24 lines while it
+  played (25 % after 44 s), the clock offset measured −0.3 to −0.4 s and taken off, listening stopped at 91 %. Played
+  again, the words came with the server's first answer and the microphone was not opened; through a 2.2 s pause after
+  "things" the pill let go and the rest of the line waited, then went on with "been" (a burst of screenshots).
+
+#### Not verified
+* Real singing: every measurement above is on test songs. Whether the car's microphone hears the music at all: the two
+  1.15 sessions heard nothing; the levels now logged per piece (in the server's log and record, and in Settings) will
+  tell after the next songs in the car.
+* Smoothness of the pill and the fill on the unit's GPU (the emulator draws 6–8 frames a second).
 
 ### The 3D car (`tools/car3d`, debug-only `CarBakerActivity`)
 The car is not rendered live (the source model has ~726k triangles and 8K textures; the unit has a Mali-G31). Instead a

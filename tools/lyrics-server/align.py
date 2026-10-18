@@ -2,8 +2,9 @@
 
 The sound comes from the car, never from a streaming service: what the car's microphone hears while a Bluetooth song
 plays (chunks of 15-30 s, each with the song's position at its start from the app's song clock), or a song file from the
-unit's own storage. faster-whisper (CTranslate2, on this PC's CPU) writes down the words it hears with their times; the
-audio is deleted as soon as it is decoded. The words are kept per song (not the sound), merged chunk by chunk, and
+unit's own storage. faster-whisper (CTranslate2, on the graphics card when there is one) writes down the words it hears
+with their times; the audio is deleted as soon as it is decoded (1.16: each word's own time is placed by listen.py and
+wordtimes.py, kept per line in the record's "wt"). The words are kept per song (not the sound), merged chunk by chunk, and
 matched against the lyric lines with a tolerant alignment: Arabic in one spelling (alef forms, ة/ه, ى/ي, no marks, the
 و ف ب ل ك ال prefixes that lyrics and a recogniser join or split differently), Latin without case or punctuation. A line
 gets the time of its first matched words; lines between two timed ones are spread by their words; the rest are guessed
@@ -22,6 +23,7 @@ from rapidfuzz import fuzz
 from rapidfuzz.process import cdist
 
 import textnorm as tn
+import wordtimes as wt
 
 RATE = 16000
 EDGE = 1.0          # s: the ends of a chunk are heard worse (a word cut in two): a neighbour's middle is believed there
@@ -32,27 +34,68 @@ DEFAULT_WPS = 0.42  # s a sung word takes, until the song itself tells
 
 # ---------------------------------------------------------------------------------------------- the recogniser
 class Transcriber:
-    """faster-whisper, loaded at its first use (a few seconds) and kept."""
+    """faster-whisper, loaded at its first use (a few seconds) and kept: on the graphics card (a 12 s piece in about
+    0.3 s), else on the processor in int8. On the card its weights are int8 and it computes in float16: as many words
+    and as well timed as float16 weights on the test songs, at the same speed, and 1 GB less of the card (on Windows
+    also 1 GB less of the PC's memory: the card's memory is charged to the process). A job the card has no memory for
+    is done on the processor; after a failed load on the card it is not tried again for a few minutes (a load takes
+    seconds)."""
 
-    def __init__(self, model, threads, beam=5):
+    RETRY_CARD_S = 300
+    CARD_COMPUTE = "int8_float16"
+
+    def __init__(self, model, threads, beam=5, log=None):
         self.name = model
         self.threads = threads
         self.beam = beam
-        self.model = None
+        self.models = {}
+        self.card_failed = 0.0
         self.lock = threading.Lock()
+        self.log = log or (lambda m: print(m, flush=True))
 
-    def load(self):
+    def device(self):
+        import gpu
+        if gpu.cuda() and time.time() - self.card_failed > self.RETRY_CARD_S:
+            return "cuda"
+        return "cpu"
+
+    def load(self, dev=None):
+        dev = dev or self.device()
         with self.lock:
-            if self.model is None:
+            m = self.models.get(dev)
+            if m is None:
+                import gpu
+                gpu.torch()  # (CUDA's libraries for CTranslate2, from torch's folder: torch first)
                 from faster_whisper import WhisperModel
                 t0 = time.time()
-                self.model = WhisperModel(self.name, device="cpu", compute_type="int8", cpu_threads=self.threads)
-                print("  speech model %s ready in %.1f s" % (self.name, time.time() - t0), flush=True)
-        return self.model
+                if dev == "cuda":
+                    m = WhisperModel(self.name, device="cuda", compute_type=self.CARD_COMPUTE)
+                else:
+                    m = WhisperModel(self.name, device="cpu", compute_type="int8", cpu_threads=self.threads)
+                self.models[dev] = m
+                self.log("  speech model %s ready on %s in %.1f s" % (self.name, dev, time.time() - t0))
+        return m
+
+    @property
+    def model(self):
+        return self.models.get("cuda") or self.models.get("cpu")
 
     def words(self, audio, lang=None, offset=0.0, hotwords=None):
         """[(text, start, end, probability)] of what is sung in [audio] (float32, 16 kHz), times from [offset]."""
-        model = self.load()
+        dev = self.device()
+        try:
+            return self._words(self.load(dev), audio, lang, offset, hotwords)
+        except Exception as e:
+            import gpu
+            if dev != "cuda" or not gpu.is_oom(e):
+                raise
+            gpu.release()
+            if "cuda" not in self.models:
+                self.card_failed = time.time()
+            self.log("  the graphics card is full: this piece is written down on the processor")
+            return self._words(self.load("cpu"), audio, lang, offset, hotwords)
+
+    def _words(self, model, audio, lang, offset, hotwords):
         segs, info = model.transcribe(
             audio, language=lang, task="transcribe", beam_size=self.beam, word_timestamps=True,
             condition_on_previous_text=False, hotwords=hotwords, vad_filter=True,
@@ -500,10 +543,21 @@ class Songs:
         tmp = p + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(s, f, ensure_ascii=False)
-        os.replace(tmp, p)
+        # (on Windows the record cannot be replaced while a request is reading it: "access is denied" for a moment)
+        for attempt in range(40):
+            try:
+                os.replace(tmp, p)
+                return
+            except PermissionError:
+                if attempt == 39:
+                    raise
+                time.sleep(0.025)
 
-    def start(self, title, artist, duration, lines):
-        """The song's record with these lyric lines (a new text is timed again from the words already heard)."""
+    def start(self, title, artist, duration, lines, given=None):
+        """The song's record with these lyric lines (a new text is timed again from the words already heard), for a
+        new play of it (a new session). [given]: the line times the app has (ms or None per line; a "timed" session:
+        those times are kept and only the words are looked for), or None ("untimed": the lines are timed by listening).
+        Word times already found stay as long as the text is the same."""
         i = song_id(title, artist)
         with self.lock:
             s = self.load(i) or {"id": i, "title": title, "artist": artist, "words": [], "chunks": [], "times": None,
@@ -514,64 +568,225 @@ class Songs:
             if lines and s.get("text") != text_hash:
                 s["lines"] = lines
                 s["text"] = text_hash
+                s["wt"] = None
+                s.pop("given", None)  # (another text's times)
                 self.realign(s)
+            if not isinstance(s.get("wt"), list) or len(s["wt"]) != len(s.get("lines") or []):
+                s["wt"] = [None] * len(s.get("lines") or [])
+            if given is not None:
+                s["mode"] = "timed"
+                s["given"] = [None if x is None else round(x / 1000.0, 3) for x in given]
+                self.use_given(s)
+            else:
+                s["mode"] = "untimed"
+            s["session"] = int(s.get("session") or 0) + 1
+            s.pop("word_at", None)  # (1.15's heard words per line: the word times are in "wt" now)
+            s["wt"] = wt.repeats(s["lines"], self.line_times(s), s["wt"])
             self.save(s)
             return s
 
     def realign(self, s):
+        """The lines timed again from the words heard; a song whose lines' times were given (a timed session, now or
+        before) keeps those: a lyrics source's line times are better than the ones made of what was heard."""
+        if s.get("given") and len(s["given"]) == len(s.get("lines") or []):
+            self.use_given(s)
+            return
+        lines = s.get("lines") or []
         heard = {}
-        times, kinds, covered = align(s.get("lines") or [], s.get("words") or [], s.get("duration") or 0, heard)
-        s["times"] = [None if t is None else round(t, 2) for t in times]
-        s["kinds"] = kinds
-        s["covered"] = round(covered, 3)
-        # the words heard, of the lines timed by their own words only, and inside the line's own time (a word matched in
-        # a line the order check left out would fight that line's time)
-        word_at = []
-        for (k, p), (st, en) in sorted(heard.items()):
-            if kinds[k] != "anchor" or times[k] is None:
-                continue
-            nxt = next((times[x] for x in range(k + 1, len(times)) if times[x] is not None and times[x] > times[k]), None)
-            if st < times[k] - 0.6 or (nxt is not None and st >= nxt):
-                continue
-            word_at.append([k, p, round(st, 2), round(en, 2)])
-        s["word_at"] = word_at
+        times, kinds, covered = align(lines, s.get("words") or [], s.get("duration") or 0, heard)
+        # where each line's own words were first heard: a line sung with a pause in it is anchored late (the middle
+        # of its words, moved back by the song's pace), and the window its words are looked for in reaches back there
+        first = [None] * len(lines)
+        for (k, p), (st, en) in heard.items():
+            if k < len(first) and (first[k] is None or st < first[k]):
+                first[k] = round(st, 2)
+        s["first_heard"] = first
+        s["times"], s["kinds"], s["covered"] = self.word_starts(lines, times, kinds, covered, s.get("wt"))
 
-    def add_words(self, i, words, t0, t1, edges, kind):
+    @staticmethod
+    def word_starts(lines, times, kinds, covered, wtl):
+        """The lines timed by listening, each line whose words were placed (heard) starting with its first word: the
+        words' own times are better evidence than the middle of the words heard moved back by the song's pace (a line
+        with a pause in it was seconds late). The other lines are kept between them."""
+        times = list(times)
+        kinds = list(kinds)
+        fixed = set()
+        for k in range(len(lines)):
+            e = wtl[k] if wtl and k < len(wtl) else None
+            if not e or e.get("from") != "heard" or times[k] is None:
+                continue
+            st = next((x for x in e["s"] if x is not None and x >= 0), None)
+            if st is not None and abs(st - times[k]) < 8.0:
+                times[k] = st
+                kinds[k] = "anchor"
+                fixed.add(k)
+        if fixed:
+            for k in range(len(times)):
+                if times[k] is None or k in fixed:
+                    continue
+                lo = max((times[x] for x in fixed if x < k), default=None)
+                hi = min((times[x] for x in fixed if x > k), default=None)
+                if lo is not None and times[k] < lo:
+                    times[k] = lo
+                if hi is not None and times[k] > hi:
+                    times[k] = hi
+            last = 0.0
+            for k in range(len(times)):
+                if times[k] is not None:
+                    times[k] = max(last, times[k])
+                    last = times[k]
+            sung = [k for k, l in enumerate(lines) if tn.words(l)]
+            if sung:
+                covered = sum(1 for k in sung if kinds[k] in ("anchor", "between")) / len(sung)
+        return [None if t is None else round(t, 2) for t in times], kinds, round(covered, 3)
+
+    @staticmethod
+    def use_given(s):
+        """The record's line timing ("times", what its word times go with) made of the given times."""
+        lines = s.get("lines") or []
+        given = s["given"]
+        s["times"] = [None if t is None else round(t, 2) for t in given]
+        s["kinds"] = [None if t is None else "given" for t in given]
+        sung = [k for k, l in enumerate(lines) if tn.words(l)]
+        s["covered"] = round(sum(1 for k in sung if given[k] is not None) / len(sung), 3) if sung else 0.0
+
+    def add_words(self, i, words, t0, t1, edges, kind, diag=None):
+        """The recogniser's words of a piece (or a file) merged into the song's, the lines timed again from them."""
         with self.lock:
             s = self.load(i)
             if s is None:
                 return None
             s["words"] = merge(s.get("words") or [], words, t0, t1, edges)
-            s["chunks"] = (s.get("chunks") or [])[-200:] + [{"t0": round(t0, 2), "t1": round(t1, 2), "kind": kind, "at": int(time.time()), "heard": len(words)}]
+            c = {"t0": round(t0, 2), "t1": round(t1, 2), "kind": kind, "at": int(time.time()), "heard": len(words)}
+            if diag:
+                c.update(diag)
+            s["chunks"] = (s.get("chunks") or [])[-200:] + [c]
             self.realign(s)
+            if s.get("mode") != "timed":
+                s["wt"] = wt.repeats(s.get("lines") or [], self.line_times(s), s.get("wt"))
+            self.save(s)
+            return s
+
+    def put_words(self, i, text_hash, session, results, offset):
+        """The words placed by listening ([results]: {line: placing}, times on the audio's clock) kept in the song's
+        record: a line's words replace those it had only when they are surer (or were a repeat's). [offset]: the
+        session's clock against the given times (timed sessions; None: not known yet, 0 for now): the words are kept
+        on the song's clock, and the session's earlier lines are moved when its offset is better known. Returns
+        (the record, how many lines got words)."""
+        off = float(offset or 0.0)
+        with self.lock:
+            s = self.load(i)
+            if s is None or s.get("text") != text_hash:
+                return s, 0  # (the lines changed meanwhile: these words were placed for others)
+            lines = s.get("lines") or []
+            cur = s.get("wt")
+            if not isinstance(cur, list) or len(cur) != len(lines):
+                cur = [None] * len(lines)
+            # the session's lines placed before its offset was known (or as well known)
+            for e in cur:
+                if e and e.get("from") == "heard" and e.get("n") == session and abs(e.get("off", 0.0) - off) > 0.005:
+                    d = e.get("off", 0.0) - off
+                    e["s"] = [round(x + d, 2) for x in e["s"]]
+                    e["e"] = [x if x < 0 else round(x + d, 2) for x in e["e"]]
+                    e["off"] = round(off, 3)
+            n = 0
+            for k, r in sorted(results.items()):
+                if k >= len(lines):
+                    continue
+                old = cur[k]
+                if old and old.get("from") == "heard" and old.get("q", 0.0) >= r["q"]:
+                    continue
+                cur[k] = {"s": [round(x - off, 2) for x in r["s"]],
+                          "e": [-1 if x is None else round(x - off, 2) for x in r["e"]],
+                          "from": "heard", "q": r["q"], "n": session, "off": round(off, 3)}
+                n += 1
+            if not (s.get("given") and len(s["given"]) == len(lines)) and s.get("times") and s.get("kinds"):
+                # (timed by listening: the lines whose words were placed start with their first word)
+                s["times"], s["kinds"], s["covered"] = self.word_starts(lines, s["times"], s["kinds"], s.get("covered", 0.0), cur)
+            s["wt"] = wt.repeats(lines, self.line_times(s), cur)
+            if s.get("mode") == "timed" and offset is not None:
+                s["offset"] = round(off, 3)
+            self.save(s)
+            return s, n
+
+    def note_diag(self, i, diag):
+        """The last piece's numbers, for the state's "diag" (and the piece's own record)."""
+        with self.lock:
+            s = self.load(i)
+            if s is None:
+                return None
+            s["diag"] = dict(diag)
+            if s.get("chunks"):
+                s["chunks"][-1].update(diag)
             self.save(s)
             return s
 
     @staticmethod
+    def line_times(s):
+        """The line times the words go with (s): the given ones when a timed session gave them, else the ones heard
+        ("times" holds the same: what the lyrics answer and the word sources' carry use)."""
+        if s.get("given") and len(s["given"]) == len(s.get("lines") or []):
+            return s["given"]
+        return s.get("times") or [None] * len(s.get("lines") or [])
+
+    @staticmethod
+    def words_covered(s):
+        """Share of the lines with words that have word times (heard, or a repeat of a line heard)."""
+        lines = s.get("lines") or []
+        w = s.get("wt") or []
+        sung = [k for k, l in enumerate(lines) if l.split()]
+        if not sung:
+            return 0.0
+        return round(sum(1 for k in sung if k < len(w) and w[k]) / len(sung), 3)
+
+    @staticmethod
     def enhanced(s):
-        """The timing made by listening as an enhanced LRC, word by word (heard words at their times), or None."""
-        times = s.get("times")
+        """The song's lines at their times, word by word where real word times are known (words.tagged), or None."""
+        times = Songs.line_times(s)
         if not times or not any(t is not None for t in times):
             return None
         import words as w
-        lines = s.get("lines") or []
-        return w.enhanced(lines, times, w.from_heard(lines, times, s.get("word_at")))
+        return w.tagged(s.get("lines") or [], times, s.get("wt"))
 
     @staticmethod
-    def state(s, pending=0):
-        """What the app is told: the timed lines (when there are any), how much of the song they cover, and whether
-        listening can stop: nearly everything timed, or most of it with no line still to come only guessed (the
-        guesses after the last line heard were seconds off: listening on to the song's end times them)."""
+    def state(s, pending=0, with_words=False):
+        """What the app is told. Untimed (the lines timed by listening, as before 1.16): the timed lines (when there
+        are any), how much of the song they cover, and whether listening can stop: nearly everything timed, or most of
+        it with no line still to come only guessed (the guesses after the last line heard were seconds off:
+        listening on to the song's end times them). Timed: the given times as they are, and how many of the lines
+        have their words (covered, done at DONE_AT). [with_words]: the enhanced LRC too."""
         lines = s.get("lines") or []
-        times = s.get("times")
-        kinds = s.get("kinds") or []
-        covered = s.get("covered", 0.0)
-        has = bool(times) and any(t is not None for t in times)
-        last = max((k for k, kd in enumerate(kinds) if kd in ("anchor", "between")), default=-1)
-        ahead = sum(1 for k in range(last + 1, len(kinds)) if kinds[k] == "guess" and tn.words(lines[k]))
-        done = covered >= 0.97 or (covered >= DONE_AT and ahead == 0)
-        return {"ok": True, "id": s["id"], "lines": len(lines), "covered": covered,
-                "show": covered >= SHOW_AT, "done": done, "ahead": ahead,
-                "times": [None if t is None else int(t * 1000) for t in times] if has else None,
-                "lrc": lrc(lines, times) if has else None,
-                "heard": len(s.get("words") or []), "chunks": len(s.get("chunks") or []), "pending": pending}
+        if s.get("mode") == "timed" and s.get("given"):
+            given = s["given"]
+            covered = Songs.words_covered(s)
+            w = s.get("wt") or []
+            ahead = sum(1 for k, l in enumerate(lines) if l.split() and not (k < len(w) and w[k]))
+            filled = []
+            last_t = 0.0
+            for t in given:
+                last_t = last_t if t is None else t
+                filled.append(last_t)
+            st = {"ok": True, "id": s["id"], "mode": "timed", "lines": len(lines), "covered": covered,
+                  "show": any(w), "done": covered >= DONE_AT, "ahead": ahead,
+                  "times": [None if t is None else int(round(t * 1000)) for t in given],
+                  "lrc": lrc(lines, filled),
+                  "heard": len(s.get("words") or []), "chunks": len(s.get("chunks") or []), "pending": pending}
+        else:
+            times = s.get("times")
+            kinds = s.get("kinds") or []
+            covered = s.get("covered", 0.0)
+            has = bool(times) and any(t is not None for t in times)
+            last = max((k for k, kd in enumerate(kinds) if kd in ("anchor", "between")), default=-1)
+            ahead = sum(1 for k in range(last + 1, len(kinds)) if kinds[k] == "guess" and tn.words(lines[k]))
+            done = covered >= 0.97 or (covered >= DONE_AT and ahead == 0)
+            st = {"ok": True, "id": s["id"], "mode": "untimed", "lines": len(lines), "covered": covered,
+                  "show": covered >= SHOW_AT, "done": done, "ahead": ahead,
+                  "times": [None if t is None else int(t * 1000) for t in times] if has else None,
+                  "lrc": lrc(lines, times) if has else None,
+                  "heard": len(s.get("words") or []), "chunks": len(s.get("chunks") or []), "pending": pending}
+        st["diag"] = s.get("diag")
+        if with_words:
+            st["enhanced"] = Songs.enhanced(s) if st["times"] else None
+            if any(s.get("wt") or []):
+                st["words"] = "heard"
+        return st

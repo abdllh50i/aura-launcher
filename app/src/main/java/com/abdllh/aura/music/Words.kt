@@ -1,25 +1,26 @@
 package com.abdllh.aura.music
 
 import com.abdllh.aura.util.Prefs
-import kotlin.math.max
-import kotlin.math.min
-import kotlin.math.pow
-import kotlin.math.roundToLong
 
 /**
- * When each word of a timed line is sung (1.15, word-by-word lyrics). A line's words are its whitespace-separated
+ * When each word of a timed line is sung (word-by-word lyrics, 1.15). A line's words are its whitespace-separated
  * tokens in order; their times are an array one longer than the words: word j starts at [j], the last word's singing
  * ends at the last entry (song time, ms).
  *
- * The times come from the owner's server ("enhanced" LRC: `<mm:ss.xx>` before each word, heard by listening or
- * estimated there) or, for LRCLIB's timed lyrics and older servers, are estimated here by the very rule the server
- * uses for its own estimates ([estimate]), so a song looks the same whichever of the two worked them out.
+ * Since 1.16 these are only ever REAL times: from a source timed word by word by hand (NetEase, found by the owner's
+ * server) or heard by the server in the song itself. 1.15 spread a line's words over its time by their length
+ * when nothing better was known, and the light ran on through a singer's pause as if there had been none (the owner:
+ * "made up"); a line without real times is now lit whole, as before 1.15. A word followed by a pause also knows where
+ * its singing ends ([Lyrics.Line.ends]): the light stops there and waits for the next word.
  */
 internal object Words {
-    /** "Word-by-word lyrics" (Settings → Display & sound → Music), on by default; off: whole lines as before 1.15. */
+    /** "Word-by-word lyrics" (Settings → Display & sound → Music), on by default; off: whole lines, as before 1.15. */
     var on: Boolean
         get() = Prefs.raw.getBoolean("lyricsWords", true)
         set(v) { Prefs.raw.edit().putBoolean("lyricsWords", v).apply() }
+
+    /** A last word whose end was not given fills for this long at most (its start is real; the end a bound). */
+    private const val LAST_WORD_MS = 900L
 
     /** Number of whitespace-separated tokens in [s]. */
     fun count(s: CharSequence): Int {
@@ -46,82 +47,48 @@ internal object Words {
         if (inWord) { ends[n] = s.length }
     }
 
-    /** A token's weight in the estimate: (its letters and digits, at least 1)^0.8 + 0.6. */
-    private fun weight(s: String, from: Int, to: Int): Double {
-        var letters = 0
-        var i = from
-        while (i < to) {
-            val cp = Character.codePointAt(s, i)
-            if (Character.isLetterOrDigit(cp)) letters++
-            i += Character.charCount(cp)
-        }
-        return max(letters, 1).toDouble().pow(0.8) + 0.6
-    }
-
     /**
-     * The times of line [i]'s words: the server's when it gave them for exactly these words (a missing end is
-     * estimated), else estimated. Null for a line without words.
+     * The times of line [i]'s words when it has real ones (never backwards; a missing end of the last word: at most
+     * [LAST_WORD_MS] after its start, before the next line), else null: the line is lit whole.
      */
     fun times(lines: List<Lyrics.Line>, i: Int): LongArray? {
         val l = lines[i]
-        val text = l.text
-        val n = count(text)
-        if (n == 0) return null
-        val t0 = l.ms
-        // (the next line's start; the last line has six seconds)
-        var tNext = t0 + 6000L
-        if (i + 1 < lines.size) tNext = lines[i + 1].ms
-        val starts = IntArray(n)
-        val ends = IntArray(n)
-        bounds(text, starts, ends)
-        val g = DoubleArray(n) { weight(text, starts[it], ends[it]) }
-        val given = l.words
-        if (given != null && given.size == n + 1) {
-            val out = given.copyOf()
-            for (j in 1 until n) if (out[j] < out[j - 1]) out[j] = out[j - 1]
-            if (out[n] < 0L || out[n] < out[n - 1]) {
-                // no end given: the last word sung for its own share of the estimate
-                val room = (tNext - out[n - 1]) / 1000.0 - 0.15
-                val sing = max(min(max(0.16 * g[n - 1], 0.3), room), 0.3)
-                out[n] = out[n - 1] + (sing * 1000).roundToLong()
-            }
-            return out
+        val given = l.words ?: return null
+        val n = count(l.text)
+        if (n == 0 || given.size != n + 1) return null
+        val out = given.copyOf()
+        for (j in 1 until n) if (out[j] < out[j - 1]) out[j] = out[j - 1]
+        if (out[n] < 0L || out[n] < out[n - 1]) {
+            val next = if (i + 1 < lines.size) lines[i + 1].ms else Long.MAX_VALUE
+            out[n] = maxOf(out[n - 1] + 200L, minOf(out[n - 1] + LAST_WORD_MS, next - 150L))
         }
-        return estimate(t0, tNext, g)
+        return out
     }
 
-    /**
-     * The server's rule for words it did not hear: sing = clamp(0.16 * Σg, 0.5, (tNext - t0) - 0.15) s, at least
-     * 0.3 s; word j starts at t0 + sing * (Σ_{m<j} g_m) / Σg, the last one ends at t0 + sing.
-     */
-    fun estimate(t0: Long, tNext: Long, g: DoubleArray): LongArray {
-        val n = g.size
-        val total = g.sum()
-        var sing = max(0.16 * total, 0.5)
-        sing = min(sing, (tNext - t0) / 1000.0 - 0.15)
-        sing = max(sing, 0.3)
-        val out = LongArray(n + 1)
-        var cum = 0.0
-        for (j in 0 until n) {
-            out[j] = t0 + (sing * 1000.0 * cum / total).roundToLong()
-            cum += g[j]
-        }
-        out[n] = t0 + (sing * 1000.0).roundToLong()
-        return out
+    /** Where each word of line [i] stops before a pause (-1: it runs on to the next word); null when none is given. */
+    fun ends(lines: List<Lyrics.Line>, i: Int): LongArray? {
+        val l = lines[i]
+        val e = l.ends ?: return null
+        return if (l.words != null && e.size == count(l.text)) e else null
     }
 
     private val WORD_TAG = Regex("""<(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?>""")
 
+    /** A line's text with its word tags taken out, its words' times (as [Lyrics.Line.words]) and pauses ([Lyrics.Line.ends]). */
+    class Tagged(val text: String, val times: LongArray?, val ends: LongArray?)
+
     /**
-     * The words of an LRC line's text with `<mm:ss.xx>` tags before its words ([lineMs]: the line's own first time;
-     * [shift]: added to every time, for a line listed at several times): the text without the tags (tokens joined by
-     * single spaces), and the times (null when the tags do not give exactly one start per word).
+     * The words of an LRC line's text with `<mm:ss.xx>` tags before its words ([shift]: added to every time, for a
+     * line listed at several times): the text without the tags (tokens joined by single spaces), the times (null when
+     * the tags do not give exactly one start per word), and where a word's singing ends before a pause (an empty tag
+     * in the middle of the line: the server writes one where the gap to the next word is long).
      */
-    fun parseTagged(raw: String, shift: Long): Pair<String, LongArray?> {
+    fun parseTagged(raw: String, shift: Long): Tagged {
         val tags = WORD_TAG.findAll(raw).toList()
-        if (tags.isEmpty()) return raw.trim() to null
+        if (tags.isEmpty()) return Tagged(raw.trim(), null, null)
         val tokens = ArrayList<String>()
         val times = ArrayList<Long>()
+        val pauses = HashMap<Int, Long>()
         var end = -1L
         var ok = raw.substring(0, tags[0].range.first).isBlank()
         if (!ok) tokens.addAll(raw.substring(0, tags[0].range.first).trim().split(Regex("\\s+")))
@@ -129,18 +96,23 @@ internal object Words {
             val segEnd = if (k + 1 < tags.size) tags[k + 1].range.first else raw.length
             val seg = raw.substring(m.range.last + 1, segEnd).trim()
             val t = tagMs(m) + shift
-            if (seg.isEmpty()) { if (k == tags.size - 1) end = t; continue }
+            if (seg.isEmpty()) {
+                if (k == tags.size - 1) end = t
+                else if (tokens.isNotEmpty()) pauses[tokens.size - 1] = t
+                continue
+            }
             val parts = seg.split(Regex("\\s+"))
             if (parts.size != 1) ok = false
             tokens.addAll(parts)
             times.add(t)
         }
         val text = tokens.joinToString(" ")
-        if (!ok || times.size != tokens.size || tokens.isEmpty()) return text to null
+        if (!ok || times.size != tokens.size || tokens.isEmpty()) return Tagged(text, null, null)
         val out = LongArray(times.size + 1)
         for (j in times.indices) out[j] = times[j]
         out[times.size] = end
-        return text to out
+        val ends = if (pauses.isEmpty()) null else LongArray(times.size) { j -> pauses[j]?.takeIf { it > out[j] } ?: -1L }
+        return Tagged(text, out, ends)
     }
 
     private fun tagMs(m: MatchResult): Long {
@@ -165,32 +137,41 @@ internal object Words {
         return skip(a, i) >= a.length && skip(b, j) >= b.length
     }
 
+    /** How far a line's own time may be from its words' line in the server's answer (the same line, timed alike). */
+    private const val ATTACH_MS = 1500L
+    /** A line is lit from its first word on when that comes earlier than the line's own time, by this much at most. */
+    private const val EARLIER_MS = 2000L
+
     /**
      * The server's word times ([enhanced], an LRC with word tags) given to the matching [lines] (same words, start
-     * within a second): the lines' own texts and times stay, only their words are taken.
+     * within [ATTACH_MS]). The words are real song times and are not moved with the line (1.15 moved them by the
+     * difference of the two lines' times; both are now the same clock's). A line whose first word is sung before the
+     * line's own time (a source's line times are coarser than its words) is lit from that word on, never before the
+     * line ahead of it.
      */
     fun attach(lines: List<Lyrics.Line>, enhanced: List<Lyrics.Line>): List<Lyrics.Line> {
         if (enhanced.isEmpty()) return lines
         var p = 0
         var any = false
         val out = ArrayList<Lyrics.Line>(lines.size)
+        var prevMs = Long.MIN_VALUE
         for (l in lines) {
-            while (p < enhanced.size && enhanced[p].ms < l.ms - 1000L) p++
-            var found: LongArray? = null
+            while (p < enhanced.size && enhanced[p].ms < l.ms - ATTACH_MS) p++
+            var found: Lyrics.Line? = null
             var q = p
-            while (q < enhanced.size && enhanced[q].ms <= l.ms + 1000L) {
+            while (q < enhanced.size && enhanced[q].ms <= l.ms + ATTACH_MS) {
                 val e = enhanced[q]
-                if (e.words != null && sameText(e.text, l.text)) {
-                    // (the line's own time is believed: the words move with it)
-                    val d = l.ms - e.ms
-                    found = LongArray(e.words.size) { k -> if (k == e.words.size - 1 && e.words[k] < 0L) -1L else e.words[k] + d }
-                    p = q + 1
-                    break
-                }
+                if (e.words != null && sameText(e.text, l.text)) { found = e; p = q + 1; break }
                 q++
             }
-            if (found != null) any = true
-            out.add(if (found != null) Lyrics.Line(l.ms, l.text, found) else l)
+            val line = if (found != null) {
+                any = true
+                val first = found.words!![0]
+                val ms = if (first < l.ms) maxOf(first, l.ms - EARLIER_MS, prevMs + 1) else l.ms
+                Lyrics.Line(ms, l.text, found.words, found.ends)
+            } else l
+            prevMs = line.ms
+            out.add(line)
         }
         return if (any) out else lines
     }

@@ -3,7 +3,7 @@
      merge cleanly). -->
 <resources>
     <string name="kar_words">Word-by-word lyrics</string>
-    <string name="kar_words_sub">On the line being sung, each word lights up as it is sung. Off: the whole line lights at once.</string>
+    <string name="kar_words_sub">On the line being sung, the word being sung stands out as it is sung: only where its real timing is known (a word-timed source, or your server has heard the song); other lines light whole. Off: the whole line lights at once.</string>
     <string name="kar_timing_saved">Timing saved for this song. Hold a line to undo it.</string>
     <string name="kar_timing_reset">Saved timing removed for this song</string>
 </resources>

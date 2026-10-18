@@ -34,9 +34,11 @@ object Lyrics {
     /**
      * A line and the time it is sung at (0 for all of them when the lyrics are not timed). [words] (1.15): when each of
      * its words starts, and where the last one ends (-1: not given), as the owner's server gave them; null when it
-     * gave none (the screen then estimates them: [Words]).
+     * gave none. Since 1.16 these are only ever real times (a word-timed source, or the song heard): a line without
+     * them is lit whole, never word by word on a guess. [ends] (1.16): where each word's singing ends when a pause
+     * follows it (-1: it runs on to the next word), so the light waits through the pause.
      */
-    class Line(val ms: Long, val text: String, val words: LongArray? = null)
+    class Line(val ms: Long, val text: String, val words: LongArray? = null, val ends: LongArray? = null)
 
     /**
      * [synced]: the lines carry times. [instrumental]: a song without words. [durationSec]: the length of the recording
@@ -51,7 +53,22 @@ object Lyrics {
     ) {
         /** Worth asking the owner's server about: untimed lines, or a timing by listening that is not complete yet. */
         val improvable: Boolean get() = !instrumental && lines.isNotEmpty() && (!synced || (source == SOURCE_ALIGNED && covered < LyricsSync.DONE_AT))
+
+        /** The share of the lines with words that carry their words' real times (1.16; 0 for untimed lyrics). */
+        val wordsCovered: Float get() {
+            if (!synced) return 0f
+            var sung = 0
+            var known = 0
+            for (l in lines) if (l.text.isNotBlank()) { sung++; if (l.words != null) known++ }
+            return if (sung == 0) 0f else known.toFloat() / sung
+        }
+
+        /** Timed lines whose words are not (nearly all) known: worth asking the server, or listening, for them (1.16). */
+        val wantsWords: Boolean get() = synced && !instrumental && lines.isNotEmpty() && wordsCovered < WORDS_DONE
     }
+
+    /** The share of a song's lines with real word times from which nothing more is asked or listened for. */
+    const val WORDS_DONE = 0.9f
 
     const val SOURCE_LRCLIB = "lrclib"
     const val SOURCE_ALIGNED = "aligned"
@@ -83,10 +100,11 @@ object Lyrics {
             val kept = read(f)
             val server = LyricsServer.configured
             if (kept?.result != null) {
-                // what was found is kept (and the server may have better by now: timed lines for untimed ones)
+                // what was found is kept (and the server may have better by now: timed lines for untimed ones, or
+                // the words' real times)
                 val r = kept.result
                 main.post { done(r, false) }
-                if (server && r.improvable) serverIo.execute { better(f, title, artist, durationSec, album, r) }
+                if (server && asks(r)) serverIo.execute { better(f, title, artist, durationSec, album, r) }
                 return@execute
             }
             // "nothing" is kept for a while (somebody may add the song): LRCLIB's, and the server's when it was asked
@@ -105,7 +123,7 @@ object Lyrics {
                 if (json != null && r != null) {
                     write(f, json)
                     main.post { done(r, false) }
-                    if (server && r.improvable) serverIo.execute { better(f, title, artist, durationSec, album, r) }
+                    if (server && asks(r)) serverIo.execute { better(f, title, artist, durationSec, album, r) }
                     return@execute
                 }
                 // (a "none" only when every question got its answer)
@@ -135,11 +153,31 @@ object Lyrics {
     private fun better(f: File, title: String, artist: String, durationSec: Int, album: String, shown: Result) {
         val found = try { LyricsServer.lyrics(title, artist, album, durationSec) } catch (t: Throwable) { Log.i(TAG, "lyrics server: $t"); return } ?: return
         if (found.synced == null) return
-        val r = parse(serverJson(found)) ?: return
-        if (!r.synced || (shown.synced && r.covered <= shown.covered + 0.001f)) return
-        write(f, serverJson(found))
+        val record = serverJson(found)
+        var r = parse(record) ?: return
+        if (!r.synced) return
+        val moreTimed = !shown.synced || r.covered > shown.covered + 0.001f
+        // (1.16: the words' real times — another source's lyrics then replace these, as better timed ones do)
+        val moreWords = r.wordsCovered > shown.wordsCovered + 0.05f
+        if (!moreTimed && !moreWords) return
+        // the very lines shown, now with their words: the owner's correction of their timing stays with them
+        if (shown.offsetMs != 0L && sameLines(shown.lines, r.lines)) {
+            record.put("offsetMs", shown.offsetMs)
+            r = parse(record) ?: return
+        }
+        write(f, record)
         main.post { onTimed?.invoke(title, artist, durationSec, r) }
     }
+
+    /**
+     * Worth asking the owner's server about: untimed or incompletely heard lines ([Result.improvable]), or timed ones
+     * whose words' times are not known while the word-by-word light is on (1.16).
+     */
+    private fun asks(r: Result) = r.improvable || (r.wantsWords && Words.on)
+
+    /** The same lines (text, and time within a second: word times may light a line a little earlier). */
+    private fun sameLines(a: List<Line>, b: List<Line>) =
+        a.size == b.size && a.indices.all { Words.sameText(a[it].text, b[it].text) && abs(a[it].ms - b[it].ms) <= 2000L }
 
     /**
      * A timing made by listening ([LyricsSync]) kept as the song's lyrics: the next play is timed at once. [lines] are
@@ -339,8 +377,8 @@ object Lyrics {
                 if (first < 0L) first = at
                 if (!tagged) { out.add(Line(at, rest.trim())); continue }
                 // (the word tags are the first time's: a line listed at several times has its words moved with it)
-                val (words, wt) = Words.parseTagged(rest, at - first - offset)
-                out.add(Line(at, words, wt))
+                val w = Words.parseTagged(rest, at - first - offset)
+                out.add(Line(at, w.text, w.times, w.ends))
             }
         }
         out.sortBy { it.ms }

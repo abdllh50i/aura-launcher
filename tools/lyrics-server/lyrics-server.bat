@@ -10,8 +10,9 @@ for %%I in ("%~dp0..\..\..") do set "BESIDE=%%~fI"
 if not defined AMRI_LYRICS_VENV set "AMRI_LYRICS_VENV=%BESIDE%\lyrics-venv"
 if not defined AMRI_LYRICS_CACHE set "AMRI_LYRICS_CACHE=%BESIDE%\lyrics-cache"
 if not defined AMRI_LYRICS_HOME set "AMRI_LYRICS_HOME=%AMRI_LYRICS_CACHE%\server"
-rem (the speech models and every temporary file on this drive, not on C:)
+rem (the speech, voice and word models and every temporary file on this drive, not on C:)
 set "HF_HOME=%AMRI_LYRICS_CACHE%\hf"
+set "TORCH_HOME=%AMRI_LYRICS_CACHE%\torch"
 set "TEMP=%AMRI_LYRICS_CACHE%\tmp"
 set "TMP=%AMRI_LYRICS_CACHE%\tmp"
 set "PYTHONIOENCODING=utf-8"

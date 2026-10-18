@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- كلمات الأغاني في 1.16: الاستماع لتوقيت كلمات الأغاني الموقّتة كلمة كلمة، وسطر «آخر استماع» -->
+<resources>
+    <!-- شاشة الموسيقى: كلمات موقّتة ينضبط توقيت كلماتها كلمة كلمة بالاستماع -->
+    <string name="cap_words_listening">أسمع الأغنية عشان أوقّت كلماتها كلمة كلمة</string>
+    <string name="cap_words_listening_pct">أسمع لتوقيت الكلمات · خلص ⁨%1$s⁩ من السطور</string>
+    <string name="cap_words_working">خادمك يوقّت الكلمات · ⁨%1$s⁩</string>
+
+    <!-- الإعدادات › الشاشة والصوت › الموسيقى › خادم الكلمات: سطر هادي تحت مفتاح الاستماع -->
+    <string name="cap_last">آخر استماع: %1$s، %2$s، %3$s</string>
+    <string name="cap_last_short">آخر استماع: %1$s، %2$s</string>
+    <string name="cap_src_mic">الميكروفون</string>
+    <string name="cap_level">⁨%1$s dB⁩</string>
+    <plurals name="cap_words">
+        <item quantity="zero">ولا كلمة انسمعت</item>
+        <item quantity="one">كلمة وحدة انسمعت</item>
+        <item quantity="two">كلمتين انسمعت</item>
+        <item quantity="few">⁨%1$d⁩ كلمات انسمعت</item>
+        <item quantity="many">⁨%1$d⁩ كلمة انسمعت</item>
+        <item quantity="other">⁨%1$d⁩ كلمة انسمعت</item>
+    </plurals>
+</resources>

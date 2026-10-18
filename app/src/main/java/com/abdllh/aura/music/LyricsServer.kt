@@ -43,10 +43,11 @@ object LyricsServer {
         set(v) { Prefs.raw.edit().putString("lyricsServerKey", v.trim().lowercase()).apply() }
 
     /**
-     * "Sync lyrics by listening": the car's microphone (or a song's file) goes to the server. On by default since 1.15
-     * (the owner asked that untimed lyrics get timed); the switch turns it off. The microphone rules are unchanged
-     * ([LyricsSync]): only while untimed lyrics show on the music screen, never in a call, while the assistant
-     * listens, or while reversing, and only with the microphone permission already given.
+     * "Sync lyrics by listening": what the car plays (its own sound since 1.16, the microphone when that cannot be had,
+     * or a song's file) goes to the server. On by default since 1.15 (the owner asked that untimed lyrics get timed);
+     * the switch turns it off. Only while lyrics without timing, or since 1.16 timed lyrics without their words' real
+     * times, show on the music screen ([LyricsSync]); never in a call; the microphone's own rules are unchanged (not
+     * while the assistant listens, nor while reversing); and only with the microphone permission already given.
      */
     var listen: Boolean
         get() = Prefs.raw.getBoolean("lyricsListen", true)
@@ -144,24 +145,44 @@ object LyricsServer {
     /**
      * How far the server got with a song: a time per line (ms, null: none yet), the share of lines timed, and (1.15,
      * the state asked for with `words=1`) the words' times as enhanced LRC ([enhanced], [words] as in [Found]).
+     * 1.16: [mode] "timed" when the server kept the line times it was given (only the words are worked out; [covered]
+     * is then the share of the sung lines whose words have real times), "untimed" or "" (an older server) otherwise;
+     * [heard] the words written down for the song so far (-1: not said); [diag] the last piece's numbers.
      */
     class State(val id: String, val times: List<Long?>?, val covered: Float, val show: Boolean, val done: Boolean, val pending: Int,
-                val enhanced: String? = null, val words: String = "")
+                val enhanced: String? = null, val words: String = "", val mode: String = "", val heard: Int = -1, val diag: Diag? = null)
 
-    /** The song and the lines the app shows (the server times exactly these). */
-    fun syncStart(title: String, artist: String, durationSec: Int, lines: List<String>): State {
-        val b = base() ?: throw IllegalStateException("no server")
-        val body = JSONObject().put("title", title).put("artist", artist).put("duration", durationSec)
-            .put("lines", JSONArray(lines)).toString().toByteArray(Charsets.UTF_8)
-        return state(request("POST", "$b/api/sync/start", body = body, type = "application/json"))
+    /**
+     * What the server made of the last piece it worked on (1.16, for the log and Settings): its level ([rms], [peak]; the
+     * separated singing [vocal]; dBFS, NaN when not said), the words written down ([asr]), the lines given words
+     * ([aligned]), and how it was heard ([src]: "capture" or "mic").
+     */
+    class Diag(val rms: Double, val peak: Double, val vocal: Double, val asr: Int, val aligned: Int, val src: String) {
+        override fun toString(): String = "rms %.1f, peak %.1f, singing %.1f dBFS; %d words written down, %d lines given words (%s)"
+            .format(java.util.Locale.ROOT, rms, peak, vocal, asr, aligned, src.ifEmpty { "?" })
     }
 
-    /** What the car heard from [posMs] of the song on: 16-bit mono PCM at [rate]. */
-    fun syncChunk(id: String, posMs: Long, pcm: ShortArray, count: Int, rate: Int): State {
+    /**
+     * The song and the lines the app shows (the server times exactly these). [times] (1.16): the lines' times as shown,
+     * on the song's clock (ms, null for a line that has none there): the server keeps them and works out only the
+     * words, each line's around its own time ("timed"); without them it times the lines too ("untimed").
+     */
+    fun syncStart(title: String, artist: String, durationSec: Int, lines: List<String>, times: List<Long?>? = null): State {
+        val b = base() ?: throw IllegalStateException("no server")
+        val o = JSONObject().put("title", title).put("artist", artist).put("duration", durationSec).put("lines", JSONArray(lines))
+        if (times != null) o.put("times", JSONArray().apply { for (t in times) put(t ?: JSONObject.NULL) })
+        return state(request("POST", "$b/api/sync/start", body = o.toString().toByteArray(Charsets.UTF_8), type = "application/json"))
+    }
+
+    /**
+     * What the car heard from [posMs] of the song on: 16-bit mono PCM at [rate]; [src] how it was heard ("capture": the
+     * car's own sound, "mic": the microphone), for the server's diagnostics only.
+     */
+    fun syncChunk(id: String, posMs: Long, pcm: ShortArray, count: Int, rate: Int, src: String): State {
         val b = base() ?: throw IllegalStateException("no server")
         val bytes = ByteArray(count * 2)
         for (i in 0 until count) { val v = pcm[i].toInt(); bytes[2 * i] = v.toByte(); bytes[2 * i + 1] = (v shr 8).toByte() }
-        return state(request("POST", "$b/api/sync/chunk?id=${enc(id)}&pos=$posMs&rate=$rate", body = bytes,
+        return state(request("POST", "$b/api/sync/chunk?id=${enc(id)}&pos=$posMs&rate=$rate&src=${enc(src)}", body = bytes,
             type = "application/octet-stream", readMs = 30_000))
     }
 
@@ -182,8 +203,12 @@ object LyricsServer {
         val o = JSONObject(r.second)
         val arr = o.optJSONArray("times")
         val times = if (arr == null) null else (0 until arr.length()).map { if (arr.isNull(it)) null else arr.optLong(it) }
+        val d = o.optJSONObject("diag")
+        val diag = if (d == null) null else Diag(d.optDouble("rms", Double.NaN), d.optDouble("peak", Double.NaN),
+            d.optDouble("vocal", Double.NaN), d.optInt("asr", -1), d.optInt("aligned", -1), d.optString("src"))
         return State(o.optString("id"), times, o.optDouble("covered", 0.0).toFloat(), o.optBoolean("show"),
-            o.optBoolean("done"), o.optInt("pending"), enhanced(o), o.optString("words"))
+            o.optBoolean("done"), o.optInt("pending"), enhanced(o), o.optString("words"), o.optString("mode"),
+            if (o.has("heard") && !o.isNull("heard")) o.optInt("heard", -1) else -1, diag)
     }
 
     // ------------------------------------------------------------------------------------------ HTTP
