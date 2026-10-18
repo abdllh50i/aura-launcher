@@ -29,7 +29,7 @@ import kotlin.math.max
  * to the lines. The sound goes nowhere else; the server deletes it once the words are written down. A song from the
  * unit's own storage is not listened to: its file is sent once instead (the server decodes it the same way).
  *
- * Only with the owner's switch on ([LyricsServer.listen], off by default), a server set, untimed lines on the screen,
+ * Only with the owner's switch on ([LyricsServer.listen], on by default since 1.15), a server set, untimed lines on the screen,
  * the song playing and its position known (a Bluetooth song's start seen or tapped: the server needs to know where in
  * the song each piece of sound was). Never while the assistant listens or answers, while Settings records the wake
  * word, in a call or while reversing — the rules the assistant's own listener keeps ([AmriService]). The microphone
@@ -67,6 +67,8 @@ object LyricsSync {
         var serverId: String? = null        // (the upload thread's)
         @Volatile var covered = 0f
         var shownCovered = 0f
+        /** The timing handed to the screen carried the server's word times (1.15). */
+        var shownWords = false
         @Volatile var finished = false
         var fileAsked = false
         var polls = 0
@@ -425,11 +427,16 @@ object LyricsSync {
         j.pending = st.pending
         val times = st.times
         val s = j.song
-        if (st.show && times != null && times.size == s.lines.size && st.covered > j.shownCovered + 0.01f) {
+        // (1.15: also when the same coverage first comes with the words' times)
+        val newWords = st.enhanced != null && !j.shownWords
+        if (st.show && times != null && times.size == s.lines.size && (st.covered > j.shownCovered + 0.01f || (newWords && st.covered >= j.shownCovered))) {
             j.shownCovered = st.covered
-            val lines = s.lines.mapIndexed { k, text -> Lyrics.Line(times[k] ?: 0L, text) }
-            app?.let { Lyrics.keepAligned(it, s.title, s.artist, s.durationSec, lines, st.covered) }
-            val r = Lyrics.Result(true, lines, source = Lyrics.SOURCE_ALIGNED, covered = st.covered)
+            if (st.enhanced != null) j.shownWords = true
+            var lines = s.lines.mapIndexed { k, text -> Lyrics.Line(times[k] ?: 0L, text) }
+            if (st.enhanced != null) lines = Words.attach(lines, Lyrics.parseLrc(st.enhanced))
+            app?.let { Lyrics.keepAligned(it, s.title, s.artist, s.durationSec, lines, st.covered, st.enhanced, st.words) }
+            val r = Lyrics.Result(true, lines, source = Lyrics.SOURCE_ALIGNED, covered = st.covered,
+                words = if (st.enhanced != null) st.words else "")
             Lyrics.onTimed?.invoke(s.title, s.artist, s.durationSec, r)
         }
         // (the server's word: nearly all of it timed, or most of it with nothing still to come only guessed)

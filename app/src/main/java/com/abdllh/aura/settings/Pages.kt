@@ -182,6 +182,9 @@ class DisplaySoundPage(private val act: SettingsActivity) : Page(R.string.set_di
             },
             ctx.switchRow(R.drawable.ic_disc, ctx.getString(R.string.set_bt_cover), ctx.getString(R.string.set_bt_cover_sub),
                 com.abdllh.aura.music.CoverSearch.enabled) { on -> com.abdllh.aura.music.CoverSearch.enabled = on },
+            // (1.15: the word being sung lights on the lyrics' lit line; off: whole lines as before)
+            ctx.switchRow(R.drawable.ic_lyrics, ctx.getString(R.string.kar_words), ctx.getString(R.string.kar_words_sub),
+                com.abdllh.aura.music.Words.on) { on -> com.abdllh.aura.music.Words.on = on },
             if (!com.abdllh.aura.system.StockMusic.available(ctx)) null
             else ctx.switchRow(R.drawable.ic_music, ctx.getString(R.string.set_music_replace), ctx.getString(R.string.set_music_replace_sub),
                 com.abdllh.aura.system.StockMusic.enabled) { on ->

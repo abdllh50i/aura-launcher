@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 1.15 lyrics: word-by-word lyrics and the saved timing of a song (kept apart from strings.xml so parallel branches
+     merge cleanly). -->
+<resources>
+    <string name="kar_words">Word-by-word lyrics</string>
+    <string name="kar_words_sub">On the line being sung, each word lights up as it is sung. Off: the whole line lights at once.</string>
+    <string name="kar_timing_saved">Timing saved for this song. Hold a line to undo it.</string>
+    <string name="kar_timing_reset">Saved timing removed for this song</string>
+</resources>

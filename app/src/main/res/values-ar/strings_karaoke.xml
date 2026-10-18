@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 1.15 lyrics: word-by-word lyrics and the saved timing of a song. -->
+<resources>
+    <string name="kar_words">الكلمة اللي تنغنى تضيء</string>
+    <string name="kar_words_sub">في السطر اللي ينغنى، كل كلمة تضيء وقت ما تنغنى. لو طفيته يضيء السطر كله مرة وحدة.</string>
+    <string name="kar_timing_saved">انحفظ التوقيت لهالأغنية. اضغط مطوّل على أي سطر عشان تلغيه.</string>
+    <string name="kar_timing_reset">انشال التوقيت المحفوظ لهالأغنية</string>
+</resources>

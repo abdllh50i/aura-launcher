@@ -159,6 +159,15 @@ class MusicActivity : Activity() {
     private var lyricsPinned: String? = null
     /** The song whose lyrics were asked for last, as they were asked for (timed lines that come later are matched to it). */
     private var lyricsSong: LyricSong? = null
+    /** The lyrics shown for [lyricsSong] (a correction is kept with exactly these lines). */
+    private var lyricsResult: Lyrics.Result? = null
+    /**
+     * The owner's correction of the shown timing (1.15, ms: lyrics time minus the song's clock), a Bluetooth song's
+     * only: kept with its lyrics, so the next play of the song has it at once.
+     */
+    private var lyricsOffset = 0L
+    /** What is added to the song's position to light the lines (the correction, for the Bluetooth song it was made on). */
+    private val lyricsShift: Long get() = if (bt && lyricsSong?.bt == true) lyricsOffset else 0L
 
     /**
      * A song as its lyrics are asked for: its key on this screen, its names, the length the lookup used, and where it
@@ -287,6 +296,8 @@ class MusicActivity : Activity() {
         MediaMonitor.observe(appListener)
         Lyrics.onTimed = timedListener
         LyricsSync.onStatus = syncStatus
+        // (the setting may have changed in Settings meanwhile)
+        if (::lyricsView.isInitialized) { val w = Words.on; lyrics { it.wordsOn = w } }
         Player.restore()
         showNowPlaying()
         showList()
@@ -402,32 +413,35 @@ class MusicActivity : Activity() {
     private val progressTick = object : Runnable {
         override fun run() {
             val at = positionNow()
+            val playing = when (src) {
+                Src.YT -> ytPlaying
+                Src.BT -> BtMusic.playing
+                Src.LOCAL -> Player.playing
+            }
+            // (the lyrics' time: the song's, with the owner's correction of a Bluetooth song's timing)
+            val lyricAt = at + lyricsShift
             if (lyricsOn) {
                 val unknown = positionUnknown
-                lyrics { it.needSync = unknown; it.at(at) }
+                lyrics { it.needSync = unknown; it.at(lyricAt, playing) }
             }
-            val playing: Boolean
             when (src) {
                 // YouTube's app tells its song's length and where it is (the real position)
                 Src.YT -> {
-                    playing = ytPlaying
                     val p = MediaMonitor.appPosition(YtMusic.players)
                     showProgress(ytHas && ytDurationMs > 0 && p != null, at, ytDurationMs)
                 }
                 // the phone does not say where a song is (BtMusic keeps a clock): an unknown position shows nothing
                 Src.BT -> {
-                    playing = BtMusic.playing
                     val d = BtMusic.durationSec * 1000L
                     showProgress(BtMusic.connected && BtMusic.title.isNotBlank() && BtMusic.positionKnown && d > 0, at, d)
                 }
                 Src.LOCAL -> {
-                    playing = Player.playing
                     val d = Player.duration()
                     showProgress(Player.current != null && d > 0, at, d)
                 }
             }
             // the lyrics follow the song closely: the next tick comes when the next line is due, not up to a tick late
-            val next = if (lyricsOn && playing) lyricsView.msToNext(at) else Long.MAX_VALUE
+            val next = if (lyricsOn && playing) lyricsView.msToNext(lyricAt) else Long.MAX_VALUE
             seek.postDelayed(this, minOf(if (lyricsOn) 250L else 500L, next).coerceAtLeast(16L))
         }
     }
@@ -698,6 +712,8 @@ class MusicActivity : Activity() {
         lyrics { it.note(null) }
         lyricsKey = s?.key
         lyricsSong = s
+        // (another song: its own correction comes with its lyrics; the same one shown again keeps its own meanwhile)
+        if (lyricsShown != s?.key) { lyricsOffset = 0L; lyricsResult = null }
         val pin = s?.key ?: ""
         if (lyricsAsked) { lyricsAsked = false; lyricsPinned = pin } else if (pin != lyricsPinned) lyricsPinned = null
         lyricsView.removeCallbacks(lyricsLoading)
@@ -738,7 +754,10 @@ class MusicActivity : Activity() {
             r.instrumental -> { lyricsShown = null; lyrics { it.showStatus(getString(R.string.lyrics_instrumental)) }; lyricsHave(false) }
             else -> {
                 val unknown = positionUnknown
-                val at = positionNow()
+                lyricsResult = r
+                // the owner's correction kept with these lyrics (a Bluetooth song's: see onLineTap)
+                lyricsOffset = if (lyricsSong?.bt == true) r.offsetMs else 0L
+                val at = positionNow() + lyricsShift
                 if (lyricsShown != key) lyrics { it.show(r) }
                 lyricsShown = key
                 lyrics { it.needSync = unknown; it.at(at) }
@@ -778,7 +797,10 @@ class MusicActivity : Activity() {
             // (another source's timed lyrics carry their recording's length, as LRCLIB's do: see refreshLyrics)
             if (s.bt && r.durationSec > 0) BtMusic.offerDuration(r.durationSec, title, artist, BtMusic.FROM_LYRICS)
             val unknown = positionUnknown
-            val at = positionNow()
+            // (a new timing: a correction made on the one before does not apply to it, and was not kept with it)
+            lyricsResult = r
+            lyricsOffset = r.offsetMs
+            val at = positionNow() + lyricsShift
             lyrics { it.timeLines(r); it.needSync = unknown; it.at(at) }
             if (!r.improvable) LyricsSync.end()
         }
@@ -808,8 +830,25 @@ class MusicActivity : Activity() {
             holdSeek(l.ms)
             lyrics { it.at(l.ms) }
         } else if (bt) {
-            BtMusic.syncTo(l.ms + TAP_REACTION_MS)
-            val at = BtMusic.positionMs()
+            val target = l.ms + TAP_REACTION_MS
+            val s = lyricsSong
+            val r = lyricsResult
+            // the clock already known (the song's start seen, or set by a tap before): the tap corrects the lyrics'
+            // timing for this song, kept with its lyrics (1.15). Unless it is far off: then the phone was moved or the
+            // song restarted, and it is the clock that is wrong.
+            if (BtMusic.positionKnown && s != null && s.bt && r != null && r.synced && lyricsShown == s.key &&
+                BtMusic.title == s.title && abs(target - BtMusic.positionMs() - lyricsOffset) <= MAX_CORRECTION_MS) {
+                val clock = BtMusic.positionMs()
+                lyricsOffset = target - clock
+                Lyrics.keepOffset(this, s.title, s.artist, s.sec, lyricsOffset, r.lines)
+                lyrics { it.at(clock + lyricsOffset) }
+                Snack.show(this, R.string.kar_timing_saved)
+                return
+            }
+            // the clock unknown: the tap says where the song is (with the song's kept correction, the lyrics land on
+            // the tapped line all the same)
+            BtMusic.syncTo(target - lyricsShift)
+            val at = BtMusic.positionMs() + lyricsShift
             lyrics { it.needSync = false; it.at(at) }
             (if (lyricsFull) lyricsBig else lyricsView).flashSynced()
         } else if (Player.current != null) {
@@ -818,6 +857,19 @@ class MusicActivity : Activity() {
             if (!Player.playing) Player.toggle()
             lyrics { it.at(l.ms) }
         }
+    }
+
+    /** A lyric line held down: the song's saved timing correction is forgotten (1.15); nothing else to do there. */
+    private fun onLineHold(): Boolean {
+        val s = lyricsSong
+        val r = lyricsResult
+        if (!bt || s == null || !s.bt || r == null || lyricsOffset == 0L || lyricsShown != s.key) return false
+        lyricsOffset = 0L
+        Lyrics.keepOffset(this, s.title, s.artist, s.sec, 0L, r.lines)
+        val at = positionNow()
+        lyrics { it.at(at) }
+        Snack.show(this, R.string.kar_timing_reset)
+        return true
     }
 
     // ------------------------------------------------------------------------------------------ now playing
@@ -2071,7 +2123,7 @@ class MusicActivity : Activity() {
         libraryBox.addView(body, lp(MATCH, 0, 1f).apply { topMargin = Space.S.dp })
 
         panel.addView(buildYt(), flp(MATCH, MATCH))
-        lyricsView = LyricsView(this).apply { visibility = View.GONE; onLineTap = { l -> onLineTap(l) } }
+        lyricsView = LyricsView(this).apply { visibility = View.GONE; onLineTap = { l -> onLineTap(l) }; onLineHold = { onLineHold() }; wordsOn = Words.on }
         panel.addView(lyricsView, flp(MATCH, MATCH))
         // over the lyrics, in the panel's corner: the lyrics alone on the whole screen
         expandBtn = FrameLayout(this).apply {
@@ -2101,7 +2153,7 @@ class MusicActivity : Activity() {
     /** The lyrics alone on the whole screen: large lines, a way back in the corner, and a small bar for the song. */
     private fun buildFull(): View {
         fullLayer = FrameLayout(this).apply { isClickable = true; visibility = View.INVISIBLE } // (taps do not reach the screen below)
-        lyricsBig = LyricsView(this, big = true).apply { onLineTap = { l -> onLineTap(l) } }
+        lyricsBig = LyricsView(this, big = true).apply { onLineTap = { l -> onLineTap(l) }; onLineHold = { onLineHold() }; wordsOn = Words.on }
         fullLayer.addView(lyricsBig, flp(MATCH, MATCH).apply { bottomMargin = (FULL_BAR_DP + Space.XL).dp })
 
         val frost = Palette.withAlpha(Palette.card, if (Palette.dark) 0.55f else 0.75f)
@@ -2189,6 +2241,8 @@ class MusicActivity : Activity() {
         private const val YT_ART = Long.MIN_VALUE + 2
         /** How long after a line starts the owner, hearing it, taps it. */
         private const val TAP_REACTION_MS = 450L
+        /** A tap further than this from the line lit is the clock being wrong (the phone moved), not the lyrics' timing. */
+        private const val MAX_CORRECTION_MS = 15_000L
         /** Corner radius of the song's cover, and of the small one in the bar under the large lyrics (dp). */
         private const val COVER_RADIUS = Radius.XL
         private const val BAR_COVER_RADIUS = Radius.M

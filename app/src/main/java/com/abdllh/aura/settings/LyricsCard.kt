@@ -33,7 +33,7 @@ import com.abdllh.aura.voice.Amri
 /**
  * Settings › Display & sound › Music: the owner's own lyrics server (1.13; tools/lyrics-server on his PC, published
  * through his domain): its address and key, a test that says whether it answers and takes the key, and the switch
- * for timing lyrics by listening ([com.abdllh.aura.music.LyricsSync], off until he turns it on). Kept in a file of its
+ * for timing lyrics by listening ([com.abdllh.aura.music.LyricsSync], on by default since 1.15). Kept in a file of its
  * own so the music section of [DisplaySoundPage] has one line for it.
  */
 class LyricsCard private constructor(private val act: SettingsActivity, private val ctx: Context) {
@@ -67,7 +67,10 @@ class LyricsCard private constructor(private val act: SettingsActivity, private 
                 refresh(null)
             }
         },
-        ctx.switchRow(R.drawable.ic_mic, ctx.getString(R.string.lyr_srv_listen), ctx.getString(R.string.lyr_srv_listen_sub), LyricsServer.listen) { on ->
+        // (on by default since 1.15; shown on only where it can work: without the microphone permission it listens to
+        // nothing, and turning it on asks for that permission)
+        ctx.switchRow(R.drawable.ic_mic, ctx.getString(R.string.lyr_srv_listen), ctx.getString(R.string.lyr_srv_listen_sub),
+            LyricsServer.listen && Amri.hasMicPermission(ctx)) { on ->
             when {
                 !on -> LyricsServer.listen = false
                 !LyricsServer.configured -> { Snack.show(ctx, R.string.lyr_srv_listen_needs); act.rebuild() }
