@@ -42,9 +42,14 @@ object LyricsServer {
         get() = Prefs.raw.getString("lyricsServerKey", "") ?: ""
         set(v) { Prefs.raw.edit().putString("lyricsServerKey", v.trim().lowercase()).apply() }
 
-    /** "Sync lyrics by listening": the car's microphone (or a song's file) goes to the server. Off unless chosen. */
+    /**
+     * "Sync lyrics by listening": the car's microphone (or a song's file) goes to the server. On by default since 1.15
+     * (the owner asked that untimed lyrics get timed); the switch turns it off. The microphone rules are unchanged
+     * ([LyricsSync]): only while untimed lyrics show on the music screen, never in a call, while the assistant
+     * listens, or while reversing, and only with the microphone permission already given.
+     */
     var listen: Boolean
-        get() = Prefs.raw.getBoolean("lyricsListen", false)
+        get() = Prefs.raw.getBoolean("lyricsListen", true)
         set(v) { Prefs.raw.edit().putBoolean("lyricsListen", v).apply() }
 
     val configured: Boolean get() = base() != null && key.isNotBlank()
@@ -107,14 +112,19 @@ object LyricsServer {
     }
 
     // ------------------------------------------------------------------------------------------ lyrics
-    /** The server's answer: timed text (LRC) or plain, where it came from, and its id for the timing by listening. */
-    class Found(val synced: String?, val plain: String?, val source: String, val id: String, val covered: Float, val duration: Double)
+    /**
+     * The server's answer: timed text (LRC) or plain, where it came from, and its id for the timing by listening.
+     * [enhanced] (1.15, asked for with `words=1`): the timed text with a `<mm:ss.xx>` tag before each word, and
+     * [words] "heard" or "estimated"; null from servers older than that.
+     */
+    class Found(val synced: String?, val plain: String?, val source: String, val id: String, val covered: Float, val duration: Double,
+                val enhanced: String? = null, val words: String = "")
 
     /** Asks the server for a song's lyrics (blocking). Null when it has none; an exception when it could not be asked. */
     fun lyrics(title: String, artist: String, album: String, durationSec: Int): Found? {
         val b = base() ?: return null
         val q = "title=${enc(title)}&artist=${enc(artist)}" + (if (album.isNotBlank()) "&album=${enc(album)}" else "") +
-            (if (durationSec > 0) "&duration=$durationSec" else "")
+            (if (durationSec > 0) "&duration=$durationSec" else "") + "&words=1"
         val (code, body) = request("GET", "$b/api/lyrics?$q", readMs = 45_000)
         if (code != 200) throw IllegalStateException("lyrics server: HTTP $code")
         val o = JSONObject(body)
@@ -123,12 +133,20 @@ object LyricsServer {
         Log.d(TAG, "lyrics '$title': ${o.optString("source")}${if (o.optBoolean("cached")) " (kept)" else ""}")
         if (synced == null && plain == null) return null
         val dur = o.optJSONObject("match")?.optDouble("duration", 0.0) ?: 0.0
-        return Found(synced, plain, o.optString("source"), o.optString("id"), o.optDouble("covered", 1.0).toFloat(), if (dur.isNaN()) 0.0 else dur)
+        return Found(synced, plain, o.optString("source"), o.optString("id"), o.optDouble("covered", 1.0).toFloat(), if (dur.isNaN()) 0.0 else dur,
+            enhanced(o), o.optString("words"))
     }
 
+    /** The "enhanced" field (word times), when there is one. */
+    private fun enhanced(o: JSONObject): String? = o.optString("enhanced").takeIf { !o.isNull("enhanced") && it.isNotBlank() }
+
     // ------------------------------------------------------------------------------------------ timing by listening
-    /** How far the server got with a song: a time per line (ms, null: none yet), the share of lines timed. */
-    class State(val id: String, val times: List<Long?>?, val covered: Float, val show: Boolean, val done: Boolean, val pending: Int)
+    /**
+     * How far the server got with a song: a time per line (ms, null: none yet), the share of lines timed, and (1.15,
+     * the state asked for with `words=1`) the words' times as enhanced LRC ([enhanced], [words] as in [Found]).
+     */
+    class State(val id: String, val times: List<Long?>?, val covered: Float, val show: Boolean, val done: Boolean, val pending: Int,
+                val enhanced: String? = null, val words: String = "")
 
     /** The song and the lines the app shows (the server times exactly these). */
     fun syncStart(title: String, artist: String, durationSec: Int, lines: List<String>): State {
@@ -156,7 +174,7 @@ object LyricsServer {
 
     fun syncState(id: String): State {
         val b = base() ?: throw IllegalStateException("no server")
-        return state(request("GET", "$b/api/sync?id=${enc(id)}"))
+        return state(request("GET", "$b/api/sync?id=${enc(id)}&words=1"))
     }
 
     private fun state(r: Pair<Int, String>): State {
@@ -165,7 +183,7 @@ object LyricsServer {
         val arr = o.optJSONArray("times")
         val times = if (arr == null) null else (0 until arr.length()).map { if (arr.isNull(it)) null else arr.optLong(it) }
         return State(o.optString("id"), times, o.optDouble("covered", 0.0).toFloat(), o.optBoolean("show"),
-            o.optBoolean("done"), o.optInt("pending"))
+            o.optBoolean("done"), o.optInt("pending"), enhanced(o), o.optString("words"))
     }
 
     // ------------------------------------------------------------------------------------------ HTTP

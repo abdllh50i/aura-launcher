@@ -58,6 +58,11 @@ import kotlin.math.roundToInt
  * of sight makes its own only when the screen is idle (or the moment it is shown). Before, both copies made 60–90
  * lines each, with three drawables apiece, in one message on the main thread, right in the middle of the new cover's
  * animation. A tapped line's tint is drawn by the list behind it, not a background per line.
+ *
+ * Word by word (1.15, [wordsOn]): on the line being sung the words already sung are lit, the one being sung fills
+ * with the light in its own reading direction, the ones to come stay a step dimmer ([Line.onDraw]). The words' times
+ * are the server's or estimated ([Words]); the song's clock is the one that lights the line ([at]), carried on from
+ * its last report between the music screen's ticks.
  */
 internal class LyricsView(c: Context, private val big: Boolean = false) : FrameLayout(c) {
     private val scroll = ScrollView(c).apply {
@@ -85,6 +90,31 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
     private var current = -1
     private var touchedAt = 0L
     var onLineTap: ((Lyrics.Line) -> Unit)? = null
+    /** A timed line held down (1.15: the music screen offers to forget a saved timing); true when it did something. */
+    var onLineHold: (() -> Boolean)? = null
+
+    // ---- the song's clock for the words (1.15)
+    /** Word by word: the owner's setting (Settings → Display & sound → Music). Off: whole lines, as before 1.15. */
+    var wordsOn = true
+        set(v) {
+            if (v == field) return
+            field = v
+            views.getOrNull(current)?.let { it.karaoke = v && it.times != null }
+        }
+    private var clockMs = 0L
+    private var clockAt = 0L
+    /** The song plays: the clock runs on from its last report ([at]) between the screen's ticks. */
+    private var songPlaying = false
+    private var drawnMs = Long.MIN_VALUE
+
+    /** Where the song is now, for the words: the last report carried on, never a small step back. */
+    fun songNow(): Long {
+        var p = if (songPlaying) clockMs + (SystemClock.uptimeMillis() - clockAt) else clockMs
+        // (a tick's report a few ms behind the clock carried on would move the fill's edge back and forth)
+        if (p < drawnMs && p > drawnMs - 250L) p = drawnMs
+        drawnMs = p
+        return p
+    }
 
     private val dim = if (big) 0.30f else 0.34f   // lines around the one being sung
     private val small = if (big) 0.92f else 0.95f
@@ -103,7 +133,7 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
             field = v
             showHint()
             pad()
-            if (v) { for (t in views) fade(t, IDLE, 1f, 0L, Motion.STANDARD); current = -1 }
+            if (v) { for (t in views) { t.karaoke = false; fade(t, IDLE, 1f, 0L, Motion.STANDARD) }; current = -1 }
         }
 
     init {
@@ -236,7 +266,7 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
      */
     fun dim() {
         if (scroll.visibility == View.VISIBLE && list.childCount > 0) {
-            for (v in views) v.isClickable = false
+            for (v in views) { v.isClickable = false; v.isLongClickable = false; v.karaoke = false }
             lines = emptyList(); views = emptyList(); current = -1
             follow.cancel()
             scroll.fadeTo(0.25f)
@@ -247,6 +277,8 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
     /** Lyrics waiting to become lines, their texts once measured, and the lines made so far. */
     private var pending: Lyrics.Result? = null
     private var texts: List<CharSequence>? = null
+    /** The words' times of the lines waiting to be made (worked out with their texts; null for untimed lyrics). */
+    private var times: List<LongArray?>? = null
     private var made = ArrayList<Line>()
     /** Counts the lyrics shown: a measuring that comes back for lyrics already replaced is dropped. */
     private var gen = 0
@@ -256,7 +288,7 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
     private fun drop() {
         gen++
         shiftOnLayout = 0
-        pending = null; texts = null; made = ArrayList()
+        pending = null; texts = null; times = null; made = ArrayList()
         removeCallbacks(buildStep); removeCallbacks(idleBuild)
         follow.cancel()
     }
@@ -275,9 +307,11 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
         worker.execute {
             val out: List<CharSequence> = if (params == null || Build.VERSION.SDK_INT < 28) plain
                 else plain.map { t -> try { PrecomputedText.create(t, params) } catch (_: Throwable) { t } }
+            val wt = if (r.synced) r.lines.indices.map { Words.times(r.lines, it) } else null
             post {
                 if (g != gen) return@post
                 texts = out
+                times = wt
                 if (isShown) buildStep.run() else postDelayed(idleBuild, IDLE_BUILD_MS)
             }
         }
@@ -288,7 +322,7 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
             val r = pending ?: return
             val t = texts ?: return
             val end = minOf(made.size + LINES_PER_FRAME, r.lines.size)
-            for (k in made.size until end) made.add(line(r.lines[k], t[k]))
+            for (k in made.size until end) made.add(line(r.lines[k], t[k], times?.getOrNull(k)))
             if (made.size < r.lines.size) postOnAnimation(this) else attach()
         }
     }
@@ -301,7 +335,8 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
         val r = pending ?: return
         removeCallbacks(buildStep); removeCallbacks(idleBuild)
         val t = texts ?: r.lines.map { it.text.ifBlank { "♪" } }
-        for (k in made.size until r.lines.size) made.add(line(r.lines[k], t[k]))
+        val wt = times ?: if (r.synced) r.lines.indices.map { Words.times(r.lines, it) } else null
+        for (k in made.size until r.lines.size) made.add(line(r.lines[k], t[k], wt?.getOrNull(k)))
         attach()
     }
 
@@ -341,6 +376,8 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
         // (a fixed direction rule, the same detached as on the screen: a measured text must match its line exactly)
         v.textDirection = View.TEXT_DIRECTION_FIRST_STRONG_LTR
         v.setLineSpacing(0f, 1.1f)
+        // (1.15: whole words per row: a word hyphenated across two rows cannot be lit as one)
+        v.hyphenationFrequency = android.text.Layout.HYPHENATION_FREQUENCY_NONE
         val pad = (if (big) Space.M else Space.S).dp
         v.setPadding(pad, pad, pad, pad)
     }
@@ -349,20 +386,25 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
 
     /** A line as the lyrics' lines are styled, for the measuring done off the main thread. */
     private fun template(timed: Boolean): Line =
-        templates[if (timed) 1 else 0] ?: Line(context).also { style(it, timed); templates[if (timed) 1 else 0] = it }
+        templates[if (timed) 1 else 0] ?: Line(context, this).also { style(it, timed); templates[if (timed) 1 else 0] = it }
 
-    private fun line(l: Lyrics.Line, text: CharSequence): Line = Line(context).apply {
+    private fun line(l: Lyrics.Line, text: CharSequence, wordTimes: LongArray?): Line = Line(context, this).apply {
         style(this, synced)
         // (measured with settings this line does not have after all: as plain text, measured here)
         try { setText(text) } catch (_: IllegalArgumentException) { setText(text.toString()) }
-        if (synced) {
-            isClickable = true
-            setOnClickListener(tapLine)
-        }
+        words(wordTimes)
+        if (synced) takeTaps(this)
+    }
+
+    private fun takeTaps(v: Line) {
+        v.isClickable = true
+        v.setOnClickListener(tapLine)
+        v.setOnLongClickListener(holdLine)
     }
 
     /** A tapped line: its time as the lyrics have it now (a timing by listening can be refined while it shows). */
     private val tapLine = View.OnClickListener { v -> lines.getOrNull(views.indexOf(v))?.let { onLineTap?.invoke(it) } }
+    private val holdLine = View.OnLongClickListener { onLineHold?.invoke() ?: false }
 
     /** Pixels the lines are moved down by at the next layout (new room above them that must not move what shows). */
     private var shiftOnLayout = 0
@@ -380,10 +422,13 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
             r.lines.indices.all { lines[it].text == r.lines[it].text }
         if (!same) { show(r); return }
         lines = r.lines
+        // the words' times of the new timing (a handful of lines' arithmetic: here, at once)
+        for ((k, v) in views.withIndex()) v.words(Words.times(r.lines, k))
         if (synced) return // (more of a timing: the next tick lights the right line)
         synced = true
+        views.getOrNull(current)?.karaoke = false
         current = -1
-        for (v in views) { v.isClickable = true; v.setOnClickListener(tapLine) }
+        for (v in views) takeTaps(v)
         val before = list.paddingTop
         pad()
         centerOnLayout = false // (no jump to the lit line: it glides there when it is lit)
@@ -411,8 +456,22 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
     }
 
     // ---- following the song
-    /** The song is at [ms]: the line being sung, lit and brought to the middle (unless the owner is scrolling). */
-    fun at(ms: Long) {
+    /**
+     * The song is at [ms]: the line being sung, lit and brought to the middle (unless the owner is scrolling).
+     * [playing]: whether the song plays (the words' clock runs on from [ms] meanwhile); unchanged when not said.
+     */
+    fun at(ms: Long, playing: Boolean = songPlaying) {
+        // the words' clock: re-based on every report; a jump (a seek, a tap) or a pause redraws the line being sung
+        val now = SystemClock.uptimeMillis()
+        val carried = if (songPlaying) clockMs + (now - clockAt) else clockMs
+        val moved = playing != songPlaying || kotlin.math.abs(carried - ms) > 250L
+        clockMs = ms
+        clockAt = now
+        songPlaying = playing
+        if (moved) {
+            drawnMs = Long.MIN_VALUE
+            views.getOrNull(current)?.let { if (it.karaoke) it.invalidate() }
+        }
         if (!synced || lines.isEmpty() || needSync) return
         // the last line that has started, a moment early (before the first one: none lit). A line lit as its first
         // word is heard already reads as late: the eye needs the light a little before the ear hears the word.
@@ -435,9 +494,10 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
                 val seen = live && v.bottom > top && v.top < bottom
                 fade(v, dim, small, if (seen) Motion.SHORT else 0L, Motion.STANDARD)
             }
-        } else views.getOrNull(current)?.let { fade(it, dim, small, if (live) Motion.SHORT else 0L, Motion.EXIT) }
+        } else views.getOrNull(current)?.let { it.karaoke = false; fade(it, dim, small, if (live) Motion.SHORT else 0L, Motion.EXIT) }
         current = i
         val v = views.getOrNull(i) ?: return
+        v.karaoke = wordsOn && v.times != null
         fade(v, 1f, 1f, if (live) Motion.MEDIUM else 0L, Motion.EMPHASIZED)
         if (!live) scrollNow(v)
         else if (SystemClock.elapsedRealtime() - touchedAt > FOLLOW_AFTER_TOUCH_MS) glideTo(v)
@@ -517,11 +577,224 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
      * frame (what a view with a background gets by default): a screen of dimmed lines scrolling was a dozen of those
      * a frame. Its pressed tint is drawn by the list ([LineList]).
      */
-    private class Line(c: Context) : AText(c) {
+    private class Line(c: Context, private val owner: LyricsView) : AText(c) {
         override fun hasOverlappingRendering() = false
         override fun setPressed(pressed: Boolean) {
             super.setPressed(pressed)
             (parent as? LineList)?.pressed(this, pressed)
+        }
+
+        // ---- word by word (1.15)
+        /** When each word starts, and where the last ends (song ms); null: a line without words or untimed lyrics. */
+        var times: LongArray? = null
+            private set
+        /** The line being sung, with the words effect on: drawn word by word. Otherwise as any line. */
+        var karaoke = false
+            set(v) { if (v != field) { field = v; invalidate() } }
+        private var n = 0
+        private var starts = NO_INTS
+        private var ends = NO_INTS
+        /** Each word's box in this view (left, top, right, bottom), its row, and whether it reads right to left. */
+        private var box = NO_FLOATS
+        private var row = NO_INTS
+        private var rtl = NO_BOOLS
+        /** The lit parts of a frame (left, top, right, bottom each), made in place. */
+        private var lit = NO_FLOATS
+        private var boxesOf: android.text.Layout? = null
+        private var boxesH = -1
+        /** Half the gap kept around a word's box (so a word's ink at its edge takes its own colour). */
+        private var padX = 0f
+
+        /** The words' times for the text this line shows (null, or a count that does not match: no words). */
+        fun words(t: LongArray?) {
+            val text = text
+            val cnt = if (t == null) 0 else Words.count(text)
+            if (t == null || cnt == 0 || t.size != cnt + 1) { times = null; n = 0; invalidate(); return }
+            if (starts.size < cnt) {
+                starts = IntArray(cnt); ends = IntArray(cnt); row = IntArray(cnt); rtl = BooleanArray(cnt)
+                box = FloatArray(4 * cnt); lit = FloatArray(4 * cnt)
+            }
+            Words.bounds(text, starts, ends)
+            n = cnt
+            times = t
+            boxesOf = null
+            if (karaoke) invalidate()
+        }
+
+        /** The words' boxes could not be matched to what shows: the line is lit whole. */
+        private var boxesBad = false
+
+        /**
+         * The words' boxes from the laid-out text: once per layout (a new width or text makes a new one). Measured on
+         * a copy of the layout made from the plain text with the same settings: the shown one is made from the text
+         * measured off the main thread (PrecomputedText), and on Android 10 its horizontal positions all came back as
+         * the row's end (every word's box was the whole row). The copy must break the rows exactly where the shown
+         * one does, or the words are not lit one by one.
+         */
+        private fun measureWords(l: android.text.Layout) {
+            boxesOf = l
+            boxesH = height
+            boxesBad = false
+            val s = text.toString()
+            val m = try {
+                android.text.StaticLayout.Builder.obtain(s, 0, s.length, paint, l.width)
+                    .setAlignment(l.alignment)
+                    .setTextDirection(if (Build.VERSION.SDK_INT >= 29) textDirectionHeuristic else android.text.TextDirectionHeuristics.FIRSTSTRONG_LTR)
+                    .setLineSpacing(lineSpacingExtra, lineSpacingMultiplier)
+                    .setIncludePad(includeFontPadding)
+                    .setBreakStrategy(breakStrategy)
+                    .setHyphenationFrequency(hyphenationFrequency)
+                    .setJustificationMode(justificationMode)
+                    .build()
+            } catch (_: Throwable) { null }
+            if (m == null || m.lineCount != l.lineCount) { boxesBad = true; return }
+            for (r in 0 until m.lineCount) if (m.getLineEnd(r) != l.getLineEnd(r)) { boxesBad = true; return }
+            val px = totalPaddingLeft.toFloat()
+            val py = totalPaddingTop.toFloat()
+            val last = l.lineCount - 1
+            padX = textSize * 0.08f
+            for (j in 0 until n) {
+                // (the selection's own shape: right for either direction and for a Latin word in an Arabic line)
+                m.getSelectionPath(starts[j], ends[j], TMP_PATH)
+                TMP_PATH.computeBounds(TMP_RECT, true)
+                val r = m.getLineForOffset(starts[j])
+                row[j] = r
+                rtl[j] = m.isRtlCharAt(starts[j])
+                var left = TMP_RECT.left
+                var right = TMP_RECT.right
+                if (right <= left) {
+                    val a = m.getPrimaryHorizontal(starts[j]); val b = m.getPrimaryHorizontal(ends[j])
+                    left = minOf(a, b); right = maxOf(a, b)
+                }
+                box[4 * j] = px + left - padX
+                // (the first and last rows reach the view's edges: Arabic marks stand above the line's own top)
+                box[4 * j + 1] = if (r == 0) 0f else py + l.getLineTop(r)
+                box[4 * j + 2] = px + right + padX
+                box[4 * j + 3] = if (r >= last) height.toFloat() else py + l.getLineBottom(r)
+            }
+        }
+
+        private fun drawText(c: Canvas, l: android.text.Layout) {
+            val save = c.save()
+            c.translate(totalPaddingLeft.toFloat(), totalPaddingTop.toFloat())
+            l.draw(c)
+            c.restoreToCount(save)
+        }
+
+        /**
+         * The line being sung: the text drawn a few times, each time clipped to a part of it (the words sung, the
+         * edge of the one being sung in a few steps, the rest) in its own strength. Nothing is laid out again and
+         * nothing is allocated; the next frame is asked for only while a word fills.
+         */
+        override fun onDraw(c: Canvas) {
+            val t = times
+            val l = layout
+            if (!karaoke || t == null || l == null || n == 0) { super.onDraw(c); return }
+            if (l !== boxesOf || height != boxesH) measureWords(l)
+            if (boxesBad) { super.onDraw(c); return }
+            val now = owner.songNow() + WORD_LEAD_MS
+            // the word being sung: the last one started
+            var cur = -1
+            while (cur + 1 < n && t[cur + 1] <= now) cur++
+            var sung = 0       // words fully lit
+            var p = 0f         // how far the word [sung] has filled (0: not at all)
+            if (cur >= 0) {
+                val from = t[cur]
+                val to = if (cur + 1 < n) t[cur + 1] else t[n]
+                val dur = (to - from).coerceIn(1L, MAX_WORD_MS)
+                p = ((now - from).toFloat() / dur).coerceIn(0f, 1f)
+                if (p >= 1f) { sung = cur + 1; p = 0f } else sung = cur
+            }
+            if (sung >= n) { super.onDraw(c); return } // (all of it sung: the whole line lit)
+            val paint = paint
+            val color = currentTextColor
+            paint.color = color
+            val full = android.graphics.Color.alpha(color)
+            val rest = (full * UPCOMING).toInt()
+
+            // the lit parts: the words sung, row by row (one span per row when no word still to come lies in it)
+            var nLit = 0
+            var j = 0
+            while (j < sung) {
+                var k = j
+                var minL = box[4 * j]
+                var maxR = box[4 * j + 2]
+                while (k + 1 < sung && row[k + 1] == row[j]) { k++; minL = minOf(minL, box[4 * k]); maxR = maxOf(maxR, box[4 * k + 2]) }
+                var clean = true
+                var q = sung
+                while (q < n && row[q] == row[j]) {
+                    if (box[4 * q] + padX < maxR - padX && box[4 * q + 2] - padX > minL + padX) { clean = false; break }
+                    q++
+                }
+                if (clean) {
+                    lit[4 * nLit] = minL; lit[4 * nLit + 1] = box[4 * j + 1]; lit[4 * nLit + 2] = maxR; lit[4 * nLit + 3] = box[4 * j + 3]
+                    nLit++
+                } else for (m in j..k) {
+                    System.arraycopy(box, 4 * m, lit, 4 * nLit, 4)
+                    nLit++
+                }
+                j = k + 1
+            }
+            // the word being sung: lit up to its edge, the edge a soft step down to the rest, in its reading direction
+            val bl = box[4 * sung]
+            val bt = box[4 * sung + 1]
+            val br = box[4 * sung + 2]
+            val bb = box[4 * sung + 3]
+            val e = textSize * EDGE_EM
+            val w = br - bl
+            val right = rtl[sung]
+            // (the edge's middle travels from just before the word to just after it)
+            val mid = if (right) br + e / 2f - p * (w + e) else bl - e / 2f + p * (w + e)
+            val litEnd = if (right) mid + e / 2f else mid - e / 2f   // lit before this (in reading order)
+            val restFrom = if (right) mid - e / 2f else mid + e / 2f // still to come after this
+
+            // 1. everything not lit, a step dimmer
+            var save = c.save()
+            for (m in 0 until nLit) c.clipOutRect(lit[4 * m], lit[4 * m + 1], lit[4 * m + 2], lit[4 * m + 3])
+            if (right) { if (restFrom < br) c.clipOutRect(maxOf(bl, restFrom), bt, br, bb) }
+            else if (restFrom > bl) c.clipOutRect(bl, bt, minOf(br, restFrom), bb)
+            paint.alpha = rest
+            drawText(c, l)
+            c.restoreToCount(save)
+            // 2. the words sung
+            paint.alpha = full
+            for (m in 0 until nLit) {
+                save = c.save()
+                c.clipRect(lit[4 * m], lit[4 * m + 1], lit[4 * m + 2], lit[4 * m + 3])
+                drawText(c, l)
+                c.restoreToCount(save)
+            }
+            // 3. the word being sung: its lit part, then its edge in steps
+            val litL = if (right) maxOf(bl, litEnd) else bl
+            val litR = if (right) br else minOf(br, litEnd)
+            if (litR > litL) {
+                save = c.save()
+                c.clipRect(litL, bt, litR, bb)
+                drawText(c, l)
+                c.restoreToCount(save)
+            }
+            val step = e / EDGE_STEPS
+            for (s in 0 until EDGE_STEPS) {
+                val a = if (right) litEnd - (s + 1) * step else litEnd + s * step
+                val sl = maxOf(bl, a)
+                val sr = minOf(br, a + step)
+                if (sr <= sl) continue
+                val f = (s + 0.5f) / EDGE_STEPS
+                paint.alpha = (full + (rest - full) * f).toInt()
+                save = c.save()
+                c.clipRect(sl, bt, sr, bb)
+                drawText(c, l)
+                c.restoreToCount(save)
+            }
+            paint.alpha = full
+            // the next frame: while a word fills, every frame; else when the next word starts
+            if (owner.songPlaying) {
+                if (cur >= 0 && sung == cur) postInvalidateOnAnimation()
+                else {
+                    val next = t.getOrNull(sung) ?: return
+                    postInvalidateDelayed((next - now).coerceIn(16L, 2000L))
+                }
+            }
         }
     }
 
@@ -591,5 +864,22 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
         const val BIG_PLAIN_SP = 28f
         /** Measures the lines' text off the main thread (one for both copies: they ask one after the other). */
         val worker = Executors.newSingleThreadExecutor()
+
+        // ---- word by word (1.15)
+        /** A word fills a little before it is heard, as a line is lit early ([LEAD_MS]), but less. */
+        const val WORD_LEAD_MS = 60L
+        /** A word's fill takes at most this long (a long pause before the next word is not sung). */
+        const val MAX_WORD_MS = 3000L
+        /** The words still to come on the line being sung: a step under lit, well over the other lines' [dim]. */
+        const val UPCOMING = 0.6f
+        /** The fill's soft edge, in ems of the line's text, drawn in [EDGE_STEPS] steps. */
+        const val EDGE_EM = 0.6f
+        const val EDGE_STEPS = 4
+        // (the main thread's, reused: the words' boxes are measured there, once per layout)
+        val TMP_PATH = android.graphics.Path()
+        val TMP_RECT = RectF()
+        val NO_INTS = IntArray(0)
+        val NO_FLOATS = FloatArray(0)
+        val NO_BOOLS = BooleanArray(0)
     }
 }

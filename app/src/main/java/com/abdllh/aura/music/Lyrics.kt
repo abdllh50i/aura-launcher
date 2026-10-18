@@ -31,17 +31,23 @@ object Lyrics {
     private const val API = "https://lrclib.net/api"
     private const val RETRY_MISSING_MS = 3 * 24 * 3600_000L // a song nobody had added: asked again after 3 days
 
-    /** A line and the time it is sung at (0 for all of them when the lyrics are not timed). */
-    class Line(val ms: Long, val text: String)
+    /**
+     * A line and the time it is sung at (0 for all of them when the lyrics are not timed). [words] (1.15): when each of
+     * its words starts, and where the last one ends (-1: not given), as the owner's server gave them; null when it
+     * gave none (the screen then estimates them: [Words]).
+     */
+    class Line(val ms: Long, val text: String, val words: LongArray? = null)
 
     /**
      * [synced]: the lines carry times. [instrumental]: a song without words. [durationSec]: the length of the recording
      * the lines were timed on (0 when unknown). [source]: "lrclib", one of the owner's server's sources, or "aligned"
      * (timed by listening), whose [covered] says how much of the song was heard (1 for any other source).
+     * [words] (1.15): "heard" or "estimated" when the server gave word times, else "". [offsetMs]: the owner's own
+     * correction of this timing (a Bluetooth song's line tapped while its clock was known), kept with these lines only.
      */
     class Result(
         val synced: Boolean, val lines: List<Line>, val instrumental: Boolean = false, val durationSec: Int = 0,
-        val source: String = SOURCE_LRCLIB, val covered: Float = 1f
+        val source: String = SOURCE_LRCLIB, val covered: Float = 1f, val words: String = "", val offsetMs: Long = 0L
     ) {
         /** Worth asking the owner's server about: untimed lines, or a timing by listening that is not complete yet. */
         val improvable: Boolean get() = !instrumental && lines.isNotEmpty() && (!synced || (source == SOURCE_ALIGNED && covered < LyricsSync.DONE_AT))
@@ -139,12 +145,40 @@ object Lyrics {
      * A timing made by listening ([LyricsSync]) kept as the song's lyrics: the next play is timed at once. [lines] are
      * the lines shown with their times; [covered], how much of the song was heard.
      */
-    fun keepAligned(c: Context, title: String, artist: String, durationSec: Int, lines: List<Line>, covered: Float) {
+    fun keepAligned(c: Context, title: String, artist: String, durationSec: Int, lines: List<Line>, covered: Float,
+                    enhanced: String? = null, words: String = "") {
         val f = File(dir(c.applicationContext), "${key(title, artist, durationSec)}.json")
         val lrc = lines.joinToString("\n") { l -> "[%02d:%05.2f]%s".format(java.util.Locale.ROOT, l.ms / 60_000, (l.ms % 60_000) / 1000.0, l.text) }
         val o = JSONObject().put("syncedLyrics", lrc).put("plainLyrics", lines.joinToString("\n") { it.text })
             .put("source", SOURCE_ALIGNED).put("covered", covered.toDouble()).put("server", System.currentTimeMillis())
+        if (enhanced != null) o.put("enhanced", enhanced).put("words", words)
+        // (a new timing: the owner's correction of the one before, if any, goes with it — the record is replaced)
         io.execute { write(f, o) }
+    }
+
+    /**
+     * The owner's correction of a song's timing (1.15: lyrics time minus the song's clock, ms; 0 removes it), kept in
+     * the song's record with the very lines it was made on: lyrics that replace them (another source, a new timing)
+     * are written as a new record without it. Nothing is written when the record no longer holds those lines.
+     */
+    fun keepOffset(c: Context, title: String, artist: String, durationSec: Int, offsetMs: Long, lines: List<Line>) {
+        val f = File(dir(c.applicationContext), "${key(title, artist, durationSec)}.json")
+        io.execute {
+            try {
+                if (!f.isFile) return@execute
+                val o = JSONObject(f.readText())
+                val kept = parse(o) ?: return@execute
+                if (!kept.synced || kept.lines.size != lines.size ||
+                    kept.lines.indices.any { kept.lines[it].ms != lines[it].ms || kept.lines[it].text != lines[it].text }) {
+                    Log.i(TAG, "timing correction for '$title' not kept: its lyrics changed")
+                    return@execute
+                }
+                if (offsetMs == 0L) o.remove("offsetMs") else o.put("offsetMs", offsetMs)
+                write(f, o)
+            } catch (t: Throwable) {
+                Log.i(TAG, "timing correction: $t")
+            }
+        }
     }
 
     /** The server's answer in the shape of an LRCLIB record (the one way lyrics are kept here). */
@@ -152,6 +186,8 @@ object Lyrics {
         if (s.synced != null) put("syncedLyrics", s.synced)
         if (s.plain != null) put("plainLyrics", s.plain)
         if (s.duration > 0) put("duration", s.duration)
+        // (1.15: the words' times, when the server gave them, and whether they were heard or estimated)
+        if (s.enhanced != null) { put("enhanced", s.enhanced); put("words", s.words) }
         put("source", s.source)
         put("covered", s.covered.toDouble())
         put("server", System.currentTimeMillis())
@@ -265,8 +301,12 @@ object Lyrics {
         if (o.optBoolean("instrumental")) return Result(false, emptyList(), instrumental = true, durationSec = sec, source = source)
         val synced = o.optString("syncedLyrics").takeIf { it.isNotBlank() && it != "null" }
         if (synced != null) {
-            val lines = parseLrc(synced)
-            if (lines.isNotEmpty()) return Result(true, lines, durationSec = sec, source = source, covered = covered)
+            var lines = parseLrc(synced)
+            // (1.15: the server's word times, given to the lines they belong to)
+            val enhanced = o.optString("enhanced").takeIf { !o.isNull("enhanced") && it.isNotBlank() }
+            if (enhanced != null) lines = Words.attach(lines, parseLrc(enhanced))
+            if (lines.isNotEmpty()) return Result(true, lines, durationSec = sec, source = source, covered = covered,
+                words = if (enhanced != null) o.optString("words") else "", offsetMs = o.optLong("offsetMs", 0L))
         }
         val plain = o.optString("plainLyrics").takeIf { it.isNotBlank() && it != "null" } ?: return null
         return Result(false, plain.lines().map { Line(0L, it.trim()) }, durationSec = sec, source = source, covered = 0f)
@@ -274,7 +314,11 @@ object Lyrics {
 
     private val TAG_RE = Regex("""\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?]""")
 
-    /** "[01:02.34] words" (several times on one line allowed); metadata tags ([ar:], [offset:]...) are left out. */
+    /**
+     * "[01:02.34] words" (several times on one line allowed); metadata tags ([ar:], [offset:]...) are left out. Word
+     * tags ("<01:02.34>word", enhanced LRC: the server's "enhanced" field, now and then LRCLIB's own text) become the
+     * line's [Line.words] and leave its text.
+     */
     fun parseLrc(text: String): List<Line> {
         val out = ArrayList<Line>()
         var offset = 0L
@@ -283,13 +327,20 @@ object Lyrics {
             Regex("""\[offset:\s*([+-]?\d+)]""", RegexOption.IGNORE_CASE).find(line)?.let { offset = it.groupValues[1].toLongOrNull() ?: 0L }
             val times = TAG_RE.findAll(line).toList()
             if (times.isEmpty()) continue
-            val words = line.substring(times.last().range.last + 1).trim()
+            val rest = line.substring(times.last().range.last + 1)
+            val tagged = rest.indexOf('<') >= 0
+            var first = -1L
             for (m in times) {
                 val min = m.groupValues[1].toLong()
                 val sec = m.groupValues[2].toLong()
                 val frac = m.groupValues[3]
                 val ms = when (frac.length) { 0 -> 0L; 1 -> frac.toLong() * 100; 2 -> frac.toLong() * 10; else -> frac.take(3).toLong() }
-                out.add(Line((min * 60_000 + sec * 1000 + ms - offset).coerceAtLeast(0L), words))
+                val at = (min * 60_000 + sec * 1000 + ms - offset).coerceAtLeast(0L)
+                if (first < 0L) first = at
+                if (!tagged) { out.add(Line(at, rest.trim())); continue }
+                // (the word tags are the first time's: a line listed at several times has its words moved with it)
+                val (words, wt) = Words.parseTagged(rest, at - first - offset)
+                out.add(Line(at, words, wt))
             }
         }
         out.sortBy { it.ms }
