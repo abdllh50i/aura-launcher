@@ -376,6 +376,8 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
         // (a fixed direction rule, the same detached as on the screen: a measured text must match its line exactly)
         v.textDirection = View.TEXT_DIRECTION_FIRST_STRONG_LTR
         v.setLineSpacing(0f, 1.1f)
+        // (1.15: whole words per row: a word hyphenated across two rows cannot be lit as one)
+        v.hyphenationFrequency = android.text.Layout.HYPHENATION_FREQUENCY_NONE
         val pad = (if (big) Space.M else Space.S).dp
         v.setPadding(pad, pad, pad, pad)
     }

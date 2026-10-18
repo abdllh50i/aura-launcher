@@ -866,7 +866,9 @@ class MusicActivity : Activity() {
     private fun onLineHold(): Boolean {
         val s = lyricsSong
         val r = lyricsResult
-        if (!bt || s == null || !s.bt || r == null || lyricsOffset == 0L || lyricsShown != s.key) return false
+        if (!bt || s == null || !s.bt || r == null || lyricsShown != s.key) return false
+        // (held without a saved correction: nothing, rather than the tap it would become on letting go)
+        if (lyricsOffset == 0L) return true
         lyricsOffset = 0L
         Lyrics.keepOffset(this, s.title, s.artist, s.sec, 0L, r.lines)
         val at = positionNow()
