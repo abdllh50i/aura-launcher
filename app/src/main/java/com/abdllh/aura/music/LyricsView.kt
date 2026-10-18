@@ -619,25 +619,49 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
             if (karaoke) invalidate()
         }
 
-        /** The words' boxes from the laid-out text: once per layout (a new width or text makes a new one). */
+        /** The words' boxes could not be matched to what shows: the line is lit whole. */
+        private var boxesBad = false
+
+        /**
+         * The words' boxes from the laid-out text: once per layout (a new width or text makes a new one). Measured on
+         * a copy of the layout made from the plain text with the same settings: the shown one is made from the text
+         * measured off the main thread (PrecomputedText), and on Android 10 its horizontal positions all came back as
+         * the row's end (every word's box was the whole row). The copy must break the rows exactly where the shown
+         * one does, or the words are not lit one by one.
+         */
         private fun measureWords(l: android.text.Layout) {
             boxesOf = l
             boxesH = height
+            boxesBad = false
+            val s = text.toString()
+            val m = try {
+                android.text.StaticLayout.Builder.obtain(s, 0, s.length, paint, l.width)
+                    .setAlignment(l.alignment)
+                    .setTextDirection(if (Build.VERSION.SDK_INT >= 29) textDirectionHeuristic else android.text.TextDirectionHeuristics.FIRSTSTRONG_LTR)
+                    .setLineSpacing(lineSpacingExtra, lineSpacingMultiplier)
+                    .setIncludePad(includeFontPadding)
+                    .setBreakStrategy(breakStrategy)
+                    .setHyphenationFrequency(hyphenationFrequency)
+                    .setJustificationMode(justificationMode)
+                    .build()
+            } catch (_: Throwable) { null }
+            if (m == null || m.lineCount != l.lineCount) { boxesBad = true; return }
+            for (r in 0 until m.lineCount) if (m.getLineEnd(r) != l.getLineEnd(r)) { boxesBad = true; return }
             val px = totalPaddingLeft.toFloat()
             val py = totalPaddingTop.toFloat()
             val last = l.lineCount - 1
             padX = textSize * 0.08f
             for (j in 0 until n) {
                 // (the selection's own shape: right for either direction and for a Latin word in an Arabic line)
-                l.getSelectionPath(starts[j], ends[j], TMP_PATH)
+                m.getSelectionPath(starts[j], ends[j], TMP_PATH)
                 TMP_PATH.computeBounds(TMP_RECT, true)
-                val r = l.getLineForOffset(starts[j])
+                val r = m.getLineForOffset(starts[j])
                 row[j] = r
-                rtl[j] = l.isRtlCharAt(starts[j])
+                rtl[j] = m.isRtlCharAt(starts[j])
                 var left = TMP_RECT.left
                 var right = TMP_RECT.right
                 if (right <= left) {
-                    val a = l.getPrimaryHorizontal(starts[j]); val b = l.getPrimaryHorizontal(ends[j])
+                    val a = m.getPrimaryHorizontal(starts[j]); val b = m.getPrimaryHorizontal(ends[j])
                     left = minOf(a, b); right = maxOf(a, b)
                 }
                 box[4 * j] = px + left - padX
@@ -665,6 +689,7 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
             val l = layout
             if (!karaoke || t == null || l == null || n == 0) { super.onDraw(c); return }
             if (l !== boxesOf || height != boxesH) measureWords(l)
+            if (boxesBad) { super.onDraw(c); return }
             val now = owner.songNow() + WORD_LEAD_MS
             // the word being sung: the last one started
             var cur = -1

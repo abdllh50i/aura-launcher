@@ -842,7 +842,7 @@ class MusicActivity : Activity() {
                 lyricsOffset = target - clock
                 Lyrics.keepOffset(this, s.title, s.artist, s.sec, lyricsOffset, r.lines)
                 lyrics { it.at(clock + lyricsOffset) }
-                Snack.show(this, R.string.kar_timing_saved)
+                Snack.show(this, R.string.kar_timing_saved, aboveDp = snackAbove)
                 return
             }
             // the clock unknown: the tap says where the song is (with the song's kept correction, the lyrics land on
@@ -859,6 +859,9 @@ class MusicActivity : Activity() {
         }
     }
 
+    /** Where the lyrics' messages stand: above the small bar when the lyrics fill the screen. */
+    private val snackAbove: Int get() = if (lyricsFull) FULL_BAR_DP + Space.L + Space.S else Snack.ABOVE_DP
+
     /** A lyric line held down: the song's saved timing correction is forgotten (1.15); nothing else to do there. */
     private fun onLineHold(): Boolean {
         val s = lyricsSong
@@ -868,7 +871,7 @@ class MusicActivity : Activity() {
         Lyrics.keepOffset(this, s.title, s.artist, s.sec, 0L, r.lines)
         val at = positionNow()
         lyrics { it.at(at) }
-        Snack.show(this, R.string.kar_timing_reset)
+        Snack.show(this, R.string.kar_timing_reset, aboveDp = snackAbove)
         return true
     }
 
