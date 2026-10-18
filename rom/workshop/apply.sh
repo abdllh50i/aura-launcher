@@ -81,6 +81,11 @@ if [ -f $SRC/system/media/bootanimation.zip ]; then
     put_file $SRC/system/media/bootanimation.zip $R/config/app/bootanimation.zip 644
 fi
 touch -t $STAMP $R/priv-app $R/etc/permissions $R/etc/init $R/bin $R/media $R/config/app
+# ext4 picks a file's blocks only when its data is written back (delayed allocation). The config edits below rewrite
+# stock files in place and give their old blocks back at once, so new files still waiting for writeback could land on
+# them (1.15.0: the second boot animation took the old build.prop, AppConfig.xml, FastDexOpt.xml, OneClearConfig.xml and
+# TaskWhitelist.xml blocks, and make_patch refused the image). Write everything back now, while those blocks are taken.
+sync
 
 step "patch NWD default config (same logic the car runs at boot)"
 sh $SRC/system/bin/aura-prepare.sh --image $MNT

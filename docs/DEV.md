@@ -34,7 +34,9 @@ has no journal, so a stock file rewritten in place gives its blocks back at once
 the new data, which the block patch cannot write crash-safely (make_patch stops: "live file data in the old image";
 1.5.2's bigger APK hit it); deleting the stock file instead fails the write-order proof (a directory entry briefly
 points at a freed inode). So the two stock boot animations are kept, renamed `bootanimation.zip.aura-stock`, and
-nothing of the stock image is overwritten or freed. The pack also carries per-range hashes and a hash of
+nothing of the stock image is overwritten or freed. The config edits (`build.prop`, the four NWD XML files) do give their
+few old blocks back; ext4 allocates a file's blocks only at writeback, so `apply.sh` writes every new file back (`sync`)
+before those edits (without it, 1.15.0's second boot animation landed on exactly those blocks). The pack also carries per-range hashes and a hash of
 every block *outside* the ranges (`rest`): if a run is ever interrupted, a partition that matches neither image but whose
 `rest` still matches is reported as an interrupted patch and `install`/`restore` simply finish it (rewriting all ranges leads
 to a known image again); anything else is refused. `rom/tools/make_zip.py` writes the release zip (forward-slash entries).
