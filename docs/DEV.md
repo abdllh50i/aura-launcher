@@ -986,6 +986,18 @@ as whole files), 18 lines each, mean / max error per line:
   stay where they are, step back around the lit one, and the lit one glides to the middle.
 Real singing through a car's microphone is harder than speech: not measured (see below).
 
+#### Word times (1.15, `tools/lyrics-server/words.py`)
+Asked with `words=1` (GET /api/lyrics and GET /api/sync), the server adds `"enhanced"`: the timed lyrics word by word, an
+LRC with `<mm:ss.xx>` before each of a line's whitespace-separated words and one after the last (where the line's
+singing ends), and `"words"`: `heard` or `estimated`. A timing made by listening knows when each clearly matched word
+was sung (`align(…, words_out)`: pairs at similarity 0.8+ of two letters or more; kept per song as `word_at` only for
+lines timed by their own words and inside their own time); the others are read off a line through the known points
+(the line's start, each heard word, the line's end) over the words' cumulative weight. Lyrics a source timed line by
+line are estimated: a word weighs (its letters and digits)^0.8 + 0.6, a line takes 0.16 s per unit (at least 0.5 s),
+never past 0.15 s before the next line (a line sung quickly before a pause does not stretch over it); the last line at
+most 6 s. The app estimates with the same rule when it has no word times of the server's (LRCLIB's timed lyrics
+fetched by the unit itself, an older server).
+
 #### The screen (`LyricsView.timeLines`, `MusicActivity`)
 Timed lines that come for the very lines on the screen do not rebuild anything: the lines stay where they are, take
 taps from then on (a tap looks the line's time up when it happens, `tapLine`, since a timing by listening can be refined
