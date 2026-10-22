@@ -61,6 +61,7 @@ class AuraApp : Application() {
         Animations.ensureAnimators()
         Player.init(this)
         BtMusic.init(this)
+        com.abdllh.aura.music.PhoneLink.init(this) // Naghm on the phone: the song's real time, and seeking (over the hotspot)
         StockMusic.apply(this)
         WifiKeeper.start(this)
         ZLinkGuard.init(this)

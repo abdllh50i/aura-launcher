@@ -848,6 +848,11 @@ class MusicActivity : Activity() {
             MediaMonitor.appControl(YtMusic.players, MediaMonitor.Do.PLAY, seekToMs = l.ms)
             holdSeek(l.ms)
             lyrics { it.at(l.ms) }
+        } else if (bt && BtMusic.canSeek) {
+            // Naghm on the phone: the song itself jumps to the line, as the unit's own songs do
+            BtMusic.seekTo(l.ms - lyricsShift)
+            if (!BtMusic.playing) BtMusic.control(BtMusic.PLAY)
+            lyrics { it.needSync = false; it.at(l.ms) }
         } else if (bt) {
             val target = l.ms + TAP_REACTION_MS
             val s = lyricsSong
@@ -906,7 +911,7 @@ class MusicActivity : Activity() {
         // shuffle and repeat while another source played)
         (shuffleBtn.parent as View).visibility = if (local) View.VISIBLE else View.INVISIBLE
         (repeatBtn.parent as View).visibility = if (local) View.VISIBLE else View.INVISIBLE
-        seek.enabledSeek = !bt
+        seek.enabledSeek = !bt || BtMusic.canSeek // (a phone song moves only through Naghm)
         when (src) {
             Src.YT -> {
                 // what YouTube's app plays, as its own session tells it
@@ -934,8 +939,10 @@ class MusicActivity : Activity() {
                 val linked = BtMusic.available && BtMusic.connected
                 songChanged("bt:${BtMusic.title}|${BtMusic.artist}")
                 btArt()
-                val phone = if (BtMusic.phone.isBlank()) getString(R.string.music_bt_phone_connected)
+                val linkedPhone = if (BtMusic.phone.isBlank()) getString(R.string.music_bt_phone_connected)
                     else getString(R.string.music_bt_connected, BtMusic.phone)
+                // (Naghm on the phone tells the song's real time and takes seeking: say so under the song)
+                val phone = if (BtMusic.viaNaghm) getString(R.string.music_bt_naghm, linkedPhone) else linkedPhone
                 // (where the song is cannot be shown until it is known: its length goes beside the artist meanwhile)
                 val d = BtMusic.durationSec * 1000L
                 val by = if (!BtMusic.positionKnown && d > 0) join(BtMusic.artist, clockText(d)) else BtMusic.artist
@@ -2018,6 +2025,10 @@ class MusicActivity : Activity() {
                 if (yt) {
                     val d = ytDurationMs
                     if (d > 0) { val to = (d * f).toLong(); MediaMonitor.appControl(YtMusic.players, MediaMonitor.Do.PLAY, seekToMs = to); holdSeek(to) }
+                } else if (bt) {
+                    // the phone's song, through Naghm (the bar takes no drags otherwise: enabledSeek)
+                    val d = BtMusic.durationSec * 1000L
+                    if (d > 0) { val to = (d * f).toLong(); if (BtMusic.seekTo(to)) lyrics { it.at(to + lyricsShift) } }
                 } else { val to = (Player.duration() * f).toLong(); Player.seekTo(to); holdSeek(to) }
             }
         }

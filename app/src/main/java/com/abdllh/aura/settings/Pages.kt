@@ -554,6 +554,8 @@ class AboutPage(private val act: SettingsActivity) : Page(R.string.set_about, R.
         com.abdllh.aura.music.CoverSearch.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_disc, R.string.about_cover, it) }
         // how the last song handed to YouTube's app went (it could not be tried before the unit)
         com.abdllh.aura.music.YtMusic.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_music, R.string.about_yt, it) }
+        // Naghm on the owner's iPhone: when it last connected over the hotspot, and from where
+        com.abdllh.aura.music.PhoneLink.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_bluetooth, R.string.about_naghm, it) }
         col.addRow(ctx.group(*rows.toTypedArray()))
 
         // Home-app control (car unit only)

@@ -205,6 +205,7 @@
     <string name="music_bt_idle">Play a song on your phone</string>
     <string name="music_bt_connected">Connected to %1$s</string>
     <string name="music_bt_phone_connected">Phone connected</string>
+    <string name="music_bt_naghm">%1$s · through Naghm</string>
     <string name="music_unknown_artist">Unknown artist</string>
     <string name="music_tracks_count">%1$d songs</string>
     <string name="music_play_all">Play all</string>
@@ -453,6 +454,7 @@
     <string name="yt_needs_front">YouTube Music stopped when AMRI Music came back: playing without the app in front needs a Premium account.</string>
     <string name="about_cover">Last Bluetooth song looked up</string>
     <string name="about_yt">Last song handed to YouTube Music</string>
+    <string name="about_naghm">Link with Naghm on the phone</string>
     <string name="yt_idle">Choose a song</string>
 
     <!-- "a camera here" on the maps -->

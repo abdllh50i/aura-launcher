@@ -205,6 +205,7 @@
     <string name="music_bt_idle">شغّل أغنية من جوالك</string>
     <string name="music_bt_connected">متصل بـ %1$s</string>
     <string name="music_bt_phone_connected">الجوال متصل</string>
+    <string name="music_bt_naghm">%1$s · عبر نغم</string>
     <string name="music_unknown_artist">فنان غير معروف</string>
     <string name="music_tracks_count">%1$d أغنية</string>
     <string name="music_play_all">تشغيل الكل</string>
@@ -453,6 +454,7 @@
     <string name="yt_needs_front">يوتيوب ميوزك وقف لما رجعت لموسيقى عمري: التشغيل بدون ما يكون التطبيق قدامك يحتاج اشتراك Premium.</string>
     <string name="about_cover">آخر بحث عن صورة ومدة أغنية بلوتوث</string>
     <string name="about_yt">آخر أغنية انسلّمت ليوتيوب ميوزك</string>
+    <string name="about_naghm">الربط مع نغم على الجوال</string>
     <string name="yt_idle">اختر أغنية</string>
 
     <!-- "a camera here" on the maps -->

@@ -783,6 +783,26 @@ daemon and `com.bt.bc03` restarted to pick it up. It did not work on the unit an
 `system/BetaLeftovers.kt` lets that mount go once and removes `/data/local/tmp/amri-bt-timing` (the daemon that runs
 keeps running: the owner is told to restart once). What was learnt about the daemon is in the betas' `tools/bt-timing`.
 
+### Naghm, the owner's iPhone player (1.17, `music/PhoneLink.kt`)
+The owner's own iPhone app, Naghm (`D:\chatgpt\Naghm`, protocol in its `CAR_LINK.md`), plays YouTube Music to the unit
+over Bluetooth and tells, over the iPhone's hotspot the unit is on, what this module never does: where the song is.
+Naghm listens on TCP 47100 (and announces `_naghm._tcp`); `PhoneLink` connects to the Wi-Fi's gateway — the iPhone
+itself on its hotspot — every 5 s while not connected (a refused connection to a home router costs nothing), says
+hello, pings every 5 s (16 s of silence drops it) and reads one JSON object per line: `state` (id, title, artist, art
+URL, duration and position in seconds, playing) on every change, a seek, and every ~3 s while playing. Connecting and
+reading run on one thread, writing on another; what the screen reads is set on the main thread.
+`BtMusic.adoptPhone`: while the A2DP link is up and Naghm plays (or holds the song the module names, `sameSong`: the
+module may cut a long title), Naghm's names, length (`durationFromPhone`), position (the clock re-based when it is 300 ms
+off) and its own cover (`PhoneLink.art`, no catalogue lookup) replace the module's guesses; another app on the phone
+keeps the module's (a title from the module that is not Naghm's drops `phoneOwned`). With `viaNaghm` / `canSeek` the
+seek bar takes drags for a Bluetooth song (`enabledSeek`), a tapped lyric line moves the song as the unit's own songs
+do, and the transport goes to Naghm (`control`), not to the module (no "did previous restart it?" guess). The names say
+"· through Naghm". Settings → About shows the link's last news (`phoneLinkNote`).
+Emulator: `setprop debug.aura.phonelink 10.0.2.2:47100`, a stand-in server on the PC (hello, a state every 3 s, answers
+seek / toggle / next), and a simulated Bluetooth song (`--ez sim true`): the bar showed the phone's 6:02 of 9:35, a tap
+on the bar sent `seek 143.46` and the bar showed 2:25, next brought the next song with its cover and length, the home
+card followed. Not tried before the unit: the connection over the real hotspot, and Naghm itself on the iPhone.
+
 ### Aura Music in 1.12
 The screen uses the design system's tokens throughout (`Type` roles, `Radius`, `Space`, `Touch`, `Elev`, the `Motion`
 helpers, `Snack`). Strings added in 1.12 are in `res/values*/strings_music.xml`.

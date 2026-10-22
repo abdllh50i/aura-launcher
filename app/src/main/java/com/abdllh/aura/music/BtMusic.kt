@@ -153,6 +153,7 @@ object BtMusic {
     private fun forgetClock() {
         lastSong = ""
         positionKnown = false
+        phoneOwned = false // (Naghm's next word takes the song again)
     }
 
     /** The owner tapped the line sung at [ms]: that is where the song is now. */
@@ -183,6 +184,7 @@ object BtMusic {
         if (app != null) return
         val c = ctx.applicationContext
         app = c
+        PhoneLink.addListener { adoptPhone() }
         // (the firmware keeps the source across a restart: so does the music screen's choice)
         sourceActive = com.abdllh.aura.util.Prefs.raw.getString("musicSource", "local") == "bt"
         available = try { c.packageManager.getApplicationInfo(PKG, 0); true } catch (_: Throwable) { false }
@@ -223,7 +225,10 @@ object BtMusic {
                         }
                         val t = i.getStringExtra("extra_avrcp_id3_title").orEmpty()
                         val a = i.getStringExtra("extra_avrcp_id3_artist").orEmpty()
-                        if (t != title || a != artist) { // (the module repeats the same song's info now and then)
+                        if (viaNaghm && sameSong(t, PhoneLink.title)) {
+                            // the song Naghm already told about (its names, length and clock stay)
+                        } else if (t != title || a != artist) { // (the module repeats the same song's info now and then)
+                            phoneOwned = false // another app on the phone, or Naghm's next song before its own word
                             // a song that follows another one starts now; the first one after connecting may be half way
                             val start = lastSong.isNotEmpty() && t.isNotBlank()
                             title = t
@@ -290,7 +295,8 @@ object BtMusic {
         val a = artist
         CoverSearch.find(c, t, a) { b, sec, yt, failed ->
             if (artKey != key) return@find
-            art = b
+            // (Naghm's own cover is the song's; a catalogue's match is only a guess)
+            art = if (viaNaghm && PhoneLink.art != null) PhoneLink.art else b
             // (the catalogue's length, while nothing better; YouTube Music's is the song's own)
             if (sec > 0) offerDuration(sec, t, a, if (yt) FROM_SERVICE else FROM_CATALOGUE)
             if (b == null && failed && ++artTries <= 3) main.postDelayed(artAgain, 15_000L * artTries)
@@ -322,6 +328,11 @@ object BtMusic {
     }
 
     fun control(cmd: Int) {
+        if (viaNaghm) {
+            // Naghm takes the command itself: exact, and no guessing whether "previous" restarted the song
+            PhoneLink.control(when (cmd) { TOGGLE -> "toggle"; PAUSE -> "pause"; NEXT -> "next"; PREVIOUS -> "previous"; else -> "play" })
+            return
+        }
         if (cmd == PREVIOUS) armPrevCheck()
         if (!transact(TX_PLAY_CONTROL) { it.writeInt(cmd) }) {
             // the firmware's broadcast uses its own numbering: 1 toggle, 2 pause, 3 next, 4 previous, 5 play
@@ -342,6 +353,7 @@ object BtMusic {
      * half keeps running as it is: reports every second would make the lines jitter by half a second.
      */
     private fun progress(totalSec: Int, posSec: Int) {
+        if (viaNaghm) return // (Naghm's milliseconds over the module's whole seconds)
         if (totalSec > 0) { durationSec = totalSec; durationFromPhone = true }
         val reported = posSec * 1000L + 500L // (somewhere in that second: its middle)
         if (!positionKnown || kotlin.math.abs(positionMs() - reported) > 1500L) clockSet(reported, true)
@@ -374,6 +386,59 @@ object BtMusic {
         if (!available) return
         if (playing) control(PAUSE)
         transact(TX_SET_MUTE) { it.writeInt(1) }
+    }
+
+    // ------------------------------------------------------------------------------------------ Naghm
+    /** The song is Naghm's, the phone app that says where its song is ([PhoneLink]): its word is believed. */
+    private var phoneOwned = false
+    /** What plays comes through Naghm: the real position and length, and seeking. */
+    val viaNaghm get() = phoneOwned && PhoneLink.active
+    val canSeek get() = viaNaghm
+
+    /**
+     * Naghm said something. While the phone's Bluetooth audio is up and Naghm plays (or holds the song the module
+     * names), its names, length, position and cover replace this module's guesses; another app on the phone keeps
+     * the module's.
+     */
+    private fun adoptPhone() {
+        val l = PhoneLink
+        val ours = l.active && connected && (l.playing || title.isBlank() || sameSong(title, l.title))
+        if (!ours) {
+            if (phoneOwned) { phoneOwned = false; changed() }
+            return
+        }
+        phoneOwned = true
+        if (l.title != title || l.artist != artist) {
+            title = l.title
+            artist = l.artist
+            lastSong = song
+            durationFrom = FROM_SERVICE
+            artKey = "$artist|$title" // (no catalogue lookup: Naghm sends the cover)
+            main.removeCallbacks(artAgain)
+            art = l.art
+        } else if (l.art != null && art !== l.art) art = l.art
+        if (l.durationMs > 0) { durationSec = ((l.durationMs + 500) / 1000).toInt(); durationFromPhone = true }
+        val at = l.positionMs()
+        if (!positionKnown || kotlin.math.abs(positionMs() - at) > 300L) clockSet(at, true)
+        setPlaying(l.playing)
+        changed()
+    }
+
+    /** Moves the phone's song to [ms] (Naghm only: the module cannot seek). False when nothing here can move it. */
+    fun seekTo(ms: Long): Boolean {
+        if (!canSeek) return false
+        PhoneLink.seek(ms)
+        clockSet(ms.coerceAtLeast(0L), true)
+        changed()
+        return true
+    }
+
+    /** The same song in the module's words and Naghm's (the module may cut a long title). */
+    private fun sameSong(a: String, b: String): Boolean {
+        val x = a.trim()
+        val y = b.trim()
+        if (x.isEmpty() || y.isEmpty()) return false
+        return x.equals(y, ignoreCase = true) || (x.length >= 8 && y.startsWith(x)) || (y.length >= 8 && x.startsWith(y))
     }
 
     // ------------------------------------------------------------------------------------------ phone calls
