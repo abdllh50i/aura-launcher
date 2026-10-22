@@ -185,6 +185,12 @@
     <string name="drawer_app_info">معلومات التطبيق</string>
     <string name="set_zlink_off">ZLink (كار بلاي) يبقى طافي لين أفتحه بنفسي</string>
     <string name="set_zlink_off_sub">ما يطلع لحاله لما يتصل الجوال بالبلوتوث، وما يطفّي الواي فاي</string>
+    <string name="set_bt_delay">تأخير صوت البلوتوث</string>
+    <string name="set_bt_delay_value">%1$s ث</string>
+    <string name="set_bt_delay_hint">صوت البلوتوث يوصل سماعات السيارة بعد ما يشغّله الجوال بشوي، فالكلمات ممكن تسبق الصوت اللي تسمعه. حدد كم يتأخر وتمشي الكلمات على صوت السماعات. أسهل طريقة مع نغم: والأغنية شغالة اضغط مطوّل على سطر من الكلمات أول ما تسمعه يبدأ، والشاشة تقيسه بنفسها.</string>
+    <string name="bt_delay_set">صوت البلوتوث يوصل متأخر %1$s ث: الكلمات صارت تمشي على صوت السماعات</string>
+    <string name="bt_delay_missed">ما ضبطت مع الأغنية. اضغط مطوّل على السطر أول ما تسمعه يبدأ</string>
+    <string name="bt_delay_hint">الكلمات تسبق صوت السيارة؟ اضغط مطوّل على السطر أول ما تسمعه يبدأ</string>
     <string name="set_bt_cover">صورة ومدة أغاني البلوتوث</string>
     <string name="set_bt_cover_sub">تجيب صورة الأغنية ومدتها من الإنترنت باسمها واسم الفنان: من يوتيوب ميوزك أول، وإذا ما لقتها فمن \u2068Apple Music\u2069 أو \u2068Deezer\u2069</string>
     <string name="nav_channel">الملاحة</string>

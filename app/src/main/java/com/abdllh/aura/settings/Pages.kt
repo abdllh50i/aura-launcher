@@ -194,6 +194,28 @@ class DisplaySoundPage(private val act: SettingsActivity) : Page(R.string.set_di
                 }
             }
         ))
+        // (1.18) how late the phone's sound comes out of the speakers: the lyrics of Bluetooth songs follow what is heard
+        val bt = com.abdllh.aura.music.BtMusic
+        val step = bt.DELAY_STEP_MS
+        val dv = ctx.valueText("")
+        val ds = AuraSlider(ctx).apply {
+            max = (bt.DELAY_MAX_MS / step).toInt()
+            setIcon(R.drawable.ic_bluetooth_audio)
+            onChange = { v, user ->
+                dv.text = ctx.getString(R.string.set_bt_delay_value, com.abdllh.aura.music.MusicActivity.delaySeconds(v * step))
+                if (user) bt.delayMs = v * step
+            }
+        }
+        // (shown anew at each visit: a line held on the music screen measures it meanwhile)
+        val showDelay = {
+            ds.setProgress(((bt.delayMs + step / 2) / step).toInt(), false)
+            dv.text = ctx.getString(R.string.set_bt_delay_value, com.abdllh.aura.music.MusicActivity.delaySeconds(bt.delayMs))
+        }
+        showDelay()
+        val shownBefore = levels
+        levels = { shownBefore?.invoke(); showDelay() }
+        col.addRow(ctx.group(ctx.sliderRow(ctx.getString(R.string.set_bt_delay), ds, dv)))
+        col.addHint(ctx.getString(R.string.set_bt_delay_hint))
         LyricsCard.addTo(act, ctx, col) // the owner's lyrics server and the timing of lyrics by listening (1.13)
 
         if (com.abdllh.aura.phone.Calls.available) {

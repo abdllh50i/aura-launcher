@@ -26,6 +26,7 @@ import android.text.TextUtils
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.widget.AbsListView
 import android.widget.BaseAdapter
@@ -166,8 +167,19 @@ class MusicActivity : Activity() {
      * only: kept with its lyrics, so the next play of the song has it at once.
      */
     private var lyricsOffset = 0L
-    /** What is added to the song's position to light the lines (the correction, for the Bluetooth song it was made on). */
-    private val lyricsShift: Long get() = if (bt && lyricsSong?.bt == true) lyricsOffset else 0L
+    /**
+     * What is added to the song's position to light the lines: for the Bluetooth song it was made on, the owner's
+     * correction; without one (1.18) the Bluetooth sound's delay taken off, so the lines follow what the speakers play
+     * (a correction made by tapping was measured against what was heard: the delay is already in it).
+     */
+    private val lyricsShift: Long get() = when {
+        !bt || lyricsSong?.bt != true -> 0L
+        lyricsOffset != 0L -> lyricsOffset
+        else -> -BtMusic.delayMs
+    }
+    /** A line just tapped on Naghm's song stays lit until its sound, which comes the delay later, catches up. */
+    private var tapLitMs = 0L
+    private var tapLitUntil = 0L
 
     /**
      * A song as its lyrics are asked for: its key on this screen, its names, the length the lookup used, and where it
@@ -418,8 +430,9 @@ class MusicActivity : Activity() {
                 Src.BT -> BtMusic.playing
                 Src.LOCAL -> Player.playing
             }
-            // (the lyrics' time: the song's, with the owner's correction of a Bluetooth song's timing)
-            val lyricAt = at + lyricsShift
+            // (the lyrics' time: the song's, with the owner's correction of a Bluetooth song's timing, or the sound's delay)
+            var lyricAt = at + lyricsShift
+            if (SystemClock.uptimeMillis() < tapLitUntil) lyricAt = maxOf(lyricAt, tapLitMs)
             if (lyricsOn) {
                 val unknown = positionUnknown
                 lyrics { it.needSync = unknown; it.at(lyricAt, playing) }
@@ -763,6 +776,7 @@ class MusicActivity : Activity() {
                 lyrics { it.needSync = unknown; it.at(at) }
                 lyricsHave(true)
                 listenFor(r)
+                if (r.synced && lyricsSong?.bt == true) offerDelayHint()
             }
         }
     }
@@ -849,9 +863,13 @@ class MusicActivity : Activity() {
             holdSeek(l.ms)
             lyrics { it.at(l.ms) }
         } else if (bt && BtMusic.canSeek) {
-            // Naghm on the phone: the song itself jumps to the line, as the unit's own songs do
-            BtMusic.seekTo(l.ms - lyricsShift)
+            // Naghm on the phone: the song itself jumps to the line, as the unit's own songs do (to where the line is in
+            // the song: only the owner's correction moves that, the sound's delay only makes it heard later)
+            BtMusic.seekTo(l.ms - lyricsOffset)
             if (!BtMusic.playing) BtMusic.control(BtMusic.PLAY)
+            // (until the line's sound comes out of the speakers, the clock minus the delay is still before it)
+            tapLitMs = l.ms
+            tapLitUntil = SystemClock.uptimeMillis() + BtMusic.delayMs + TAP_LIT_SLACK_MS
             lyrics { it.needSync = false; it.at(l.ms) }
         } else if (bt) {
             val target = l.ms + TAP_REACTION_MS
@@ -861,7 +879,7 @@ class MusicActivity : Activity() {
             // timing for this song, kept with its lyrics (1.15). Unless it is far off: then the phone was moved or the
             // song restarted, and it is the clock that is wrong.
             if (BtMusic.positionKnown && s != null && s.bt && r != null && r.synced && lyricsShown == s.key &&
-                BtMusic.title == s.title && abs(target - BtMusic.positionMs() - lyricsOffset) <= MAX_CORRECTION_MS) {
+                BtMusic.title == s.title && abs(target - BtMusic.positionMs() - lyricsShift) <= MAX_CORRECTION_MS) {
                 val clock = BtMusic.positionMs()
                 lyricsOffset = target - clock
                 Lyrics.keepOffset(this, s.title, s.artist, s.sec, lyricsOffset, r.lines)
@@ -888,20 +906,55 @@ class MusicActivity : Activity() {
     /** Where the lyrics' messages stand: above the small bar when the lyrics fill the screen. */
     private val snackAbove: Int get() = if (lyricsFull) FULL_BAR_DP + Space.L + Space.S else Snack.ABOVE_DP
 
-    /** A lyric line held down: the song's saved timing correction is forgotten (1.15); nothing else to do there. */
-    private fun onLineHold(): Boolean {
+    /**
+     * A lyric line held down: the song's saved timing correction is forgotten (1.15). Without one, on Naghm's song
+     * (1.18), the line is held the moment its singing is heard: that measures how late the Bluetooth sound comes.
+     */
+    private fun onLineHold(l: Lyrics.Line): Boolean {
         val s = lyricsSong
         val r = lyricsResult
         if (!bt || s == null || !s.bt || r == null || lyricsShown != s.key) return false
-        // (held without a saved correction: nothing, rather than the tap it would become on letting go)
-        if (lyricsOffset == 0L) return true
+        if (lyricsOffset == 0L) {
+            if (BtMusic.viaNaghm && BtMusic.playing) measureDelay(l)
+            // (held without a saved correction on another app's song: nothing, rather than the tap it would become)
+            return true
+        }
         lyricsOffset = 0L
         Lyrics.keepOffset(this, s.title, s.artist, s.sec, 0L, r.lines)
-        val at = positionNow()
+        val at = positionNow() + lyricsShift
         lyrics { it.at(at) }
         Snack.show(this, R.string.kar_timing_reset, aboveDp = snackAbove)
         if (LyricsSync.wordsOnly) listenFor(r) // (the lines' clock times moved back: see onLineTap)
         return true
+    }
+
+    /**
+     * The Bluetooth sound's delay from a line held on Naghm's song (1.18). Naghm says exactly where its song is: when
+     * the finger came down (a long press is told only once it has lasted) the phone was that far into the song, and
+     * what the speakers played then was the line's start, a reaction earlier. The difference is the delay, kept for
+     * every song after it.
+     */
+    private fun measureDelay(l: Lyrics.Line) {
+        val down = PhoneLink.positionMs() - ViewConfiguration.getLongPressTimeout()
+        val delay = down - HOLD_REACTION_MS - l.ms
+        if (delay < -DELAY_SLACK_MS || delay > BtMusic.DELAY_MAX_MS) {
+            Snack.show(this, R.string.bt_delay_missed, long = true, aboveDp = snackAbove)
+            return
+        }
+        BtMusic.delayMs = (delay.coerceAtLeast(0L) + 5L) / 10L * 10L
+        tapLitUntil = 0L
+        lyrics { it.at(positionNow() + lyricsShift) }
+        Snack.show(this, getString(R.string.bt_delay_set, delaySeconds(BtMusic.delayMs)), long = true, aboveDp = snackAbove)
+    }
+
+    /**
+     * Once, the first time lyrics light on Naghm's song while no delay was ever set: how to make them follow the car's
+     * speakers (1.18).
+     */
+    private fun offerDelayHint() {
+        if (!bt || !BtMusic.viaNaghm || BtMusic.delaySet || Prefs.raw.getBoolean(DELAY_HINT_KEY, false)) return
+        Prefs.raw.edit().putBoolean(DELAY_HINT_KEY, true).apply()
+        Snack.show(this, R.string.bt_delay_hint, long = true, aboveDp = snackAbove)
     }
 
     // ------------------------------------------------------------------------------------------ now playing
@@ -2161,7 +2214,7 @@ class MusicActivity : Activity() {
         libraryBox.addView(body, lp(MATCH, 0, 1f).apply { topMargin = Space.S.dp })
 
         panel.addView(buildYt(), flp(MATCH, MATCH))
-        lyricsView = LyricsView(this).apply { visibility = View.GONE; onLineTap = { l -> onLineTap(l) }; onLineHold = { onLineHold() }; wordsOn = Words.on }
+        lyricsView = LyricsView(this).apply { visibility = View.GONE; onLineTap = { l -> onLineTap(l) }; onLineHold = { l -> onLineHold(l) }; wordsOn = Words.on }
         panel.addView(lyricsView, flp(MATCH, MATCH))
         // over the lyrics, in the panel's corner: the lyrics alone on the whole screen
         expandBtn = FrameLayout(this).apply {
@@ -2191,7 +2244,7 @@ class MusicActivity : Activity() {
     /** The lyrics alone on the whole screen: large lines, a way back in the corner, and a small bar for the song. */
     private fun buildFull(): View {
         fullLayer = FrameLayout(this).apply { isClickable = true; visibility = View.INVISIBLE } // (taps do not reach the screen below)
-        lyricsBig = LyricsView(this, big = true).apply { onLineTap = { l -> onLineTap(l) }; onLineHold = { onLineHold() }; wordsOn = Words.on }
+        lyricsBig = LyricsView(this, big = true).apply { onLineTap = { l -> onLineTap(l) }; onLineHold = { l -> onLineHold(l) }; wordsOn = Words.on }
         fullLayer.addView(lyricsBig, flp(MATCH, MATCH).apply { bottomMargin = (FULL_BAR_DP + Space.XL).dp })
 
         val frost = Palette.withAlpha(Palette.card, if (Palette.dark) 0.55f else 0.75f)
@@ -2281,6 +2334,19 @@ class MusicActivity : Activity() {
         private const val TAP_REACTION_MS = 450L
         /** A tap further than this from the line lit is the clock being wrong (the phone moved), not the lyrics' timing. */
         private const val MAX_CORRECTION_MS = 15_000L
+        /**
+         * How long after hearing a line start the owner, asked to hold it the moment it is heard, puts the finger down
+         * (1.18: shorter than [TAP_REACTION_MS], a tap on "what is being sung"; he is waiting for it).
+         */
+        private const val HOLD_REACTION_MS = 200L
+        /** A measured delay this far below zero is a line held before it was heard: measured again, not kept. */
+        private const val DELAY_SLACK_MS = 300L
+        /** A tapped line stays lit this much past the delay (Naghm's word that it moved takes a moment over the air). */
+        private const val TAP_LIT_SLACK_MS = 400L
+        private const val DELAY_HINT_KEY = "btDelayHinted"
+
+        /** The delay as the screen says it: seconds, two decimals ("0.45"). */
+        fun delaySeconds(ms: Long): String = String.format(java.util.Locale.ROOT, "%.2f", ms / 1000.0)
         /** Corner radius of the song's cover, and of the small one in the bar under the large lyrics (dp). */
         private const val COVER_RADIUS = Radius.XL
         private const val BAR_COVER_RADIUS = Radius.M

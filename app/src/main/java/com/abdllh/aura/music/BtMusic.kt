@@ -388,6 +388,22 @@ object BtMusic {
         transact(TX_SET_MUTE) { it.writeInt(1) }
     }
 
+    // ------------------------------------------------------------------------------------------ the sound's delay
+    /**
+     * 1.18: how late the phone's sound comes out of the car's speakers (ms). Bluetooth carries it through buffers on
+     * the phone, in the module and on to the amplifier, so a line the phone plays now is heard this much later. The
+     * lyrics light what is heard: the clock minus this (MusicActivity, unless the owner set the song's own timing).
+     * Set in Settings → Music, or measured on Naghm's songs (a lyric line held the moment it is heard).
+     */
+    var delayMs: Long
+        get() = com.abdllh.aura.util.Prefs.raw.getInt(DELAY_KEY, 0).toLong()
+        set(v) { com.abdllh.aura.util.Prefs.raw.edit().putInt(DELAY_KEY, v.coerceIn(0L, DELAY_MAX_MS).toInt()).apply() }
+    /** The owner has set the delay (or measured it) at least once. */
+    val delaySet: Boolean get() = com.abdllh.aura.util.Prefs.raw.contains(DELAY_KEY)
+    const val DELAY_MAX_MS = 2000L
+    const val DELAY_STEP_MS = 50L
+    private const val DELAY_KEY = "btDelayMs"
+
     // ------------------------------------------------------------------------------------------ Naghm
     /** The song is Naghm's, the phone app that says where its song is ([PhoneLink]): its word is believed. */
     private var phoneOwned = false

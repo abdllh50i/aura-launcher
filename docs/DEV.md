@@ -803,6 +803,23 @@ seek / toggle / next), and a simulated Bluetooth song (`--ez sim true`): the bar
 on the bar sent `seek 143.46` and the bar showed 2:25, next brought the next song with its cover and length, the home
 card followed. Not tried before the unit: the connection over the real hotspot, and Naghm itself on the iPhone.
 
+### The Bluetooth sound's delay (1.18)
+What the phone plays comes out of the car's speakers later: buffers on the phone, in the module, on to the amplifier.
+Naghm's clock (and the module's guesses) say what the phone plays, so the lyrics ran ahead of what is heard.
+`BtMusic.delayMs` (Prefs `btDelayMs`, 0–2 s) is that delay; `MusicActivity.lyricsShift` is, for a Bluetooth song, the
+owner's own correction of that song when he made one (1.15's tap: measured against what he heard, the delay is already in
+it), else minus the delay. A tapped line on Naghm's song seeks to the line itself (`l.ms - lyricsOffset`: the delay only
+makes it heard later) and stays lit until its sound comes out (`tapLitUntil`, the delay + 400 ms) instead of the line
+before lighting again meanwhile. The delay is set in Settings → Display & sound → Music (a slider in 50 ms steps, shown
+anew at each visit) or measured: on Naghm's song, with no saved correction, a lyric line held down the moment it is heard
+gives `PhoneLink.positionMs() − long-press timeout − 200 ms (reaction) − line start`; below −300 ms or above the maximum
+it asks again. A one-time snack the first time timed lyrics show on Naghm's song with no delay set says how
+(`btDelayHinted`). The bar and the times keep the phone's clock.
+Emulator (stand-in Naghm on Despacito, LRCLIB's timing): a line held 0.9 s after it started (adb's swipe lands
+~0.13 s after it is sent) measured 0.83 s, the lit line moved back by it at once, a tapped line sent `seek 102.09` (its
+own start) and stayed lit through the delay, and the slider showed 0.83 s, set 1.50 s with a tap, and read right in
+Arabic. Not tried on the unit: the real delay of its module.
+
 ### Aura Music in 1.12
 The screen uses the design system's tokens throughout (`Type` roles, `Radius`, `Space`, `Touch`, `Elev`, the `Motion`
 helpers, `Snack`). Strings added in 1.12 are in `res/values*/strings_music.xml`.

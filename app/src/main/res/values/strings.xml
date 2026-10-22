@@ -187,6 +187,12 @@
     <string name="set_zlink_off_sub">It no longer comes up by itself when the phone connects over Bluetooth, and leaves the Wi-Fi alone</string>
     <string name="set_bt_cover">Cover and length of Bluetooth songs</string>
     <string name="set_bt_cover_sub">Finds the cover and the length online from the song\'s title and artist (YouTube Music first, then Apple Music and Deezer)</string>
+    <string name="set_bt_delay">Bluetooth sound delay</string>
+    <string name="set_bt_delay_value">%1$s s</string>
+    <string name="set_bt_delay_hint">Bluetooth sound reaches the car\'s speakers a little after the phone plays it, so the lyrics can run ahead of what you hear. Set how late it comes and the lyrics follow the speakers. Easiest with Naghm: while a song plays, hold a lyric line down the moment you hear it start, and the screen measures it.</string>
+    <string name="bt_delay_set">Bluetooth sound arrives %1$s s late: the lyrics now follow the speakers</string>
+    <string name="bt_delay_missed">That did not match the song. Hold a line down right as you hear it start</string>
+    <string name="bt_delay_hint">Lyrics ahead of the car\'s sound? Hold a line down the moment you hear it start</string>
     <string name="nav_channel">Navigation</string>
     <string name="nav_starting">Starting navigation…</string>
     <string name="nav_title">Navigation</string>

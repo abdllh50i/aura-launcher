@@ -91,8 +91,11 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
     private var current = -1
     private var touchedAt = 0L
     var onLineTap: ((Lyrics.Line) -> Unit)? = null
-    /** A timed line held down (1.15: the music screen offers to forget a saved timing); true when it did something. */
-    var onLineHold: (() -> Boolean)? = null
+    /**
+     * A timed line held down (1.15: the music screen offers to forget a saved timing; 1.18: on Naghm's song it measures
+     * the Bluetooth sound's delay with it); true when it did something.
+     */
+    var onLineHold: ((Lyrics.Line) -> Boolean)? = null
 
     // ---- the song's clock for the words (1.15)
     /** Word by word: the owner's setting (Settings → Display & sound → Music). Off: whole lines, as before 1.15. */
@@ -415,7 +418,7 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
 
     /** A tapped line: its time as the lyrics have it now (a timing by listening can be refined while it shows). */
     private val tapLine = View.OnClickListener { v -> lines.getOrNull(views.indexOf(v))?.let { onLineTap?.invoke(it) } }
-    private val holdLine = View.OnLongClickListener { onLineHold?.invoke() ?: false }
+    private val holdLine = View.OnLongClickListener { v -> lines.getOrNull(views.indexOf(v))?.let { onLineHold?.invoke(it) } ?: false }
 
     /** Pixels the lines are moved down by at the next layout (new room above them that must not move what shows). */
     private var shiftOnLayout = 0
