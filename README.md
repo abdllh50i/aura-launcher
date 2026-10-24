@@ -40,7 +40,7 @@ file, so it comes with updates from the screen) and an **in-app updater that pul
   the button can be hidden in *Settings → Navigation*). The Wi-Fi is on as soon as the car starts, also after the unit
   powered off (the firmware leaves airplane mode on then). AMRI Music: the unit's storage
   and USB sticks, plus the phone's Bluetooth music through the firmware's own Bluetooth module (covers looked up online by
-  title and artist, YouTube Music's catalogue first, which also gives the song's length; with **Naghm**, the owner's own iPhone player, the song's real time, its cover and seeking from the screen; the lyrics follow the car's speakers once the **Bluetooth sound delay** is set, in Settings or by holding a line the moment it is heard), **YouTube Music as a third
+  title and artist, YouTube Music's catalogue first, which also gives the song's length; with **Naghm**, the owner's own iPhone player, the song's real time, its cover and seeking from the screen; the lyrics follow the car's speakers once the **Bluetooth sound delay** is set, in Settings or by holding a line the moment it is heard; the lyrics the phone found show on the screen too, and a tap on a line moves the song there), **YouTube Music as a third
   source**: its catalogue is searched from AMRI Music and the song is played by the YouTube Music app on the unit,
   with its real time and position, synced lyrics that can take the whole screen; the steering wheel's music button opens it (and,
   pressed again inside it, goes back to the home screen). A phone call shows as AMRI's own card over any screen (who,

@@ -65,6 +65,17 @@ object PhoneLink {
         private set
     private var basePosMs = 0L
     private var baseAt = 0L
+    /**
+     * 1.19: the lyrics Naghm has for the song [lyricsId] (titled [lyricsTitle]), as it shows them on the phone; null
+     * while none came, or when it has none. The music screen shows them for Naghm's song: the phone finds some its own
+     * lookup does not, timed on the very recording that plays.
+     */
+    var lyrics: Lyrics.Result? = null
+        private set
+    var lyricsId = ""
+        private set
+    var lyricsTitle = ""
+        private set
     /** For Settings → About: the link's last news (kept across restarts, for reports from the unit). */
     val note: String get() = com.abdllh.aura.util.Prefs.raw.getString("phoneLinkNote", "").orEmpty()
     private fun note(what: String) {
@@ -177,6 +188,7 @@ object PhoneLink {
                 val was = connected
                 connected = false
                 id = ""; title = ""; artist = ""; artUrl = ""; art = null; durationMs = 0L; playing = false
+                lyrics = null; lyricsId = ""; lyricsTitle = ""
                 if (was) { note("lost $host"); changed() }
             }
         }
@@ -211,7 +223,29 @@ object PhoneLink {
                 if (newArt != artUrl) { artUrl = newArt; art = null; loadArt(newArt) }
                 changed()
             }
+            "lyrics" -> {
+                lyricsId = text(message, "id")
+                lyricsTitle = text(message, "title")
+                lyrics = lyricsOf(message)
+                changed()
+            }
         }
+    }
+
+    /** Naghm's `lyrics` message as the screen's lyrics: each line at its time (seconds there, ms here). */
+    fun lyricsOf(message: JSONObject): Lyrics.Result? {
+        val all = message.optJSONArray("lines") ?: return null
+        val lines = ArrayList<Lyrics.Line>(all.length())
+        var timed = false
+        for (i in 0 until all.length()) {
+            val line = all.optJSONObject(i) ?: continue
+            val at = if (line.isNull("time")) -1.0 else line.optDouble("time", -1.0)
+            if (at >= 0) timed = true
+            lines.add(Lyrics.Line(if (at >= 0) (at * 1000).toLong() else 0L, text(line, "text").trim()))
+        }
+        if (lines.none { it.text.isNotBlank() }) return null
+        return Lyrics.Result(message.optBoolean("synced", timed) && timed, lines, durationSec = (durationMs / 1000).toInt(),
+            source = Lyrics.SOURCE_NAGHM)
     }
 
     /** A JSON string, "" for a missing value or null (optString would give "null"). */

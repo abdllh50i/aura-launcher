@@ -409,7 +409,11 @@ object BtMusic {
     private var phoneOwned = false
     /** What plays comes through Naghm: the real position and length, and seeking. */
     val viaNaghm get() = phoneOwned && PhoneLink.active
-    val canSeek get() = viaNaghm
+    /**
+     * The song can be moved from here: Naghm is linked and plays what the module names (1.19: also in the moment the
+     * module's word about the title has taken the song from Naghm, before Naghm's next word takes it back).
+     */
+    val canSeek get() = PhoneLink.active && connected && (phoneOwned || title.isBlank() || sameSong(title, PhoneLink.title))
 
     /**
      * Naghm said something. While the phone's Bluetooth audio is up and Naghm plays (or holds the song the module
@@ -450,7 +454,7 @@ object BtMusic {
     }
 
     /** The same song in the module's words and Naghm's (the module may cut a long title). */
-    private fun sameSong(a: String, b: String): Boolean {
+    fun sameSong(a: String, b: String): Boolean {
         val x = a.trim()
         val y = b.trim()
         if (x.isEmpty() || y.isEmpty()) return false

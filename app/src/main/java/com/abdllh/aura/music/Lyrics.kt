@@ -72,6 +72,8 @@ object Lyrics {
 
     const val SOURCE_LRCLIB = "lrclib"
     const val SOURCE_ALIGNED = "aligned"
+    /** 1.19: the lines Naghm found on the phone, sent over its link ([PhoneLink.lyrics]). */
+    const val SOURCE_NAGHM = "naghm"
 
     private val io = Executors.newSingleThreadExecutor()
     /** The owner's server's later questions, apart: a slow or absent server must not hold the next song's lookup. */

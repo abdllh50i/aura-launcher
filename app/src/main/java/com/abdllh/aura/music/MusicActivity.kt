@@ -305,6 +305,7 @@ class MusicActivity : Activity() {
         Player.addListener(playerListener)
         Library.addListener(libraryListener)
         BtMusic.addListener(btListener)
+        PhoneLink.addListener(phoneListener)
         MediaMonitor.observe(appListener)
         Lyrics.onTimed = timedListener
         LyricsSync.onStatus = syncStatus
@@ -320,6 +321,7 @@ class MusicActivity : Activity() {
         Player.removeListener(playerListener)
         Library.removeListener(libraryListener)
         BtMusic.removeListener(btListener)
+        PhoneLink.removeListener(phoneListener)
         MediaMonitor.unobserve(appListener)
         seek.removeCallbacks(progressTick)
         // (listening for the lyrics' timing is the screen's: it stops with it, and starts again when it comes back)
@@ -387,6 +389,22 @@ class MusicActivity : Activity() {
     }
     private val libraryListener: () -> Unit = { Player.restore(); showList(); showNowPlaying() }
     private val btListener: () -> Unit = { if (bt) showNowPlaying() }
+    /** Naghm's lyrics came (or new ones): shown for its song in place of the screen's own (1.19, [phoneLyrics]). */
+    private val phoneListener: () -> Unit = {
+        val s = lyricsSong
+        val r = phoneLyrics(s)
+        if (s != null && r != null && lyricsKey == s.key && lyricsResult !== r && ::lyricsView.isInitialized && !isDestroyed) {
+            lyricsView.removeCallbacks(lyricsLoading)
+            lyricsAnswer(s.key, r, false)
+        }
+    }
+
+    /** Naghm's own lyrics for the Bluetooth song [s] (1.19), when it sent some for this very song. */
+    private fun phoneLyrics(s: LyricSong?): Lyrics.Result? {
+        if (s == null || !s.bt || !PhoneLink.active) return null
+        val r = PhoneLink.lyrics ?: return null
+        return if (PhoneLink.lyricsId == PhoneLink.id && BtMusic.sameSong(PhoneLink.lyricsTitle, s.title)) r else null
+    }
     private val appListener: (com.abdllh.aura.media.NowPlaying?) -> Unit = { if (yt) showNowPlaying() }
 
     // ------------------------------------------------------------------------------------------ position
@@ -731,6 +749,9 @@ class MusicActivity : Activity() {
         if (lyricsAsked) { lyricsAsked = false; lyricsPinned = pin } else if (pin != lyricsPinned) lyricsPinned = null
         lyricsView.removeCallbacks(lyricsLoading)
         if (s == null) { lyricsShown = null; lyrics { it.showStatus(getString(R.string.lyrics_nothing)) }; lyricsHave(false); return }
+        // 1.19: Naghm's song with the phone's lyrics already here: those, at once (the same lines as on the phone, timed
+        // on the very recording; the screen's own lookup does not always find them)
+        phoneLyrics(s)?.let { r -> lyricsAnswer(s.key, r, false); return }
         // (while they are looked up their place stays as it is: open with what it showed, stepped back, or closed)
         if (lyricsShown != s.key) {
             lyrics { it.dim() }
@@ -742,6 +763,8 @@ class MusicActivity : Activity() {
         }
         Lyrics.get(this, s.title, s.artist, s.sec) { r, failed ->
             if (lyricsKey != s.key || isDestroyed) return@get
+            // (the phone's lyrics came first meanwhile: they stay)
+            if (phoneLyrics(s) != null) return@get
             lyricsView.removeCallbacks(lyricsLoading)
             // the length of the recording the lines were timed on: the Bluetooth song's, while the phone tells none
             // (timed lines only: an untimed record's length says no more than a catalogue's)
@@ -915,7 +938,7 @@ class MusicActivity : Activity() {
         val r = lyricsResult
         if (!bt || s == null || !s.bt || r == null || lyricsShown != s.key) return false
         if (lyricsOffset == 0L) {
-            if (BtMusic.viaNaghm && BtMusic.playing) measureDelay(l)
+            if (BtMusic.canSeek && BtMusic.playing) measureDelay(l)
             // (held without a saved correction on another app's song: nothing, rather than the tap it would become)
             return true
         }

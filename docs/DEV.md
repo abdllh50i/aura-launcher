@@ -820,6 +820,20 @@ Emulator (stand-in Naghm on Despacito, LRCLIB's timing): a line held 0.9 s after
 own start) and stayed lit through the delay, and the slider showed 0.83 s, set 1.50 s with a tap, and read right in
 Arabic. Not tried on the unit: the real delay of its module.
 
+### Naghm's lyrics on the screen (1.19)
+Naghm (1.6) sends, with each song, when the screen connects, and on `{"type":"lyrics"}`, the lyrics the phone has:
+`{"type":"lyrics","id","title","synced","source","lines":[{"time": seconds or null,"text"}]}` (no lines: it has none).
+`PhoneLink.lyricsOf` makes them a `Lyrics.Result` (`SOURCE_NAGHM`, ms times), kept with `lyricsId` / `lyricsTitle`.
+For a Bluetooth song that is Naghm's (`MusicActivity.phoneLyrics`: the link's song, `sameSong` titles) they are shown
+in place of the screen's own lookup — at once in `refreshLyrics` when already there, by `phoneListener` when they
+come later, and a lookup that answers after them is dropped. They carry no correction of their own, so the Bluetooth
+delay applies (`lyricsShift`). `BtMusic.canSeek` is now the link playing the module's song (not only while Naghm owns
+it: the module's title word drops ownership until Naghm's next state), so a tap on a line moves the phone there and a
+hold measures the delay (`measureDelay`) as before.
+Emulator: the stand-in's third song ("أغنية لا يعرفها إلا نغم", no lyrics site has it) showed the phone's 30 lines,
+the line at 0:43 lit (its 8th, at 39 s); a tap on its 13th sent `seek 64` (that line's start) and the screen showed 1:05
+on it.
+
 ### Aura Music in 1.12
 The screen uses the design system's tokens throughout (`Type` roles, `Radius`, `Space`, `Touch`, `Elev`, the `Motion`
 helpers, `Snack`). Strings added in 1.12 are in `res/values*/strings_music.xml`.
