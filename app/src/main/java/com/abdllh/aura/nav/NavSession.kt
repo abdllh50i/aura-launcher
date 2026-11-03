@@ -68,7 +68,7 @@ object NavSession {
     private val main = Handler(Looper.getMainLooper())
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
     private var lastSeg = 0
-    private var offCount = 0
+    private val watch = OffRouteWatch()
     private var rerouteStreak = 0  // reroutes while the car stays off the route (no network, a road OSM lacks...)
     private var nextRerouteAt = 0L
     private var trip = 0           // bumped by start/stop: answers for an older trip are dropped
@@ -105,7 +105,7 @@ object NavSession {
         main.removeCallbacks(endAfterArrival)
         rerouting = false
         lastSeg = 0
-        offCount = 0
+        watch.reset()
         rerouteStreak = 0
         nextRerouteAt = 0L
         forgetPrompts()
@@ -146,16 +146,11 @@ object NavSession {
         if (state == State.ARRIVED) return
         val here = LatLon(l.latitude, l.longitude)
         val accuracy = if (l.hasAccuracy()) l.accuracy.toDouble() else 20.0
-        val limit = maxOf(40.0, accuracy * 1.5)
-        var snap = r.line.snap(here, lastSeg) ?: return
-        if (snap.offset > limit) {
-            // beyond the usual search window (a GPS gap in a tunnel...): look along the rest of the route once
-            r.line.snap(here, lastSeg, ahead = r.line.points.size)?.let { if (it.offset <= limit) snap = it }
-        }
-        val off = snap.offset > limit
-        if (!off) lastSeg = snap.segment
         val speed = if (l.hasSpeed()) l.speed * 3.6 else 0.0
-        if (!off && takeBetter(r, snap.along, here, l, speed, limit)) { update(l); return }
+        val snap = watch.locate(r.line, here, lastSeg, if (l.hasBearing()) l.bearing.toDouble() else null, speed, accuracy) ?: return
+        val off = watch.off
+        if (!off) lastSeg = snap.segment
+        if (!off && takeBetter(r, snap.along, here, l, speed, maxOf(OffRouteWatch.MIN_LIMIT_M, accuracy * 1.5))) { update(l); return }
         val along = snap.along
         // the next thing the driver is told (a street that only changes its name is not one); a roundabout stays the
         // next one until the car has left it, with the distance to its exit
@@ -174,9 +169,9 @@ object NavSession {
             arrive()
             return
         }
-        // leaving the route: three bad fixes in a row while moving; retries back off while the car stays off it
-        if (off) offCount++ else { offCount = 0; rerouteStreak = 0 }
-        if (offCount >= 3 && speed > 5 && !rerouting && SystemClock.elapsedRealtime() >= nextRerouteAt) reroute(here, l)
+        // leaving the route ([OffRouteWatch]) while moving; retries back off while the car stays off it
+        if (!off) rerouteStreak = 0
+        if (watch.leaving && speed > 5 && !rerouting && SystemClock.elapsedRealtime() >= nextRerouteAt) reroute(here, l)
         if (!off) prompt(r, next, toNext, along, speed)
         changed()
     }
@@ -215,7 +210,7 @@ object NavSession {
         if (toNext < clear) return false
         route = b
         lastSeg = s.segment
-        offCount = 0
+        watch.reset()
         // not a word: the driver has heard what comes next, or will, at its time
         forgetPrompts()
         pendingIntro = false
@@ -290,7 +285,10 @@ object NavSession {
         rerouting = true
         // 8 s, 16 s, 32 s, then every 64 s while the car stays off the route
         nextRerouteAt = SystemClock.elapsedRealtime() + (8_000L shl rerouteStreak.coerceAtMost(3))
-        if (rerouteStreak == 0) say(if (ttsArabic) "جارٍ تحديث المسار" else "Rerouting") // once per detour
+        if (rerouteStreak == 0) { // once per detour
+            say(if (ttsArabic) "جارٍ تحديث المسار" else "Rerouting")
+            NavNote.add("left the route: ${watch.why}, ${(if (l.hasSpeed()) l.speed * 3.6f else 0f).toInt()} km/h")
+        }
         rerouteStreak++
         changed()
         val t = trip
@@ -302,7 +300,7 @@ object NavSession {
             if (nr != null) {
                 route = nr
                 lastSeg = 0
-                offCount = 0
+                watch.reset()
                 forgetPrompts() // (the new route's first manoeuvre is said at once: the driver is waiting to hear it)
                 CarLocation.last?.let { update(it) }
             }

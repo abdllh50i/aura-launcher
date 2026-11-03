@@ -106,6 +106,27 @@ class Polyline(val points: List<LatLon>) {
         return best
     }
 
+    /**
+     * As [snap], among the stretches within [within] metres of [p] that go the way [heading] (within [tolerance] degrees):
+     * the nearest of those, or null when none does.
+     */
+    fun snapAlong(p: LatLon, heading: Double, within: Double, tolerance: Double, from: Int, back: Int = 3, ahead: Int = 80): Snap? {
+        if (points.size < 2) return null
+        val lo = (from - back).coerceAtLeast(0)
+        val hi = (from + ahead).coerceAtMost(points.size - 2)
+        var best: Snap? = null
+        for (i in lo..hi) {
+            val a = points[i]
+            val b = points[i + 1]
+            val (t, d) = Geo.project(p, a, b)
+            if (d > within || (best != null && d >= best.offset)) continue
+            val bearing = Geo.bearing(a, b)
+            if (kotlin.math.abs(Geo.angleDiff(heading, bearing)) > tolerance) continue
+            best = Snap(i, cumulative[i] + (cumulative[i + 1] - cumulative[i]) * t, d, Geo.lerp(a, b, t), bearing)
+        }
+        return best
+    }
+
     /** Position and direction at a distance along the line. */
     fun at(along: Double): Pair<LatLon, Double> {
         if (points.size < 2) return (points.firstOrNull() ?: LatLon(0.0, 0.0)) to 0.0
