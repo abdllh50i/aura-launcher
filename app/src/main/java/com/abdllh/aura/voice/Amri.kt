@@ -473,12 +473,12 @@ object Amri {
                 val which = if (cmd.home) "home" else "work"
                 // (the navigation app chosen in Settings, when it is not AMRI Maps and the place is known to hand over)
                 if (com.abdllh.aura.util.Prefs.builtInMaps || !com.abdllh.aura.home.Actions.driveWithApp(c, which)) {
-                    com.abdllh.aura.nav.MapsActivity.open(c) { putExtra("go", which) }
+                    com.abdllh.aura.home.Screens.mapsGo(c, which)
                 }
                 Answer(s(if (cmd.home) R.string.amri_go_home else R.string.amri_go_work))
             }
             Command.HomeScreen -> {
-                try { c.startActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).setPackage(c.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Throwable) { }
+                com.abdllh.aura.home.Screens.home(c, "voice")
                 Answer(s(R.string.amri_home_screen), speak = false)
             }
             Command.Time -> {
@@ -606,7 +606,7 @@ object Amri {
 
     /** AMRI Maps with its search open on [query] and its results showing (MapsActivity's "q"). */
     private fun openMapSearch(c: Context, query: String) {
-        com.abdllh.aura.nav.MapsActivity.open(c) { putExtra("search", true); putExtra("q", query) }
+        com.abdllh.aura.home.Screens.mapsSearch(c, query)
     }
 
     /** The navigation app chosen in Settings, searching [query] around the car (Google Maps: geo:, Waze: its link). */
@@ -647,7 +647,7 @@ object Amri {
                 when {
                     songs == null -> give(Answer(c.getString(R.string.amri_song_offline), error = true))
                     song == null -> give(Answer(c.getString(R.string.amri_song_none, query), error = true))
-                    !yt.play(c, song) { com.abdllh.aura.music.MusicActivity.open(c) } ->
+                    !yt.play(c, song) { com.abdllh.aura.home.Screens.music(c) } ->
                         give(Answer(c.getString(R.string.amri_song_no_app), error = true))
                     else -> {
                         pausedMedia = false // it plays on its own; the music paused for the request stays paused
@@ -673,7 +673,7 @@ object Amri {
     /** The music screen on that source, playing (as the stock music key does). */
     private fun openMusic(c: Context, bt: Boolean) {
         pausedMedia = false // it plays itself
-        com.abdllh.aura.music.MusicActivity.openInstead(c, bt)
+        com.abdllh.aura.home.Screens.musicOn(c, bt)
     }
 
     /** Shows (and says) the outcome, then lets the music play on and listens for the wake word again. */

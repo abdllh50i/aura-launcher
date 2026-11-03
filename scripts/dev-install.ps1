@@ -15,4 +15,7 @@ if (-not $NoBuild) {
     if ($code -ne 0) { "BUILD FAILED"; exit 1 }
 }
 & $adb -s $Serial install -r -d (Join-Path $root "app\build\outputs\apk\debug\app-debug.apk") | Select-Object -Last 1
-& $adb -s $Serial shell "am force-stop com.abdllh.aura; am start -W -n com.abdllh.aura/.home.HomeActivity" | Select-String "TotalTime|Error"
+# A home intent limited to the package, never the class by name: only a start that names no component makes a home-type
+# activity (docs/DEV.md, "One way to the screens"). For the Home key to come back to AMRI as on the unit, once per
+# emulator:  adb shell cmd package set-home-activity com.abdllh.aura/.home.HomeActivity
+& $adb -s $Serial shell "am force-stop com.abdllh.aura; am start -W -a android.intent.action.MAIN -c android.intent.category.HOME --es from dev-install com.abdllh.aura" | Select-String "TotalTime|Error"

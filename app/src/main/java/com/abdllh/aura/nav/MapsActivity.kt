@@ -1231,12 +1231,5 @@ class MapsActivity : Activity() {
         private const val ROW_DP = 74
         /** At this speed and above the car moves on a trip: a new theme or accent waits ([checkLook]). */
         private const val MOVING_KMH = 3
-
-        fun open(ctx: Context, extras: Intent.() -> Unit = {}) {
-            try {
-                ctx.startActivity(Intent(ctx, MapsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).apply(extras))
-            } catch (_: Throwable) {
-            }
-        }
     }
 }

@@ -275,7 +275,7 @@ class MusicActivity : Activity() {
     }
 
     /**
-     * Opened in place of a stock music screen ([openInstead]): its source, playing as the stock screen would. Back then
+     * Opened in place of a stock music screen ([com.abdllh.aura.home.Screens.musicOn]): its source, playing as the stock screen would. Back then
      * returns to Aura's screen below (this activity joins the home screen's task), not to the stock screen.
      */
     private fun handle(i: Intent?) {
@@ -1585,9 +1585,7 @@ class MusicActivity : Activity() {
     private fun ytPlay(s: YtMusic.Song) {
         ytHideKeyboard()
         val c = applicationContext
-        val ok = YtMusic.play(this, s) {
-            try { c.startActivity(Intent(c, MusicActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Throwable) { }
-        }
+        val ok = YtMusic.play(this, s) { com.abdllh.aura.home.Screens.music(c) }
         if (!ok) {
             // (the store comes over this screen right after: the message must outlive it)
             Snack.show(this, R.string.yt_no_app, long = true, outlives = true)
@@ -2398,20 +2396,7 @@ class MusicActivity : Activity() {
         /** "Looking for the lyrics" shows only when the answer takes longer than this. */
         private const val LOADING_AFTER_MS = 600L
 
-        fun open(ctx: Context) {
-            try { ctx.startActivity(Intent(ctx, MusicActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Throwable) { }
-        }
-
-        private const val EXTRA_SOURCE = "source" // "bt" / "local"
-
-        /** In place of the stock Bluetooth music screen ([bt]) or the stock music player that just came up. */
-        fun openInstead(ctx: Context, bt: Boolean) {
-            try {
-                ctx.startActivity(Intent(ctx, MusicActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    .putExtra(EXTRA_SOURCE, if (bt) "bt" else "local"))
-            } catch (_: Throwable) {
-            }
-        }
+        const val EXTRA_SOURCE = "source" // "bt" / "local"
 
         /** Bluetooth settings live in the stock phone app on this firmware (pairing, connect). */
         fun openBluetooth(ctx: Context) {
