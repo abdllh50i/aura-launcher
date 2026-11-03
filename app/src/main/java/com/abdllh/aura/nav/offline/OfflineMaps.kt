@@ -29,7 +29,8 @@ object OfflineMaps {
     private const val KEY_STATE = "offlineMapState"     // none | downloading | ready
     private const val KEY_UPDATED = "offlineMapUpdated" // when it was completed (ms)
     private const val SEGMENTS_URL = "https://brouter.de/brouter/segments4/"
-    private const val WORKERS = 6
+    /** OpenFreeMap's terms for an offline download: at most 4 parallel requests. */
+    private const val WORKERS = 4
     private val FONT_STACKS = listOf("Noto Sans Regular", "Noto Sans Bold")
     // Latin, Arabic (with its presentation forms), punctuation and digits: what the labels of this map use
     private val GLYPH_RANGES = listOf(0, 256, 512, 768, 1536, 1792, 8192, 8448, 64256, 64512, 64768, 65024, 65280)
@@ -386,10 +387,11 @@ object OfflineMaps {
 
     /**
      * A large file, resumed where an earlier attempt stopped (.part), retried through internet drops. The resume is
-     * tied to the file's version (If-Range with the validator kept in .etag): a file rebuilt meanwhile (brouter.de
-     * renews them every week) comes whole instead of two versions spliced together.
+     * tied to the file's version (If-Range with the validator kept in .etag, and [ResumeCheck] on the answer, for a server
+     * that ignores If-Range): a file rebuilt meanwhile (brouter.de renews them every week) comes whole instead of two
+     * versions spliced together.
      */
-    private fun fetchFile(url: String, to: File, onBytes: (Long) -> Unit) {
+    internal fun fetchFile(url: String, to: File, onBytes: (Long) -> Unit) {
         val part = File(to.path + ".part")
         val tag = File(to.path + ".etag")
         var attempt = 0
@@ -410,6 +412,12 @@ object OfflineMaps {
                 val code = c.responseCode
                 if (code == 416) { part.delete(); tag.delete(); continue } // nothing left to send, or another file: anew
                 if (code != 200 && code != 206) throw IOException("HTTP $code")
+                if (code == 206 && !ResumeCheck.fits(validator, c.getHeaderField("ETag"), c.getHeaderField("Last-Modified"), c.getHeaderField("Content-Range"), have)) {
+                    Log.i(TAG, "$url: not the file that was begun (etag ${c.getHeaderField("ETag")}, range ${c.getHeaderField("Content-Range")}): anew")
+                    part.delete()
+                    tag.delete()
+                    continue
+                }
                 if (code == 200) {
                     val v = c.getHeaderField("ETag")?.takeIf { !it.startsWith("W/") } ?: c.getHeaderField("Last-Modified")
                     if (v != null) tag.writeText(v) else tag.delete()
