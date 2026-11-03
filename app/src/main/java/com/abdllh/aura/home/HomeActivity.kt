@@ -124,7 +124,6 @@ class HomeActivity : Activity(), HomeHost {
         mapPanel.onCreate(savedInstanceState)
         MediaMonitor.start(this)
         NwdBridge.startStockServicesOncePerBoot(this)
-        AppRepo.preload(this) // the app grid opens instantly instead of querying the package manager on the UI thread
         try {
             registerReceiver(packages, IntentFilter().apply {
                 addAction(Intent.ACTION_PACKAGE_ADDED)
