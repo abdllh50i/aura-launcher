@@ -11,8 +11,9 @@ import kotlin.math.abs
 /**
  * What the map's additions ([MapExtras]) mean for the car right now, from its fixes: the limit of the street it is on,
  * and the camera or the bump coming up ahead — shown by [RoadHud] on the map screens, with a short tone the first time
- * each one comes within reach. It runs while fixes come, that is while the home screen or the map shows, or a route
- * is being driven; not while another app is in front without a route.
+ * each one comes within reach. On a route the limit comes from OpenStreetMap ([RouteLimits]) where the owner drew none. It
+ * runs while fixes come, that is while the home screen or the map shows, or a route is being driven; not while another
+ * app is in front without a route.
  */
 object RoadWatch {
     private const val TAG = "AuraRoad"
@@ -24,7 +25,8 @@ object RoadWatch {
     /** A limit is kept this long after the car left the marked stretch (a gap in the line, a wide junction). */
     private const val LIMIT_HOLD_MS = 4000L
 
-    class State(val limit: Int, val spot: MapExtras.Spot?, val metres: Int, val speedKmh: Int) {
+    /** [limitFromMap]: [limit] is OpenStreetMap's (true only where the owner set none), not his own. */
+    class State(val limit: Int, val spot: MapExtras.Spot?, val metres: Int, val speedKmh: Int, val limitFromMap: Boolean = false) {
         /** Faster than the limit by more than a needle's width. */
         val over: Boolean get() = limit > 0 && speedKmh > limit + 3
     }
@@ -34,8 +36,7 @@ object RoadWatch {
 
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
     private var started = false
-    private var limit = 0
-    private var limitAt = 0L
+    private val limit = LimitHold(LIMIT_HOLD_MS)
     private val announced = HashSet<MapExtras.Spot>()
     private var tone: ToneGenerator? = null
 
@@ -62,8 +63,9 @@ object RoadWatch {
         val heading = if (moving) l.bearing.toDouble() else null
         val now = SystemClock.elapsedRealtime()
 
-        val found = MapExtras.limitAt(here, heading)
-        if (found > 0) { limit = found; limitAt = now } else if (now - limitAt > LIMIT_HOLD_MS) limit = 0
+        // the owner's limit first, then what OpenStreetMap says about the route being driven
+        val mapLimit = if (NavSession.state == NavSession.State.NAVIGATING) NavSession.route?.limits?.at(here, heading) ?: 0 else 0
+        limit.update(MapExtras.limitAt(here, heading), mapLimit, now)
 
         // the nearest camera or bump ahead (standing still, nothing is "ahead")
         var spot: MapExtras.Spot? = null
@@ -83,10 +85,10 @@ object RoadWatch {
         if (announced.size > 64) announced.clear()
         announced.removeAll { Geo.distance(here, it.pos) > 1500 }
 
-        val next = State(limit, spot, if (spot == null) 0 else best.toInt(), speed.toInt())
+        val next = State(limit.kmh, spot, if (spot == null) 0 else best.toInt(), speed.toInt(), limit.fromMap)
         val old = state
         state = next
-        if (next.limit != old.limit || next.spot !== old.spot || next.metres / 10 != old.metres / 10 || next.over != old.over) {
+        if (next.limit != old.limit || next.limitFromMap != old.limitFromMap || next.spot !== old.spot || next.metres / 10 != old.metres / 10 || next.over != old.over) {
             for (x in listeners) x()
         }
     }

@@ -36,6 +36,9 @@ class Step(
 }
 
 class Route(val line: Polyline, val steps: List<Step>, val distance: Double, val duration: Double) {
+    /** OpenStreetMap's speed limits along the way, when BRouter answered too (OSRM has none of its own). Main thread. */
+    var limits: RouteLimits? = null
+
     /** Time left from a distance along the route, scaled by the steps' own speeds. */
     fun timeLeft(along: Double): Double {
         var t = 0.0
@@ -86,6 +89,10 @@ object Router {
         var offlineRoute: Route? = null
         var headStartOver = false
         fun decide() {
+            // (the limits are in BRouter's answer alone: they go with whichever route is driven, also one already delivered)
+            val on = onlineRoute
+            val off = offlineRoute
+            if (on != null && off != null && on.limits == null) on.limits = off.limits
             if (delivered) return
             val r: Route? = when {
                 onlineDone && onlineRoute != null -> onlineRoute
