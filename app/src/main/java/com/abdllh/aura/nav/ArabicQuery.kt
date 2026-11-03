@@ -67,13 +67,21 @@ object ArabicQuery {
         else -> null
     }
 
+    // Arabic says the place, then what kind ("مغسلة سيارات", "مركز صحي"), and a word by word Latin read as nothing a map
+    // knows ("laundry syarat", "center sahy"): the ones the assistant's nearby search uses ([com.abdllh.aura.voice.Command])
+    // and their usual neighbours are whole phrases here.
     private val PHRASES = mapOf(
         "خميس مشيط" to "khamis mushait", "حفر الباطن" to "hafar al batin", "راس تنوره" to "ras tanura",
         "ابو ظبي" to "abu dhabi", "صب واي" to "subway", "هوم سنتر" to "home centre", "بيتزا هت" to "pizza hut",
-        "برجر كنج" to "burger king", "دانكن دونتس" to "dunkin donuts", "باسكن روبنز" to "baskin robbins"
-    )
+        "برجر كنج" to "burger king", "دانكن دونتس" to "dunkin donuts", "باسكن روبنز" to "baskin robbins",
+        "مغسله سيارات" to "car wash", "غسيل سيارات" to "car wash", "مغسله ملابس" to "laundry", "غسيل ملابس" to "laundry",
+        "محطه بنزين" to "petrol station", "محطه وقود" to "petrol station", "ورشه سيارات" to "car repair",
+        "معرض سيارات" to "car showroom", "تاجير سيارات" to "car rental", "قطع غيار" to "spare parts",
+        "مركز صحي" to "health center", "مركز طبي" to "medical center", "صراف الي" to "atm", "سوبر ماركت" to "supermarket"
+    ).mapKeys { TextMatch.norm(it.key) }
 
-    // normalised keys (أ/إ/آ → ا, ى → ي, ة → ه)
+    // (the keys go through the same normalisation as the query: "حائل" and "الطائف" written with their hamza never matched,
+    // the query's ئ having become ي, and came out as a transliteration)
     private val WORDS = mapOf(
         // place types
         "مول" to "mall", "مستشفي" to "hospital", "مستوصف" to "clinic", "عياده" to "clinic", "عيادات" to "clinics",
@@ -84,7 +92,9 @@ object ArabicQuery {
         "برج" to "tower", "تاور" to "tower", "بوابه" to "gate", "ميناء" to "port", "شاطئ" to "beach", "شاطي" to "beach",
         "كورنيش" to "corniche", "نادي" to "club", "ملعب" to "stadium", "سينما" to "cinema", "هايبر" to "hyper",
         "سوبرماركت" to "supermarket", "ماركت" to "market", "بلازا" to "plaza", "بارك" to "park", "وزاره" to "ministry",
-        "حي" to "", "مجمع" to "complex", "معرض" to "showroom", "ورشه" to "workshop", "بنزين" to "petrol", "مغسله" to "laundry",
+        "حي" to "", "مجمع" to "complex", "معرض" to "showroom", "ورشه" to "workshop", "بنزين" to "petrol",
+        // (alone, in a car, as the assistant takes it: the laundry is "مغسلة ملابس", above)
+        "مغسله" to "car wash", "صراف" to "atm", "بقاله" to "grocery", "تموينات" to "grocery", "قهوه" to "coffee",
         // cities and regions
         "الرياض" to "riyadh", "رياض" to "riyadh", "جده" to "jeddah", "مكه" to "makkah", "المدينه" to "madinah",
         "الدمام" to "dammam", "الخبر" to "khobar", "الظهران" to "dhahran", "الجبيل" to "jubail", "جبيل" to "jubail",
@@ -101,5 +111,5 @@ object ArabicQuery {
         "كارفور" to "carrefour", "لولو" to "lulu", "بنده" to "panda", "العثيم" to "othaim", "الدانوب" to "danube",
         "التميمي" to "tamimi", "جرير" to "jarir", "اكسترا" to "extra", "ساكو" to "saco", "نون" to "noon",
         "ارامكو" to "aramco", "سابك" to "sabic", "بانده" to "panda", "تيم" to "tim", "هورتنز" to "hortons"
-    )
+    ).mapKeys { TextMatch.norm(it.key) }
 }

@@ -113,4 +113,6 @@ dependencies {
     implementation("org.maplibre.gl:android-sdk:10.3.7")
     // Routing without internet (offline Eastern Province map): BRouter's engine, vendored in ../brouter
     implementation(project(":brouter"))
+    // JVM tests of the pure logic (src/test; no Android classes there): gradlew --offline testDebugUnitTest
+    testImplementation("junit:junit:4.13.2")
 }
