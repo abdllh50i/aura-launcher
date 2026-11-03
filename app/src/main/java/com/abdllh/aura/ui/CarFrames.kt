@@ -103,9 +103,10 @@ object CarFrames {
     }
 
     /**
-     * Starts decoding the frames the home screen shows first (the intro spin), for drawing them on the CPU. Also when
-     * the GPU's frames were built before: loading them takes longer than the spin (1.2-1.5 s on the emulator), and a
-     * spin decoded only on demand lost the car for a frame.
+     * Starts decoding the frames the home screen shows first (the intro spin), for drawing them on the CPU: only when
+     * the GPU's frames cannot be drawn at this start (their file is not there yet, or the GPU failed). A spin decoded
+     * only on demand lost the car for a frame. With the file there, the stage waits for the GPU instead ([CarStage.playIntro]):
+     * this cost up to 37 MB of bitmaps, and as much again in the view drawing's texture cache, at every start.
      */
     fun warmUp(ctx: Context, rtl: Boolean) {
         val m = meta(ctx) ?: return

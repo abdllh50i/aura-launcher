@@ -18,6 +18,9 @@ import android.os.Process
 import android.os.SystemClock
 import android.util.Log
 import android.view.TextureView
+import com.abdllh.aura.BuildConfig
+import com.abdllh.aura.system.SystemProps
+import com.abdllh.aura.util.Prefs
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
@@ -37,6 +40,7 @@ object CarEtc {
     private const val MAGIC = 0x31435445 // "ETC1"
     const val HEADER = 32
     private const val VERSION = 2 // 2: the floor light's radius as drawn on the canvas (0.34 of the frame)
+    private const val KEY_HASH = "carEtcHash" // the hash of this APK's frames, as "<apkStamp>=<hash>"
 
     // the strength of the stage's floor light per theme (CarStage.floorColor)
     fun floorAlpha(dark: Boolean) = if (dark) 0.085f else 0.95f
@@ -58,15 +62,16 @@ object CarEtc {
 
     /**
      * The frame file for the theme [dark] over the background [bg], built first if needed (then the other theme's, at
-     * leisure). [done] runs on the main thread with the file, or null when it cannot be had.
+     * leisure). [done] runs on [on] with the file, or null when it cannot be had.
      */
-    fun ensure(ctx: Context, dark: Boolean, bg: Int, done: (File?) -> Unit) {
+    fun ensure(ctx: Context, dark: Boolean, bg: Int, on: Handler, done: (File?) -> Unit) {
         val app = ctx.applicationContext
         val m = CarFrames.meta(app)
-        if (m == null) { main.post { done(null) }; return }
+        if (m == null) { on.post { done(null) }; return }
+        val cb: (File?) -> Unit = { f -> on.post { done(f) } }
         synchronized(lock) {
             bgs[if (dark) 1 else 0] = bg
-            waiting.getOrPut(if (dark) "d" else "l") { ArrayList() }.add(done)
+            waiting.getOrPut(if (dark) "d" else "l") { ArrayList() }.add(cb)
             if (builder != null) return
             builder = Thread({ work(app, m, dark) }, "car-etc").apply { isDaemon = true; start() }
         }
@@ -80,7 +85,7 @@ object CarEtc {
             val f = try { fileFor(ctx, m, dark) } catch (t: Throwable) { Log.w(TAG, "GPU frames: $t"); null }
             val ok = f != null && (valid(f, m) || build(ctx, m, dark, f))
             val cbs = synchronized(lock) { waiting.remove(if (dark) "d" else "l") }
-            cbs?.forEach { cb -> main.post { cb(if (ok) f else null) } }
+            cbs?.forEach { cb -> cb(if (ok) f else null) }
             if (dark != firstDark) otherDone = true
             // whoever waits next; otherwise the other theme's file, once
             val next: Boolean? = synchronized(lock) {
@@ -101,13 +106,53 @@ object CarEtc {
         }
     }
 
-    fun fileFor(ctx: Context, m: CarFrames.Meta, dark: Boolean): File {
-        var h = ctx.assets.open("car/car.json").use { it.readBytes() }.contentHashCode()
-        for (i in 0 until m.count) h = 31 * h + ctx.assets.open(CarFrames.frameAsset(i)).use { it.available() }
-        h = 31 * h + bg(dark)
+    fun fileFor(ctx: Context, m: CarFrames.Meta, dark: Boolean): File =
+        named(ctx, framesHash(ctx, m), dark, bg(dark))
+
+    private fun named(ctx: Context, frames: Int, dark: Boolean, bg: Int): File {
+        var h = frames
+        h = 31 * h + bg
         h = 31 * h + floorAlpha(dark).toBits()
         h = 31 * h + VERSION
         return File(ctx.noBackupFilesDir, "car-etc-%08x.bin".format(java.util.Locale.ROOT, h))
+    }
+
+    // Which APK this is, without reading it: every install or update changes it.
+    private fun apkStamp(ctx: Context, m: CarFrames.Meta): String {
+        val apk = File(ctx.applicationInfo.sourceDir)
+        return "${BuildConfig.VERSION_CODE}:${apk.length()}:${apk.lastModified()}:${m.count}"
+    }
+
+    private fun knownHash(ctx: Context, m: CarFrames.Meta): Int? {
+        val kept = Prefs.raw.getString(KEY_HASH, "").orEmpty()
+        val stamp = apkStamp(ctx, m)
+        return if (kept.startsWith("$stamp=")) kept.substring(stamp.length + 1).toIntOrNull() else null
+    }
+
+    // The frames' part of the file's name. Read from the assets once per APK and kept: the 181 assets opened at every
+    // start came before the GPU's first frame, which now is the car's first frame.
+    private fun framesHash(ctx: Context, m: CarFrames.Meta): Int {
+        knownHash(ctx, m)?.let { return it }
+        var h = ctx.assets.open("car/car.json").use { it.readBytes() }.contentHashCode()
+        for (i in 0 until m.count) h = 31 * h + ctx.assets.open(CarFrames.frameAsset(i)).use { it.available() }
+        Prefs.raw.edit().putString(KEY_HASH, "${apkStamp(ctx, m)}=$h").apply()
+        return h
+    }
+
+    /**
+     * The frame file for this theme is there, as far as can be told without opening the assets (a few stats: main thread).
+     * False also after an update or install, once: nothing has read this APK's frames yet, and the CPU path, which
+     * needs no such knowledge, draws that one start.
+     */
+    fun readyNow(ctx: Context, dark: Boolean, bg: Int): Boolean {
+        val m = CarFrames.meta(ctx) ?: return false
+        return try {
+            val h = knownHash(ctx, m) ?: return false
+            named(ctx, h, dark, bg).length() == HEADER + frameBytes(m).toLong() * m.count
+        } catch (t: Throwable) {
+            Log.w(TAG, "readyNow: $t")
+            false
+        }
     }
 
     fun valid(f: File, m: CarFrames.Meta): Boolean {
@@ -250,6 +295,8 @@ object CarEtc {
  * Draws the turntable with OpenGL ES 2 from [CarEtc]'s frames, all of them resident in the GPU: per frame the GPU
  * blends two textures and fades the edges into the background, and the CPU does nothing but set a few numbers. The
  * resting view is swapped for an uncompressed copy of its frame (crisp; compression only shows while it turns).
+ * The frames of the intro ([firstFrames]) go in first and the car is drawn from them; the others follow one by one
+ * ([loadRest]), a frame not in yet being stood in for by the nearest that is.
  * [CarStage] owns the motion and calls [render] with the state to show; until [onReady] it draws the frames itself.
  */
 class CarGlView(context: Context, private val dark: Boolean, private val bg: Int) : TextureView(context), TextureView.SurfaceTextureListener {
@@ -277,6 +324,9 @@ class CarGlView(context: Context, private val dark: Boolean, private val bg: Int
     /** Frames drawn per second while the car last turned (diagnostics). */
     @Volatile var fps = 0f; private set
 
+    /** The frames to have in the GPU before anything is drawn (main thread, before the surface comes): the intro's. */
+    @Volatile var firstFrames: IntArray? = null
+
     private val meta = CarFrames.meta(context)
     private val main = Handler(Looper.getMainLooper())
     private var thread: HandlerThread? = null
@@ -298,10 +348,20 @@ class CarGlView(context: Context, private val dark: Boolean, private val bg: Int
     private var display: EGLDisplay = EGL14.EGL_NO_DISPLAY
     private var eglCtx: EGLContext = EGL14.EGL_NO_CONTEXT
     private var eglSurface: EGLSurface = EGL14.EGL_NO_SURFACE
-    private var loaded = false            // frames in the GPU
+    private var eglCfg: EGLConfig? = null
+    private var offscreen: EGLSurface = EGL14.EGL_NO_SURFACE // what the context is current on until the window's surface comes
+    private var noOffscreen = false       // that did not work here: everything waits for the window's surface
+    private var loaded = false            // the first frames are in the GPU
     @Volatile private var showing = false // a frame has been put on screen (the stage was told)
     private var program = 0
     private var tex = IntArray(0)
+    private var have = BooleanArray(0)    // which of the textures hold their frame
+    private var restStarted = false       // the frames after the first ones are coming (or came)
+    private var restFile: RandomAccessFile? = null
+    private var restOrder = IntArray(0)
+    private var restAt = 0
+    private var frameBuf: ByteBuffer? = null
+    private var firstInAt = 0L
     private var restTex = 0
     private var quad: FloatBuffer? = null
     private var quadW = -1                // the view size the quad, the viewport and u_view were set for
@@ -328,9 +388,10 @@ class CarGlView(context: Context, private val dark: Boolean, private val bg: Int
         if (meta == null || failed || thread != null) return
         val t = HandlerThread("car-gl", Process.THREAD_PRIORITY_DISPLAY).apply { start() }
         thread = t
-        gl = Handler(t.looper)
-        CarEtc.ensure(context, dark, bg) { f ->
-            if (f == null) fail("no frame file") else { file = f; gl?.post { tryStart() } }
+        val h = Handler(t.looper)
+        gl = h
+        CarEtc.ensure(context, dark, bg, h) { f ->
+            if (f == null) fail("no frame file") else { file = f; tryStart() }
         }
     }
 
@@ -338,7 +399,10 @@ class CarGlView(context: Context, private val dark: Boolean, private val bg: Int
     // ended there, once it has let go of the surface; here only when there never was one
     override fun onDetachedFromWindow() {
         detached = true
-        if (surface == null) quitThread()
+        if (surface == null) {
+            gl?.post { release() } // (the frames may be in already, for a surface that never came)
+            quitThread()
+        }
         super.onDetachedFromWindow()
     }
 
@@ -381,6 +445,11 @@ class CarGlView(context: Context, private val dark: Boolean, private val bg: Int
     private var underCache: IntArray? = null
     @Synchronized private fun underLayer(m: CarFrames.Meta): IntArray = underCache ?: CarEtc.under(m, bg, dark).also { underCache = it }
 
+    /** The frames after the first ones may come now (any thread): the intro is over, or a finger wants them. */
+    fun loadRest() {
+        gl?.post { startRest() }
+    }
+
     // ------------------------------------------------------------------------------------------ TextureView
     override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) {
         surface = st; vw = w; vh = h
@@ -411,31 +480,61 @@ class CarGlView(context: Context, private val dark: Boolean, private val bg: Int
         main.post { visibility = GONE; onFailed?.invoke() }
     }
 
+    /**
+     * The context, the program and the first frames come as soon as the frame file is known, current on a small
+     * off-screen surface: the window's surface only comes with the screen's first draw, and with the frames in by the
+     * time that frame shows, the car starts with the rest of the screen. A driver that refuses this goes the plain
+     * way: all of it once the window's surface is there.
+     */
     private fun tryStart() {
-        val st = surface ?: return
         val f = file ?: return
         val m = meta ?: return
-        if (eglCtx != EGL14.EGL_NO_CONTEXT || failed) return
+        if (failed) return
         try {
-            val t0 = SystemClock.elapsedRealtime()
-            initEgl(st)
-            initProgram(m)
-            loadFrames(f, m)
-            loaded = true
-            Log.i("AuraCar", "GPU car: ${m.count} frames in ${SystemClock.elapsedRealtime() - t0} ms")
-            drawRunnable.run() // the state the stage asked for meanwhile
+            if (!loaded) {
+                val st = surface
+                if (st == null && noOffscreen) return
+                val t0 = SystemClock.elapsedRealtime()
+                if (BuildConfig.DEBUG) debugHooks()
+                initEgl(st)
+                initProgram(m)
+                val t1 = SystemClock.elapsedRealtime()
+                val set = firstFrames ?: intArrayOf(Math.floorMod(m.defaultFrame, m.count))
+                loadFirst(f, m, set)
+                loaded = true
+                firstInAt = SystemClock.elapsedRealtime()
+                Log.i("AuraCar", "GPU car: ${set.size} of ${m.count} frames in ${firstInAt - t0} ms " +
+                    "(EGL and program ${t1 - t0}, ${if (st == null) "ahead of the window" else "on the window"})")
+                CarStage.gpuFirstMs = firstInAt - t0
+                gl?.postDelayed({ startRest() }, REST_AFTER_MS) // (the intro's end or a touch asks for them before that)
+            }
+            if (eglSurface == EGL14.EGL_NO_SURFACE) attachWindow()
+            if (eglSurface != EGL14.EGL_NO_SURFACE) drawRunnable.run() // the state the stage asked for meanwhile
         } catch (t: Throwable) {
             release()
-            fail(t.toString())
+            if (noOffscreen) fail(t.toString())
+            else {
+                Log.i("AuraCar", "GPU car ahead of the window: $t")
+                noOffscreen = true
+                tryStart() // (or when the window's surface comes)
+            }
         }
     }
 
-    private fun initEgl(st: SurfaceTexture) {
+    // emulator tests: a slow start of the GPU path, one that fails, one without the off-screen surface
+    private fun debugHooks() {
+        SystemProps.get("debug.aura.car.slow").toLongOrNull()?.let { Thread.sleep(it) }
+        if (SystemProps.get("debug.aura.car.fail") == "1") throw IllegalStateException("debug.aura.car.fail")
+        if (SystemProps.get("debug.aura.car.nooff") == "1" && !noOffscreen) throw IllegalStateException("debug.aura.car.nooff")
+    }
+
+    private fun initEgl(st: SurfaceTexture?) {
         display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
         val v = IntArray(2)
         if (!EGL14.eglInitialize(display, v, 0, v, 1)) throw IllegalStateException("eglInitialize")
+        val type = if (noOffscreen) EGL14.EGL_WINDOW_BIT else EGL14.EGL_WINDOW_BIT or EGL14.EGL_PBUFFER_BIT
         val attrs = intArrayOf(
-            EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
+            EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT, EGL14.EGL_SURFACE_TYPE, type,
             EGL14.EGL_RED_SIZE, 8, EGL14.EGL_GREEN_SIZE, 8, EGL14.EGL_BLUE_SIZE, 8, EGL14.EGL_ALPHA_SIZE, 8,
             EGL14.EGL_DEPTH_SIZE, 0, EGL14.EGL_STENCIL_SIZE, 0,
             EGL14.EGL_NONE
@@ -443,12 +542,26 @@ class CarGlView(context: Context, private val dark: Boolean, private val bg: Int
         val cfgs = arrayOfNulls<EGLConfig>(1)
         val n = IntArray(1)
         if (!EGL14.eglChooseConfig(display, attrs, 0, cfgs, 0, 1, n, 0) || n[0] < 1) throw IllegalStateException("eglChooseConfig")
+        eglCfg = cfgs[0]
         eglCtx = EGL14.eglCreateContext(display, cfgs[0], EGL14.EGL_NO_CONTEXT,
             intArrayOf(EGL14.EGL_CONTEXT_CLIENT_VERSION, 2, EGL14.EGL_NONE), 0)
         if (eglCtx == EGL14.EGL_NO_CONTEXT) throw IllegalStateException("eglCreateContext")
-        eglSurface = EGL14.eglCreateWindowSurface(display, cfgs[0], st, intArrayOf(EGL14.EGL_NONE), 0)
+        if (st != null) { attachWindow(); return }
+        offscreen = EGL14.eglCreatePbufferSurface(display, cfgs[0], intArrayOf(EGL14.EGL_WIDTH, 1, EGL14.EGL_HEIGHT, 1, EGL14.EGL_NONE), 0)
+        if (offscreen == EGL14.EGL_NO_SURFACE) throw IllegalStateException("eglCreatePbufferSurface")
+        if (!EGL14.eglMakeCurrent(display, offscreen, offscreen, eglCtx)) throw IllegalStateException("eglMakeCurrent")
+    }
+
+    /** The context moves to the window's surface, as soon as there is one. */
+    private fun attachWindow() {
+        val st = surface ?: return
+        eglSurface = EGL14.eglCreateWindowSurface(display, eglCfg, st, intArrayOf(EGL14.EGL_NONE), 0)
         if (eglSurface == EGL14.EGL_NO_SURFACE) throw IllegalStateException("eglCreateWindowSurface")
         if (!EGL14.eglMakeCurrent(display, eglSurface, eglSurface, eglCtx)) throw IllegalStateException("eglMakeCurrent")
+        if (offscreen != EGL14.EGL_NO_SURFACE) {
+            EGL14.eglDestroySurface(display, offscreen)
+            offscreen = EGL14.EGL_NO_SURFACE
+        }
     }
 
     /**
@@ -502,24 +615,86 @@ class CarGlView(context: Context, private val dark: Boolean, private val bg: Int
         return s
     }
 
-    private fun loadFrames(f: File, m: CarFrames.Meta) {
-        val bytes = CarEtc.frameBytes(m)
+    /** The frames the car is first drawn from; all or nothing: without them there is no GPU path. */
+    private fun loadFirst(f: File, m: CarFrames.Meta, set: IntArray) {
         tex = IntArray(m.count)
+        have = BooleanArray(m.count)
         GLES20.glGenTextures(m.count, tex, 0)
-        val buf = ByteBuffer.allocateDirect(bytes).order(ByteOrder.nativeOrder())
-        RandomAccessFile(f, "r").use { r ->
-            val ch = r.channel
-            for (i in 0 until m.count) {
-                buf.clear()
-                var at = CarEtc.HEADER + i.toLong() * bytes
-                while (buf.hasRemaining()) { val n = ch.read(buf, at); if (n <= 0) throw IllegalStateException("short read"); at += n }
-                buf.flip()
-                bindParams(tex[i])
-                GLES20.glCompressedTexImage2D(GLES20.GL_TEXTURE_2D, 0, ETC1.ETC1_RGB8_OES, m.width, m.height, 0, bytes, buf)
-            }
-        }
+        val buf = ByteBuffer.allocateDirect(CarEtc.frameBytes(m)).order(ByteOrder.nativeOrder())
+        frameBuf = buf
+        val r = RandomAccessFile(f, "r")
+        restFile = r
+        for (i in set) loadFrame(r, m, i, buf)
         val err = GLES20.glGetError()
         if (err != GLES20.GL_NO_ERROR) throw IllegalStateException("texture upload: 0x" + Integer.toHexString(err))
+    }
+
+    private fun loadFrame(r: RandomAccessFile, m: CarFrames.Meta, i: Int, buf: ByteBuffer) {
+        val bytes = CarEtc.frameBytes(m)
+        buf.clear()
+        var at = CarEtc.HEADER + i.toLong() * bytes
+        while (buf.hasRemaining()) { val n = r.channel.read(buf, at); if (n <= 0) throw IllegalStateException("short read"); at += n }
+        buf.flip()
+        bindParams(tex[i])
+        GLES20.glCompressedTexImage2D(GLES20.GL_TEXTURE_2D, 0, ETC1.ETC1_RGB8_OES, m.width, m.height, 0, bytes, buf)
+        have[i] = true
+    }
+
+    /** The frames not in the GPU yet, nearest to the resting view first: one per message, so a draw waits for one at most. */
+    private fun startRest() {
+        val m = meta ?: return
+        if (restStarted || !loaded) return
+        restStarted = true
+        val home = cur.a
+        restOrder = (0 until m.count).filter { !have[it] }.sortedBy { i -> Math.floorMod(i - home, m.count).let { minOf(it, m.count - it) } }.toIntArray()
+        restAt = 0
+        gl?.post(loadNext)
+    }
+
+    private val loadNext: Runnable = object : Runnable {
+        override fun run() {
+            val m = meta ?: return
+            val r = restFile
+            val buf = frameBuf
+            if (!loaded || r == null || buf == null) return
+            try {
+                if (restAt < restOrder.size) {
+                    loadFrame(r, m, restOrder[restAt++], buf)
+                    val err = GLES20.glGetError()
+                    if (err != GLES20.GL_NO_ERROR) throw IllegalStateException("texture upload: 0x" + Integer.toHexString(err))
+                    gl?.post(this)
+                    return
+                }
+                Log.i("AuraCar", "GPU car: all ${m.count} frames in ${SystemClock.elapsedRealtime() - firstInAt} ms after the first ones")
+                CarStage.gpuAllMs = SystemClock.elapsedRealtime() - firstInAt
+            } catch (t: Throwable) {
+                // what is in stays, and stands in for what is not: a coarser turn, no worse
+                Log.w("AuraCar", "GPU frames after the first ones: $t")
+                CarStage.gpuAllMs = -1L
+            }
+            closeRest()
+        }
+    }
+
+    private fun closeRest() {
+        try { restFile?.close() } catch (_: Throwable) { }
+        restFile = null
+        frameBuf = null
+    }
+
+    /** The texture of frame [i], or of the nearest frame that is in. */
+    private fun texOf(i: Int): Int {
+        val n = tex.size
+        val k = Math.floorMod(i, n)
+        if (have[k]) return tex[k]
+        startRest()
+        for (d in 1..n / 2) {
+            val a = Math.floorMod(k - d, n)
+            if (have[a]) return tex[a]
+            val b = Math.floorMod(k + d, n)
+            if (have[b]) return tex[b]
+        }
+        return tex[k]
     }
 
     private fun bindParams(t: Int) {
@@ -557,12 +732,12 @@ class CarGlView(context: Context, private val dark: Boolean, private val bg: Int
     }
 
     private fun drawNow() {
-        if (!loaded || vw <= 0 || vh <= 0) return
+        if (!loaded || eglSurface == EGL14.EGL_NO_SURFACE || vw <= 0 || vh <= 0) return
         val s = cur
         val n = tex.size
-        val a = tex[Math.floorMod(s.a, n)]
+        val a = texOf(s.a)
         val useRest = s.rest && s.restMix > 0f && restFrame == Math.floorMod(s.a, n) && restTex != 0
-        val b = if (useRest) restTex else tex[Math.floorMod(s.b, n)]
+        val b = if (useRest) restTex else texOf(s.b)
         val t = if (useRest) s.restMix else s.t
         try {
             val q = quad!!
@@ -610,6 +785,8 @@ class CarGlView(context: Context, private val dark: Boolean, private val bg: Int
         if (showing) main.post { isOpaque = false; onLost?.invoke() }
         showing = false
         loaded = false
+        restStarted = false
+        closeRest()
         if (display != EGL14.EGL_NO_DISPLAY) {
             try {
                 if (eglCtx != EGL14.EGL_NO_CONTEXT) {
@@ -617,12 +794,15 @@ class CarGlView(context: Context, private val dark: Boolean, private val bg: Int
                     EGL14.eglDestroyContext(display, eglCtx) // its textures and program go with it
                 }
                 if (eglSurface != EGL14.EGL_NO_SURFACE) EGL14.eglDestroySurface(display, eglSurface)
+                if (offscreen != EGL14.EGL_NO_SURFACE) EGL14.eglDestroySurface(display, offscreen)
             } catch (_: Throwable) { }
         }
         eglCtx = EGL14.EGL_NO_CONTEXT
         eglSurface = EGL14.EGL_NO_SURFACE
+        offscreen = EGL14.EGL_NO_SURFACE
         display = EGL14.EGL_NO_DISPLAY
         tex = IntArray(0)
+        have = BooleanArray(0)
         restTex = 0
         restFrame = -1
         program = 0
@@ -632,6 +812,9 @@ class CarGlView(context: Context, private val dark: Boolean, private val bg: Int
     val drawing: Boolean get() = showing && !failed
 
     companion object {
+        /** Longest the frames after the first ones wait for the intro's end (or a touch) to ask for them. */
+        private const val REST_AFTER_MS = 3000L
+
         private const val VERTEX = """
 attribute vec2 a_pos;
 uniform vec2 u_view;
