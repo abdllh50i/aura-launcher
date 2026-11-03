@@ -162,22 +162,30 @@ class MapsActivity : Activity() {
         }
         when (val which = i?.getStringExtra("go")) {
             "home", "work" -> {
-                val saved = if (which == "home") Places.home else Places.work
-                val legacy = if (which == "home") Prefs.homeAddress else Prefs.workAddress
+                val saved = Trips.saved(which)
                 when {
                     saved != null -> driveTo(saved)
-                    legacy.isNotBlank() -> { // an address typed in 1.0: find it once and keep the place
+                    Trips.legacy(which).isNotBlank() -> { // an address typed in 1.0: find it once and keep the place
                         toast(getString(R.string.maps_searching))
-                        Places.geocode(legacy, CarLocation.lastKnown(), arabic) { p ->
-                            if (isDestroyed || isFinishing) return@geocode
-                            if (p == null) { toast(getString(R.string.maps_no_results)); openSearch(); return@geocode }
-                            if (which == "home") Places.home = p else Places.work = p
+                        Trips.findLegacy(which, arabic) { p ->
+                            if (isDestroyed || isFinishing) return@findLegacy
+                            if (p == null) { toast(getString(R.string.maps_no_results)); openSearch(); return@findLegacy }
                             driveTo(p)
                         }
                     }
                     else -> openSearch()
                 }
             }
+        }
+        // a place to show with its route and Go, the driver's to start: what the phone sent when no card can ask him,
+        // or when no route was found for it ([com.abdllh.aura.link.PlaceInbox])
+        if (i != null && i.hasExtra(EXTRA_LAT) && i.hasExtra(EXTRA_LON)) {
+            select(Place(i.getStringExtra(EXTRA_NAME).orEmpty(), i.getStringExtra(EXTRA_DETAIL).orEmpty(),
+                LatLon(i.getDoubleExtra(EXTRA_LAT, 0.0), i.getDoubleExtra(EXTRA_LON, 0.0))))
+            i.removeExtra(EXTRA_LAT)
+            i.removeExtra(EXTRA_LON)
+            i.removeExtra(EXTRA_NAME)
+            i.removeExtra(EXTRA_DETAIL)
         }
         if (i?.getBooleanExtra("search", false) == true) openSearch()
         // a search asked for by name (the assistant's "where is the nearest petrol station", and the emulator's tests)
@@ -241,7 +249,9 @@ class MapsActivity : Activity() {
         CarLocation.acquire(this, "maps")
         CarLocation.addListener(fixListener)
         NavSession.addListener(navListener)
+        Trips.addListener(tripsListener)
         syncNav()
+        syncAttempt()
     }
 
     override fun onResume() {
@@ -272,6 +282,7 @@ class MapsActivity : Activity() {
         CarLocation.removeListener(fixListener)
         CarLocation.release("maps")
         NavSession.removeListener(navListener)
+        Trips.removeListener(tripsListener)
         map.onStop()
         super.onStop()
     }
@@ -332,7 +343,8 @@ class MapsActivity : Activity() {
             map.setCar(LatLon(l.latitude, l.longitude), if (l.hasBearing()) l.bearing.toDouble() else 0.0, speed)
         }
         // the preview route once a fix is there; a failed one is retried with growing pauses, not on every fix
-        if (selected != null && preview == null && !routing && NavSession.state == NavSession.State.IDLE &&
+        // (not for a place whose trip is being started from elsewhere: [Trips] is finding its route)
+        if (selected != null && preview == null && !routing && following == null && NavSession.state == NavSession.State.IDLE &&
             SystemClock.elapsedRealtime() >= routeRetryAt) requestRoute()
     }
 
@@ -351,6 +363,39 @@ class MapsActivity : Activity() {
     }
 
     private val navListener: () -> Unit = { syncNav() }
+    private val tripsListener: () -> Unit = { syncAttempt() }
+
+    /** The place of a trip being started from elsewhere (the phone, the voice), while this screen shows it. */
+    private var following: Place? = null
+
+    /**
+     * A trip being started from elsewhere ([Trips]): while it has no route yet its place is on the card as if it were
+     * chosen here, with what is going on; closing the card drops it. This screen's own [driveTo] shows itself.
+     */
+    private fun syncAttempt() {
+        if (!::placeCard.isInitialized) return
+        val a = Trips.attempt?.takeIf { it.source != Trips.SCREEN }
+        if (a == null) {
+            val p = following ?: return
+            following = null
+            routing = false
+            when {
+                NavSession.state != NavSession.State.IDLE -> afterStart()
+                // (it did not start: a failure leaves the place here by its own way, a cancel takes it away)
+                selected?.pos == p.pos -> clearPlace()
+            }
+            return
+        }
+        if (NavSession.state == NavSession.State.NAVIGATING) return // (a trip being replaced: the trip's panels stay)
+        if (following?.pos != a.place.pos) {
+            following = a.place
+            routing = true
+            selected = a.place
+            preview = null
+            showPlace(a.place)
+        }
+        routeStatus(getString(if (a.phase == Trips.Phase.WAITING_FIX) R.string.maps_waiting_gps else R.string.maps_routing))
+    }
 
     /** Shows the navigation UI for NavSession's state. */
     private fun syncNav() {
@@ -358,6 +403,8 @@ class MapsActivity : Activity() {
         val st = NavSession.state
         val navigating = st == NavSession.State.NAVIGATING
         val active = st != NavSession.State.IDLE
+        // (a trip started from elsewhere while this screen was away: nothing chosen earlier stays behind it)
+        if (navigating && selected != null && !routing && following == null) { selected = null; preview = null }
         map.setFps(if (navigating) 60 else 30) // a turning, tilted map needs the frames
         searchCard.reveal(!active, -12f)
         // (a trip started from outside while the search was open: its keyboard-time fade must not hide the speed)
@@ -602,6 +649,12 @@ class MapsActivity : Activity() {
     private fun select(p: Place) {
         selected = p
         preview = null
+        showPlace(p)
+        requestRoute()
+    }
+
+    /** [p] on the card and on the map, with no route yet. */
+    private fun showPlace(p: Place) {
         resetRouteRetry()
         closeSearch()
         input.setText(p.name)
@@ -617,7 +670,6 @@ class MapsActivity : Activity() {
         root.removeCallbacks(firstOverview)
         if (CarLocation.last == null) map.overview(listOf(p.pos), panelWidth() + 40.dp, 90.dp, 150.dp, 60.dp)
         else root.postDelayed(firstOverview, 700)
-        requestRoute()
     }
 
     private val firstOverview = Runnable {
@@ -670,6 +722,8 @@ class MapsActivity : Activity() {
     }
 
     private fun clearPlace() {
+        // (the card of a trip being started from elsewhere, closed: that trip is off, and its asker hears so)
+        if (following != null) { following = null; routing = false; Trips.cancel("closed on the map") }
         selected = null
         preview = null
         resetRouteRetry()
@@ -688,7 +742,12 @@ class MapsActivity : Activity() {
             toast(getString(if (CarLocation.last == null) R.string.maps_waiting_gps else R.string.maps_routing))
             return
         }
-        NavSession.start(this, p, r)
+        Trips.start(this, p, r)
+        afterStart()
+    }
+
+    /** A trip has started: from the card to the trip's panels. */
+    private fun afterStart() {
         if (BuildConfig.DEBUG && intent?.getBooleanExtra("simulate", false) == true) NavSim.start(70.0)
         selected = null
         preview = null
@@ -700,9 +759,9 @@ class MapsActivity : Activity() {
 
     /** Home/Work: route and start right away (like pressing the button in a car). */
     private fun driveTo(p: Place) {
-        val car = CarLocation.last
-        if (car == null) { select(p); return }
+        if (CarLocation.last == null) { select(p); return }
         selected = p
+        preview = null // (another place's route must not stay behind this one's Go, should no route come)
         resetRouteRetry()
         placeName.setIfChanged(p.name)
         placeDetail.setIfChanged(p.detail)
@@ -710,14 +769,15 @@ class MapsActivity : Activity() {
         routeStatus(getString(R.string.maps_routing))
         placeCard.reveal(true, 16f, delay = 60)
         routing = true
-        Router.route(LatLon(car.latitude, car.longitude), p.pos, if (car.hasBearing() && car.speed > 2) car.bearing.toDouble() else null) { r, _ ->
+        // (Back pressed meanwhile: no navigation the driver can no longer see starting)
+        val here = { !isDestroyed && !isFinishing && selected?.pos == p.pos }
+        Trips.goTo(this, p, source = Trips.SCREEN, wanted = here) { outcome, _ ->
             routing = false
-            // (Back pressed meanwhile: no navigation the driver can no longer see starting)
-            if (isDestroyed || isFinishing || selected?.pos != p.pos) return@route
-            if (r == null) { routeFailed(); return@route }
-            resetRouteRetry()
-            preview = r
-            go()
+            when (outcome) {
+                Trips.Outcome.STARTED -> { resetRouteRetry(); afterStart() }
+                Trips.Outcome.FAILED, Trips.Outcome.NO_FIX -> if (here()) routeFailed()
+                Trips.Outcome.DROPPED -> {}
+            }
         }
     }
 
@@ -1231,6 +1291,12 @@ class MapsActivity : Activity() {
         private const val ROW_DP = 74
         /** At this speed and above the car moves on a trip: a new theme or accent waits ([checkLook]). */
         private const val MOVING_KMH = 3
+
+        /** Extras: a place to show with its route and Go ([handle]). */
+        const val EXTRA_LAT = "dest_lat"
+        const val EXTRA_LON = "dest_lon"
+        const val EXTRA_NAME = "dest_name"
+        const val EXTRA_DETAIL = "dest_detail"
 
         fun open(ctx: Context, extras: Intent.() -> Unit = {}) {
             try {

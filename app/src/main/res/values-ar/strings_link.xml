@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- تحط الموقع من الجوال وتبدأ الاتجاهات على الشاشة (AMRI Link v2) -->
+<resources>
+    <!-- الإعدادات: السيارة والنظام -->
+    <string name="link_title">ربط الجوال</string>
+    <string name="link_sub">ترسل موقع من جوالك وتبدأ الاتجاهات هنا. لازم الجوال والشاشة يكونون على نفس الشبكة (هوتسبوت الجوال).</string>
+    <string name="link_status_on">شغّال على %1$s</string>
+    <string name="link_status_no_net">شغّال، بس الشاشة مو على شبكة الحين</string>
+    <string name="link_status_starting">يشتغل…</string>
+    <string name="link_status_failed">ما قدر يشتغل: %1$s</string>
+    <string name="link_paired_none">ما فيه جوال مربوط للحين</string>
+    <string name="link_paired">المربوط: %1$s</string>
+    <string name="link_paired_now">توّه انربط %1$s</string>
+    <string name="link_show_code">اعرض رمز الربط</string>
+    <string name="link_hide_code">أخفِ الرمز</string>
+    <string name="link_forget">انسَ الجوالات</string>
+    <string name="link_forget_title">ينسى الجوالات المربوطة؟</string>
+    <string name="link_forget_text">تقدر ترسل مواقع بعد، بس كل موقع يوقف ينتظر ضغطة منك على الشاشة، لين تربطها من جديد.</string>
+    <string name="link_scan_hint">امسح الرمز بكاميرا الجوال وتفتح لك صفحة التحكم في سفاري.</string>
+    <string name="link_manual">أو افتح %1$s واكتب الرمز %2$s</string>
+    <string name="link_code_left">الرمز ينتهي بعد %1$s</string>
+    <!-- حول -->
+    <string name="link_about_place">آخر وجهة من الجوال</string>
+    <string name="link_last_request">آخر طلب %1$s</string>
+    <string name="link_note">%1$s، %2$s، عبر الشبكة (%3$s)</string>
+    <string name="link_note_received">وصلت</string>
+    <string name="link_note_started">بدأت</string>
+    <string name="link_note_failed">ما لقى طريق</string>
+    <string name="link_note_cancelled">انلغت</string>
+    <string name="link_note_not_started">ما بدأت</string>
+    <string name="link_note_handed">راحت لتطبيق الملاحة</string>
+    <!-- البطاقة -->
+    <string name="link_from_phone">وصل من الجوال</string>
+    <string name="link_from_voice">طلبت</string>
+    <string name="link_ask">وصلني موقع من الجوال: %1$s. ابدأ؟</string>
+    <string name="link_start">ابدأ</string>
+    <string name="link_no">لا</string>
+    <string name="link_replace_q">عندك رحلة الحين إلى %1$s. تبدلها؟</string>
+    <string name="link_replace">بدّلها</string>
+    <string name="link_keep">خلّ رحلتي</string>
+    <string name="link_started">بدأت الاتجاهات إلى %1$s</string>
+    <string name="link_cancel">إلغاء</string>
+    <string name="link_failed">ما لقيت طريق إلى %1$s. تقدر تعيد المحاولة من الخريطة.</string>
+    <!-- المساعد -->
+    <string name="amri_place_chosen">أبشر، أوديك إلى %1$s، تبعد %2$s</string>
+    <string name="amri_place_card">%1$s: اختر من الشاشة</string>
+    <string name="amri_trip_stopped">وقفت الملاحة</string>
+    <string name="amri_song_naghm_silent">أرسلتها لنغم وما رد</string>
+</resources>

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A place set on the phone, directions start on the screen (AMRI Link v2) -->
+<resources>
+    <!-- Settings: Vehicle & system -->
+    <string name="link_title">Phone link</string>
+    <string name="link_sub">Send a place from your phone and the directions start here. The phone and the screen must be on one network (the phone\'s hotspot).</string>
+    <string name="link_status_on">On, at %1$s</string>
+    <string name="link_status_no_net">On, but the screen is on no network now</string>
+    <string name="link_status_starting">Starting…</string>
+    <string name="link_status_failed">Could not start: %1$s</string>
+    <string name="link_paired_none">No phone paired yet</string>
+    <string name="link_paired">Paired: %1$s</string>
+    <string name="link_paired_now">%1$s just paired</string>
+    <string name="link_show_code">Show the pairing code</string>
+    <string name="link_hide_code">Hide the code</string>
+    <string name="link_forget">Forget the phones</string>
+    <string name="link_forget_title">Forget the paired phones?</string>
+    <string name="link_forget_text">They can still send a place, but each one then waits for a tap on the screen, until it is paired again.</string>
+    <string name="link_scan_hint">Scan the code with the phone\'s camera: it opens the control page in Safari.</string>
+    <string name="link_manual">Or open %1$s and type the code %2$s</string>
+    <string name="link_code_left">The code ends in %1$s</string>
+    <!-- About -->
+    <string name="link_about_place">Last place from the phone</string>
+    <string name="link_last_request">last request %1$s</string>
+    <string name="link_note">%1$s, %2$s, over the network (%3$s)</string>
+    <string name="link_note_received">received</string>
+    <string name="link_note_started">started</string>
+    <string name="link_note_failed">no route</string>
+    <string name="link_note_cancelled">cancelled</string>
+    <string name="link_note_not_started">not started</string>
+    <string name="link_note_handed">handed to the navigation app</string>
+    <!-- The card -->
+    <string name="link_from_phone">From the phone</string>
+    <string name="link_from_voice">You asked for</string>
+    <string name="link_ask">A place from the phone: %1$s. Start?</string>
+    <string name="link_start">Start</string>
+    <string name="link_no">No</string>
+    <string name="link_replace_q">You are on a trip to %1$s. Replace it?</string>
+    <string name="link_replace">Replace</string>
+    <string name="link_keep">Keep my trip</string>
+    <string name="link_started">Directions started to %1$s</string>
+    <string name="link_cancel">Cancel</string>
+    <string name="link_failed">Found no route to %1$s. You can try again on the map.</string>
+    <!-- The assistant -->
+    <string name="amri_place_chosen">Taking you to %1$s, %2$s away</string>
+    <string name="amri_place_card">%1$s: choose on the screen</string>
+    <string name="amri_trip_stopped">Trip ended</string>
+    <string name="amri_song_naghm_silent">Sent it to Naghm, and Naghm did not answer</string>
+</resources>

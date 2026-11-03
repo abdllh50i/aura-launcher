@@ -40,6 +40,8 @@ internal sealed class Command {
     data class Nearby(val place: Place) : Command()
     /** "ودني المطار": a place by name, on the map. */
     data class SearchPlace(val query: String) : Command()
+    /** "وقف الملاحة": the trip ends. */
+    object StopTrip : Command()
     /** "افتح يوتيوب": an app by its name. */
     data class OpenApp(val name: String) : Command()
     /** "شغّل عبادي الجوهر": a song by name (YouTube Music). */
@@ -85,6 +87,9 @@ internal sealed class Command {
 
             // "الغ الكتم" takes the mute away (and does not cancel)
             if (has("الكتم") && has("فك", "الغ", "الغاء", "شيل", "وقف", "رجع")) return Unmute
+            // the trip, not this request: "وقف الملاحة", "الغ الرحلة"
+            if (has("الملاحه", "ملاحه", "الرحله", "الاتجاهات", "navigation", "directions", "trip") &&
+                (stop || word("الغ", "الغي", "الغاء", "cancel", "end"))) return StopTrip
             if (word("خلاص", "الغاء", "الغ", "cancel", "انسى", "انساها") || t == "لا" || t.contains("ولا شي") || t.contains("لا شي") ||
                 t.contains("مابي شي") || t.contains("ما ابي شي") || t.contains("لا شكرا") || t.contains("never mind")) return Cancel
             if (words.size <= 4 && (word("شكرا", "مشكور", "تسلم", "thanks") || t.contains("يعطيك العافيه") || t.contains("thank you"))) return Thanks
@@ -150,7 +155,7 @@ internal sealed class Command {
             // ("ماب" only as a whole word: "مابي" is "I don't want")
             val maps = has("الملاحه", "ملاحه", "الخريطه", "خريطه", "الخرايط", "الخرائط", "خرائط", "navigation", "maps", "gps") ||
                 word("الماب", "ماب", "map")
-            if (maps) return if (stop) null else OpenMaps // "وقف الملاحه": not a request it knows, and not "open the map"
+            if (maps) return if (stop) null else OpenMaps // "طف الخريطة": not a request it knows, and not "open the map"
             if (has("الرئيسيه", "الشاشه الرئيسيه", "home screen")) return HomeScreen
             if (has("كم الساعه", "الساعه كم", "كم الوقت", "الوقت", "what time")) return Time
 

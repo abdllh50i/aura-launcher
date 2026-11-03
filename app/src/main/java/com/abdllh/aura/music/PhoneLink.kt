@@ -37,6 +37,8 @@ object PhoneLink {
     private const val PING_MS = 5_000L
     /** Naghm answers every ping: this long without a word and the connection is taken for dead. */
     private const val READ_TIMEOUT_MS = 16_000
+    /** Naghm says a new song at once: this long without that and it did not take it. */
+    private const val PLAY_ANSWER_MS = 4_000L
 
     private val main = Handler(Looper.getMainLooper())
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
@@ -115,6 +117,35 @@ object PhoneLink {
     }
     /** "play", "pause", "toggle", "next" or "previous". */
     fun control(what: String) = send(JSONObject().put("type", what))
+
+    /** The song Naghm was asked to play, until its word that it took it ([done]: true) or none came in time (false). */
+    private var askedId = ""
+    private var askedDone: ((Boolean) -> Unit)? = null
+    private val askedNoAnswer = Runnable { asked(false) }
+
+    /**
+     * Naghm plays this song (a catalogue id, [YtMusic.search]'s; its `playSong`, CAR_LINK.md). [done] on the main thread:
+     * whether Naghm then said it has that song, within [PLAY_ANSWER_MS]. Only the answer counts: a sent line says nothing
+     * about a phone that is asleep.
+     */
+    fun playSong(song: YtMusic.Song, done: (Boolean) -> Unit) {
+        if (!connected) { done(false); return }
+        asked(false)
+        askedId = song.id
+        askedDone = done
+        send(JSONObject().put("type", "playSong").put("id", song.id).put("title", song.title).put("artist", song.artist)
+            .put("duration", song.sec).put("art", YtMusic.sized(song.thumb, 544)))
+        main.postDelayed(askedNoAnswer, PLAY_ANSWER_MS)
+    }
+
+    private fun asked(took: Boolean) {
+        main.removeCallbacks(askedNoAnswer)
+        val d = askedDone ?: return
+        note((if (took) "took" else "no answer to") + " playSong $askedId")
+        askedDone = null
+        askedId = ""
+        d(took)
+    }
 
     private fun send(message: JSONObject) {
         val s = socket ?: return
@@ -222,6 +253,7 @@ object PhoneLink {
                 baseAt = SystemClock.elapsedRealtime()
                 if (newArt != artUrl) { artUrl = newArt; art = null; loadArt(newArt) }
                 changed()
+                if (askedId.isNotEmpty() && newId == askedId) asked(true)
             }
             "lyrics" -> {
                 lyricsId = text(message, "id")

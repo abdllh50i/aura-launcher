@@ -46,6 +46,9 @@ import kotlin.math.sin
 object Amri {
     private const val TAG = "AuraAmri"
     const val DEBUG_ACTION = "com.abdllh.aura.debug.AMRI" // emulator: --es say "ارفع الصوت الى 20" | --ez wake true
+    /** "ودني ...": how long the internet's answer is waited for once the offline map has given one, and at most. */
+    private const val PLACE_WAIT_MS = 2500L
+    private const val PLACE_LIMIT_MS = 10_000L
 
     enum class State { IDLE, LISTENING, ANSWERING }
 
@@ -376,7 +379,14 @@ object Amri {
             session++
             release()
             finish(c, AmriOverlay.Mode.DONE, c.getString(R.string.amri_cancel), null, speak = false, cmd = Command.Cancel)
+        } else if (placeSearching) {
+            // a place still being looked for ("ودني ..."): nothing starts now, and the answer it waited for is this one
+            placeSearching = false
+            placeSearch++
+            session++
+            finish(c, AmriOverlay.Mode.DONE, c.getString(R.string.amri_cancel), null, speak = false, cmd = Command.Cancel)
         } else {
+            com.abdllh.aura.link.PlaceInbox.dropVoice()
             AmriOverlay.hide()
         }
     }
@@ -501,6 +511,10 @@ object Amri {
             Command.ScreenOff -> { com.abdllh.aura.home.Actions.screenOff(c); Answer(s(R.string.amri_cancel), speak = false) }
             is Command.Nearby -> nearby(c, cmd.place)
             is Command.SearchPlace -> searchPlace(c, cmd.query)
+            Command.StopTrip -> {
+                if (com.abdllh.aura.link.PlaceInbox.stop("voice")) Answer(s(R.string.amri_trip_stopped))
+                else Answer(s(R.string.amri_eta_none), error = true)
+            }
             is Command.OpenApp -> openApp(c, cmd.name)
             is Command.PlaySong -> playSong(c, cmd.query)
             Command.Thanks -> Answer(s(R.string.amri_thanks))
@@ -598,10 +612,60 @@ object Amri {
         }
     }
 
-    /** "ودني المطار": the map's search on it (or the navigation app's). */
+    /** A place being looked for by voice, until it is chosen or its asker cancels (a tap on the pill). */
+    private var placeSearch = 0
+    private var placeSearching = false
+
+    /**
+     * "ودني المطار": with AMRI Maps the search runs here, and when it gives one clear place ([com.abdllh.aura.nav.Places.
+     * clearWinner]) the trip to it starts: it says what it chose, the card offers to cancel ([com.abdllh.aura.link.PlaceInbox],
+     * which also asks first during another trip). A weak or an ambiguous answer, or no position to judge it from: the
+     * map's search on it, as it always was (or the navigation app's).
+     */
     private fun searchPlace(c: Context, query: String): Answer {
-        if (com.abdllh.aura.util.Prefs.builtInMaps) openMapSearch(c, query) else searchWithApp(c, query)
-        return Answer(c.getString(R.string.amri_search_place, query))
+        val places = com.abdllh.aura.nav.Places
+        if (!com.abdllh.aura.util.Prefs.builtInMaps) {
+            searchWithApp(c, query)
+            return Answer(c.getString(R.string.amri_search_place, query))
+        }
+        val near = com.abdllh.aura.nav.CarLocation.lastKnown()
+        if (near == null) {
+            openMapSearch(c, query)
+            return Answer(c.getString(R.string.amri_search_place, query))
+        }
+        val ask = ++placeSearch
+        placeSearching = true
+        return Answer(c.getString(R.string.amri_song_looking, query)) { give ->
+            var latest: List<com.abdllh.aura.nav.Place>? = null
+            var decided = false
+            val decide = decide@{
+                if (decided || ask != placeSearch) return@decide
+                decided = true
+                placeSearching = false
+                val winner = latest?.let { places.clearWinner(query, it, near) }
+                if (winner == null) {
+                    openMapSearch(c, query)
+                    give(Answer(c.getString(R.string.amri_search_place, query)))
+                } else {
+                    val far = com.abdllh.aura.nav.Units.spokenDistance(com.abdllh.aura.nav.Geo.distance(near, winner.pos), arabic)
+                    com.abdllh.aura.link.PlaceInbox.receive(c, com.abdllh.aura.link.PlaceInbox.Incoming(
+                        "voice-$ask", winner, com.abdllh.aura.nav.Trips.VOICE, null, true, "", ask = false, voice = true) { step ->
+                        when (step) {
+                            "routing", "waiting_fix" -> give(Answer(c.getString(R.string.amri_place_chosen, winner.name, far)))
+                            "card", "held" -> give(Answer(c.getString(R.string.amri_place_card, winner.name)))
+                            "failed" -> give(Answer(c.getString(R.string.link_failed, winner.name), error = true))
+                        }
+                    })
+                }
+            }
+            places.lookup(query, near, arabic) { list, last ->
+                latest = list
+                // the offline map answers first: the internet's answer gets a moment before it is decided on that
+                if (last) decide() else main.postDelayed({ decide() }, PLACE_WAIT_MS)
+            }
+            // (before the 12 s "that took too long": a late answer must not start a trip after that was said)
+            main.postDelayed({ decide() }, PLACE_LIMIT_MS)
+        }
     }
 
     /** AMRI Maps with its search open on [query] and its results showing (MapsActivity's "q"). */
@@ -636,9 +700,35 @@ object Amri {
         return Answer(c.getString(R.string.amri_open_app, best.label))
     }
 
-    /** A song by name: YouTube Music's search, its first song handed to the YouTube Music app (AMRI Music's source). */
+    /**
+     * A song by name: YouTube Music's search, and its first song goes to Naghm on the phone when Naghm is linked (it
+     * plays it itself and says so; the phone's Bluetooth then is the source), else to the YouTube Music app on the unit
+     * (AMRI Music's source).
+     */
     private fun playSong(c: Context, query: String): Answer {
         val yt = com.abdllh.aura.music.YtMusic
+        val naghm = com.abdllh.aura.music.PhoneLink
+        if (naghm.connected) {
+            if (!online(c)) return Answer(c.getString(R.string.amri_song_offline), error = true)
+            return Answer(c.getString(R.string.amri_song_looking, query)) { give ->
+                yt.search(query) { songs ->
+                    val song = songs?.firstOrNull()
+                    when {
+                        songs == null -> give(Answer(c.getString(R.string.amri_song_offline), error = true))
+                        song == null -> give(Answer(c.getString(R.string.amri_song_none, query), error = true))
+                        else -> naghm.playSong(song) { took ->
+                            if (took) {
+                                openMusic(c, true)
+                                give(Answer(if (song.artist.isBlank()) c.getString(R.string.amri_now_playing_title, song.title)
+                                    else c.getString(R.string.amri_song_playing, song.title, song.artist)))
+                            } else {
+                                give(Answer(c.getString(R.string.amri_song_naghm_silent), error = true))
+                            }
+                        }
+                    }
+                }
+            }
+        }
         if (yt.player(c) == null) { yt.openStore(c); return Answer(c.getString(R.string.amri_song_no_app), error = true) }
         if (!online(c)) return Answer(c.getString(R.string.amri_song_offline), error = true)
         return Answer(c.getString(R.string.amri_song_looking, query)) { give ->

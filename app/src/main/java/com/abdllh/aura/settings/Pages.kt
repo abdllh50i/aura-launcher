@@ -377,11 +377,12 @@ class NavigationPage(private val act: SettingsActivity) : Page(R.string.set_navi
 class VehiclePage(private val act: SettingsActivity) : Page(R.string.set_vehicle, R.drawable.ic_car) {
     private class Tile(val icon: Int, val label: Int, val available: (Context) -> Boolean, val run: (Context) -> Unit)
     private var internet: InternetCard? = null
+    private var phoneLink: com.abdllh.aura.link.PhoneLinkCard? = null
 
     // (the gear's source and what the CAN box sent change while the car drives)
     override val keep: Boolean get() = false
-    override fun onShow() { internet?.attach() }
-    override fun onHide() { internet?.detach() }
+    override fun onShow() { internet?.attach(); phoneLink?.attach() }
+    override fun onHide() { internet?.detach(); phoneLink?.detach() }
 
     override fun build(ctx: Context): View {
         val col = ctx.pageColumn()
@@ -433,6 +434,9 @@ class VehiclePage(private val act: SettingsActivity) : Page(R.string.set_vehicle
         ))
         col.addRow(ctx.group(internet!!.view))
         col.addHint(ctx.getString(R.string.net_hint))
+        // a place set on the phone: the switch, and the code that pairs a phone
+        phoneLink = com.abdllh.aura.link.PhoneLinkCard(ctx)
+        col.addRow(phoneLink!!.view)
 
         if (com.abdllh.aura.system.Power.available || BuildConfig.DEBUG) {
             col.addSection(ctx.getString(R.string.set_power))
@@ -578,6 +582,9 @@ class AboutPage(private val act: SettingsActivity) : Page(R.string.set_about, R.
         com.abdllh.aura.music.YtMusic.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_music, R.string.about_yt, it) }
         // Naghm on the owner's iPhone: when it last connected over the hotspot, and from where
         com.abdllh.aura.music.PhoneLink.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_bluetooth, R.string.about_naghm, it) }
+        // a place set on the phone: the last one and how it went; and whether the server runs and who last asked it
+        com.abdllh.aura.link.PlaceInbox.lastLine(ctx).takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_pin, R.string.link_about_place, it) }
+        com.abdllh.aura.link.PhoneLinkCard.aboutLine(ctx).takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_smartphone, R.string.link_title, it) }
         col.addRow(ctx.group(*rows.toTypedArray()))
 
         // Home-app control (car unit only)
