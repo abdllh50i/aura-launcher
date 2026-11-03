@@ -63,6 +63,9 @@ object MusicKeys {
     private val worker = java.util.concurrent.Executors.newSingleThreadExecutor()
     private var keyAt = -1_000_000L
 
+    /** Until then (elapsedRealtime) the music keys open nothing: the screen check is asking for the wheel's keys. */
+    @Volatile var quietUntil = 0L
+
     /** How the music button last reached AMRI, for Settings → About ("" when it never did). */
     val note: String get() = Prefs.raw.getString(KEY_NOTE, "").orEmpty()
 
@@ -183,6 +186,7 @@ object MusicKeys {
      */
     private fun key(c: Context, bt: Boolean) {
         val now = SystemClock.elapsedRealtime()
+        if (now < quietUntil) return
         if (now - keyAt < KEY_ONCE_MS) return
         keyAt = now
         note("key ${if (bt) KEY_BT_MUSIC else KEY_MUSIC}")

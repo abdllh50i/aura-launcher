@@ -580,6 +580,11 @@ class AboutPage(private val act: SettingsActivity) : Page(R.string.set_about, R.
         com.abdllh.aura.music.PhoneLink.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_bluetooth, R.string.about_naghm, it) }
         col.addRow(ctx.group(*rows.toTypedArray()))
 
+        // the first real numbers from this unit: a page of its own, nothing runs until its button is pressed
+        col.addRow(ctx.group(ctx.settingRow(R.drawable.ic_zap, ctx.getString(R.string.diag_title), ctx.getString(R.string.diag_about_sub), ctx.chevron()) {
+            ctx.startActivity(Intent(ctx, ScreenCheckActivity::class.java))
+        }))
+
         // Home-app control (car unit only)
         if (Device.isNwd) {
             col.addSection(ctx.getString(R.string.about_home_app))

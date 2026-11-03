@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- فحص الشاشة (الإعدادات › حول): زر واحد، حوالي دقيقتين، وتقرير يتصوّر وينرسل لخادم المالك -->
+<resources>
+    <string name="diag_title">فحص الشاشة</string>
+    <string name="diag_about_sub">يقيس الذاكرة والرسم والخريطة على هالجهاز، ويعطيك تقرير تصوّره. ما يشتغل إلا إذا ضغطت زره.</string>
+    <string name="diag_intro">يقيس اللي يقدر عليه هالجهاز فعلًا: الذاكرة، ورسم الشاشة، والخريطة والحركة فوقها. ياخذ حوالي دقيقتين والشاشة تتبدل خلالها. وقّف السيارة أول.</string>
+    <string name="diag_start_send">شغّل الفحص وأرسل التقرير لخادمك</string>
+    <string name="diag_start_keep">شغّل الفحص (بدون إرسال: ما فيه خادم مضبوط)</string>
+    <string name="diag_privacy">ما يشتغل شي ولا ينرسل شي إلا إذا ضغطت الزر. التقرير ما فيه مفتاح خادمك ولا مكان بيتك وعملك ولا أرقامك ولا رسايلك ولا أسماء أغانيك.</string>
+    <string name="diag_no_server">خادم الكلمات مو مضبوط، فالتقرير يبقى هنا على الجهاز وتشوفه في هالصفحة. تضبطه من الشاشة والصوت › الموسيقى.</string>
+    <string name="diag_running_sub">وقّف السيارة وخلها. لا تطفيها إذا تقدر.</string>
+    <string name="diag_starting">يبدأ…</string>
+    <string name="diag_cancel">إلغاء</string>
+    <string name="diag_cancelling">جاري الإلغاء…</string>
+    <string name="diag_progress">⁨%1$s⁩ · باقي حوالي ⁨%2$s⁩</string>
+    <string name="diag_refuse_moving">وقّف السيارة أول: الفحص ياخذ الشاشة دقيقتين</string>
+    <string name="diag_refuse_trip">فيه مشوار شغّال. خلّصه أول: الفحص ياخذ الشاشة دقيقتين</string>
+    <string name="diag_refuse_call">فيه مكالمة. جرّب بعدها</string>
+
+    <!-- خطوات الفحص على سطر التقدّم -->
+    <string name="diag_s_identity">الجهاز والنسخة</string>
+    <string name="diag_s_capacity">الذاكرة والتخزين</string>
+    <string name="diag_s_memory">ذاكرة عمري</string>
+    <string name="diag_s_voice">الصوت والإعدادات</string>
+    <string name="diag_s_wheel">أزرار الدركسون والـ GPS والشبكة</string>
+    <string name="diag_s_logs">السجلات وكتابة التقرير</string>
+    <string name="diag_t_gl">كرت الرسم</string>
+    <string name="diag_t_fill">قوة الرسم على الشاشة</string>
+    <string name="diag_t_map_surface">الخريطة بـ SurfaceView</string>
+    <string name="diag_t_map_texture">الخريطة بـ TextureView</string>
+    <string name="diag_t_motion">الحركة فوق الخريطة</string>
+
+    <!-- خطوة أزرار الدركسون -->
+    <string name="diag_wheel_title">اضغط أزرار الدركسون الحين، كل زر مرة (باقي ⁨%1$s⁩ ثانية)</string>
+    <string name="diag_wheel_none">ما وصل شي للحين. زر Mode خله: ممكن يفتح شاشة ثانية.</string>
+    <string name="diag_wheel_seen">وصل: ⁨%1$s⁩</string>
+
+    <!-- اللوحات الثابتة فوق الخريطة وقت القياس (كلام للتجربة بس) -->
+    <string name="diag_panel_title">لوحة تجربة</string>
+    <string name="diag_panel_line1">الوصول بعد ٢٤ دقيقة</string>
+    <string name="diag_panel_line2">طريق الملك فهد</string>
+    <string name="diag_panel_line3">لفّ يمين بعد ٤٠٠ متر</string>
+
+    <!-- مسجّل المشوار -->
+    <string name="diag_trip">سجّل الأداء في المشوار الجاي</string>
+    <string name="diag_trip_sub">كل دقيقة سطر صغير (الشاشة، الإطارات، المعالج، الذاكرة، السرعة، الحرارة). يطفي نفسه بعد ساعتين، والملف يروح مع التقرير الجاي.</string>
+    <string name="diag_trip_on">يسجّل: ⁨%1$s⁩ من ⁨%2$s⁩ سطر. يطفي نفسه بعد ساعتين، والملف يروح مع التقرير الجاي.</string>
+
+    <!-- الاختبارات اللي طاحت قبل -->
+    <string name="diag_skipped_title">اختبارات طيّحت عمليتها، ما تنعاد</string>
+    <string name="diag_retry_skipped">جرّبها مرة ثانية</string>
+
+    <!-- التقرير -->
+    <string name="diag_last_title">آخر فحص: ⁨%1$s⁩ UTC</string>
+    <string name="diag_emulator_note">هذا محاكي، مو الجهاز: الأرقام ما تعني شي عن السيارة.</string>
+    <string name="diag_stopped">انقطع الفحص قبل ما يخلص (⁨%1$s⁩): هذا اللي انجمع.</string>
+    <string name="diag_stopped_cancel">أنت ألغيته</string>
+    <string name="diag_stopped_moving">السيارة تحركت</string>
+    <string name="diag_stopped_left">طلعت من الصفحة أو جات شاشة فوقها</string>
+    <string name="diag_send_title">الإرسال لخادمك</string>
+    <string name="diag_sending">جاري الإرسال…</string>
+    <string name="diag_not_sent">ما انرسل. يبقى هنا لين تضغط.</string>
+    <string name="diag_sent_ok">وصل لخادمك الساعة ⁨%1$s⁩</string>
+    <string name="diag_send_no_server">ما فيه خادم مضبوط: التقرير باقي هنا</string>
+    <string name="diag_send_old_server">خادمك ما يعرف التقارير للحين: يبيله إعادة تشغيل بالنسخة الجديدة. التقرير باقي هنا.</string>
+    <string name="diag_send_http">الخادم رد بخطأ (⁨HTTP %1$s⁩). التقرير باقي هنا.</string>
+    <string name="diag_send_unreachable">ما وصل للخادم: الكمبيوتر مفتوح؟ والإنترنت شغّال؟ التقرير باقي هنا.</string>
+    <string name="diag_send">أرسله لخادمك</string>
+    <string name="diag_resend">إعادة الإرسال</string>
+
+    <string name="diag_none">ما توفر</string>
+    <string name="diag_yes">إي</string>
+    <string name="diag_no">لا</string>
+    <string name="diag_free">المتاح</string>
+    <string name="diag_warning">انتبه</string>
+    <string name="diag_error">خطأ</string>
+    <string name="diag_needs_root">يبيله الروت، وما اشتغل</string>
+    <string name="diag_no_answer">ما رد</string>
+    <string name="diag_not_installed">مو مثبّت</string>
+
+    <string name="diag_st_ok">تمام</string>
+    <string name="diag_st_crashed">طيّح عمليته</string>
+    <string name="diag_st_hung">علّق وانقتل</string>
+    <string name="diag_st_skipped">ما انعاد</string>
+    <string name="diag_st_failed">فشل</string>
+    <string name="diag_st_interrupted">انقطع</string>
+    <string name="diag_st_not_run">ما اشتغل</string>
+
+    <string name="diag_sec_summary">الخلاصة</string>
+    <string name="diag_sec_device">الجهاز والنسخة</string>
+    <string name="diag_sec_capacity">السعة</string>
+    <string name="diag_sec_gpu">كرت الرسم</string>
+    <string name="diag_sec_fill">قوة الرسم (طبقات بحجم الشاشة)</string>
+    <string name="diag_sec_memory">ذاكرة عمري</string>
+    <string name="diag_sec_map_surface">الخريطة: SurfaceView</string>
+    <string name="diag_sec_map_texture">الخريطة: TextureView</string>
+    <string name="diag_sec_motion">الحركة فوق الخريطة</string>
+    <string name="diag_sec_voice">الصوت</string>
+    <string name="diag_sec_network">الشبكة والجوال</string>
+    <string name="diag_sec_gps">الـ GPS (١٠ ثواني)</string>
+    <string name="diag_sec_car">السيارة والدركسون</string>
+    <string name="diag_sec_trip">مسجّل المشوار</string>
+    <string name="diag_sec_tests">الاختبارات</string>
+
+    <string name="diag_ram">الذاكرة (RAM)</string>
+    <string name="diag_gpu">كرت الرسم</string>
+    <string name="diag_es3">OpenGL ES 3</string>
+    <string name="diag_fill_4">٤ طبقات شفافة</string>
+    <string name="diag_map_surface">الخريطة SurfaceView</string>
+    <string name="diag_map_texture">الخريطة TextureView</string>
+    <string name="diag_layers">طبقات الشاشة</string>
+    <string name="diag_amri_memory">ذاكرة عمري</string>
+    <string name="diag_graphics">Graphics</string>
+    <string name="diag_write_speed">سرعة الكتابة</string>
+    <string name="diag_root">الروت</string>
+    <string name="diag_tests_bad">اختبارات ما تمت</string>
+
+    <string name="diag_app">نسخة عمري</string>
+    <string name="diag_rom_pack">حزمة الـ ROM</string>
+    <string name="diag_rom_copy">نسخة الـ ROM من التطبيق</string>
+    <string name="diag_updated">محدَّث فوق نسخة الـ ROM</string>
+    <string name="diag_fingerprint">Fingerprint</string>
+    <string name="diag_kernel">النواة</string>
+    <string name="diag_screen">الشاشة</string>
+
+    <string name="diag_mem_total">الذاكرة كلها</string>
+    <string name="diag_mem_avail">المتاح الحين</string>
+    <string name="diag_low_memory_at">حد الذاكرة القليلة</string>
+    <string name="diag_swap">zram</string>
+    <string name="diag_data_free">‏/data الفاضي</string>
+    <string name="diag_sd_free">التخزين الداخلي الفاضي</string>
+    <string name="diag_cpu">المعالج</string>
+    <string name="diag_cores">الأنوية</string>
+    <string name="diag_temp">أعلى حرارة</string>
+
+    <string name="diag_vendor">الشركة</string>
+    <string name="diag_renderer">الكرت</string>
+    <string name="diag_gl_version">النسخة</string>
+    <string name="diag_max_texture">أكبر صورة</string>
+    <string name="diag_surface_size">مساحة الرسم</string>
+    <string name="diag_etc1_encode">ضغط صورة ETC1 (المعالج)</string>
+
+    <string name="diag_pss_first">PSS أول قراءة</string>
+    <string name="diag_pss_second">PSS بعد 3 ثواني</string>
+    <string name="diag_native">Native</string>
+    <string name="diag_java">Java</string>
+    <string name="diag_hwui_gpu">ذاكرة HWUI في الكرت</string>
+    <string name="diag_threads">الخيوط</string>
+    <string name="diag_displayed">آخر فتح شاشة</string>
+    <string name="diag_crash_lines">أسطر انهيار في السجل</string>
+    <string name="diag_tombstones">Tombstones</string>
+
+    <string name="diag_tiles">الخرايط منين</string>
+    <string name="diag_map_empty">الخريطة ما حمّلت: الأرقام لأرضية فاضية</string>
+    <string name="diag_tiles_ms">وصلت الخرايط بعد</string>
+    <string name="diag_style_ms">جاهزية الخريطة</string>
+    <string name="diag_map_60">إطارات (حد 60)</string>
+    <string name="diag_map_30">إطارات (حد 30)</string>
+    <string name="diag_hwui_fps">إطارات واجهة HWUI</string>
+    <string name="diag_cpu_proc_sys">المعالج: العملية · الكل</string>
+    <string name="diag_pss_after">PSS بعدها</string>
+    <string name="diag_shown_fps">اللي طلع على الشاشة</string>
+
+    <string name="diag_m_slide_layer">لوحة تنزلق مع طبقة</string>
+    <string name="diag_m_slide_plain">لوحة تنزلق بدون طبقة</string>
+    <string name="diag_m_crossfade">تلاشي الشاشة كلها</string>
+    <string name="diag_m_bigtext">نص عربي كبير يظهر</string>
+    <string name="diag_m_glass9">لوحة زجاج 9-patch</string>
+    <string name="diag_m_fill">لوحة بتعبئة شفافة</string>
+    <string name="diag_motion_key">النسبة الأخيرة</string>
+    <string name="diag_motion_key_sub">الإطارات المتأخرة</string>
+
+    <string name="diag_tts">محركات النطق</string>
+    <string name="diag_recognisers">محركات الاستماع</string>
+    <string name="diag_google_app">تطبيق Google</string>
+    <string name="diag_arabic_voice">صوت عربي</string>
+
+    <string name="diag_wifi">الواي فاي</string>
+    <string name="diag_ip">العنوان</string>
+    <string name="diag_gateway">البوابة</string>
+    <string name="diag_rtt">زمن الرد من البوابة</string>
+    <string name="diag_port">منفذ نغم 47100</string>
+    <string name="diag_naghm">آخر خبر من نغم</string>
+
+    <string name="diag_gps">الإشارة</string>
+    <string name="diag_gps_none">ما فيه إشارة GPS خلال الـ 10 ثواني</string>
+    <string name="diag_gps_no_permission">ما فيه إذن للموقع</string>
+    <string name="diag_gps_rate">المعدل</string>
+    <string name="diag_gps_age">عمر آخر قراءة</string>
+    <string name="diag_gps_accuracy">الدقة</string>
+    <string name="diag_gps_sats">الأقمار: مستخدمة / مشاهدة</string>
+
+    <string name="diag_gear">القير</string>
+    <string name="diag_handbrake">الهاندبريك</string>
+    <string name="diag_bt_state">حالة صوت البلوتوث</string>
+    <string name="diag_keys">الأزرار اللي وصلت</string>
+    <string name="diag_keys_none">ما وصل زر</string>
+    <string name="diag_keys_raw">أحداث خام من الأجهزة</string>
+
+    <string name="diag_trip_lines">الأسطر</string>
+    <string name="diag_trip_last">آخر سطر: المعالج · PSS · المتاح</string>
+    <string name="diag_tests_ok">تمت</string>
+    <string name="diag_took">أخذ</string>
+    <string name="diag_previous_died">الفحص اللي قبله مات في</string>
+</resources>

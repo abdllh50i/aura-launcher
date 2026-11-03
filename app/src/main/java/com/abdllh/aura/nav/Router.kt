@@ -70,7 +70,12 @@ object Router {
     private val main = Handler(Looper.getMainLooper())
 
     /** [heading] (degrees) helps the router start in the direction the car is already moving. */
-    fun route(from: LatLon, to: LatLon, heading: Double?, done: (Route?, String?) -> Unit) {
+    fun route(from: LatLon, to: LatLon, heading: Double?, whenFound: (Route?, String?) -> Unit) {
+        val asked = android.os.SystemClock.elapsedRealtime()
+        val done = { r: Route?, e: String? ->
+            com.abdllh.aura.diag.TripRecorder.route("route", android.os.SystemClock.elapsedRealtime() - asked, r != null) // (only while it records)
+            whenFound(r, e)
+        }
         val ctx = com.abdllh.aura.nav.offline.OfflineMaps.context
         val offline = ctx != null && com.abdllh.aura.nav.offline.OfflineRouter.canRoute(ctx, from, to)
         if (!offline) {

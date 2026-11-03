@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The screen check (Settings › About): one button, about two minutes, a report to photograph and to send to the owner's server -->
+<resources>
+    <string name="diag_title">Screen check</string>
+    <string name="diag_about_sub">Measures memory, drawing and the map on this unit, and gives you a report to photograph. Runs only when you press its button.</string>
+    <string name="diag_intro">Measures what this unit can really do: memory, drawing, the map and motion over it. Takes about two minutes, and the screen changes meanwhile. Park the car first.</string>
+    <string name="diag_start_send">Run the check and send the report to your server</string>
+    <string name="diag_start_keep">Run the check (nothing sent: no server is set)</string>
+    <string name="diag_privacy">Nothing runs and nothing is sent unless you press the button. The report has no server key, no Home or Work location, no contacts, no messages and no song names.</string>
+    <string name="diag_no_server">The lyrics server is not set, so the report stays here on the unit and shows on this page. Set it in Display &amp; sound › Music.</string>
+    <string name="diag_running_sub">Stay parked. Please do not turn the car off.</string>
+    <string name="diag_starting">Starting…</string>
+    <string name="diag_cancel">Cancel</string>
+    <string name="diag_cancelling">Cancelling…</string>
+    <string name="diag_progress">%1$s · about %2$s left</string>
+    <string name="diag_refuse_moving">Park the car first: the check takes over the screen for two minutes</string>
+    <string name="diag_refuse_trip">A trip is running. End it first: the check takes over the screen for two minutes</string>
+    <string name="diag_refuse_call">A call is on. Try after it</string>
+
+    <string name="diag_s_identity">The unit and its versions</string>
+    <string name="diag_s_capacity">Memory and storage</string>
+    <string name="diag_s_memory">AMRI\'s memory</string>
+    <string name="diag_s_voice">Voice and settings</string>
+    <string name="diag_s_wheel">Wheel buttons, GPS and network</string>
+    <string name="diag_s_logs">Logs and writing the report</string>
+    <string name="diag_t_gl">The GPU</string>
+    <string name="diag_t_fill">Drawing power on the screen</string>
+    <string name="diag_t_map_surface">The map as SurfaceView</string>
+    <string name="diag_t_map_texture">The map as TextureView</string>
+    <string name="diag_t_motion">Motion over the map</string>
+
+    <string name="diag_wheel_title">Press your wheel buttons now, each once (%1$s s left)</string>
+    <string name="diag_wheel_none">Nothing yet. Leave Mode alone: it may open another screen.</string>
+    <string name="diag_wheel_seen">Seen: %1$s</string>
+
+    <string name="diag_panel_title">Test panel</string>
+    <string name="diag_panel_line1">Arrive in 24 minutes</string>
+    <string name="diag_panel_line2">King Fahd Road</string>
+    <string name="diag_panel_line3">Turn right in 400 m</string>
+
+    <string name="diag_trip">Record performance on the next trip</string>
+    <string name="diag_trip_sub">One small line a minute (screen, frames, CPU, memory, speed, temperature). Turns itself off after two hours; the file goes with the next report.</string>
+    <string name="diag_trip_on">Recording: %1$s of %2$s lines. Turns itself off after two hours; the file goes with the next report.</string>
+
+    <string name="diag_skipped_title">Tests that killed their process: not run again</string>
+    <string name="diag_retry_skipped">Try them again</string>
+
+    <string name="diag_last_title">Last check: %1$s UTC</string>
+    <string name="diag_emulator_note">This is an emulator, not the unit: these numbers say nothing about the car.</string>
+    <string name="diag_stopped">The check stopped before its end (%1$s): this is what it had.</string>
+    <string name="diag_stopped_cancel">you cancelled it</string>
+    <string name="diag_stopped_moving">the car moved</string>
+    <string name="diag_stopped_left">the page was left, or a screen came over it</string>
+    <string name="diag_send_title">Sending to your server</string>
+    <string name="diag_sending">Sending…</string>
+    <string name="diag_not_sent">Not sent. It stays here until you press.</string>
+    <string name="diag_sent_ok">Reached your server at %1$s</string>
+    <string name="diag_send_no_server">No server is set: the report stays here</string>
+    <string name="diag_send_old_server">Your server does not know reports yet: it needs a restart on the new version. The report stays here.</string>
+    <string name="diag_send_http">The server answered with an error (HTTP %1$s). The report stays here.</string>
+    <string name="diag_send_unreachable">Could not reach the server: is the PC on, and the internet working? The report stays here.</string>
+    <string name="diag_send">Send it to your server</string>
+    <string name="diag_resend">Send again</string>
+
+    <string name="diag_none">not available</string>
+    <string name="diag_yes">yes</string>
+    <string name="diag_no">no</string>
+    <string name="diag_free">free</string>
+    <string name="diag_warning">Note</string>
+    <string name="diag_error">Error</string>
+    <string name="diag_needs_root">needs the root shell, which did not work</string>
+    <string name="diag_no_answer">no answer</string>
+    <string name="diag_not_installed">not installed</string>
+
+    <string name="diag_st_ok">ok</string>
+    <string name="diag_st_crashed">killed its process</string>
+    <string name="diag_st_hung">hung and was killed</string>
+    <string name="diag_st_skipped">not run again</string>
+    <string name="diag_st_failed">failed</string>
+    <string name="diag_st_interrupted">interrupted</string>
+    <string name="diag_st_not_run">not run</string>
+
+    <string name="diag_sec_summary">Summary</string>
+    <string name="diag_sec_device">The unit and its versions</string>
+    <string name="diag_sec_capacity">Capacity</string>
+    <string name="diag_sec_gpu">The GPU</string>
+    <string name="diag_sec_fill">Drawing power (screen-sized layers)</string>
+    <string name="diag_sec_memory">AMRI\'s memory</string>
+    <string name="diag_sec_map_surface">The map: SurfaceView</string>
+    <string name="diag_sec_map_texture">The map: TextureView</string>
+    <string name="diag_sec_motion">Motion over the map</string>
+    <string name="diag_sec_voice">Voice</string>
+    <string name="diag_sec_network">Network and phone</string>
+    <string name="diag_sec_gps">GPS (10 seconds)</string>
+    <string name="diag_sec_car">The car and the wheel</string>
+    <string name="diag_sec_trip">Trip recorder</string>
+    <string name="diag_sec_tests">The tests</string>
+
+    <string name="diag_ram">Memory (RAM)</string>
+    <string name="diag_gpu">GPU</string>
+    <string name="diag_es3">OpenGL ES 3</string>
+    <string name="diag_fill_4">4 translucent layers</string>
+    <string name="diag_map_surface">Map as SurfaceView</string>
+    <string name="diag_map_texture">Map as TextureView</string>
+    <string name="diag_layers">Screen layers</string>
+    <string name="diag_amri_memory">AMRI\'s memory</string>
+    <string name="diag_graphics">Graphics</string>
+    <string name="diag_write_speed">Write speed</string>
+    <string name="diag_root">Root shell</string>
+    <string name="diag_tests_bad">Tests not completed</string>
+
+    <string name="diag_app">AMRI version</string>
+    <string name="diag_rom_pack">ROM pack</string>
+    <string name="diag_rom_copy">App copy in the ROM</string>
+    <string name="diag_updated">Updated over the ROM copy</string>
+    <string name="diag_fingerprint">Fingerprint</string>
+    <string name="diag_kernel">Kernel</string>
+    <string name="diag_screen">Screen</string>
+
+    <string name="diag_mem_total">All memory</string>
+    <string name="diag_mem_avail">Available now</string>
+    <string name="diag_low_memory_at">Low-memory line</string>
+    <string name="diag_swap">zram</string>
+    <string name="diag_data_free">/data free</string>
+    <string name="diag_sd_free">Internal storage free</string>
+    <string name="diag_cpu">Processor</string>
+    <string name="diag_cores">Cores</string>
+    <string name="diag_temp">Hottest zone</string>
+
+    <string name="diag_vendor">Vendor</string>
+    <string name="diag_renderer">Renderer</string>
+    <string name="diag_gl_version">Version</string>
+    <string name="diag_max_texture">Largest texture</string>
+    <string name="diag_surface_size">Drawing surface</string>
+    <string name="diag_etc1_encode">Encoding one ETC1 picture (CPU)</string>
+
+    <string name="diag_pss_first">PSS, first reading</string>
+    <string name="diag_pss_second">PSS, 3 s later</string>
+    <string name="diag_native">Native</string>
+    <string name="diag_java">Java</string>
+    <string name="diag_hwui_gpu">HWUI\'s GPU memory</string>
+    <string name="diag_threads">Threads</string>
+    <string name="diag_displayed">Last screen opened</string>
+    <string name="diag_crash_lines">Crash lines in the log</string>
+    <string name="diag_tombstones">Tombstones</string>
+
+    <string name="diag_tiles">Tiles from</string>
+    <string name="diag_map_empty">The map did not load: these numbers are for an empty land colour</string>
+    <string name="diag_tiles_ms">Tiles came after</string>
+    <string name="diag_style_ms">Map ready after</string>
+    <string name="diag_map_60">Frames (cap 60)</string>
+    <string name="diag_map_30">Frames (cap 30)</string>
+    <string name="diag_hwui_fps">HWUI frames</string>
+    <string name="diag_cpu_proc_sys">CPU: process · all</string>
+    <string name="diag_pss_after">PSS after</string>
+    <string name="diag_shown_fps">Shown on the screen</string>
+
+    <string name="diag_m_slide_layer">Panel slide, with a layer</string>
+    <string name="diag_m_slide_plain">Panel slide, no layer</string>
+    <string name="diag_m_crossfade">Full-screen crossfade</string>
+    <string name="diag_m_bigtext">Big Arabic text fading in</string>
+    <string name="diag_m_glass9">9-patch glass panel</string>
+    <string name="diag_m_fill">Translucent fill panel</string>
+    <string name="diag_motion_key">Last figure</string>
+    <string name="diag_motion_key_sub">late frames</string>
+
+    <string name="diag_tts">Speech engines</string>
+    <string name="diag_recognisers">Recognisers</string>
+    <string name="diag_google_app">Google app</string>
+    <string name="diag_arabic_voice">Arabic voice</string>
+
+    <string name="diag_wifi">Wi-Fi</string>
+    <string name="diag_ip">Address</string>
+    <string name="diag_gateway">Gateway</string>
+    <string name="diag_rtt">Gateway round trip</string>
+    <string name="diag_port">Naghm\'s port 47100</string>
+    <string name="diag_naghm">Naghm\'s last news</string>
+
+    <string name="diag_gps">Signal</string>
+    <string name="diag_gps_none">No GPS fix in these 10 seconds</string>
+    <string name="diag_gps_no_permission">No location permission</string>
+    <string name="diag_gps_rate">Rate</string>
+    <string name="diag_gps_age">Age of the last fix</string>
+    <string name="diag_gps_accuracy">Accuracy</string>
+    <string name="diag_gps_sats">Satellites: used / seen</string>
+
+    <string name="diag_gear">Gear</string>
+    <string name="diag_handbrake">Handbrake</string>
+    <string name="diag_bt_state">Bluetooth audio state</string>
+    <string name="diag_keys">Keys seen</string>
+    <string name="diag_keys_none">No key came</string>
+    <string name="diag_keys_raw">Raw device events</string>
+
+    <string name="diag_trip_lines">Lines</string>
+    <string name="diag_trip_last">Last line: CPU · PSS · free</string>
+    <string name="diag_tests_ok">Completed</string>
+    <string name="diag_took">Took</string>
+    <string name="diag_previous_died">The check before this died in</string>
+</resources>

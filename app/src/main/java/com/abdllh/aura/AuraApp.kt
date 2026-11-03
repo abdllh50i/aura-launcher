@@ -31,8 +31,10 @@ class AuraApp : Application() {
     override fun onCreate() {
         super.onCreate()
         // BootHome's process, right after a power-on: the user's storage is still closed (settings would throw) and
-        // nothing of AMRI is wanted yet but that one waiting screen
-        if (processName().endsWith(":boot")) return
+        // nothing of AMRI is wanted yet but that one waiting screen. The screen check's process (diag/): only its own
+        // tests, which bring up what they use; a crash there is theirs to report, not the crash guard's to count.
+        val process = processName()
+        if (process.endsWith(":boot") || process.endsWith(":diag")) return
         CrashGuard.install(this) // first: a crash while the rest of the start-up runs must be counted as well
         if (BuildConfig.DEBUG) {
             // emulator tests: the root shell through scripts/fake_adbd.py  (setprop debug.aura.adb 10.0.2.2:15555)
@@ -68,6 +70,7 @@ class AuraApp : Application() {
         com.abdllh.aura.system.WifiOnStart.init(this) // the Wi-Fi on when the car starts (the firmware's airplane mode off)
         Power.init(this) // after an "off now": the ACC-off behaviour goes back to the user's choice
         Front.init(this)
+        com.abdllh.aura.diag.TripRecorder.init(this) // (does nothing unless its switch is on)
         if (!disabled) {
             VolumeHud.init(this)
             MusicKeys.init(this)

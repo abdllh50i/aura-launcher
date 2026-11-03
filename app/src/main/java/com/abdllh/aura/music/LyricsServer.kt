@@ -211,6 +211,13 @@ object LyricsServer {
             if (o.has("heard") && !o.isNull("heard")) o.optInt("heard", -1) else -1, diag)
     }
 
+    // ------------------------------------------------------------------------------------------ the screen check
+    /** The screen check's report ([com.abdllh.aura.diag.ScreenCheck]), JSON up to 2 MB: the server's HTTP code. Blocking. */
+    fun sendReport(json: ByteArray): Int {
+        val b = base() ?: throw IllegalStateException("no server")
+        return request("POST", "$b/api/report", body = json, type = "application/json", readMs = 30_000).first
+    }
+
     // ------------------------------------------------------------------------------------------ HTTP
     /**
      * One request on a connection of its own (a kept one went stale when the PC's server restarted: "unexpected end of
