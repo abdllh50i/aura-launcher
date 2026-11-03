@@ -337,6 +337,12 @@ class MapsActivity : Activity() {
         // the preview route once a fix is there; a failed one is retried with growing pauses, not on every fix
         if (selected != null && preview == null && !routing && NavSession.state == NavSession.State.IDLE &&
             SystemClock.elapsedRealtime() >= routeRetryAt) requestRoute()
+        // OSRM's route came after BRouter's was shown: the card and the line take it (nothing is being driven yet)
+        preview?.better?.let { b ->
+            preview = b
+            showPreview(b)
+            map.setRoute(b.line.points)
+        }
     }
 
     private var routeFails = 0

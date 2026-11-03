@@ -578,6 +578,8 @@ class AboutPage(private val act: SettingsActivity) : Page(R.string.set_about, R.
         com.abdllh.aura.music.YtMusic.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_music, R.string.about_yt, it) }
         // Naghm on the owner's iPhone: when it last connected over the hotspot, and from where
         com.abdllh.aura.music.PhoneLink.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_bluetooth, R.string.about_naghm, it) }
+        // what navigation last did on its own: a late route taken, the route left, a trip resumed or not (and why)
+        com.abdllh.aura.nav.NavNote.text.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_nav, R.string.about_nav, it) }
         col.addRow(ctx.group(*rows.toTypedArray()))
 
         // Home-app control (car unit only)

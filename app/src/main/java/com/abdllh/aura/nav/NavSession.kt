@@ -10,11 +10,13 @@ import android.os.Looper
 import android.os.SystemClock
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.util.Log
 import com.abdllh.aura.R
 import com.abdllh.aura.util.LocaleHelper
 import com.abdllh.aura.util.Prefs
 import java.util.Locale
 import java.util.concurrent.CopyOnWriteArrayList
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -51,6 +53,16 @@ object NavSession {
     var arrivedAt = 0L
         private set
     const val ARRIVED_HOLD_MS = 30_000L
+    private const val TAG = "AuraNav"
+    /** A route that came late ([takeBetter]) is given up when the car is this far from it. */
+    private const val BETTER_GONE_M = 300.0
+    /** Moving this fast, the car's course must agree with it this closely. */
+    private const val BETTER_COURSE_KMH = 20.0
+    private const val BETTER_COURSE_DEG = 60.0
+    /** Nothing to do on either route for this long (seconds, within these metres) before a late route takes over. */
+    private const val BETTER_CLEAR_S = 30.0
+    private const val BETTER_CLEAR_MIN_M = 300.0
+    private const val BETTER_CLEAR_MAX_M = 1500.0
 
     private var app: Context? = null
     private val main = Handler(Looper.getMainLooper())
@@ -143,13 +155,12 @@ object NavSession {
         val off = snap.offset > limit
         if (!off) lastSeg = snap.segment
         val speed = if (l.hasSpeed()) l.speed * 3.6 else 0.0
+        if (!off && takeBetter(r, snap.along, here, l, speed, limit)) { update(l); return }
         val along = snap.along
         // the next thing the driver is told (a street that only changes its name is not one); a roundabout stays the
         // next one until the car has left it, with the distance to its exit
-        var next = r.steps.indexOfFirst { !it.silent && it.at + it.span > along + 3 }
-        if (next < 0) next = r.steps.size - 1
-        val step = r.steps[next]
-        val toNext = ((if (along > step.at) step.at + step.span else step.at) - along).coerceAtLeast(0.0)
+        val next = nextStep(r, along)
+        val toNext = toStep(r, next, along)
         val remaining = (r.line.length - along).coerceAtLeast(0.0)
         // on the route the arrow follows the road (steady, and right even when a GPS module reports no heading);
         // off it, the GPS heading while moving
@@ -168,6 +179,51 @@ object NavSession {
         if (offCount >= 3 && speed > 5 && !rerouting && SystemClock.elapsedRealtime() >= nextRerouteAt) reroute(here, l)
         if (!off) prompt(r, next, toNext, along, speed)
         changed()
+    }
+
+    private fun nextStep(r: Route, along: Double): Int {
+        val next = r.steps.indexOfFirst { !it.silent && it.at + it.span > along + 3 }
+        return if (next < 0) r.steps.size - 1 else next
+    }
+
+    private fun toStep(r: Route, next: Int, along: Double): Double {
+        val step = r.steps[next]
+        return ((if (along > step.at) step.at + step.span else step.at) - along).coerceAtLeast(0.0)
+    }
+
+    /**
+     * OSRM's route came after BRouter's was taken ([Route.better]): names on the signs and in the voice, and lanes where
+     * they exist. It takes over when it fits, without a word: the car on it and going its way, nothing to do soon on either
+     * route (no sign changing its mind before a turn). While that is not so it keeps waiting; a car that has left it behind
+     * (the two routes parted) has no use for it. True when it took over.
+     */
+    private fun takeBetter(r: Route, along: Double, here: LatLon, l: Location, speedKmh: Double, limit: Double): Boolean {
+        val b = r.better ?: return false
+        if (rerouting) return false
+        val s = b.line.snap(here, 0, 0, b.line.points.size)
+        if (s == null || s.offset > BETTER_GONE_M) {
+            r.better = null
+            NavNote.add("late route dropped: the car left it")
+            return false
+        }
+        if (s.offset > limit) return false
+        if (l.hasBearing() && speedKmh >= BETTER_COURSE_KMH && abs(Geo.angleDiff(l.bearing.toDouble(), s.bearing)) > BETTER_COURSE_DEG) return false
+        val clear = (speedKmh / 3.6 * BETTER_CLEAR_S).coerceIn(BETTER_CLEAR_MIN_M, BETTER_CLEAR_MAX_M)
+        if (toStep(r, nextStep(r, along), along) < clear) return false
+        val next = nextStep(b, s.along)
+        val toNext = toStep(b, next, s.along)
+        if (toNext < clear) return false
+        route = b
+        lastSeg = s.segment
+        offCount = 0
+        // not a word: the driver has heard what comes next, or will, at its time
+        forgetPrompts()
+        pendingIntro = false
+        saidLong.add(next)
+        saidEarly.add(next)
+        Log.i(TAG, "OSRM's late route taken over (${toNext.toInt()} m to its next step)")
+        NavNote.add("late route taken over")
+        return true
     }
 
     private fun forgetPrompts() {
