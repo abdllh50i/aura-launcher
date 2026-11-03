@@ -4,13 +4,10 @@ import android.app.Activity
 import android.graphics.drawable.ColorDrawable
 import android.view.View
 import com.abdllh.aura.util.Prefs
-import java.util.Calendar
-import kotlin.math.PI
-import kotlin.math.cos
 
 /**
- * Dark / light / automatic appearance. "Automatic" follows the daylight: light between sunrise and sunset,
- * estimated from the date for the latitude of the Gulf (about 05:15-18:45 in June, 06:45-17:15 in December).
+ * Dark / light / automatic appearance. "Automatic" follows the real daylight where the car is ([Daylight]): dark from
+ * civil dusk to civil dawn.
  */
 object Theme {
     const val AUTO = "auto"
@@ -20,16 +17,7 @@ object Theme {
     fun isDarkNow(): Boolean = when (Prefs.theme) {
         DARK -> true
         LIGHT -> false
-        else -> isNight(Calendar.getInstance())
-    }
-
-    fun isNight(c: Calendar): Boolean {
-        val day = c.get(Calendar.DAY_OF_YEAR)
-        val season = cos(2.0 * PI * (day - 172) / 365.0) // 1 at the June solstice, -1 in December
-        val sunrise = 6.0 - 0.75 * season
-        val sunset = 18.0 + 0.75 * season
-        val h = c.get(Calendar.HOUR_OF_DAY) + c.get(Calendar.MINUTE) / 60.0
-        return h < sunrise || h >= sunset
+        else -> Daylight.isNightNow()
     }
 
     /** Loads the tokens of the theme that should be showing now. Returns true when it differs from the loaded one. */
