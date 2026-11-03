@@ -437,13 +437,11 @@ class CarGlView(context: Context, private val dark: Boolean, private val bg: Int
         val app = context.applicationContext
         Thread({
             Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
-            val rgb = CarEtc.composed(app, m, i, underLayer(m))
+            // (the layer under the car, 0.9 MB, is made each time: the car comes to rest seldom, kept it was there for good)
+            val rgb = CarEtc.composed(app, m, i, CarEtc.under(m, bg, dark))
             if (rgb == null || !h.post { uploadRest(i, rgb) }) main.post { if (restWanted == i) restWanted = -1 } // may be tried again
         }, "car-rest").apply { isDaemon = true; start() }
     }
-
-    private var underCache: IntArray? = null
-    @Synchronized private fun underLayer(m: CarFrames.Meta): IntArray = underCache ?: CarEtc.under(m, bg, dark).also { underCache = it }
 
     /** The frames after the first ones may come now (any thread): the intro is over, or a finger wants them. */
     fun loadRest() {

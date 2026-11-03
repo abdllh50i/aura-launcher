@@ -119,7 +119,7 @@ class CarStage(context: Context) : FrameLayout(context) {
                 glOn = true
                 gpuDrawing = true
                 CarFrames.dropRawFiles(context)
-                CarFrames.trim(emptyList()) // the CPU's decoded frames are not drawn any more (tens of MB)
+                CarFrames.gpuDraws(true) // the CPU's frames are not drawn any more (tens of MB)
                 gpuAfterDrawMs = if (firstDrawAt != 0L) SystemClock.uptimeMillis() - firstDrawAt else 0L
                 android.util.Log.i("AuraCar", "GPU's first frame $gpuAfterDrawMs ms after the screen's")
                 introReady()
@@ -127,11 +127,12 @@ class CarStage(context: Context) : FrameLayout(context) {
                 if (anim == null) g.loadRest() // (else the intro's end asks for them)
                 invalidate()
             }
-            g.onLost = { glOn = false; cpuDraws = true; restAsked = -1; restFor = -1; invalidate() }
+            g.onLost = { glOn = false; cpuDraws = true; CarFrames.gpuDraws(false); restAsked = -1; restFor = -1; invalidate() }
             g.onFailed = {
                 glOn = false
                 gpuDrawing = false
                 cpuDraws = true
+                CarFrames.gpuDraws(false)
                 CarFrames.startRawFallback()
                 // an intro waiting for the GPU waits for the CPU's frames now, as on a first start
                 introWait?.let { go ->
@@ -174,6 +175,7 @@ class CarStage(context: Context) : FrameLayout(context) {
         super.onAttachedToWindow()
         CarFrames.addListener(onFrameReady)
         resolveHome()
+        if (!glOn) CarFrames.gpuDraws(false) // (a rebuilt screen: until its own GPU draws, the view shows the frame)
         // no intro asked for (a rebuilt screen): the resting view and its neighbours go into the GPU first
         // (before the GL view hears of its own attach, which comes after this)
         val g = glView
