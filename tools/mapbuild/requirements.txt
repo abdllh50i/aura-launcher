@@ -1,0 +1,8 @@
+# The Python that runs the scripts (3.11). fetch, places, glyphs, pack.
+numpy==2.4.6
+scipy==1.17.1
+pyarrow==24.0.0
+fonttools==4.63.0
+pillow==11.3.0
+# In a venv at <work>\venv: the cut, the coastline, the road side. Docker's Valhalla image has shapely, for the sea.
+# osmium==4.3.2

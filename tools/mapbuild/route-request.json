@@ -1,0 +1,25 @@
+{
+ "about": "What the app sends and how it reads the answer, for the port. The request is trips.py's, tested on 56 trips (tests/route_trips.py). Times: Valhalla drives at the posted limit and adds almost nothing for turns and signals, so multiply each step's duration by the factor for its own speed. The factors were fitted on 34 same-road trips against public OSRM, not against any real drive: an estimate, to be replaced from the owner's logged drives. Never tune time with top_speed.",
+ "request": {
+  "costing": "auto",
+  "costing_options": {"auto": {"top_speed": 160, "use_distance": 0.5, "use_tolls": 0.5, "use_tracks": 0.0}},
+  "format": "osrm",
+  "shape_format": "geojson",
+  "alternates": 2,
+  "units": "kilometers",
+  "language": "en-US",
+  "turn_lanes": true
+ },
+ "first_location": {"type": "break", "heading": "the car's, when known", "heading_tolerance": 45},
+ "last_location": {"type": "break", "search_cutoff": 1000},
+ "eta_scale_by_step_speed_kmh": [
+  {"from": 110, "factor": 1.27},
+  {"from": 85, "factor": 1.127},
+  {"from": 60, "factor": 1.178},
+  {"from": 35, "factor": 1.038},
+  {"from": 0, "factor": 1.27}
+ ],
+ "eta_scale_label": "estimate",
+ "service_road_switch": "search_filter on the start location: max_road_class = the side road's class, or one class below the main road when it is not known; min_road_class = the main road's class. Not exclude_locations: tests/route_probes.py",
+ "avoid_haram": "exclude_polygons: [ring of table zone, kind 1]. device-config.json allows it. A destination inside answers NoRoute."
+}

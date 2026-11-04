@@ -64,6 +64,7 @@ object OfflineMaps {
         if (app != null) return
         val c = ctx.applicationContext
         app = c
+        wirePack(c)
         TileServer.start()
         val db = File(dir(c), "map.db")
         if (db.exists()) {
@@ -87,6 +88,31 @@ object OfflineMaps {
             "downloading" -> {
                 status = Status(Phase.PAUSED, sizeBytes = size(c))
                 main.postDelayed(autoResume, 30_000L) // where it stopped (the unit slept or restarted)
+            }
+        }
+    }
+
+    /** What the pack in use is, as far as the map knows: id and date, since a pack rebuilt under one id is another pack. */
+    @Volatile private var packKey: String? = null
+
+    /** The pack manager's files to the map; and when the pack changes, the map reads the new one at once. */
+    private fun wirePack(c: Context) {
+        val pack = com.abdllh.aura.nav.pack.PackPaths
+        fun key() = pack.current(c)?.let { "${it.id} ${it.manifest.built}" }
+        PackTiles.paths = ManagedPack(c)
+        PackTiles.onServed = { pack.noteWorked(c) }
+        Thread({ packKey = key() }, "aura-offline-pack").start()
+        pack.addListener {
+            // (this also says when a pack has worked: then nothing changes for the map)
+            val now = key()
+            if (now != packKey) {
+                packKey = now
+                Log.i(TAG, "the pack in use is now $now")
+                PackTiles.changed()
+                // a tile cached under the same address before the pack came would be shown until it expires, up to a day
+                try { com.mapbox.mapboxsdk.offline.OfflineManager.getInstance(c).clearAmbientCache(null) } catch (t: Throwable) { Log.w(TAG, "$t") }
+                // a style built before the pack has the other fonts and no source for its places
+                com.abdllh.aura.nav.AuraMap.reloadStyles()
             }
         }
     }
@@ -130,6 +156,26 @@ object OfflineMaps {
             set(Status(Phase.NONE), force = true)
             main.post(done)
         }, "aura-offline-delete").start()
+    }
+
+    /**
+     * The 2.0 pack has worked ([com.abdllh.aura.nav.pack.PackManager.freeOldMap]): the old tiles and their search index go. BRouter's squares and its profile stay in this
+     * folder: BRouter is the fallback when Valhalla is guarded off or the pack is missing (maps.md 7.6).
+     */
+    fun freeOldTiles(done: () -> Unit) {
+        val c = app ?: return
+        main.removeCallbacks(autoResume)
+        stop = true
+        Thread({
+            while (running) SystemClock.sleep(100)
+            TileServer.store = null
+            store?.close()
+            store = null
+            dir(c).listFiles()?.filter { it.name.startsWith("map.db") }?.forEach { it.delete() }
+            Prefs.raw.edit().putString(KEY_STATE, "none").remove(KEY_UPDATED).apply()
+            set(Status(Phase.NONE), force = true)
+            main.post(done)
+        }, "aura-offline-free").start()
     }
 
     private fun openStore(f: File): TileStore = TileStore(f).also { store = it; TileServer.store = it }

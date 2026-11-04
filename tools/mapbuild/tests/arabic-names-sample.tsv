@@ -1,0 +1,301 @@
+city	Latin name in OSM	Arabic written by the build	rule	highway	lat	lon
+Buraidah-Unaizah	King Abdulaziz St	شارع الملك عبدالعزيز	table	trunk	26.06905	43.99419
+Dammam-Qatif	12B Street	شارع 12ب	number	residential	26.37807	50.18236
+Dammam-Qatif	14B Street	شارع 14ب	number	residential	26.38122	50.18084
+Dammam-Qatif	14C Street	شارع 14ج	number	residential	26.37654	50.18069
+Dammam-Qatif	15 Street	شارع 15	number	residential	26.45679	50.0831
+Dammam-Qatif	15D Street	شارع 15د	number	residential	26.37694	50.17983
+Dammam-Qatif	15th st	شارع 15	number	residential	26.45109	50.1162
+Dammam-Qatif	18th Street	شارع 18	number	tertiary	26.4329	50.10455
+Dammam-Qatif	27A St	شارع 27أ	number	residential	26.37303	50.18457
+Dammam-Qatif	29 St	شارع 29	number	residential	26.37634	50.18962
+Dammam-Qatif	4C Street	شارع 4ج	number	residential	26.37756	50.18885
+Dammam-Qatif	6B Street	شارع 6ب	number	residential	26.37811	50.18701
+Dammam-Qatif	7 Street	شارع 7	number	residential	26.37834	50.18615
+Dammam-Qatif	Abu Shadad Al Qurashi Street	شارع أبو شداد القرشي	learnt	residential	26.37661	50.18718
+Dammam-Qatif	Al Aswad Bin Zaid Street	شارع الأسود بن زيد	learnt	residential	26.37539	50.17983
+Dammam-Qatif	Al Fairouz Abadi St	شارع الفيروز آبادي	learnt	residential	26.3726	50.18515
+Dammam-Qatif	Al Khaleej Road	طريق الخليج	learnt	secondary	26.46661	50.07144
+Dammam-Qatif	Asma Bin Malik Street	شارع أسماء بن مالك	learnt	residential	26.37449	50.18012
+Dammam-Qatif	East 11th Street	شارع 11 الشرقي	table	service	26.39999	50.19742
+Dammam-Qatif	East 12th Street	شارع 12 الشرقي	table	service	26.39747	50.19935
+Dammam-Qatif	East 2nd Street	شارع 2 الشرقي	table	service	26.39418	50.18723
+Dammam-Qatif	Expressway 613	طريق 613	number	motorway	26.37151	50.09301
+Dammam-Qatif	Jamaluddin Al Naqeeb Street	شارع جمال الدين النقيب	learnt	residential	26.37919	50.18662
+Dammam-Qatif	King Fahad Ibn Abdul Aziz Road	طريق الملك فهد بن عبدالعزيز	table	primary	26.40744	50.06336
+Dammam-Qatif	King Faisal Street	شارع الملك فيصل	table	residential	26.44341	50.10673
+Dammam-Qatif	King Saud bin Abdulaziz Street	شارع الملك سعود بن عبدالعزيز	table	secondary	26.69329	50.02853
+Dammam-Qatif	Murjan St.	شارع مرجان	learnt	tertiary	26.47354	50.12518
+Dammam-Qatif	Omar Al Kendi St	شارع عمر الكندي	learnt	residential	26.37282	50.17985
+Dammam-Qatif	Othman Al Radhi St	شارع عثمان الرضى	learnt	residential	26.37298	50.18112
+Dammam-Qatif	Riyadh Road	طريق الرياض	table	tertiary	26.56757	50.03583
+Dammam-Qatif	Saad Ibn Abi Waqqas St.	شارع سعد بن أبي وقاص	learnt	tertiary	26.40982	50.04894
+Dammam-Qatif	Saeed Al Azdi Street	شارع سعيد الأزدي	learnt	residential	26.38737	50.17985
+Hofuf-Ahsa	Dammam-Hofuf road	طريق الدمام الهفوف	table	motorway	25.50092	49.41591
+Hofuf-Ahsa	Haradh	حرض	learnt	trunk	25.28387	49.49832
+Jeddah	Ahmad Al-Madni	أحمد المدني	learnt	residential	21.55443	39.20698
+Jeddah	Al Jil Al Jadid	الجيل الجديد	learnt	service	21.58467	39.1528
+Jeddah	Al Maadi	المعادي	learnt	tertiary	21.51597	39.16707
+Jeddah	Al Rawdah	الروضة	learnt	residential	21.55188	39.14309
+Jeddah	Al-Sakhawi	السخاوي	learnt	residential	21.55674	39.20548
+Jeddah	Ali Al Harithi	علي الحارثي	learnt	residential	21.55901	39.16253
+Jeddah	Ali Al-Murtada St.	شارع علي المرتضى	table	secondary	21.52874	39.23987
+Jeddah	Ash Sharif Al Umari	الشريف العمري	learnt	residential	21.55272	39.14475
+Jeddah	Bariq Al Amal	بارق الأمل	learnt	residential	21.55853	39.16904
+Jeddah	Bir Ar Rawha	بئر الروحاء	learnt	residential	21.56141	39.12873
+Jeddah	Corniche Road	طريق الكورنيش	table	secondary	21.59768	39.10671
+Jeddah	Dhahab Street	شارع ذهب	learnt	primary	21.4856	39.1856
+Jeddah	Fadl Allah	فضل الله	learnt	service	21.58303	39.15063
+Jeddah	Hadara	حضارة	learnt	residential	21.50193	39.22916
+Jeddah	Hail	حائل	table	residential	21.55127	39.15487
+Jeddah	Husayn Abdul Wahab	حسين عبدالوهاب	learnt	residential	21.56314	39.17427
+Jeddah	Khaled Ali	خالد علي	table	residential	21.55751	39.15746
+Jeddah	Medina Road	طريق المدينة	table	trunk	21.65654	39.15622
+Jeddah	Mohammed Shalhoub	محمد شلهوب	learnt	residential	21.55683	39.15879
+Jeddah	Nahdat At Talif	نهضة الطليف	learnt	residential	21.5536	39.16283
+Jeddah	Prince Naif Street	شارع الأمير نايف	table	secondary	21.59049	39.118
+Jeddah	Qalb Al Jazirah	قلب الجزيرة	learnt	tertiary	21.56349	39.13873
+Jeddah	Ring Road	الطريق الدائري	table	motorway_link	21.78652	39.13317
+Jeddah	Sari Road	طريق ساري	learnt	secondary	21.57728	39.15277
+Jeddah	Shafi Ibn Umar	شافي بن عمر	learnt	residential	21.58769	39.15099
+Jeddah	Sulayman Alhalabi	سليمان الحلبي	learnt	residential	21.57909	39.15105
+Jeddah	Yanbu	ينبع	table	residential	21.5819	39.17171
+Jeddah	Yusuf ibn Nasr	يوسف بن نصر	learnt	residential	21.58059	39.17611
+Jeddah	alfaisal	الفيصل	learnt	residential	21.51422	39.18791
+Jubail	Abu Hasan Bin Al Jawzi street	شارع أبو حسن بن الجوزي	learnt	unclassified	26.98972	49.66052
+Jubail	Al-Andalus 7	الأندلس 7	learnt	residential	27.1374	49.52809
+Jubail	Al-Andalus 8	الأندلس 8	learnt	residential	27.13715	49.52905
+Jubail	Al-Andalus 9	الأندلس 9	learnt	residential	27.13582	49.52973
+Jubail	Corniche	الكورنيش	table	footway	27.04479	49.63492
+Jubail	Dhahran Jubail ExpWay 613	طريق الظهران الجبيل 613	table	construction	26.99197	49.57028
+Jubail	Highway 121	طريق 121	number	secondary	27.02038	49.63467
+Jubail	Highway 218	طريق 218	number	primary	26.98843	49.51609
+Jubail	Ibn Majed Street	شارع ابن ماجد	table	residential	27.01533	49.66521
+Jubail	Jeddah Street (Road 274)	شارع جدة	table	secondary	27.01326	49.62852
+Jubail	Jubail University Road	طريق جامعة الجبيل	table	tertiary	27.10693	49.52196
+Jubail	King Abdul Aziz street	شارع الملك عبدالعزيز	table	primary	26.96954	49.67145
+Jubail	Madeena Street	شارع المدينة	table	secondary	27.00371	49.64956
+Jubail	Ras Al Khair - Jubail	رأس الخير - الجبيل	learnt	motorway	27.0659	49.44658
+Jubail	Road 113	طريق 113	number	secondary	27.06643	49.60053
+Jubail	Road 143	طريق 143	number	unclassified	27.05012	49.59448
+Jubail	Road 162	طريق 162	number	secondary	27.03858	49.53865
+Jubail	Road 183	طريق 183	number	unclassified	27.04629	49.57192
+Jubail	Road 184	طريق 184	number	unclassified	27.04271	49.56079
+Jubail	Road 195	طريق 195	number	secondary	26.98766	49.61755
+Jubail	Road 204	طريق 204	number	unclassified	27.03905	49.57065
+Jubail	Road 230	طريق 230	number	secondary	27.01608	49.5628
+Jubail	Road 241	طريق 241	number	secondary	27.03917	49.53937
+Jubail	Road 261	طريق 261	number	secondary	26.99648	49.56758
+Jubail	Road 263	طريق 263	number	secondary	27.01846	49.54134
+Jubail	Road 265	طريق 265	number	secondary	27.00213	49.55
+Jubail	king Faisal northern street	شارع الملك فيصل الشمالي	table	secondary	27.01581	49.6612
+Khobar-Dhahran	11th Street	شارع 11	number	residential	26.30795	50.13147
+Khobar-Dhahran	22 (A) Street	شارع 22أ	number	residential	26.34651	50.12898
+Khobar-Dhahran	22nd Street	شارع 22	number	residential	26.30362	50.12618
+Khobar-Dhahran	26th Street	شارع 26	number	residential	26.26401	50.19407
+Khobar-Dhahran	28th Street	شارع 28	number	residential	26.26448	50.20154
+Khobar-Dhahran	9th Street	شارع 9	number	residential	26.30391	50.13198
+Khobar-Dhahran	Abdullah bin Omar Street	شارع عبدالله بن عمر	table	tertiary	26.30385	50.19139
+Khobar-Dhahran	Alawali road	طريق العوالي	learnt	residential	26.29768	50.19218
+Khobar-Dhahran	Ali Street	شارع علي	table	residential	26.29414	50.15554
+Khobar-Dhahran	Anak	عنك	learnt	residential	26.28113	50.11086
+Khobar-Dhahran	Dahna Street	شارع الدهناء	table	residential	26.29354	50.10383
+Khobar-Dhahran	Dammam Blvd.	بوليفارد الدمام	table	secondary	26.27922	50.1153
+Khobar-Dhahran	Dhahran Boulevard	بوليفارد الظهران	table	secondary	26.31312	50.12186
+Khobar-Dhahran	Expressway 613	طريق 613	number	motorway	26.35473	50.10154
+Khobar-Dhahran	Hamza Street	شارع حمزة	learnt	residential	26.29322	50.15568
+Khobar-Dhahran	Haradh Avenue	جادة حرض	learnt	residential	26.28401	50.1172
+Khobar-Dhahran	Karan Road	طريق كران	learnt	residential	26.27788	50.11401
+Khobar-Dhahran	King Salman Street	شارع الملك سلمان	table	residential	26.29323	50.20968
+Khobar-Dhahran	King Saud Road	طريق الملك سعود	table	secondary	26.3086	50.17648
+Khobar-Dhahran	Prince Badr Street	شارع الأمير بدر	table	residential	26.28096	50.20887
+Khobar-Dhahran	Prince Musaid Street	شارع الأمير مساعد	table	residential	26.28584	50.21743
+Khobar-Dhahran	Prince Saad Street	شارع الأمير سعد	table	residential	26.28591	50.21697
+Khobar-Dhahran	Prince Sultan Bin Abdul Aziz Street	شارع الأمير سلطان بن عبدالعزيز	table	tertiary	26.32848	50.14148
+Khobar-Dhahran	Prince Sultan Road	طريق الأمير سلطان	table	primary	26.33387	50.15484
+Khobar-Dhahran	Prince Thamer Street	شارع الأمير ثامر	learnt	residential	26.28874	50.20767
+Khobar-Dhahran	Prince Turki Street	شارع الأمير تركي	table	tertiary	26.28945	50.21988
+Khobar-Dhahran	Sanabis Road	طريق سنابس	learnt	residential	26.27788	50.11401
+Khobar-Dhahran	Southern Street	الشارع الجنوبي	table	secondary	26.24216	50.19597
+Khobar-Dhahran	Sudair	سدير	learnt	living_street	26.29245	50.10074
+Khobar-Dhahran	West Ar-Rabiyah Street	شارع الرابية الغربي	learnt	residential	26.32695	50.12855
+Madinah	2nd Ring Road	الطريق الدائري الثاني	table	motorway	24.49601	39.6092
+Madinah	Abdullah Bin Salam	عبدالله بن سلام	learnt	residential	24.46413	39.60974
+Madinah	Abdullah Ibn Jubair Street	شارع عبدالله بن جبير	learnt	secondary	24.53032	39.59585
+Madinah	Abu Bakr Al Asadi Street	شارع أبو بكر الأسدي	learnt	residential	24.45457	39.61657
+Madinah	Abu Qatadah Al Ansari	أبو قتادة الأنصاري	learnt	secondary	24.45742	39.61744
+Madinah	Al Arqam Ibn Abi Al Arqam Street	شارع الأرقم بن أبي الأرقم	learnt	residential	24.47501	39.63097
+Madinah	Al Mutalib Bin Abdallah Street	شارع المطلب بن عبدالله	learnt	residential	24.4551	39.61508
+Madinah	Al Numan Bin Malik Street	شارع النعمان بن مالك	learnt	secondary	24.44868	39.63817
+Madinah	Al-Manarat Street	شارع المنارات	learnt	tertiary	24.47678	39.6425
+Madinah	Ali Bin Abi Talib (Awali Nazil)	علي بن أبي طالب	learnt	residential	24.44474	39.63007
+Madinah	As Saib Bin Habab Street	شارع السيب بن حباب	learnt	secondary	24.46209	39.61289
+Madinah	As Zubayr Bin Al Awam Street	شارع الزبير بن العوام	learnt	residential	24.46964	39.60407
+Madinah	As-Sih Street	شارع السيح	learnt	secondary	24.46953	39.59921
+Madinah	Bachir Bin Abi Zaid	بشير بن أبي زيد	learnt	secondary	24.40695	39.61319
+Madinah	Hajib Ibn Zararah Street	شارع حاجب بن زرارة	learnt	residential	24.47481	39.62989
+Madinah	Hassan Ibn Thabit Street	شارع حسان بن ثابت	table	tertiary	24.45059	39.64818
+Madinah	Ibn Taher	ابن طاهر	learnt	residential	24.4825	39.57619
+Madinah	Ibrahim Bin Saad Street	شارع إبراهيم بن سعد	table	residential	24.45546	39.61246
+Madinah	Jabir Bin Atiq Street	شارع جابر بن عتيق	learnt	residential	24.45344	39.61597
+Madinah	Jubarah Al Maliki Street	شارع جبارة المالكي	learnt	residential	24.46052	39.61648
+Madinah	Khouzaima Bin Thabit Street	شارع خزيمة بن ثابت	learnt	residential	24.46389	39.60424
+Madinah	King Khaled Bin Abdul Aziz Road	طريق الملك خالد بن عبدالعزيز	table	secondary	24.5287	39.68666
+Madinah	Muslim Ibn Hani Street	شارع مسلم بن هانئ	learnt	residential	24.46436	39.60576
+Madinah	Othman Bin Affan (Al-Ayoon.)	عثمان بن عفان	learnt	primary	24.48562	39.60294
+Madinah	Othman Ibn Affan Road	طريق عثمان بن عفان	learnt	primary	24.5504	39.59602
+Madinah	Prince Abdul Majeed Ibn Abdul Aziz Road	طريق الأمير عبدالمجيد بن عبدالعزيز	learnt	primary	24.47704	39.63063
+Madinah	Prince Naif Bin Abdul Aziz Road	طريق الأمير نايف بن عبدالعزيز	table	trunk	24.41253	39.52511
+Madinah	Prince Naif Bin Abdulaziz Road	طريق الأمير نايف بن عبدالعزيز	table	trunk	24.54527	39.62352
+Madinah	Saad Bin Thabit Street	شارع سعد بن ثابت	learnt	residential	24.49149	39.6062
+Makkah	Al Balad Al Amin Street	شارع البلد الأمين	learnt	residential	21.40173	39.86952
+Makkah	Al Bardi Street	شارع البردي	learnt	residential	21.41443	39.86509
+Makkah	Al Imam Al Bukhari Street	شارع الإمام البخاري	learnt	residential	21.43756	39.79787
+Makkah	Al Imam Muslim Street	شارع الإمام مسلم	learnt	residential	21.44481	39.80145
+Makkah	Al Khansa Street	شارع الخنساء	learnt	tertiary	21.44733	39.84647
+Makkah	Al Kidwah Tunnel	نفق الكدوة	learnt	tertiary	21.40341	39.82661
+Makkah	Al Mabadi Street	شارع المبادئ	learnt	residential	21.43381	39.858
+Makkah	Al Wasam Street	شارع الوسام	learnt	residential	21.39173	39.87976
+Makkah	Ar Rida Street	شارع الرضا	learnt	residential	21.43398	39.85726
+Makkah	As Shajar Street	شارع الشجر	learnt	residential	21.4131	39.86535
+Makkah	As Shuhada Street	شارع الشهداء	learnt	tertiary	21.4559	39.80908
+Makkah	At Tanim Street	شارع التنعيم	learnt	residential	21.43697	39.81067
+Makkah	Az Zakah Street	شارع الزكاة	learnt	tertiary	21.43645	39.83866
+Makkah	Az Zamzami Street	شارع الزمزمي	learnt	residential	21.40963	39.86278
+Makkah	Hamza Ibn Abdul Mutalib Street	شارع حمزة بن عبدالمطلب	learnt	residential	21.41723	39.82898
+Makkah	Hujun Tunnel	نفق الحجون	learnt	footway	21.43349	39.82416
+Makkah	Husain Sarhan Street	شارع حسين سرحان	learnt	secondary	21.45106	39.86296
+Makkah	Jeddah-Makkah Expressway	طريق جدة مكة	table	motorway	21.41375	39.75745
+Makkah	King Fahd Road	طريق الملك فهد	table	primary	21.4238	39.87251
+Makkah	King Road 44	طريق الملك 44	table	primary_link	21.40535	39.89148
+Makkah	Makkah-Jeddah Expressway	طريق مكة جدة	table	motorway	21.41914	39.77767
+Makkah	Mozdalifah	مزدلفة	table	primary	21.39178	39.89748
+Makkah	Muhammad Ali Maghrabi Street	شارع محمد علي مغربي	learnt	tertiary	21.3989	39.79522
+Makkah	Prince Majid Ibn Abdulaziz	شارع الأمير ماجد بن عبدالعزيز	table	primary	21.43303	39.85377
+Makkah	Prince Majid Ibn Abdulaziz Road	طريق الأمير ماجد بن عبدالعزيز	table	primary	21.43349	39.85316
+Makkah	Road 65	طريق 65	number	secondary	21.35823	39.97134
+Makkah	Souk Al-Arab Road 62	طريق سوق العرب 62	learnt	secondary	21.39792	39.90641
+Makkah	St-3	شارع 3	number	unclassified	21.41759	39.88155
+Makkah	St-4	شارع 4	number	unclassified	21.41697	39.88053
+Makkah	Talat Al Masafi Street	شارع تلعة المصافي	learnt	residential	21.41646	39.82928
+Makkah	Um Al Momeneen Road	طريق أم المؤمنين	learnt	secondary	21.46671	39.78171
+Riyadh	'Al Thana	الثناء	learnt	residential	24.73376	46.85778
+Riyadh	AL Habaq	الحبق	learnt	living_street	24.50293	46.63217
+Riyadh	Abdullah Al Nafees	عبدالله النفيس	learnt	residential	24.89995	46.80599
+Riyadh	Al Aslami	الأسلمي	learnt	living_street	24.8153	46.88042
+Riyadh	Al Baqar Valley	وادي البقر	learnt	residential	24.55278	46.72538
+Riyadh	Al Batah Valley	وادي البطاح	learnt	residential	24.55202	46.72649
+Riyadh	Al Bayar	البيار	learnt	living_street	24.75509	46.84217
+Riyadh	Al Bazan	البازان	learnt	living_street	24.80652	46.89062
+Riyadh	Al Bitar	البيطار	learnt	residential	24.61823	46.73247
+Riyadh	Al Fara Valley	وادي الفرع	learnt	residential	24.54837	46.72345
+Riyadh	Al Ghareeb	الغريب	learnt	residential	24.58927	46.75811
+Riyadh	Al Ghasaq	الغسق	learnt	residential	24.65021	46.59403
+Riyadh	Al Halal	الحلال	learnt	living_street	24.7946	46.62153
+Riyadh	Al Hasir	الحصير	learnt	living_street	24.49283	46.61867
+Riyadh	Al Hessiyah	الحيسية	learnt	service	24.48725	46.62033
+Riyadh	Al Jabran	الجبران	learnt	residential	24.65141	46.82946
+Riyadh	Al Jamuh Al Ansarii	الجموح الأنصاري	learnt	tertiary	24.69234	46.65183
+Riyadh	Al Jandul	الجندل	learnt	tertiary	24.60573	46.52626
+Riyadh	Al Jawad	الجواد	learnt	residential	24.40398	46.84884
+Riyadh	Al Jondob	الجندب	learnt	living_street	24.50308	46.62418
+Riyadh	Al Kawthar	الكوثر	learnt	tertiary	24.61816	46.86164
+Riyadh	Al Khatwa	الخطوة	learnt	living_street	24.50495	46.62836
+Riyadh	Al Majd	المجد	learnt	tertiary	24.6219	46.51709
+Riyadh	Al Mersad	المرصاد	learnt	living_street	24.54988	46.66012
+Riyadh	Al Mohayeda	المحايدة	learnt	living_street	24.54994	46.64998
+Riyadh	Al Nahdha road	طريق النهضة	learnt	primary	24.67256	46.76047
+Riyadh	Al Najil	النجيل	learnt	residential	24.53127	46.6843
+Riyadh	Al Omra	العمرة	learnt	living_street	24.7296	46.74058
+Riyadh	Al Qadhi St.	شارع القاضي	learnt	residential	24.59747	46.76225
+Riyadh	Al Qantara	القنطرة	learnt	residential	24.55455	46.85061
+Riyadh	Al Qatara Valley	وادي القطارة	learnt	residential	24.54595	46.72692
+Riyadh	Al Qatin	القطين	learnt	residential	24.52326	46.64727
+Riyadh	Al Qoz	القوز	learnt	tertiary	24.63296	46.55905
+Riyadh	Al Rania	الرنية	learnt	residential	24.56348	46.71132
+Riyadh	Al Sahel Valley	وادي الساحل	learnt	residential	24.55227	46.72969
+Riyadh	Al Sharaf	الشرف	learnt	living_street	24.7929	46.8064
+Riyadh	Al Washam Street	شارع الوشم	learnt	primary_link	24.65074	46.69118
+Riyadh	Al-'Aziziyah Road	طريق العزيزية	learnt	secondary	24.47194	46.86849
+Riyadh	Al-Firdous	الفردوس	learnt	living_street	24.76829	46.59215
+Riyadh	Al-Mansouriyah	المنصورية	learnt	tertiary	24.62495	46.52222
+Riyadh	Baten Mountain	جبل باطن	learnt	residential	24.52623	46.71652
+Riyadh	Bilal Bin Saad	بلال بن سعد	learnt	residential	24.52575	46.64402
+Riyadh	Dalej	دالج	learnt	residential	24.56002	46.71294
+Riyadh	Hamad Bin Zaid	حمد بن زيد	learnt	residential	24.52651	46.64217
+Riyadh	Hassan Abdullah	حسن عبدالله	table	residential	24.79789	46.90408
+Riyadh	Hibat Allah Bin Ibrahim	هبة الله بن إبراهيم	learnt	residential	24.69567	46.78075
+Riyadh	Ibn Mujahed	ابن مجاهد	learnt	unclassified	24.72235	46.84584
+Riyadh	Jabal Hasan	جبل حسن	learnt	residential	24.905	46.62784
+Riyadh	Khafaja Bin Sufian	خفاجة بن سفيان	learnt	tertiary	24.5782	46.84988
+Riyadh	Khurais Road	طريق خريص	learnt	motorway_link	24.76229	46.84071
+Riyadh	Marj Al Qalaa	مرج القلعة	learnt	unclassified	24.83656	46.80096
+Riyadh	Mohammed Bin Othaimeen	محمد بن عثيمين	learnt	unclassified	24.76056	46.78333
+Riyadh	Monia	منية	learnt	residential	24.55403	46.7281
+Riyadh	No. 10	رقم 10	table	living_street	24.7854	46.63636
+Riyadh	No. 15	رقم 15	table	residential	24.60942	46.46201
+Riyadh	No. 16	رقم 16	table	residential	24.78879	46.63633
+Riyadh	No. 185	رقم 185	table	residential	24.7983	46.60198
+Riyadh	No. 205	رقم 205	table	living_street	24.83503	46.67382
+Riyadh	No. 207	رقم 207	table	residential	24.8163	46.65812
+Riyadh	No. 214	رقم 214	table	residential	24.78967	46.60946
+Riyadh	No. 220	رقم 220	table	residential	24.82996	46.68055
+Riyadh	No. 227	رقم 227	table	residential	24.82944	46.68081
+Riyadh	No. 236	رقم 236	table	residential	24.79883	46.60045
+Riyadh	No. 255	رقم 255	table	residential	24.62221	46.51091
+Riyadh	No. 260	رقم 260	table	residential	24.83619	46.68661
+Riyadh	No. 280	رقم 280	table	residential	24.8371	46.65303
+Riyadh	No. 29	رقم 29	table	residential	24.54482	46.73128
+Riyadh	No. 308	رقم 308	table	residential	24.83148	46.67041
+Riyadh	No. 334	رقم 334	table	living_street	24.83664	46.67636
+Riyadh	No. 34	رقم 34	table	residential	24.80035	46.6295
+Riyadh	No. 355	رقم 355	table	living_street	24.833	46.674
+Riyadh	No. 425	رقم 425	table	residential	24.81667	46.60867
+Riyadh	No. 449	رقم 449	table	residential	24.82076	46.60563
+Riyadh	No. 451	رقم 451	table	residential	24.82017	46.60687
+Riyadh	No. 81	رقم 81	table	living_street	24.78514	46.58567
+Riyadh	No.21	رقم 21	table	residential	24.78453	46.57203
+Riyadh	No.456	رقم 456	table	residential	24.84237	46.66904
+Riyadh	No.51	رقم 51	table	residential	24.78508	46.57886
+Riyadh	Safages	صفاقس	learnt	residential	24.67614	46.83874
+Riyadh	Salasil	السلاسل	learnt	residential	24.54864	46.86119
+Riyadh	Second Ring Road	الطريق الدائري الثاني	table	trunk	24.59476	46.88652
+Riyadh	Taiba	طيبة	learnt	tertiary	24.64092	46.55697
+Riyadh	Wadi	وادي	learnt	pedestrian	24.76505	46.63925
+Riyadh	no.136	رقم 136	table	living_street	24.84378	46.63383
+Taif	Airport Road	طريق المطار	table	trunk	21.30859	40.43181
+Taif	Al Rajhi	الراجحي	learnt	secondary_link	21.34365	40.44572
+Taif	Al Salamah Street	شارع السلامة	learnt	tertiary	21.26983	40.40857
+Taif	Al Wahrani	الوهراني	learnt	residential	21.34314	40.45569
+elsewhere	10th Street	شارع 10	number	unclassified	25.13497	49.30183
+elsewhere	14th Street	شارع 14	number	residential	25.93916	49.67618
+elsewhere	15th Avenue	جادة 15	number	residential	25.13407	49.2966
+elsewhere	15th Street	شارع 15	number	residential	25.93903	49.67581
+elsewhere	22ND Street	شارع 22	number	residential	25.94261	49.67305
+elsewhere	2nd Avenue	جادة 2	number	service	26.39623	50.20004
+elsewhere	Al Bardia	البردية	learnt	service	24.39252	46.83707
+elsewhere	Al Dohan	الدوحان	learnt	residential	24.39518	46.83861
+elsewhere	Al Khafji	الخفجي	learnt	motorway	27.45648	49.14316
+elsewhere	Al Mashad	المشهد	learnt	residential	24.39435	46.83976
+elsewhere	Al Riyadh - Al Batha Road	طريق الرياض - البطحاء	learnt	trunk	24.13803	49.36327
+elsewhere	Al Tawuss	الطاووس	learnt	service	24.39562	46.83715
+elsewhere	C street	شارع ج	number	residential	25.93535	49.6663
+elsewhere	Hail Street	شارع حائل	table	residential	25.14562	49.2997
+elsewhere	Highway 40-	طريق 40	number	motorway	23.40677	43.94072
+elsewhere	Highway 80 East	طريق 80 الشرقي	table	motorway	29.32688	38.31561
+elsewhere	King Abdullah Street	شارع الملك عبدالله	table	tertiary	23.99598	38.19228
+elsewhere	King Faisal Rd	طريق الملك فيصل	table	tertiary	28.49342	48.49058
+elsewhere	Malila	مليلة	learnt	service	24.39572	46.83512
+elsewhere	Miqat Road	طريق ميقات	learnt	residential	21.62653	40.42903
+elsewhere	Najmah Street	شارع نجمة	learnt	residential	25.14354	49.29787
+elsewhere	No. 101	رقم 101	table	tertiary	23.943	47.25389
+elsewhere	No. 20	رقم 20	table	residential	23.94529	47.26848
+elsewhere	No. 26	رقم 26	table	residential	23.94403	47.27358
+elsewhere	No. 33	رقم 33	table	residential	23.9471	47.27316
+elsewhere	No. 49	رقم 49	table	residential	23.92688	47.27265
+elsewhere	No. 56	رقم 56	table	residential	23.93548	47.2773
+elsewhere	No. 97	رقم 97	table	residential	23.94415	47.25877
+elsewhere	Qatif Street	شارع القطيف	table	unclassified	25.14505	49.31267
+elsewhere	Riyadh - Al Qara'in	الرياض - القرائن	learnt	trunk	24.50273	44.38667
+elsewhere	Riyadh Street	شارع الرياض	table	residential	25.13857	49.30354
+elsewhere	wasit _ badr	واسط بدر	learnt	secondary	23.94852	38.72149

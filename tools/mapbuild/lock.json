@@ -1,0 +1,105 @@
+{
+ "about": "What the pack was built from. Regenerate with make_lock.py after a build.",
+ "images": {
+  "valhalla": {
+   "tag": "ghcr.io/valhalla/valhalla:3.9.1",
+   "digests": [
+    "ghcr.io/valhalla/valhalla@sha256:4fd114eb1d26b8fc2f43bcb3df234c1b63a0bf13c277405e5943d5361dc575de"
+   ]
+  },
+  "planetiler": {
+   "tag": "openmaptiles/planetiler-openmaptiles:3.16",
+   "digests": [
+    "openmaptiles/planetiler-openmaptiles@sha256:9c95d3fec85ac28380f25b85e6c887b88c1b1478809e7410cc74b022be28e099"
+   ],
+   "planetiler": "0.9.3 e6e13811"
+  }
+ },
+ "library": {
+  "valhalla_mobile": "0.6.4",
+  "valhalla_commit": "bafb69902220615a48307d5c790fb6c943802ba4"
+ },
+ "data": {
+  "osm_stamp": "2026-11-02T21:21:26Z",
+  "files": {
+   "src/gcc-states-latest.osm.pbf": {
+    "bytes": 257018149,
+    "sha256": "16587e6a8b95264a7ab68e854ce8b9b7bb4bb0d353e7b5afb59bb97cac2ab853",
+    "from": "https://download.geofabrik.de/asia/gcc-states-latest.osm.pbf"
+   },
+   "src/ksa.osm.pbf": {
+    "bytes": 108978571,
+    "sha256": "2ab28b64aab8f11b2b274ffa0615211eebc16eef4d1ad6b755354c64cf452263",
+    "from": "cut_pbf.py, from the PBF above and polygon/ksa.poly"
+   },
+   "src/ksa-ar.osm.pbf": {
+    "bytes": 109010531,
+    "sha256": "5a62d4a22d640ef3432b3203df68af0cf266db6dd8db8b87d4cbfa0e57da2f03",
+    "from": "arabic_names.py apply, from the PBF above with arabic_names_rules.json and arabic_names_words.tsv"
+   },
+   "sources/natural_earth_vector.sqlite.zip": {
+    "bytes": 433384440,
+    "sha256": "bd9420e7303f6abd4df5245be57107eec3ed4fa0246d31fa63bbc6ec95aaeb56",
+    "from": "https://dev.maptiler.download/geodata/omt/natural_earth_vector.sqlite.zip (Planetiler's --download)"
+   },
+   "sources/water-polygons-ksa.shp.zip": {
+    "bytes": 6254178,
+    "sha256": "161bf9cacc574f0f9b8ce9655115c571b3e0cbdd045dabe01e78fac34aed7953",
+    "from": "make_water_polygons.py"
+   },
+   "sources/lake_centerline.empty.shp.zip": {
+    "bytes": 664,
+    "sha256": "0db1bf6f5d636bf25f35dcf69dd3962cc74b449988616ef87932f89233d09d04",
+    "from": "make_empty_shapefile.py"
+   },
+   "src/overture/divisions-sa.parquet": {
+    "bytes": 972078,
+    "sha256": "369effe5bcbdf7f54bd6f1565b617f8cacc440c631199c6823bb2d61ed1f2586",
+    "from": "fetch_overture.py"
+   },
+   "src/overture/division_areas-sa.parquet": {
+    "bytes": 4896485,
+    "sha256": "b8c4a46c25e5568eb0ccafebdaac21a6eef627847227271d505e8d4c703de745",
+    "from": "fetch_overture.py"
+   },
+   "places/additions.json": {
+    "bytes": 16355,
+    "sha256": "75618df079085a573f944cb68a4b0768e55dd4be60c650b43c7366ad486d8e7a",
+    "from": "a read-only copy of branch mapdata's additions.json"
+   },
+   "dl/aar/valhalla-mobile-0.6.4.aar": {
+    "bytes": 10061612,
+    "sha256": "5c3118b51ff4b17655d6239a5e3f2ebdb0c36c0da3ba34a771bd7078f247dd00",
+    "from": "https://repo1.maven.org/maven2/io/github/rallista/valhalla-mobile/0.6.4/valhalla-mobile-0.6.4.aar"
+   },
+   "tools/mapbuild/arabic_names_rules.json": {
+    "sha256": "6274ac13313149d1694e50c26e368faf7a21cb6f1b21a91702082cc9259b1a51",
+    "from": "in this repository, read by arabic_names.py"
+   },
+   "tools/mapbuild/arabic_names_words.tsv": {
+    "sha256": "86fda3e1c6f4dd2decda216322cbe5f4441e5151a6012a1c6bd11b1195fd3acf",
+    "from": "in this repository, read by arabic_names.py"
+   }
+  },
+  "gcc_pbf_md5": "5802ffc22e90f0a05fb1f76d1f7819f9",
+  "overture_release": "2026-10-21.0",
+  "fonts": [
+   {
+    "file": "IBMPlexSansArabic-Regular.ttf",
+    "sha256": "6f611412270a132bbac838da9259d4c68569b4175f3b3b8fa3fa36a30b56dab9"
+   },
+   {
+    "file": "IBMPlexSansArabic-SemiBold.ttf",
+    "sha256": "597bd5502e5997be4414e4c9c88834b30ff3784250c84f20bce2b20e53ebd467"
+   }
+  ]
+ },
+ "tools": {
+  "python": "3.11.0",
+  "numpy": "2.4.6",
+  "scipy": "1.17.1",
+  "pyarrow": "24.0.0",
+  "fontTools": "4.63.0",
+  "PIL": "11.3.0"
+ }
+}

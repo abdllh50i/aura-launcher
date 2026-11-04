@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pack_title">Saudi map</string>
+    <string name="pack_channel">Map download</string>
+    <string name="pack_none">The map is not on this unit</string>
+    <string name="pack_checking">Checking…</string>
+    <string name="pack_offer">The map is ready to download</string>
+    <string name="pack_update">A newer map is available</string>
+    <string name="pack_fetching">Downloading the map %1$s%% · %2$s/s</string>
+    <string name="pack_copying">Copying the map from the stick %1$s%% · %2$s/s</string>
+    <string name="pack_waiting">The connection dropped, trying again · %1$s%%</string>
+    <string name="pack_trip">Stopped for the trip, goes on when you arrive · %1$s%%</string>
+    <string name="pack_paused">Stopped · %1$s%%. Go on whenever you like</string>
+    <string name="pack_verifying">Checking the files %1$s%%</string>
+    <string name="pack_installed">The map is ready</string>
+    <string name="pack_sizes">Download %1$s, takes %2$s on the unit. Needs %3$s free, %4$s free now.</string>
+    <string name="pack_usb_advice">If your internet is a phone hotspot, the easy way is a USB stick: copy the map onto it from a computer and plug it in here.</string>
+
+    <string name="pack_err_net">No internet, or a weak connection. It keeps trying by itself.</string>
+    <string name="pack_err_clock">Could not reach the server safely. Check that the unit\'s date is right.</string>
+    <string name="pack_err_not_published">The map is not on the server yet.</string>
+    <string name="pack_err_space">Not enough free space. Free some and try again.</string>
+    <string name="pack_err_bad_data">Files arrived damaged more than once. Try later, or use a USB stick.</string>
+    <string name="pack_err_app_old">This map needs a newer version of the system. Update the system first.</string>
+    <string name="pack_err_pack_old">This map is too old for this version of the system.</string>
+    <string name="pack_err_manifest">The map\'s description file is not valid.</string>
+    <string name="pack_err_usb_gone">The stick was removed. Plug it in and go on.</string>
+    <string name="pack_err_usb_damaged">A file on the stick is damaged. Copy the map onto it again.</string>
+    <string name="pack_err_no_usb">No map on a stick. It needs a folder named amri-maps.</string>
+    <string name="pack_err_disk">A storage error happened. Try again.</string>
+    <string name="pack_err_trip">Not during a trip.</string>
+</resources>

@@ -538,7 +538,7 @@ view alpha would draw it through an offscreen layer on every frame). `placeOverl
 tilt only when they changed (0.5 px / 0.5°). Callers still pass bearing 0 for a fix without one; below 6 km/h the
 last heading is kept anyway.
 
-**The style** (`MapStyle`):
+**The style** (`MapStyle`; in 2.0 the colours below are the design's and much of the land changed: "The map on the pack"):
 * The route's colour (`routeBase()`, also the turn arrow's, the car's and the destination's) is the guidance colour,
   `Guide.color()`, the same as the sign's over the map: the owner's accent when it is blue, cyan or violet, otherwise
   the default blue (amber is the motorways' colour, red the cameras', green the parks' and graphite the roads': a
@@ -770,6 +770,128 @@ routing files removed, the search index rebuilt, `VACUUM`), without downloading 
   routing squares, ~27 MB). Offline tests on the emulator: `svc data disable` + an iptables REJECT on every interface
   except DNS and 10.0.2.2, and delete `files/mbgl-offline.db` (MapLibre's own cache) with the app stopped.
 
+### The map pack on the unit (2.0: `nav/pack/`, `scripts/pack_server.py`, `pack_e2e.py`, `make-usb-pack.ps1`)
+Replaces `OfflineMaps` for 2.0. `tools/mapbuild/make_pack.py` makes the pack (19 assets, 387 MB to fetch, 713 MB on the disk, `needBytes` 990 MB); this gets it onto the unit
+and never breaks a working map.
+* **Everyone else asks `PackPaths`** (`routeTar`, `placesDb`, `baseMbtiles`, `placesMbtiles`, `glyphsDb`, `current`), each time a file is opened: a File or null, no Context kept, works in
+  `:route` too (there it sees a new pack by the pointer file's time). What it gives is read only: open with `OPEN_READONLY`. Who has served real data from it says `noteWorked` once.
+* **Files:** `files/maps2/current` (one line, the id; atomic rename), `packs/<id>/` (verified), `staging/<id>/` (on its way, with `progress.json`, `manifest.json`, one `<chunk>.part`), `trash/`.
+  `tools/mapbuild/device-config.json`'s `tile_extract` says `files/maps2/route.tar`: that path does not exist here, `:route` must write `PackPaths.routeTar` into its config.
+* **One chunk at a time** (`PackJob`): GET with Range into `.part`, SHA-256 of the gzip file, gunzip at the piece's offset with a sync every 8 MB, mark in `progress.json`, delete the part. A kill anywhere loses at most
+  the chunk in hand. Pieces are `posix_fallocate`d first, so a full disk shows before the first byte and the file is not in fragments.
+* **Why fsync before every rename:** the unit's `/data` is ext4 with `noauto_da_alloc` (vendor `fstab.sun50iw9p1`): without it, a rename after a crash can leave an empty file.
+* **No validators, only hashes.** No `If-Range`, `ETag` or `Last-Modified`: GitHub's CDN answers 206 to a wrong validator (`maps.md` 15.1). A resume's `Content-Range` must start where asked and end at the chunk's end;
+  anything else drops the part. A resume starts 64 KB before the part's end, as cheap insurance for the bytes just before a drop. `Accept-Encoding: identity`: the platform would ask for gzip and unpack it. Redirects followed by hand, https on every hop in release.
+* **Whole-file check last:** every piece's SHA-256, with a CRC per chunk from the moment it was written, so a block damaged after its sync (power cut, bad eMMC) costs that chunk rather than the piece. Then `PackVerify`: read-only
+  open, `quick_check` on `places.db` with its schema and norm version against the manifest, `metadata` and a tile from both mbtiles, the Arabic ranges in `glyphs.db`, `index.bin` first in the tar. Only then the rename into `packs/` and the pointer. A kill between those two is finished by the next start (`restore`).
+* **The old stays:** the pack in use is never touched by a job. After a switch the previous pack and `files/offline/map.db` stay until `noteWorked`; then the old pack goes by itself and `Status.oldMapBytes` offers `freeOldMap`, which leaves
+  BRouter's `segments4` (the fallback router, `maps.md` 7.6).
+* **Nothing starts by itself.** Not at a process start, not after a reboot (`PAUSED`, with its percent, from the disk), not for a newer manifest (`checkUpdate` only makes an offer). `releases/latest/download/manifest.json` says 302 to the tag, and the chunks are then fetched under that tag.
+* **Trips:** all work stops during a trip (`TRIP_HOLD`, through `NavSession`'s listener): a low priority is not enough on four A53 cores and one eMMC next to the map and the voice. It goes on when the trip ends. No wake lock: with the ignition off it could drain the car's battery; a sleep cuts the connection and the retry takes it from there.
+* **USB and SD:** `<mount>/amri-maps/manifest.json`, the same chunks and hashes. Mounts from the firmware's files, not seen on a unit: vold labels `udisk`, `udiskh`, `udisk3`, `udisk4`, `card` (vendor fstab) land as `/mnt/media_rw/udisk1`, `udiskh1`, `udisk31`, `udisk4`, `card1` (stock launcher's strings), and `/mnt/udisk...`, `/mnt/card`, props `ro.nwd.usb1.path`... (`com.nwd.app.NwdDeviceConfig`). What the process cannot read
+  itself the root shell does (`RootSource`: `dd` 8 MB at a time into a part the app already owns; `LocalAdb` has no binary channel). `scripts/make-usb-pack.ps1 -Stick E:` writes a stick: FAT32 advised, free space checked, every file read back.
+* **A debug broadcast drives it:** `am broadcast -a com.abdllh.aura.debug.PACK --ez start true`, see `PackDebug`; props `debug.aura.pack.base`, `.usb`, `.free`, `.root`. `scripts/pack_e2e.py` runs the tests against `scripts/pack_server.py` (Range, 302, drops, silence, a wrong byte, a spliced version, a portal page, 503).
+* **`minApp`:** compared with `BuildConfig.VERSION_CODE`. The manifest of 2026-11-04 says `minApp` 200000, under every version since 0.20: it refuses nothing. 2.0.0-beta.1 is 2000001: pass `--min-app 2000001` to `make_pack.py` for the release.
+
+* **Tests:** `src/test` `PackRulesTest`, `PackVerifyTest` (18). On the emulator `scripts/pack_e2e.py` with the real pack; a worktree with no `signing` folder builds `-PstandIn` with a throwaway key, beside the emulator's own app: a second home screen makes Android drop the chosen one, so after the tests `adb uninstall com.abdllh.aura.standin` and `cmd package set-home-activity com.abdllh.aura/.home.HomeActivity`.
+* **Checked on the emulator** (x86_64, /data ext4; the pack built 16:41Z: 379,019,495 bytes to fetch, 705,169,408 on the disk; through `adb reverse`, so a computer's file and a USB-like link, not a hotspot):
+  * Whole install 13-24 s, the emulator's load decides (15-27 MB/s all told; 386,613,417 bytes of the 15:24Z build also 24 s), of which about 3 s the whole hash: 19 requests through 19 redirects, not one byte fetched twice, no `If-Range` sent, foreground while it runs. The `aura-pack` thread 55-87 % of one core, PSS at most 5 MB up. At 1.5 MB/s: 2.7 % of one core, PSS 1-3 MB up.
+  * `kill -9` at 15, 41, 70 %: the state comes back PAUSED with its percent, no byte asked for until told, 32 MB fetched again over the three, against a largest chunk of 55.6 MB (most of it was still in the tunnel's buffers). The process killed at each of after-fetch, after-unpack, after-mark, before-ok, before-rename, before-pointer, after-pointer: every file right afterwards; killed before the pointer, the next start finishes the switch by itself.
+  * Cut every 5 MB: 66 drops, 163 s, 4.3 MB over (the 64 KB overlap each time), no chunk refused. A reset every 7 MB: 48, 119 s, 14 MB over, no chunk refused. None of the 114 cuts damaged a part. Nor did 80 resets with no overlap at all (48 through adb's tunnel, 32 through the emulator's own network), so the overlap is not shown to be needed: it is kept because it costs 64 KB a drop against a whole chunk, and `fetchFile` did lose bytes on hard cuts once (below, `ResumeCheck`).
+  * One flipped byte, and another version of a file spliced in by a resume (a CDN that ignores If-Range): exactly those two chunks refused and fetched again. The same chunk wrong three times: FAILED, plain words, nothing broken; a resume finishes. A 503, a sign-in page answering 200 (for a chunk and for the manifest), a link that goes silent (found by the 25 s read timeout), a Range ignored, a Content-Range that starts one byte off: waited out or started over, all files right.
+  * Too little space (fake 500 MB): NO_SPACE with the numbers, only the manifest fetched, no folder made. A disk really full behind a fake answer (299 MB left): NO_SPACE from the allocation, the room given back, the process alive.
+  * A newer manifest under `releases/latest/download`: an offer, no byte for 5 s. A live reader through it: on the old pack at 40 %, after a `kill -9`, moved to the new one within half a second of the switch, 46 reads with no error, and the old file still open and readable afterwards. `noteWorked`: the old pack goes, `oldMapBytes` shows; `freeOldMap`: `map.db` gone, `segments4` there. `cancel` and `deleteCurrent` leave what they say.
+  * USB: from a readable folder 17 s, pulled out in the middle (USB_GONE, percent kept), put back, resumed, no network byte. Through `scripts/fake_adbd.py` as root from a folder the app cannot read (`/mnt/media_rw/udisk1`): 21 s with a `kill -9` in it; every file the app's.
+  * A real trip in `NavSession`: stopped about a second after the broadcast, no byte in 6 s; during the whole-file hash the thread used nothing in 3 s; goes on after. Pause, resume, pause, resume without waiting: nothing stuck or ran twice.
+  * `adb reboot` at 48 %: PAUSED, nothing by itself, 3 chunks marked before and after. `echo b > /proc/sysrq-trigger` at 46 %, no sync, no unmount: the same, and the part came back at exactly 16 MiB, two sync steps: what was not synced was gone and nothing else. Every file right by `sha256sum` on the device in every case above.
+* **Not known until the unit:** free space on `/data`; speed of the eMMC and of SHA-256 and gunzip on the A53s in 32-bit (`last-install.txt`, `PackManager.lastInstall`, says fetch, hash, unpack, whole hash and open in seconds: the first real numbers); `posix_fallocate` on its ext4 and 4.9 kernel (falls back to a plain length); whether the app can read a mount itself or goes through root, and the mount names (from strings, never seen); a real hotspot; GitHub's `latest/download` 302 (measured for `download/<tag>` only).
+
+### The map on the pack (2.0: `MapStyle`, `MapPalette`, `Poi`, `offline/PackTiles`, `offline/KsaOutline`, `TileServer`, `tools/mapbuild`)
+The style above reads the pack: colours from the design, labels in the OS's own font, places from Overture and OSM, on a unit that
+has no internet. A unit with no pack sees the same colours and today's chain (online OpenFreeMap, `files/offline/map.db`), with Noto
+Sans and OpenMapTiles' places.
+
+**Palette.** `scripts/gen_map_palette.py` turns the design's `map-day.json` and `map-night.json` into `nav/MapPalette.kt` (and
+`polygon/ksa.poly` into `offline/KsaOutlineData.kt`): one command after a polish, and it stops on a missing key or a colour that is
+not `#RRGGBB`. Kotlin rather than an asset: nothing to read at run time, nothing that can fail while the home screen starts. The
+default accent draws in the palette's own route and casing (`#1F6BFF` by day, the sign is still the accent's `#3E6AE1` until the design's
+tokens come with the shell); an accent the owner picked (blue, cyan, violet) is worked out as before, line and sign in one colour.
+Cameras, signals and bumps keep their colours in code, as they were.
+`Palette.mapLand` is the same value as `land`, as `tokens.json` says.
+
+**What changed in the layers, and why** (each found on real tiles):
+* The tiles' `park` layer is no park. In the Kingdom it holds reserves the size of countries and the Haram's boundary, whose class is
+  whatever a mapper wrote in `protection_title` (`منطقة_مقدسة_إسلامية`): at 0.9 opacity all of Makkah and the reserves were green. Now
+  only classes named in the style: `forest` is green; a reserve (`national_park`, `nature_reserve`, `protected_area`,
+  `protected_site`) is a 9 % tint up to z9 that is gone by z11, with its name (`park-name`, z7 to z11).
+* `landcover` by subclass: class `grass` also holds `scrub`, `heath` and `grassland`, and `wetland` holds the salt flats: half the
+  Eastern Province came out as a lawn. Only gardens, parks, golf and meadows at 0.9, fields (`farmland`) at 0.45.
+* `sand` is the land's own colour in the palettes: its layer is left out while that is so.
+* `waterway` from z10.5 with a fade to z12, no `drain` or `ditch`: a river here is a dry wadi, and thousands of them laid a blue web
+  over the desert at the zooms of a long drive. `intermittent` water on a layer of its own at 0.45 (a data-driven opacity would have
+  moved all water out of the opaque pass).
+* Borders: `maritime != 1` (they crossed the Gulf and the causeway); a region's border thinner and fainter than the country's, gone by z11.
+* Seas: no tile holds the Arabian Gulf or the Red Sea (`water_name` has the Gulf of Bahrain and the Straits of Tiran, from z8), so
+  `MapStyle.SEAS` are fixed points in a small GeoJSON source, far ones only from z7, to z9. Names in the code, as data of the map like a
+  tile's names; both languages there, no strings file. `water-name` from z8 with a halo of the water's own colour.
+* `place-region` (`state`, `province`) regular, small, grey, z5 to z8, listed before the towns: the last layer in the list places first,
+  so a region gives way to a town. Bold and larger, and placed first, they had pushed Makkah and Madinah off the country view. The
+  country's name only under z5. In English some regions read as their city (Riyadh, Medina twice at z5): left.
+* A casing is an edge at any zoom (`edge()`): 30 % of its width at z5, whole from z12. At street-level width a dual carriageway at z5
+  was two grey bands.
+* `road-name-major` from z11, far apart while far out; `road-name` a little more room between names.
+
+**The fonts.** `MapStyle.PACK_FONT` (`AMRI Map Sans`: IBM Plex Sans Arabic, under a name without the font's reserved "Plex", as the OFL asks of a modified form) is the one name in the app, with `PACK_HEAVY` (`SemiBold`); `make_glyphs.py --family` and `make_pack.py --family`
+must say the same (the two font files are `make_glyphs.py`'s first arguments). The style asks for it when the unit has `glyphs.db` and the
+tile server is up, else for `Noto Sans`, which is all OpenFreeMap has. glyphs.db unreadable: the server answers the request from
+the Noto stack, so a damaged pack costs the font, not the words. A range the pack has no row for is 204 at once.
+
+**Arabic road names, at pack build, nothing at run time** (SPEC section 11; `tools/mapbuild/arabic_names.py`, README there). `src\ksa-ar.osm.pbf` is `ksa.osm.pbf` with `name:ar` on the highway ways that have a Latin
+`name` and none, when every word is known: the hand table (`arabic_names_rules.json`, from the design's `arRoad`), then word pairs learnt from the Kingdom's own two-script names and read by a person (`arabic_names_words.tsv`). A word nobody has read is not used; nothing is spelled out letter by letter. Base tiles, routing and places all read that file.
+Planetiler carries the tag as `name:ar` of `transportation_name`. Valhalla with the Kingdom's admin database lists both (`Prince Naif Road; طريق الأمير نايف`) and `Names.pick` takes the Arabic: no `alt_name` needed. `MapStyle`'s `road-name` on a unit with a pack reads `name:ar`, then the tile's `name:nonlatin`, then nothing: a minor road whose Latin name has no rule has no label. `road-name-major` (motorway, trunk) keeps a Latin name. On online tiles, which had no such build, Latin stays; outside the Kingdom a unit with a pack draws the same rule, so a minor road in Latin there has no label on the Arabic map either.
+Measured on 2026-11-05, in pack `ksa-2026.11` built 2026-11-04T21:57Z: named highway ways with Arabic, Kingdom 62,723 to 67,913 of 72,051, his box 1,125 to 2,121 of 2,723 (by km 67 % to 91 %). Named segments in z14's `transportation_name`, his box: 980 of 2,244 to 1,732 of 2,241. What stays Latin there is mostly Aramco's camps (Palm Drive, Crane Court, 308 names, 548 ways).
+
+**Places of 3 letters or less** have no word on the map (`build_poi_tiles.py`: no `name` in the tile, the dot and the row stay; 2,307 dots at z14). A tap on such a dot goes to the nearest named place (`AuraMap.tapPlace`).
+
+**Places.** `places.mbtiles` (layer `places`, fields `name`, `name:en`, `kind`, `cat`, `rank`, `id`) is a source of its own on
+`/p/{z}/{x}/{y}.pbf`, z12 to z14. `kind` is new: `cat.icon`, the colour group, because `cat.id` changes between builds and the style would
+have had to read table `cat` for it. Its `rank` is 1 to 100, higher more important, the opposite of OpenMapTiles': `poi-a` is `rank >= 60`
+from z14 (at z13 only `rank >= 80`: hospitals, malls, big hotels, from z12.6), `poi-b` 45 to 60 from z15, `poi-c` 30 to 45 from z16, `poi-d`
+below from z17; bands, not `symbol-sort-key`, which splits a bucket into one draw per key. The names `poi-a..d` stay (the design's
+`hiddenWhileNavigating`, `NAV_HIDDEN`); on a unit with a pack OpenMapTiles' places are `omt-poi-a..d`, which only tiles from OpenFreeMap
+fill, outside the Kingdom. `AuraMap.tapPlace` reads either; `onPlaceRow(id)` gives the row of `places.db`.
+OpenMapTiles' `poi` layer has left `base.mbtiles` (`strip_tiles.py`, a step of `run_build.ps1`, `check_tiles.py` refuses it). What else
+read it: only the style and the tap. `PlaceIndex.build` and `Region.roadTiles` read `TileStore`, `files/offline/map.db`, OpenFreeMap's
+tiles, never the pack: a note in the tile report said the strip would cost PlaceIndex its places, and it does not.
+
+**The server.** `PackTiles` opens the three files read only, on a tile thread at the first request, with `NO_LOCALIZED_COLLATORS`.
+Not `TileStore`, which creates tables and turns on WAL. A failed open is tried again a minute later; the style only asks whether the
+files are there, which reads nothing. Android's default error handler deletes a database it finds corrupt: `PackTiles` passes its own, a
+download of minutes stays where it is for the pack manager to judge. `PackTiles.paths` is the one lookup (`MapPackPaths`; `CurrentPackFolder`,
+files/maps2/current/, stands in until the pack's own paths are merged; debug: `setprop debug.aura.pack name`); `PackTiles.changed()` after a switch.
+The choice (`TileServer.tile`): a tile that touches the Kingdom's outline (`KsaOutline.touchesTile`, Liang-Barsky against 308 edges, a few
+microseconds on the PC, nothing kept) comes from the pack, and a missing row is 204, an empty tile (more than a third of z14 is), never
+the internet. Any other tile: store, OpenFreeMap, and the pack when those fail (it holds the sea and far shores over its rectangle).
+
+**The second copy.** `Cache-Control: no-store` does not stop MapLibre 10.3.7: the string is not in `libmapbox-gl.so`, it reads `max-age` and
+`must-revalidate` only, and every tile is packed again and written to `mbgl-offline.db`. `Source.setVolatile(true)` does stop it
+(`MapStyle.afterLoad`; the JSON key `volatile` is not in that library either, so it is the Java call, after the style loads). The price: online tiles
+outside the Kingdom are not kept on a unit with a pack. Measured on the emulator, 10 cameras: `mbgl-offline.db` 0.27 MB after 155 tiles read,
+2.62 MB after 166 with the sources not volatile. Reading the database stays: a tile cached under the same address before a pack came is shown until
+it expires (a day, then the pack's replaces it), so the pack manager should call `OfflineManager.clearAmbientCache` once after a switch.
+
+**The credit.** `MapStyle.attribution(at)`: `© OpenStreetMap contributors · © OpenMapTiles · Overture Maps` while the pack draws (a pack, and
+the middle of the map inside the outline or no internet), `© OpenStreetMap · OpenFreeMap` otherwise, updated when the map comes to rest
+(`AuraMap.onCameraIdle`). The Home map has no credit yet: the shell's step must add it there.
+
+**Looking at it** (`debug/MapLookActivity`, `scripts/map-look.ps1`): the real map alone on the screen at any camera, 37 cameras, offline, the pack's read
+times per shot and anything MapLibre complains of. `tools/mapbuild/adversary/dump_style.ps1` still writes the style as JSON for the GL JS plates.
+Seen on the x86_64 emulator with MapLibre Native 10.3.7, day and night, Arabic and English, against `final2/assets/plates`; not an ARM GPU, nothing on the unit.
+Reads there, the emulator's disk image on a spinning disk shared with other emulators: mean 1 to 23 ms a tile per camera, worst 91 ms; one run while the disk was busy, mean 42 ms, worst 420 ms (the PC itself: 0.04 ms). The unit's eMMC is unmeasured.
+What differs from the plates, on purpose or not: the words are IBM Plex Sans Arabic, the plates' Noto Sans; the places are the pack's, not OpenFreeMap's, so other names and more
+Latin on an Arabic screen; edges of fills have no multisampling; the labels' fade exists on the unit and not on a plate.
+The straight lines in the sea at 16.2 N and 55.7 E are gone: Planetiler cuts the polygons it reads exactly at `--bounds`, so z9-14 are built over 32,13.9,58,36.6 (past every tile that touches the outline) and z0-8 over 22.5,0,67.5,41 (`tools/mapbuild/merge_low_zoom.py`), 4.9 MB more on disk. Which tile comes from where has not changed: `KsaOutline.touchesTile` the pack, else online, else what the pack has.
+
 ### Map additions: limits, cameras, signals, bumps (`tools/map-editor`, `nav/MapExtras.kt`)
 What the map data does not have, the owner draws himself and every unit picks up.
 * **The editor** (`tools/map-editor/map-editor.bat` → `server.py`, Python standard library, http://127.0.0.1:8765, this
@@ -806,6 +928,69 @@ What the map data does not have, the owner draws himself and every unit picks up
   Navigation: the button's switch (`markCameraButton`, on by default) and how many are kept, with delete-all.
 * Debug: `setprop debug.aura.extras http://10.0.2.2:8765/api/data` reads the editor on the PC directly (run it with
   `--dry-run`); `adb emu geo fix` + `MapsActivity --ez simulate true` drives a route past them.
+
+### Valhalla in its own process (2.0: `nav/route/`)
+The router of 2.0, over the pack's `route.tar`; still behind a preference. Everything below was measured on the x86_64 emulator with
+the real tar; nothing here has run on ARM on the real kernel. That is what the probe at the end of this section is for.
+
+* **The library:** only `libvalhalla-wrapper.so` of valhalla-mobile 0.6.4 (`jniLibs`, 6,017,176 B on armeabi-v7a, stored), and
+  `com.valhalla.valhalla.ValhallaKotlin`, whose name and methods its symbols fix (R8 rule). No AAR, no Moshi. Errors come as JSON with a
+  numeric code ({"code":171}), no exception. A missing tar still gives an actor, and 171 for every route.
+* **`:route`:** `RouteService`, bound by `RouteClient` when a route is asked for, let go 3 minutes after the last request but not while
+  a trip runs; then the process ends by itself (`RouteProcess`), the memory back at once. `AuraApp` does nothing there, as for `:boot`.
+  A cold process answers Jubail-Dammam in 367 ms here. Nothing on the main thread waits for it: the request goes one-way over Binder, the
+  answer is read on a thread of its own.
+* **The answer (2.35 MB at the worst, Najran-Tabuk with the old options: 592 ms in the library, 596 ms parsing, 1.6 s in all)** never
+  goes over Binder. `:route` parses it with `Router.parseRoute` and writes the same `Route` and `Step` objects, whatever `Router.prepare`
+  measured included, to a pipe that came with the request (`RouteCodec`). A process that dies closes the pipe: a frame cut anywhere
+  reads as nothing, and the caller hears `DIED` at once. That is how a death is noticed; the connection only tidies up.
+* **One at a time:** a newer request ends the wait for the older one (`CANCELLED`, every caller hears exactly once) but not its work:
+  the native call cannot be stopped, so the newer one waits for it, inside its own 30 s. After 30 s the process is killed.
+* **The request** (`RouteRequest`) is `tools/mapbuild/route-request.json`, see there and `trips.py` why: heading with 45 degrees when known,
+  `search_cutoff` 1000 on the destination (or Jana Island gets code Ok and a route ending 22 km away), `search_filter` for the service-road
+  switch, `exclude_polygons` (Jeddah-Taif avoiding the Haram 207.7 km, as on the PC; a destination inside: `NO_ROUTE`), via points
+  (`through`, or `break` for a stop). Khafji's post, 1,108 m from a road, is refused by the cutoff: as the tests asked, and worth a real
+  drive's opinion.
+* **Its reading** (`StepTune.kt`): one name per step, by the screen's script (`pick_name` of `route_fields.py`), before `prepare`. Each
+  step's time times the factor for its own speed, `Route.etaEstimate` true: an estimate, fitted against OSRM and no real drive; raw -13.6 %
+  against OSRM's time over the 30 trips, scaled +2.1 %. `RouteAnswer.rawSeconds` keeps Valhalla's own, for the owner's logged drives.
+  The fastest route goes first, as the tests asked, but not if over 3 % longer than Valhalla's first (my limit): Riyadh-Salwa offered 523 km
+  against 474 for 1 % of a time that is itself an estimate. Three of the 30 trips start on an alternate this way, each shorter and closer to OSRM's.
+* **Speed limits:** BRouter's `messages` fed the sign, and Valhalla's route answer has none. `trace_attributes` with `edge_walk` on the
+  chosen route, 190 km at a time (the request's limit), comes as a second frame on the same pipe, so a route never waits for it, and
+  is put on `Route.limits` on the main thread. 30 ms for 948 km. A newer request stops it. A point it cannot walk (a via) only costs the
+  few points around it: each failing piece is halved. The alternates have none.
+* **`RouteGuard`:** while a request is worked on `files/diag/route-working.marker` lies there. A death with work in hand counts, by the
+  pipe, the connection or, after a restart, the marker of a pid no longer alive; a timeout counts too; an idle process the system reclaims
+  does not. Two in a row trip it; any answer of the engine ends the row. State in `route-guard.state`, gone with a new versionCode or after
+  7 days; a clock before the trip says nothing. All it decides, and each time the chain moves on, in `route-guard.log` (at most 16 KB).
+* **A minute's rest after every death.** A second crash of one process within a minute is what makes Android put "AMRI OS keeps
+  stopping" over the home screen: seen here with two real SIGSEGVs 4 s apart (AppErrors, `MIN_CRASH_INTERVAL`, the first crash shows nothing). So
+  `allowed()` says no for 65 s after a death and the chain goes to the next router. The same two crashes 69 s apart: tripped, and nothing on the
+  screen. The probe waits the same way.
+* **`RouteChain`:** Valhalla; BRouter when it is guarded, the pack is missing or it failed; OSRM as the last try. Abroad (`assets/route/ksa.poly`, either
+  end) with a connection OSRM comes first. "No road" or "no route" inside the Kingdom is believed: OSRM would give a route that ends at the nearest
+  road, code Ok. `Router.route` comes here when `Prefs.raw` `routeValhalla` is true, default off; with it off nothing has changed and
+  no process starts. New screens: `RouteChain.ask(RouteRequest(...)) { answer -> }`: all the routes, `answer.engine`; only Valhalla honours via points, polygons, the switch.
+* **`TarCheck`:** the library trusts the tar's index. Without this check a tar cut at 200 MB is a SIGSEGV in `libvalhalla-wrapper.so` (seen). With it: `BAD_PACK`
+  in 2 ms, by reading the index, the file's first entry, once for each file. A new file under the same path gets a new actor (by length and date).
+* **Debug:** `am broadcast -a com.abdllh.aura.debug.ROUTE`: `--ez valhalla true`, `--es tar <path>`, `--es ask a,b,c,d[,heading]` with `--es ring`, `--es via`,
+  `--es road`, `--es raw`; `--es chain ...`; `--es batch <file>`; `--el delay_ms` (the service sits on a request, marker down, so it can be killed in the middle),
+  `--el idle_ms`, `--ez guard true`, `--ez guard_reset true` (`RouteDebug.kt`; `setprop debug.aura.osrm` for OSRM). A tar on the AVD: push to
+  `files/maps2/current/route.tar`, chown to the app's user, `restorecon`. `tools/mapbuild/tests/app_route_check.py` runs the 30 trips and compares.
+* **Measured on the emulator, not true on the unit:** 30 trips in 8 s: 26 the same first route as `out/ref-routes` to the metre, minute and step, 3 an
+  alternate first as above, Khafji refused; the worst 231 ms in the library, 133 ms parsing. 150 routes in a row, one process: its PSS flat at 151-158 MB (native heap
+  about 33 MB, Java 4 MB, the rest the tar's clean pages, which the kernel can drop), threads and file descriptors no more than before. Probe in a release
+  build: PSS 60-66 MB, HWM 148 MB. R8: the same 30 answers. Long JSON on a slow CPU is the open question: `Router.parseRoute`'s placing of steps
+  (`line.snap` over the rest of the line, for each step) is quadratic, and the probe times the JSON on the unit.
+
+**The route probe (`RouteProbe.kt`, the scout release):** does Valhalla run on the real ARM32 userspace at all? Started from the main process (`RouteProbe.start`, the Screen
+check page is to call it; debug: `am broadcast -a com.abdllh.aura.debug.ROUTE_PROBE`), it works in `:route`, stage by stage: RAM, `/data`, kernel; the static AArch64 program
+(`tools/route-probe`, 664 B, two system calls), straight from app storage, then through `LocalAdb`; the 1.5 MB tar unpacked and its SHA-256; the library's load time, the actor;
+four trips with ms twice, km against the reference (Jubail-Khobar 104.85), JSON ms, VmPeak, VmHWM, PSS; a sparse 400 MB mapping, since `route.tar` is mapped whole. A marker before
+each stage and the report written after each (`files/diag/route-probe.json`): a crash or a hang (90 s) is that stage's, `died` or `hung`, the next process goes on after a minute's rest,
+three deaths at most. It is its own commit: cherry-picked onto `v2-fixes` it builds and runs. Here, direct exec gives error 13 under enforcing SELinux and the root shell runs the
+x86_64 twin. The firmware is said to be permissive; the report will tell (`getenforce`, `uname -a` in `root.output`).
 
 ## Aura Music (`music/`)
 `Library.kt` reads MediaStore (internal storage, `/mnt/media_rw/udisk*`, SD card) and groups by album / artist / folder;
@@ -2306,6 +2491,131 @@ sign, a trip resumed or not and why) is the first real measurement.
 * **Music keys:** "the same source" is `MusicActivity.onBluetooth`, what the screen is really on; the pref only with no screen.
 * **Prefs:** gone: `setupDone`, `setupBannerDismissed`, `adbBridge`, `hiddenApps` (no version ever wrote them). Kept, read-only:
   `homeAddress`, `workAddress`: their writer went in 1.3, but a unit where one was typed still drives there from it.
+
+## The map's parts together (2.0: `nav/route`, `nav/pack`, `nav/offline`, `nav/places`, `nav/guide`)
+The sections below and above describe each part as it was built; this is how they meet, and what changed when testers attacked them. All measured on an x86_64 emulator; nothing here has run on the unit.
+
+* **Who knows where the files are:** `PackPaths`, asked every time. `ManagedPack` gives the map its three files (`OfflineMaps.wirePack`; `setprop debug.aura.pack <folder>` reads a folder of `files/maps2` instead, for `scripts/map-look.ps1`), `RoutePack.tar` the tar, `PlaceSearch.locate` places.db. With a new pack (the listener compares id and date: a pack rebuilt under one id is another pack) `PackTiles` reopens, MapLibre's ambient cache is cleared and each `AuraMap` builds its style anew. `noteWorked` comes from the first real tile (`PackTiles.onServed`), route or search.
+* **Three preferences, all default off, none has a screen:** `routeValhalla` (`--ez valhalla true` on `debug.ROUTE`), `placesEngine` (`--ez swap true` on `debug.PLACES`), `routeGuideWords` (`--ez guide true` on `debug.ROUTE`). A fourth is the driver's: `routeAvoidHaram` (`--ez avoid_haram true`). 2.0 makes the first three the way, and removes the race in `Router.route`.
+* **The words on a route:** `RouteClient` asks :route for the engine's own JSON as well, when `routeGuideWords` is on. The route is delivered first, as always; `GuideLink` then reads the JSON in the main process (it needs places.db, which is open there), makes `RoadFacts` from the rows of the limits' walk (`RouteTrace.request(roads = true)`: class, use, bridge, tunnel, toll, in the tags `RouteLimits` passes over), and asks `PlaceSearch.guidance` on the search's thread for a `Guidance` over `PlacesWorld` (the search part's implementation of `RouteWorld`). It lands on `Route.guide`. Until then, and when anything fails, the old `Instructions` speak. `NavSession.prompt` and `GuidanceBanner` ask it by the same step index: both parsers read the answer's own list. **Not wired yet:** `RoadWatch` and the limit sign still use their old sources (`guide.nextAlert`, `Limits.at`), and `guide.warnings`, `junction`, `nextFuel`, `prayerStop`, `arrival` have no screen.
+* **One rule of what a route goes by:** `RoadAhead`, the search part's. `Guidance` asks it (`AlongRoad.match`, `TripCheck`) instead of its own: the two disagreed on 4 of 53 trips and on signal counts. A camera 30 m (either way when it has no `dir`), a signal 15 m and only its junction once, a bump 10 m; rows of one camera within 25 m are one, with the limit of whichever knows it. A signal on a stretch the facts call a bridge or a tunnel is not counted: it stops somebody else.
+* **Zones:** a route warns when it comes in from outside and ends well inside (150 m from the ring's edge, not the Haram's), or goes 100 m or more on a tertiary road or less inside. Secondary is public: King Abdul Aziz street and Madeena Street in Jubail town are secondary inside the naval base's coarse ring, and the first rule told trips in the owner's own town they enter a military area. `ZonesOnRealRoadsTest` holds it on real lines with real `trace_attributes` (`tools/mapbuild/tests/guide_zone_fixture.py`), because the golden file's fixtures have facts for only 6 of 30 and printed silence. Ithra still warns: it is well inside the air base's ring. That is the rings' fault and the owner's decision, not the road rule's. The Haram: any route that comes in; not one only driving out, not an errand inside. The causeway's box starts at 50.25 E: south Khobar's corniche is on 50.22.
+* **Only Valhalla keeps a ring or a via:** `RouteRequest.needsValhalla`. With the engine down the chain checks another router's line against the rings (`RingCheck`) and answers `NOT_HONOURED` when it goes through; via points are not asked of anyone else. Before, the answer was status OK with a route through the Haram, and only `engine` differed. A ring under 3 or over 100 points is refused at once. The road switch only helps with the first metres: another router may answer, `roadIgnored` says so. `RoadClasses` takes OSM's words too and sends no filter for one it does not know. `NavNote` gets "route by brouter".
+* **The Haram:** `avoidHaram` asks `PlaceSearch.haramRingBlocking(1)` on the chain's thread and `Haram.plan`: a start or a destination inside is not left out, `haramInside` says so. With no file, a box around it, wider than the ring. Jeddah-Taif 169.9 km plain, 207.7 km round it, on the real pack through the chain.
+* **The guard:** a state file from the version before now belongs to this one, and a death is written with this version's code: left with the old one the next look took it for the old version's and forgot it and its rest, and two crashes 5 s apart put "keeps stopping" over the home screen. A marker from another version counts for nothing (an update ends the process in the middle of its work).
+* **One worker per process:** `RouteWork`. A client binding in the second before the process ends is a second `RouteService` in it; with a worker of its own that held a second actor and a second mapping of the 378 MB tar (8 in a row: 8 GB of address space, in a process that has 3).
+* **Older and newer chains:** a chain that took 8 s over OSRM abroad reached the client after a newer request and cancelled it. `RouteChain.newest` stops that. **Left as it is:** a second `Router.route` caller still cancels the first (`TripMemory` spends a try, `MapsActivity` shows failed), which the old race did not. The screens should treat `CANCELLED` as no answer yet.
+* **Lanes:** `Step.lanes` stays empty on Valhalla's routes and that is the data: on the 30 reference answers 70 intersections have lanes, none is a step's first, all say straight only, the nearest is 275 km before its next manoeuvre. They are lanes of junctions driven through, and no manoeuvre's. Valhalla's OSRM form leaves the lanes at a manoeuvre's own node out. So no strip can be made from them, and `turn_lanes` gives nothing to show on this data.
+* **A bad tile:** `TileCheck` walks every tile row before MapLibre sees it: every wire type and length, each packed list, a layer's three fields, tags against the layer's keys and values, geometry commands, UTF-8. 10.3.7 reads a tile on a worker thread of the app's process, and a damaged protobuf inside good gzip throws out of it, SIGABRT, and the home screen is gone (one flipped bit was enough; a hash of the pack sees nothing, since the damage is from before the gzip). A refused tile is an empty one, logged. Over all 705,624 rows of the pack: 0 refused, 6.5 s on the PC's JVM. Online tiles are streamed and not looked at. A tile whose wires are sound and whose numbers are nonsense draws nonsense.
+* **The Two Holy Mosques** have a layer of their own (`poi-holy`), placed before the words around them: by rank they lost to the district's name and to band a.
+* **The pack:** going on after a pause or a trip needs no margin (`PackRules.mayStart`: 264 MB free was demanded of a job that lacked nothing). When a piece's chunks all agree and its whole hash does not, the manifest and its chunks disagree: no refetching (it cost 810 MB and then 647 MB more per try). A pack rebuilt under one id is offered and comes in place at the switch (`worthOffering`). A chunked sign-in page cannot wipe the part (`bodyFits`); a portal's JSON is no manifest (`looksLikeManifest`); SQLite's refusal at the last look is `BAD_DATA`, and its handler no longer deletes the file. **Left:** a redirect loop or a manifest lying about a chunk's bytes waits for ever under "no internet"; a staged manifest that a later app refuses leaves the staging invisible.
+* **The search's words:** `places_tables.py` holds known things' full names as aliases (جسر الملك فهد, مكة المكرمة, المسجد الحرام, the airports by their short names), and an alias may now be the words themselves. `دولي` is a role-2 word. `tools/mapbuild/patch_syn.py` writes table syn alone into a built file; then `make_pack.py`, and `scripts/search_compare.py fixture`. In `search_ref.py` and `Score` alike: an airport's distance counts for 30 % whenever an airport is asked for; a row only its consonants found, over 30 km off and with no word of the query in it, is dropped, as is a negative score, so "nothing found" can be said; a query is cut at 100 characters. **Left:** `البلد جدة` and `طريق الملك فهد الرياض` from far away: the candidates' cut, 150 nearest of what matches, loses them.
+* **The route probe:** see its head comment. It now runs what 2.0 calls on every route (`more`), the eMMC by itself, and notes every death. For a branch without the map work, in this order: `d8ce7ad 40ea677 eba50da 944e02e a8ab77f f8d2722` (branch `v2-routeprobe`, from `main`), which cherry-pick clean on `main` and on `scout-1.19.1`, and were built and run from the latter on the emulator. The first is `v2-route`'s `61a081a` cut again: its `AuraApp` hunks stood beside lines `main` lacks and `scout-1.19.1` has rewritten, so the check now stands before `super.onCreate()` and the debug hook after `CarAudio.init`. Still 1 % of route.tar: it says whether the library loads and routes and how fast the eMMC is, not how long the first route over the whole tar takes.
+* **Whole-chain test of 2026-11-04 (emulator-5572, x86_64, offline, real pack by the local server):** a search in Arabic through the search box's road, a route over Valhalla, a drive of 16.5 km with the simulator to arrival, by day and by night (`D:\k2501-work\shots\v2-mapapp-*.png`). `:route` killed in the middle of a reroute: the guard counted it, BRouter's 16,092 m came 5.8 s later with the old words, "route by brouter" in `NavNote`, the home process and the screen untouched. The pack deleted: the same chain answered from BRouter. Row by row against `search_ref.py` on the new file: 0 mismatches of ids, scores, km, names, MATCH strings in all sets, 193 of 193 of the golden. 383 unit tests. R8 release build: 25,960,185 B.
+* **For the Screen check (not wired):** `RouteProbe.start`, `RouteGuard.status`, `RouteGuard.logText`, `PackManager.lastInstall()`, `PackTiles.refusedTiles`, `PackTiles.readStats()`.
+
+## Place search over places.db (2.0, `nav/places/`)
+The app side of `tools/mapbuild/SEARCH_SPEC.md`: `search_ref.py` ported to the letter, with no screen depending on it. `MapsActivity` still searches as in 1.19 unless the
+preference below is on. Nothing here has run on the unit: every number is from the emulator (x86_64, Android 10, SQLite 3.22.0) unless it says otherwise.
+
+* **Files:** `Norm.kt` (norm, base, skeleton, query words), `QueryPlan.kt` (table syn, the plan, the MATCH strings, other readings), `Score.kt` (the score, one place once), `PlacesDb.kt`
+  (the file: checks, reads), `PlaceEngine.kt` (the stages, reverse, what guidance asks), `RoadAhead.kt` (a route's line against spots, gates and zones: plain geometry), `PlaceSearch.kt`
+  (the way in: one background thread, answers on the main thread), `PlacesDebug.kt` (debug builds). Only the last four touch Android.
+* **Why "to the letter":** the index in places.db was made with these functions, and the scores decide which of 12 rows show. What had to be copied from the code and not from the
+  text: lower case runs before NFKD, so `´` has become a space and a mark and `℃` stays a capital C; ties in the sort go by the score after `round(s, 3)`, which needs Python's rounding
+  (the exact binary value, half to even: `Score.pyRound`); `{k:.6f}` in the SQL rounds the exact value too, where `String.format` rounds the shortest decimal; `Math.toRadians` was not always
+  `x * (pi / 180)`. Stage 9 reads the best-ranked rows, which the spec's text says it never does. A length counts UTF-16 units, not code points, which only a word with a letter outside
+  the BMP can tell (one row in the file). Python's Unicode 14 and Android 10's differ on 178 characters of the BMP, all assigned since; no name in the file holds one.
+* **The file:** `SQLiteDatabase.openDatabase`, read only, `NO_LOCALIZED_COLLATORS`, no helper, nothing written, `PRAGMA cache_size=128` (512 KB), 4 kept statements (the SQL holds the car's
+  position, so they are hardly ever seen twice). Never the default `DatabaseErrorHandler`: on any report of corruption it deletes the file, and a pack is the pack manager's. Before SQLite sees the
+  file its first 100 bytes are checked against its length, so a download cut short is told at once and not by the first search that reaches the missing pages. `meta.norm_version` must be
+  `Norm.VERSION` (3) and `meta.schema` `PlacesDb.SCHEMA` (2), or it is refused, with the two numbers in `PlacesStatus.why`. A file that cannot be used is a status and an empty answer; `PlacesStatus.message` is the
+  driver's line (`strings_search.xml`). It is looked at again only when its path, length or time changes. Where: `PlaceSearch.locate`, asked at every use, which the pack manager's `PackPaths.placesDb` is to fill (a new pack is a new path, so it is opened again by itself; `worked` is for `PackPaths.noteWorked`). Until it is set, `files/maps2/places.db`.
+* **Threads:** one single-thread executor, as `Places`. A newer query increments `generation` and cancels the last `CancellationSignal`, which stops SQLite itself at its next steps, not only the
+  stages between. `typing()` adds the spec's 250 ms; `search()` does not (`MapsActivity` has its own 350 ms). After 2 minutes unused the file is closed and table syn goes with it.
+* **Guidance, spec first:** `spotsAlong` gives each camera and bump once, and a signal once **per junction per pass** (`spot.j`: "الإشارة الثانية" counts these, `RouteSpots.signalNumberAt`).
+  On a signal or a bump `roadKmh` is the road's limit; only a camera has `cameraKmh`. How near counts: camera 30 m (it stands beside its road, found within 25 m at build), signal 15 m, bump 10 m;
+  a camera or bump must go the way of its `dir` within 60 degrees, null is either way; a signal's node counts unless it is for the traffic coming against (over 135 degrees), since a node on the
+  crossing road is the same junction. A camera on a main road also fires for a frontage road beside it going the same way: 85 % of such pairs are under 40 m apart, and nothing in the file tells
+  them apart. Gates within 15 m; `warn` for sub 2 or 3 on a road of class 2 or more (gate-camp's checkpoint is on a secondary road, Jubail-Dammam's on a motorway).
+* **Where it differs from the spec, on purpose:** the spec warns about a military or private zone when a route ends inside "or leaves the motorway and trunk roads inside", and names Jubail-Dammam as the
+  public highway that must not. That road is OSM's primary for 9 km in the naval base's ring, so those words warn on it; over the 54 kept test trips with road classes (`scripts/search_compare.py zones`) they warn 11 times, once for a guarded place
+  (gate-air). `ZoneHit.warn` goes by a tertiary road or less (100 m or more) or an end well inside. `offMainMetres` keeps the spec's measure. Since the pack of 2026-11-05 the rings are OSM's own line, not 24 points grown outward: the air base holds 9 POIs, not 1,289, the naval base 19, not 269.
+  Road classes come from `trace_attributes` (`roadClassNumber`); without them only "ends inside" is known. The Haram warns any route that comes in (`haramRing` gives the ring for `exclude_polygons`).
+* **The swap:** preference `placesEngine`, default off, no setting for it: `Places.search` then asks this engine, gives `Place`s, and goes the old way when the file cannot be used; `Places.cancelSearch` stops it.
+  Photon is not asked on that road, so it is a test of this engine and no more. `am broadcast -a com.abdllh.aura.debug.PLACES --ez swap true`; `--es db <file>` for another file. The other extras are at the top of `PlacesDebug.kt`.
+* **Tests:** `src/test/.../places` (run as above): the 76 vectors of `tools/mapbuild/tests/norm_vectors.json`, and `src/test/resources/places`, written by Python itself (`scripts/search_compare.py fixture`): every character of the
+  Arabic blocks, 200 names, the tester's 200 query plans, 480 scores. Write it again when `search_ref.py` or table syn changes. 63 tests, no database. `scripts/search-compare.ps1 -Serial emulator-5578` runs the rest on the emulator's real SQLite through the
+  broadcast: each query's ids in order, scores, distances, shown names, details, approx, every MATCH string and the candidates' count against the reference's. `-Failures` tries the files it must refuse.
+  Emulator only, on the file built 2026-11-04T15:22Z: the 200-query set, the 193 of `search-golden.json`, 715 prefixes of a hundred of them, 786 finished with a space or with no position, 554 random rows by their
+  own names: **0 mismatches** of any of those kinds; 627 reverses 0; 10,018 names through every text function 0. Search, warm: median 7.7 ms, p90 13.6, worst 41 (over all sets the worst was 82, a long name that went through the loose stages).
+  By stage, median / worst ms: plan 0.09 / 0.7, first stages 3.4 / 35, other readings 0.01 / 12, place 0.01 / 2, single edit 0 / 9, loose 0 / 6, areas 1.0 / 8, score 1.4 / 14, one place once 0.05 / 0.8. With the kernel's file cache dropped and the file opened again, 30 queries: median 59 ms, worst
+  210, the open itself (checks, cat, syn) 12.5 and 23. The emulator's disk sits on the PC's own cache and SSD, so that says nothing of the unit's eMMC. Reverse median 0.8 ms, worst 9. A route: spots up to 18 ms, warnings up to 28 ms (414 km), the nearest fuel or mosque up to 10 ms.
+  PSS of the home process, 200 searches, twice: file open +0.1 MB of Java (syn); before a collection +3.5 MB of Java; after one, native moved by -0.9 and +2.3 MB in two runs, the size of the process's own noise; 128 pages of cache are at most 0.5 MB of that. On x86_64, so ARM32's pointers would make it less, not measured.
+  Typing, 30 queries, 279 letters through the real entry: at 40 ms a letter 5 searches were stopped in the middle (67 on a busier run); at no pause 248 never began; the last answer was the whole query's own 30 of 30 at every speed, median about 9 ms after the last letter, worst 185 on the busy run.
+  Bad files (`-Failures`), 9 kinds, the same process throughout: search empty with the reason, the search box on its old road, every file still there, the one with holes (it opens, a read meets the damage) too. On this AVD that old road has no offline store and the network was off, so it was seen answering "no internet", not rows.
+
+## The words of the guidance (`nav/guide/`, for 2.0)
+Pure logic, no Android classes, no screen: the voice and the sign ask it behind a preference ("The map's parts together"), the rest has no screen yet
+(the hook is `Route.guide`). It works from the engine's answer (`GuideAnswer.parse`, `format: osrm`) and from `RouteWorld`, the small
+interface the search part implements over `places.db`. Everything fails towards plainer words: a world that throws is no world
+(`Guidance.build`), an answer of an unknown shape is null, and `Guidance.safely` is null on anything else, so the old
+`Instructions` remain. All of it was measured on reference answers on the PC; nobody has heard or driven a word of it.
+
+* **Tests:** `app/src/test/.../nav/guide`, 155 tests on JVM. Fixtures: the 30 reference trips cut from real answers and the pack's
+  own `places.db` by `tools/mapbuild/tests/guide_fixtures.py`, 1.4 MB, 3 answers byte for byte beside them. `GoldenTest` writes all
+  their words to `tools/mapbuild/tests/guide-golden.md` for a person to read, and fails when the words change and that file did not:
+  run it with `GUIDE_GOLDEN_UPDATE=1`, read the diff. A wording change is a diff in that file. When a new `places.db` comes, run
+  the cutter too.
+* **The words are one table** (`Words.TABLE`): sign, voice, English, all from it, and the ids are the clips' names (maps.md section 12).
+  A prompt is a list of `Part`s: `Clip` a word of the table, `Name` free text with the word that leads to it. `Speech.withoutNames`
+  is what a clip voice with no engine says, and every sentence still stands. They are in Kotlin and not in `res/values`: the JVM tests
+  must read them, and `Instructions` before it was code too. The register follows the owner's own phrases: "لف يمين", "الزم اليسار",
+  "كمّل على طول", "خذ المخرج", "وجهتك قدامك". His to change; nobody has heard Google's voice read them (a shadda on "كمّل" for it).
+* **Names** (`Names.pick`): Valhalla's joined list ("طريق الملك فهد; King Fahd Road") by script, then the other script, then the number.
+  A `ref` is often no number ("King Abdul Aziz street, Jubail, saudi arabia", 3 ways). A Latin name's Arabic comes from the index when it
+  has one (`RouteWorld.arabicRoadName`). The voice calls "الخرمة" "شارع الخرمة" and leaves out over 38 letters; the sign shows the name.
+  **How often, in an Arabic UI, on the 382 told manoeuvres of the 30 trips:** Arabic name 174 (46 %), Latin only 3 (1 %: the banner shows it, the voice does not read it), a number only 30 (8 %),
+  **no name at all 175 (46 %)**, of which 24 have a landmark. Before the pack's Arabic road names (`tools/mapbuild/arabic_names.py`): 152 (40 %, 5 of them by the index), 24 (6 %), 31, 175. So half the turns are still "لف يمين" and the distance: those roads have no name in OSM in any script, and no rule makes one.
+* **Landmarks**, in the plan's order: a signal (`spot.j` counted, nodes of one junction once, from where the car is at that moment, so the
+  second becomes "the signal" once the first is passed; past the third no ordinal), a roundabout, after a flyover or tunnel at most 150 m
+  back, onto one at most 120 m ahead, and only when there is no name to read, a place within 35 m (50 for what has a yard) on the side
+  of the turn. Fired on the 382: 24 at a signal, 44 roundabouts, 3 places. Turns with anything at all within 35 m on their side: 30 of 242.
+  Places: a short list of kinds and chains, rank 45 or more, never a coarse position; tenants of a mall sit on the mall's point. OSM misses
+  signals, so an ordinal can be off by one: the distance is always said with it when far. Flyovers need `trace_attributes`
+  (`RoadFacts`): the answer has no bridge class. 15 of the 30 fixtures have facts for their very line (6 before the route tests were asked again with the same request), and on those 5 fired.
+* **Roundabouts** (`Ring`): the router's number counts driveways (8 of 60 rings differ from OSM's road exits). The answer does not say which
+  arm is what, but where they are: two arms under 17 m apart are never two roads. Number said only with its arms apart, at most the fourth, and
+  not for a first exit that runs straight on. On all 60: said on 46, of which 2 differ from OSM (a first exit OSM calls a service road:
+  still the first arm met); 6 of the 8 bad ones gone, 1 good one with them. Else the direction measured on the line, 60 to 15 m before and 15 to
+  60 m after, past the splitter's flare. A check that the number fits the direction (1 right, 2 straight, 3 left) was tried and does not
+  separate them: d3's third does lead left. Recounting by class needs `node.intersecting_edge` from `trace_attributes`: not built, no answer
+  with it here to test on.
+* **U-turn honesty:** "الدوران بعد 600 متر" as a place ahead from 300 m, then "لف وارجع من الدوران". **Ferry:** a change of `mode` is told ("اركب
+  العبّارة", "انزل من العبّارة وكمّل"), its time is the timetable's. **Ramps and forks** with a straight modifier say no side, also in
+  `Instructions` (19 steps said "على اليمين" with a straight arrow).
+* **ETA** (`EtaTable`): route-request.json's table by each step's speed, an estimate fitted against OSRM and no real drive. One place,
+  `EtaTable.parse` takes his own logged drives in the same form. Jubail-Dammam 50.0 min raw, 60.8 estimate (OSRM 59). `Choices.rank`: fastest
+  by that time first, with the differences in words; the router's own first was not the fastest on Khobar corniche to Dammam corniche.
+  Warning 401 (`relaxed`) is a second search: log it, nothing to say.
+* **On the road** (`AlongRoad`, `Guidance.nextAlert`): a spot counts within 25 m of the line going its way, 15 m when it has no `dir`; distance
+  along the road, twice on a road driven out and back. A bump's `kmh` is its road's and is never said. **The limit** (`Limits.pick`): his, then the
+  road's `speed_limit`, then by class, `LimitNow.source` says which ("من الخريطة", "تقريبي"). The class table is what OSM says most by length over
+  the 56 test trips; his to confirm.
+* **Before a trip** (`TripCheck`): SEARCH_SPEC section 1 with one change: primary counts as a public road beside motorway and trunk, or the spec's
+  own example warned on the 22-point ring (Jubail-Dammam, King Abdul Aziz street, primary). An end inside must be 150 m from the ring's edge. Since the pack of 2026-11-05 kinds 3 and 4 keep OSM's own line within about 16 m (`osm_roadside.py`): the naval base's ring 22 to 144 points and 269 POIs inside it to 19, the air base's 23 to 81 and 1,289 to 9. Over the 54 kept trips only `base-air`, which ends inside the fence, warns; Ithra and the air base's hospital went quiet with the ring. OSM's "Border Exclusion Zone" at Salwa (access=permissive), Prince Sultan's reserve, Taif's civil airport and 16 hazards with a military tag are no zone at all. A `barrier=toll_booth` outside the causeway is a checkpoint: `arabic_names.py` rewrites the 53 nodes in the PBF (or Valhalla's answer says `toll_collection` there), `osm_roadside.py` makes them gate sub 3. The Kingdom's roads have no other toll (from what is known of the Kingdom, not from a tag), and Al Shumaisi said "this road has a toll" on Jeddah-Taif. The causeway goes by place
+  (`CAUSEWAY_SEA`): "طريق جسر الملك فهد" runs on land for kilometres. `Haram.plan`: the zone he goes to or comes from is not excluded
+  (NoRoute otherwise) and he is told.
+* **Prayer times** (`PrayerTimes`): new. The "Umm al-Qura code" the plan points to is `Amri.kt`'s Hijri date; there were no times in the app. From
+  `Daylight.altitude`: Fajr 18.5, Asr Shafi'i, Maghrib -0.833, Isha 90 or 120 minutes. Within 2 min of praytimes.org's formulas worked out in
+  Python on 8 days and places, which is another computation and not the official calendar: compare before trusting it to the minute.
+  `Guidance.prayerStop`: during the trip, the first mosque past where the car will be by then. A stop before the time is no stop.
+* **Stops** (`nextFuel`): on a motorway only the driver's own side within 300 m, else either side within 200 m, trips of 30 km and more; 13 stations
+  in 359 km to Al Batha and a gap of 224 km are what the data has, not a measure of the road. **Arrival:** the answer's side (48 of 66 routes have one),
+  else from the line; parking within 400 m.
+* **Cost:** the largest reference answer (890 KB, Dammam-Jeddah) parses in 15 ms and `Guidance.build` over a list of rows takes 7 ms, warm on this PC. `build` belongs on a worker all the same: on an A53, with SQLite answering about 680 boxes for that trip, nobody has measured it.
+* **Fast loop:** kotlin-compiler-embeddable from Gradle's cache over `nav/guide`, `Geo.kt`, `Instructions.kt`, `RouteLimits.kt`, `Daylight.kt` and a stub of
+  `Router.kt`'s classes, then `JUnitCore`: 20 s against a Gradle build's minutes while reading the words. `tests/wording/run_wording.py` shows how.
 
 ## Facts about the firmware (from the dump)
 * No `avb` flag in the vendor fstab → no dm-verity on system/vendor/product; vbmeta uses the public AOSP test keys.

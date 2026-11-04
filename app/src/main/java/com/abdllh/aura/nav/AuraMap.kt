@@ -82,6 +82,10 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
     var onLongPress: ((LatLon) -> Unit)? = null
     /** A tap on one of the map's places (interactive maps): its name in the UI language, its kind ([Poi]), where it is. */
     var onPoiTap: ((name: String, kind: String, at: LatLon) -> Unit)? = null
+    /** The same tap, just before it, on a place of the pack: its row in places.db (table p), for a card that wants more. */
+    var onPlaceRow: ((id: Long) -> Unit)? = null
+    /** The map has come to rest after a finger or a flight, not while the frame loop drives it: the place at its middle. */
+    var onCameraIdle: ((LatLon) -> Unit)? = null
     /**
      * Fraction of the view height kept free above the car while navigating (puts the car low on the screen); a little
      * more at motorway speed, where what is far ahead matters more.
@@ -262,7 +266,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
             }
             // (the loop places the car itself after setting the camera; these are for gestures and MapLibre's flights)
             m.addOnCameraMoveListener { if (!inDrive) placeOverlays() }
-            m.addOnCameraIdleListener { if (!inDrive) { placeOverlays(); rescaleTurn() } }
+            m.addOnCameraIdleListener { if (!inDrive) { placeOverlays(); rescaleTurn(); m.cameraPosition.target?.let { t -> onCameraIdle?.invoke(LatLon(t.latitude, t.longitude)) } } }
             if (interactive) m.addOnMapLongClickListener { ll ->
                 val l = onLongPress ?: return@addOnMapLongClickListener false
                 l(LatLon(ll.latitude, ll.longitude))
@@ -271,6 +275,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
             if (interactive) m.addOnMapClickListener { ll -> tapPlace(m, ll) }
             val start = CarLocation.lastKnown() ?: LatLon(24.7136, 46.6753) // Riyadh until the first fix
             m.moveCamera(CameraUpdateFactory.newCameraPosition(CameraPosition.Builder().target(LatLng(start.lat, start.lon)).zoom(followZoom).build()))
+            live.add(this)
             loadStyle()
         }
     }
@@ -280,6 +285,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         val arabic = Locale.getDefault().language == "ar"
         m.setStyle(Style.Builder().fromJson(MapStyle.json(arabic)).withImage(MapStyle.POI_DOT, MapStyle.poiDot(), true)) { s ->
             style = s
+            MapStyle.afterLoad(s)
             extrasVersion = -1
             routeFaded = false
             pushRoute()
@@ -325,14 +331,20 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         var bestD = Double.MAX_VALUE
         for (f in hits) {
             val g = f.geometry() as? Point ?: continue
+            // (a dot with no word: a name of 3 letters or less, tools/mapbuild/build_poi_tiles.py. Nothing to say of it: the nearest place that has a name)
+            if (text(f, "name") == null && text(f, "name:en") == null) continue
             val pos = LatLon(g.latitude(), g.longitude())
             val sp = m.projection.toScreenLocation(LatLng(pos.lat, pos.lon))
             val d = Math.hypot((sp.x - at.x).toDouble(), (sp.y - at.y).toDouble())
             if (d < bestD) { bestD = d; best = f; bestPos = pos }
         }
         val f = best ?: return false
-        val name = (if (arabic) text(f, "name:ar") else text(f, "name:en") ?: text(f, "name:latin")) ?: text(f, "name") ?: return false
-        l(name, text(f, "class").orEmpty(), bestPos ?: return false)
+        val name = (if (arabic) text(f, "name:ar") else text(f, "name:en") ?: text(f, "name:latin")) ?: text(f, "name") ?: text(f, "name:en") ?: return false
+        // (a place of the pack says what it is by number, and which row it is)
+        fun number(key: String) = if (f.hasNonNullValueForProperty(key)) f.getNumberProperty(key) else null
+        val at2 = bestPos ?: return false
+        number("id")?.let { onPlaceRow?.invoke(it.toLong()) }
+        l(name, number("kind")?.let { Poi.packKind(it.toInt()) } ?: text(f, "class").orEmpty(), at2)
         return true
     }
 
@@ -389,6 +401,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
 
     fun onLowMemory() = mapView.onLowMemory()
     fun onDestroy() {
+        live.remove(this)
         sleep()
         mapView.onDestroy()
     }
@@ -1018,6 +1031,12 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
 
     companion object {
         private const val TAG = "AuraMap"
+        /** The maps that have a style (the home screen's, the Maps screen's). Main thread. */
+        private val live = java.util.Collections.newSetFromMap(java.util.WeakHashMap<AuraMap, Boolean>())
+
+        /** The pack in use changed: each map builds its style anew. Main thread. */
+        fun reloadStyles() { for (m in live.toList()) m.loadStyle() }
+
         private const val EMPTY = """{"type":"FeatureCollection","features":[]}"""
         // the car on the route
         private const val ON_ROUTE_M = 3.0   // a fix this close to the driven line is on it (navigation snaps them)

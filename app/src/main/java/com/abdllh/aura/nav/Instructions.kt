@@ -70,6 +70,7 @@ object Instructions {
     private fun ordinalEn(n: Int) = when (n) { 1 -> "1st"; 2 -> "2nd"; 3 -> "3rd"; else -> "${n}th" }
 
     private fun isLeft(m: String) = m.contains("left")
+    private fun noSide(m: String) = !m.contains("left") && !m.contains("right")
 
     private fun turnAr(m: String) = when (m) {
         "slight left" -> "انعطف يسارًا قليلًا"
@@ -104,10 +105,11 @@ object Instructions {
             "arrive" -> when { m.contains("left") -> "وجهتك على اليسار"; m.contains("right") -> "وجهتك على اليمين"; else -> "وجهتك أمامك" }
             "depart" -> "انطلق"
             "new name", "continue" -> if (turning(m)) turnAr(m) else "استمر مباشرةً"
-            "merge" -> if (side) "اندمج يسارًا" else "اندمج يمينًا"
-            "on ramp" -> "اسلك المدخل على ${if (side) "اليسار" else "اليمين"}"
-            "off ramp" -> "اسلك المخرج${if (s.exits.isNotBlank()) " ${s.exits}" else ""} على ${if (side) "اليسار" else "اليمين"}"
-            "fork" -> if (side) "الزم اليسار" else "الزم اليمين"
+            // (a straight or absent modifier says no side: "on ramp | straight" and "fork | straight" are real, 19 steps on the test trips)
+            "merge" -> if (noSide(m)) "اندمج مع الطريق" else if (side) "اندمج يسارًا" else "اندمج يمينًا"
+            "on ramp" -> "اسلك المدخل${if (noSide(m)) "" else " على ${if (side) "اليسار" else "اليمين"}"}"
+            "off ramp" -> "اسلك المخرج${if (s.exits.isNotBlank()) " ${s.exits}" else ""}${if (noSide(m)) "" else " على ${if (side) "اليسار" else "اليمين"}"}"
+            "fork" -> if (noSide(m)) "استمر مباشرةً" else if (side) "الزم اليسار" else "الزم اليمين"
             "end of road" -> "في نهاية الطريق ${turnAr(m)}"
             "roundabout", "rotary" -> if (s.exit > 0) "اسلك المخرج ${ordinalAr(s.exit)}" else "ادخل الدوّار"
             "roundabout turn" -> "عند الدوّار ${turnAr(m)}"
@@ -117,10 +119,10 @@ object Instructions {
             "arrive" -> when { m.contains("left") -> "Your destination is on the left"; m.contains("right") -> "Your destination is on the right"; else -> "Your destination is ahead" }
             "depart" -> "Head out"
             "new name", "continue" -> if (turning(m)) turnEn(m) else "Continue straight"
-            "merge" -> "Merge ${if (side) "left" else "right"}"
-            "on ramp" -> "Take the ramp on the ${if (side) "left" else "right"}"
-            "off ramp" -> if (s.exits.isNotBlank()) "Take exit ${s.exits} on the ${if (side) "left" else "right"}" else "Take the exit on the ${if (side) "left" else "right"}"
-            "fork" -> "Keep ${if (side) "left" else "right"}"
+            "merge" -> if (noSide(m)) "Merge" else "Merge ${if (side) "left" else "right"}"
+            "on ramp" -> if (noSide(m)) "Take the ramp" else "Take the ramp on the ${if (side) "left" else "right"}"
+            "off ramp" -> (if (s.exits.isNotBlank()) "Take exit ${s.exits}" else "Take the exit") + if (noSide(m)) "" else " on the ${if (side) "left" else "right"}"
+            "fork" -> if (noSide(m)) "Continue straight" else "Keep ${if (side) "left" else "right"}"
             "end of road" -> "At the end of the road, ${turnEn(m).replaceFirstChar { it.lowercase() }}"
             "roundabout", "rotary" -> if (s.exit > 0) "Take the ${ordinalEn(s.exit)} exit" else "Enter the roundabout"
             "roundabout turn" -> "At the roundabout, ${turnEn(m).replaceFirstChar { it.lowercase() }}"

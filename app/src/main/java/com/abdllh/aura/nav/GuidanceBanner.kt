@@ -191,8 +191,13 @@ class GuidanceBanner(ctx: Context, val compact: Boolean = false) : LinearLayout(
         }
         dist.visibility = View.VISIBLE
         dist.setIfChanged(styled(Units.distance(p.toNext, ar), 0.55f, on))
-        action.setIfChanged(Instructions.action(step, ar))
-        val name = Instructions.roadLine(step, ar, destination?.name?.takeIf { it != context.getString(R.string.maps_dropped_pin) })
+        // (the guidance part's words where the route has them: the same as the voice's. Its road line shows a Latin name too, which the voice leaves out)
+        val destinationName = destination?.name?.takeIf { it != context.getString(R.string.maps_dropped_pin) }
+        val guide = r.guide?.takeIf { it.arabic == ar }
+        val told = guide?.toldOfStep(p.next) ?: -1
+        val sign = if (guide != null && told >= 0) guide.banner(told, p.along, destinationName) else null
+        action.setIfChanged(sign?.action?.ifBlank { null } ?: Instructions.action(step, ar))
+        val name = sign?.road?.ifBlank { null } ?: Instructions.roadLine(step, ar, destinationName)
         // (a Latin name in the Arabic line, or one with brackets, keeps its own order: "Jeddah Street (Road 274)")
         road.setIfChanged(if (name.isBlank()) "" else bidi.unicodeWrap(name))
         road.visibility = if (name.isBlank()) View.GONE else View.VISIBLE
@@ -212,7 +217,9 @@ class GuidanceBanner(ctx: Context, val compact: Boolean = false) : LinearLayout(
             then.at - (step.at + step.span) < maxOf(250.0, p.speedKmh / 3.6 * 12)
         if (soon && then != null) {
             thenIcon?.show(then)
-            val next = Instructions.action(then, ar)
+            val thenIndex = r.steps.indexOf(then)
+            val thenTold = guide?.toldOfStep(thenIndex) ?: -1
+            val next = (if (guide != null && thenTold >= 0) guide.banner(thenTold, p.along).action.ifBlank { null } else null) ?: Instructions.action(then, ar)
             thenText?.setIfChanged("${context.getString(R.string.maps_then)} ${if (ar) next else next.replaceFirstChar { it.lowercase() }}")
         }
         thenRow?.reveal(soon, -6f)

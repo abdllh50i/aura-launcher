@@ -58,11 +58,18 @@ class AuraApp : Application() {
         Fonts.init(this)
         // the map's own tile server and the offline map (before any map style is built)
         com.abdllh.aura.nav.offline.OfflineMaps.init(this)
+        com.abdllh.aura.nav.pack.PackManager.init(this) // the 2.0 map pack: what is on the disk, on a thread of its own; nothing starts by itself
         com.abdllh.aura.nav.MapExtras.init(this) // what the owner added to the map (cameras, bumps, signals, limits)
         if (BuildConfig.DEBUG) com.abdllh.aura.nav.NavDebug.init(this)
+        if (BuildConfig.DEBUG) com.abdllh.aura.nav.route.RouteProbe.debugInit(this)
+        if (BuildConfig.DEBUG) com.abdllh.aura.nav.route.RouteDebug.init(this)
+        com.abdllh.aura.nav.places.PlaceSearch.init(this) // only remembers the app: places.db is opened by the first use, off the main thread
+        com.abdllh.aura.nav.places.PlaceSearch.locate = { com.abdllh.aura.nav.pack.PackPaths.placesDb(it) }
+        com.abdllh.aura.nav.places.PlaceSearch.worked = { com.abdllh.aura.nav.pack.PackPaths.noteWorked(it) }
+        if (BuildConfig.DEBUG) com.abdllh.aura.nav.places.PlacesDebug.init(this)
+        if (BuildConfig.DEBUG) com.abdllh.aura.nav.pack.PackDebug.init(this)
         UpdateManager.init(this)
         CarAudio.init(this)
-        if (BuildConfig.DEBUG) com.abdllh.aura.nav.route.RouteProbe.debugInit(this)
         // the status bar, the volume display and the screen-change animations are Aura's to change only while Aura is
         // the home screen
         val disabled = SystemProps.get(Device.DISABLED_PROP) == "1"
