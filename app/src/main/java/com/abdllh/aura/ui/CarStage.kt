@@ -120,8 +120,12 @@ class CarStage(context: Context) : FrameLayout(context) {
                 gpuDrawing = true
                 CarFrames.dropRawFiles(context)
                 CarFrames.gpuDraws(true) // the CPU's frames are not drawn any more (tens of MB)
-                gpuAfterDrawMs = if (firstDrawAt != 0L) SystemClock.uptimeMillis() - firstDrawAt else 0L
-                android.util.Log.i("AuraCar", "GPU's first frame $gpuAfterDrawMs ms after the screen's")
+                gpuAfterDrawMs = when {
+                    firstDrawAt != 0L -> SystemClock.uptimeMillis() - firstDrawAt
+                    startPath == PATH_GPU -> 0L // (it came with the screen's first frame, before that one was reported)
+                    else -> -1L
+                }
+                android.util.Log.i("AuraCar", "GPU's first frame $gpuAfterDrawMs ms after the screen's (path $startPath)")
                 introReady()
                 restFadeReady()
                 if (anim == null) g.loadRest() // (else the intro's end asks for them)
@@ -695,9 +699,10 @@ class CarStage(context: Context) : FrameLayout(context) {
                 PATH_FAILED -> com.abdllh.aura.R.string.about_car_start_failed
                 else -> return ""
             }
-            val all = if (gpuAllMs >= 0L) " · ${gpuAllMs} ms" else ""
-            return c.getString(path) + (if (gpuFirstMs >= 0L) " · ${gpuFirstMs} ms$all" else "") +
-                (if (gpuAfterDrawMs > 0L) " · +${gpuAfterDrawMs} ms" else "")
+            val first = if (gpuFirstMs >= 0L) "\n" + c.getString(com.abdllh.aura.R.string.about_car_start_first, gpuFirstMs) else ""
+            val all = if (gpuAllMs >= 0L) " · " + c.getString(com.abdllh.aura.R.string.about_car_start_all, gpuAllMs) else ""
+            val after = if (gpuAfterDrawMs >= 0L) " · " + c.getString(com.abdllh.aura.R.string.about_car_start_after, gpuAfterDrawMs) else ""
+            return c.getString(path) + first + all + after
         }
     }
 }

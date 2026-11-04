@@ -6,6 +6,9 @@
     <string name="about_car_start_cpu">من المعالج (أول تشغيل لهالنسخة)</string>
     <string name="about_car_start_late">معالج الرسوميات تأخر: إطار واحد وهي واقفة</string>
     <string name="about_car_start_failed">معالج الرسوميات فشل: رسمها المعالج</string>
+    <string name="about_car_start_first">أول الإطارات %1$d مللي ثانية</string>
+    <string name="about_car_start_all">الباقي بعدها بـ %1$d مللي ثانية</string>
+    <string name="about_car_start_after">ظهرت بعد الشاشة الرئيسية بـ %1$d مللي ثانية</string>
     <string name="about_map_lib">مكتبة الخريطة عند التشغيل</string>
     <string name="about_idle_gc">آخر تنظيف للذاكرة</string>
     <string name="about_compile">تجهيز كود التطبيق</string>

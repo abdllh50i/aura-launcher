@@ -2516,7 +2516,10 @@ class ThinProgress(ctx: Context) : View(ctx) {
     }
 }
 
-/** Three bars beside the song that is playing; they move while it plays (a dozen frames a second is plenty). */
+/**
+ * Three bars beside the song that is playing; they move while it plays. Each of their frames redraws the window, as long
+ * as a song plays: eight a second are plenty (FRAME_MS).
+ */
 class EqualizerView(ctx: Context) : View(ctx) {
     var color = Palette.accent
         set(v) { if (v != field) { field = v; invalidate() } }
@@ -2542,11 +2545,15 @@ class EqualizerView(ctx: Context) : View(ctx) {
             r.set(x, height - bh, x + bw, height.toFloat())
             c.drawRoundRect(r, bw / 2, bw / 2, p)
         }
-        // One redraw waiting, never more. Until 1.19 each draw posted its own: any other reason for a draw (a bind, a
-        // colour) started one more round that never ended, and two rounds already made the whole window redraw 26 times a second.
+        // One redraw waiting, never more. Until 1.19 each draw posted its own, so a draw for any other reason could start
+        // a second round that never ended (1.19 was measured at 26 frames a second once, against 11 for one round).
         if (animating && isAttachedToWindow) {
             removeCallbacks(next)
-            postDelayed(next, 80)
+            postDelayed(next, FRAME_MS)
         }
+    }
+
+    private companion object {
+        const val FRAME_MS = 125L
     }
 }

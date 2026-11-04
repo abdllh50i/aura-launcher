@@ -37,8 +37,8 @@ object DexCompile {
     private val main = Handler(Looper.getMainLooper())
     @Volatile private var started = false
 
-    /** What the last attempt came to (for Settings → About). */
-    val note: String get() = Prefs.raw.getString(KEY_NOTE, "").orEmpty()
+    /** What the last attempt came to, or that one is waiting (for Settings → About). */
+    val note: String get() = Prefs.raw.getString(KEY_NOTE, "").orEmpty().ifEmpty { if (started) "waiting for the car to stand parked" else "" }
 
     /** At start: asks for the compile once, at a quiet moment. */
     fun ensure(ctx: Context) {
@@ -87,7 +87,7 @@ object DexCompile {
                     note("$FILTER in $secs s, profile $bytes bytes: from the next start")
                     Prefs.raw.edit().putInt(KEY_CHECKED, BuildConfig.VERSION_CODE).remove(KEY_TRIES).apply()
                 }
-                else -> failed("after $secs s: ${r.output.take(160)}")
+                else -> failed("after $secs s: ${out.joinToString(" ").take(160)}")
             }
         } catch (t: Throwable) {
             failed("$t")

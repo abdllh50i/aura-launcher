@@ -40,9 +40,10 @@ object IdleGc {
             override fun run() {
                 // (what is still loading would map more)
                 if ((IconLoader.busy || AppRepo.busy) && ++tries <= MAX_RETRIES) { main.postDelayed(this, RETRY_MS); return }
-                waiting = null
                 val now = SystemClock.elapsedRealtime()
-                if (now - lastAt < MIN_APART_MS) return
+                val early = MIN_APART_MS - (now - lastAt)
+                if (early > 0L) { main.postDelayed(this, early); return } // (a drawer closed just after the last one)
+                waiting = null
                 lastAt = now
                 Thread({ collect(why) }, "aura-gc").apply { isDaemon = true; start() }
             }
