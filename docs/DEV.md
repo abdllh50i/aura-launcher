@@ -173,6 +173,65 @@ It follows "Design system (1.12)" throughout: type roles, `Radius` / `Space` / `
   switch "names under icons" for the dock's width; the Bluetooth debug broadcast twice with different titles, after
   tapping next, for the song change.
 
+### One way to the screens (2.0 step 0: `home/Screens.kt`, `system/Front.kt`)
+`Screens` is the only code that starts AMRI's own screens: `home`, `maps` / `mapsSearch` / `mapsGo` / `mapsPick`, `music`
+/ `musicOn`, `settings`, and `pending` for the two notifications. A caller says which screen and with what, not how it
+is reached. Today `open` starts the activity with the flags each caller used to set (Settings from an activity stays
+that activity's next step in its task); when a screen becomes a panel of the one window of 2.0, only `open` changes.
+Nothing looks different. A shared map controller and `Trips` are not part of this step.
+
+**Why Home never goes by name.** Only a start that names no component makes a home-type activity
+(`ActivityRecord.setActivityType`: `(!componentSpecified || canLaunchHomeActivity) && isHomeIntent`; AMRI's uid may not
+name it, and `isHomeIntent` asks for MAIN, one category, no data and no type, so a package, flags and extras are all
+allowed). By name, with no home activity alive, it becomes an ordinary activity in a standard stack, not the home one.
+Any other app over it, then the Home key: nothing of the home type to bring back (`hasCompatibleActivityType`), so the
+system builds a second one, with a second map and a second car, until the next power-on. Measured on 1.19.0 with AMRI
+the real home: force-stop, by name, another app, Home key gives 2 instances, 2 window roots, 404 views against 223, PSS
+123 MB against 82 in that run (PSS moves with what the maps have drawn by then). Four things walked into it: a start by name
+from outside, `HomeGuard` in the very case it exists for (the stock launcher got the first home start),
+the music key's second press when Music was the first screen, and `dev-install.ps1`, so a session tested after
+`dev-install` was not running a home-type activity at all. `BootHome`'s fallback made the same kind of start.
+
+So `Screens.home(c, from)` is a home intent with `setPackage` and two extras: `panel` ("home" until there are panels to
+ask for) and `from` (who asked, for the log; nothing depends on it). Voice and the updater already used this shape on
+the unit, without the extras; the firmware's `isHomeIntent` allows extras, tried on the emulator only. Around it:
+* **AMRI not the home app** (`Device.isDefaultHome` false: the kill switch, before it is chosen): the one by-name start
+  left. No home start finds AMRI then, so there is no trap, and a home intent would itself build a second activity beside
+  the ordinary one a launcher's app list may have started. `HomeGuard` only gets here as the home app.
+* **A start by name from outside** (adb, an app list; no home category) while AMRI is the home app: with an instance
+  alive `singleTask` hands it over and nothing is built, as before. With none alive `HomeActivity.onCreate` asks
+  `Screens.homeByName`, which finishes it and sends the home intent, in this order: while it is on top a home intent is
+  only delivered to it. So `am start -n .home.HomeActivity` in scripts and in these notes still works, and is now harmless.
+* **`BootHome`** still sends the plain home intent. Unlocked with that intent finding itself for 6 s (it used to start
+  the class by name here): the same intent limited to its package, where `HomeActivity` comes first by priority. Nothing
+  there either by 40 s: the stock launcher by name, as when the user stays locked. By AOSP's code a by-name start would
+  find nothing more anyway: the package manager filters a name by the same user state.
+* **A second instance can still be made from outside** (`su 2000 am start -a android.intent.action.MAIN -c
+  android.intent.category.HOME -n .../.home.HomeActivity`: by name but with the category), or by making AMRI the home app
+  while an ordinary instance runs. `HomeActivity` counts its instances; `Screens.homeBuilt` throws in a debug build, and in
+  a release build writes a line in Settings → About ("Home screen, last unusual start") and goes on as before. The same
+  line tells of the by-name case and of `BootHome`'s last resort, because nothing here could be tried on the unit first:
+  a healthy unit has no such line.
+
+`Front.panel`, `setPanel` and `ownIs(name, withinMs)` are the same idea for "which screen is in front". Today `panel` is
+set when an activity resumes (`Screens.panelOf`); the shell will call `setPanel` at every switch. `ownIs(Class)` stays
+next to it, deprecated with the reason: a screen that is a panel never resumes as its class, so that overload would still
+compile and never be true. `MusicKeys` asks by name.
+
+Checking it on the emulator (Android's own rules, not the firmware's: `persist.nwd.launcher.default` does not exist there):
+* `cmd package set-home-activity com.abdllh.aura/.home.HomeActivity` once, or the Home key goes to Launcher3.
+  `dev-install.ps1` starts Home through a home intent whichever is chosen.
+* Count with `dumpsys activity activities | grep -E 'Stack #|Task id|Hist #'`. `Activities:` in `dumpsys meminfo` counts
+  objects not yet collected: it stays at 2 for a while after Back.
+* `BootHome`: the home choice there is per package (the Home role), so with `BootHome` on a chosen home is dropped at once
+  ("Result set changed, dropping preferred activity"), `set-home-activity .home.BootHome` does not take, and a reboot ends
+  in the chooser (`home after 15426 ms: android/...ResolverActivity`). For a boot like the unit's, `pm disable
+  com.android.launcher3` first: the answer then goes by priority, `BootHome` (−900) over FallbackHome (−1000) while locked,
+  `HomeActivity` (0) once unlocked. `pm enable` and `set-home-activity` again afterwards.
+* `BootHome`'s last resort cannot come up by itself there: `setprop debug.aura.boothome 1`, start the app, then `am start -n
+  com.abdllh.aura/.home.BootHome --ez behind true` (debug builds; the plain answer is taken as nothing found).
+* The music key's first and second press: `am broadcast -a com.nwd.action.ACTION_KEY_VALUE --ei extra_key_value 83`.
+
 ## Design system (1.12)
 Everything a screen is made of comes from `ui/`: colours (`Palette.kt`), sizes (`Tokens.kt`), shapes and shadows
 (`Shapes.kt`), motion (`Motion.kt`) and the shared components. Until 1.11 only the colours and the curves were tokens;

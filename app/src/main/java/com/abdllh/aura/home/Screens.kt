@@ -30,7 +30,7 @@ import java.util.Locale
  * emulator, docs/DEV.md). HomeGuard (the very case it exists for), BootHome's last resort, the music key's second press
  * and dev-install.ps1 all walked into it.
  *
- * Also called from BootHome's process, while the user's storage is still closed: [homeIntent] touches nothing stored.
+ * Also called from BootHome's process, where AuraApp sets up nothing and Prefs does not exist: [homeIntent] uses neither.
  */
 object Screens {
     private const val TAG = "AuraScreens"
