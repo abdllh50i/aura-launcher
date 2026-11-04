@@ -1,0 +1,359 @@
+{
+  "about": "What the share sheet can hand over, and the one right reading of it. The rows of section 2.5 of the plan, held against the Swift parser here and meant for the unit's parser too. `redirects` stands in for the single no-redirect request, `placeIDs` for MKMapItemRequest and `searches` for MKLocalSearch: a parser for the unit may skip the rows it has no way to answer (mapItem, placeIDs).",
+  "rows": [
+    {
+      "id": "apple-short-link-first-location",
+      "note": "One request, no redirect, read the first Location. Following on can end at /unsupported.",
+      "input": { "urls": ["https://maps.apple/p/7E-Brjrk_THN14"] },
+      "redirects": {
+        "https://maps.apple/p/7E-Brjrk_THN14": { "status": 301, "location": "https://maps.apple.com/place?address=Berlin&coordinate=52.4737758%2C13.4373898" }
+      },
+      "expect": { "kind": "place", "lat": 52.4737758, "lon": 13.4373898, "confidence": "exact", "src": "share.apple" }
+    },
+    {
+      "id": "apple-short-link-named-by-text",
+      "note": "On iOS 26 the share gives public.url and public.plain-text. The text names the place.",
+      "input": { "urls": ["https://maps.apple/p/7E-Brjrk_THN14"], "texts": ["Example Bakery\nhttps://maps.apple/p/7E-Brjrk_THN14"] },
+      "redirects": {
+        "https://maps.apple/p/7E-Brjrk_THN14": { "status": 301, "location": "https://maps.apple.com/place?coordinate=52.4737758%2C13.4373898" }
+      },
+      "expect": { "kind": "place", "lat": 52.4737758, "lon": 13.4373898, "confidence": "exact", "src": "share.apple", "name": "Example Bakery" }
+    },
+    {
+      "id": "apple-place-id",
+      "note": "Better than the page: MKMapItemRequest with the Place ID, on the phone.",
+      "input": { "urls": ["https://maps.apple.com/place?place-id=I3B04EDEB21D5F86&_provider=9902"] },
+      "placeIDs": { "I3B04EDEB21D5F86": { "name": "Example place", "lat": 52.4737758, "lon": 13.4373898 } },
+      "expect": { "kind": "place", "lat": 52.4737758, "lon": 13.4373898, "confidence": "exact", "src": "share.apple", "name": "Example place", "placeID": "I3B04EDEB21D5F86" }
+    },
+    {
+      "id": "apple-coordinate",
+      "input": { "urls": ["https://maps.apple.com/place?address=Khobar&coordinate=26.290457%2C50.184555&name=Al%20Rashid%20Mall"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.apple", "name": "Al Rashid Mall" }
+    },
+    {
+      "id": "apple-ll-with-name",
+      "input": { "urls": ["https://maps.apple.com/?ll=26.290457,50.184555&q=%D8%A7%D9%84%D8%B1%D8%A7%D8%B4%D8%AF%20%D9%85%D9%88%D9%84"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.apple", "name": "الراشد مول" }
+    },
+    {
+      "id": "apple-q-coordinates",
+      "input": { "urls": ["https://maps.apple.com/?q=26.290457,50.184555"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.apple" }
+    },
+    {
+      "id": "apple-destination",
+      "input": { "urls": ["https://maps.apple.com/directions?destination=26.290457%2C50.184555"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.apple" }
+    },
+    {
+      "id": "apple-daddr",
+      "input": { "urls": ["http://maps.apple.com/?daddr=26.290457,50.184555"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.apple" }
+    },
+    {
+      "id": "apple-address-only",
+      "input": { "urls": ["https://maps.apple.com/place?address=King%20Fahd%20Road%2C%20Khobar"] },
+      "searches": { "King Fahd Road, Khobar": [{ "name": "King Fahd Road", "lat": 26.29, "lon": 50.2 }] },
+      "expect": { "kind": "choices", "query": "King Fahd Road, Khobar", "count": 1 }
+    },
+    {
+      "id": "apple-map-item",
+      "note": "On iOS 18 the share carried com.apple.mapkit.map-item, and Apple said it is coming back. It is tried first.",
+      "input": { "mapItem": { "name": "الراشد مول", "lat": 26.290457, "lon": 50.184555, "placeID": "IABC" }, "urls": ["https://maps.apple/p/7E-Brjrk_THN14"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.apple", "name": "الراشد مول", "placeID": "IABC", "followed": 0 }
+    },
+    {
+      "id": "google-short-app-style-agent",
+      "note": "Section 2.5's measured row: the Location holds !3d!4d. Never a browser user agent, never the page body.",
+      "input": { "urls": ["https://maps.app.goo.gl/Q6ZugPBVWvuiVb8e8"] },
+      "redirects": {
+        "https://maps.app.goo.gl/Q6ZugPBVWvuiVb8e8": { "status": 302, "location": "https://www.google.com/maps/place/42.578496,1.895566/data=!4m6!3m5!1s0!7e2!8m2!3d42.5784957!4d1.8955661?utm_source=mstt_1" }
+      },
+      "expect": { "kind": "place", "lat": 42.5784957, "lon": 1.8955661, "confidence": "exact", "src": "share.google" }
+    },
+    {
+      "id": "google-short-dead-link-falls-back-to-text",
+      "note": "maps.app.goo.gl/jVuuNEZ_-FQ3UGhX7 answered 404: dead links exist, so the shared text takes over.",
+      "input": { "texts": ["الراشد مول\nالخبر\nhttps://maps.app.goo.gl/jVuuNEZ_-FQ3UGhX7"] },
+      "redirects": {
+        "https://maps.app.goo.gl/jVuuNEZ_-FQ3UGhX7": { "status": 404 }
+      },
+      "searches": { "الراشد مول الخبر": [{ "name": "الراشد مول", "lat": 26.290457, "lon": 50.184555 }] },
+      "expect": { "kind": "choices", "query": "الراشد مول الخبر", "count": 1 }
+    },
+    {
+      "id": "google-short-dead-link-nothing-else",
+      "input": { "urls": ["https://maps.app.goo.gl/jVuuNEZ_-FQ3UGhX7"] },
+      "redirects": {
+        "https://maps.app.goo.gl/jVuuNEZ_-FQ3UGhX7": { "status": 404 }
+      },
+      "expect": { "kind": "nothing" }
+    },
+    {
+      "id": "google-short-no-network",
+      "input": { "urls": ["https://maps.app.goo.gl/Q6ZugPBVWvuiVb8e8"] },
+      "expect": { "kind": "nothing" }
+    },
+    {
+      "id": "google-short-two-hops",
+      "input": { "urls": ["https://goo.gl/maps/abc123"] },
+      "redirects": {
+        "https://goo.gl/maps/abc123": { "status": 302, "location": "https://maps.app.goo.gl/def456" },
+        "https://maps.app.goo.gl/def456": { "status": 302, "location": "https://www.google.com/maps/place/Al+Rashid+Mall/data=!3d26.290457!4d50.184555" }
+      },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.google", "name": "Al Rashid Mall", "followed": 2 }
+    },
+    {
+      "id": "google-short-three-hops-is-too-many",
+      "input": { "urls": ["https://goo.gl/maps/abc123"] },
+      "redirects": {
+        "https://goo.gl/maps/abc123": { "status": 302, "location": "https://maps.app.goo.gl/def456" },
+        "https://maps.app.goo.gl/def456": { "status": 302, "location": "https://maps.app.goo.gl/ghi789" },
+        "https://maps.app.goo.gl/ghi789": { "status": 302, "location": "https://www.google.com/maps/place/26.290457,50.184555" }
+      },
+      "expect": { "kind": "nothing", "followed": 2 }
+    },
+    {
+      "id": "app-goo-gl-maps-with-link-parameter",
+      "input": { "urls": ["https://app.goo.gl/maps?link=https%3A%2F%2Fwww.google.com%2Fmaps%2Fplace%2F26.290457%2C50.184555"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.google", "followed": 0 }
+    },
+    {
+      "id": "g-co-kgs",
+      "input": { "urls": ["https://g.co/kgs/AbCdEf"] },
+      "redirects": {
+        "https://g.co/kgs/AbCdEf": { "status": 302, "location": "https://www.google.com/maps/place/Example/data=!3d26.1!4d50.1" }
+      },
+      "expect": { "kind": "place", "lat": 26.1, "lon": 50.1, "confidence": "exact", "src": "share.google", "name": "Example" }
+    },
+    {
+      "id": "share-google",
+      "input": { "urls": ["https://share.google/xyz"] },
+      "redirects": {
+        "https://share.google/xyz": { "status": 302, "location": "https://maps.google.com/?q=26.290457,50.184555" }
+      },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.google" }
+    },
+    {
+      "id": "preview-page-link-parameter",
+      "note": "What a browser user agent would have been sent to. Read the link parameter, not the page.",
+      "input": { "urls": ["https://preview.app.goo.gl/maps.app.goo.gl/abc?link=https%3A%2F%2Fwww.google.com%2Fmaps%2Fplace%2F26.290457%2C50.184555"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.google", "followed": 0 }
+    },
+    {
+      "id": "google-last-3d-4d-pair-wins",
+      "input": { "urls": ["https://www.google.com/maps/dir/A/B/data=!3m1!4b1!4m9!4m8!1m2!3d10.5!4d20.5!1m2!3d26.290457!4d50.184555"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.google" }
+    },
+    {
+      "id": "google-place-3d-4d-beats-viewport",
+      "input": { "urls": ["https://www.google.com/maps/place/Al+Rashid+Mall/@26.2,50.1,17z/data=!4m6!3m5!1s0x0:0x0!8m2!3d26.290457!4d50.184555"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.google", "name": "Al Rashid Mall" }
+    },
+    {
+      "id": "google-q",
+      "input": { "urls": ["https://maps.google.com/?q=26.290457,50.184555"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.google" }
+    },
+    {
+      "id": "google-q-loc-with-name",
+      "input": { "urls": ["https://maps.google.com/?q=loc:26.290457,50.184555(%D8%A7%D9%84%D8%B1%D8%A7%D8%B4%D8%AF)"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.google", "name": "الراشد" }
+    },
+    {
+      "id": "google-query",
+      "input": { "urls": ["https://www.google.com/maps/search/?api=1&query=26.290457%2C50.184555"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.google" }
+    },
+    {
+      "id": "google-ll",
+      "input": { "urls": ["https://maps.google.com/?ll=26.290457,50.184555&z=15"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.google" }
+    },
+    {
+      "id": "google-destination",
+      "input": { "urls": ["https://www.google.com/maps/dir/?api=1&destination=26.290457,50.184555"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.google" }
+    },
+    {
+      "id": "google-daddr",
+      "input": { "urls": ["https://maps.google.com/maps?saddr=My+Location&daddr=26.290457,50.184555"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.google" }
+    },
+    {
+      "id": "google-lat-lon-path",
+      "input": { "urls": ["https://www.google.com/maps/place/26.290457,50.184555"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.google" }
+    },
+    {
+      "id": "google-search-path-with-plus",
+      "input": { "urls": ["https://www.google.com/maps/search/26.290457,+50.184555"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.google" }
+    },
+    {
+      "id": "google-viewport-is-only-a-guess",
+      "note": "/@lat,lon is where the map was looking: show it and ask.",
+      "input": { "urls": ["https://www.google.com/maps/@26.29,50.18,15z"] },
+      "expect": { "kind": "place", "lat": 26.29, "lon": 50.18, "confidence": "guess", "src": "share.google" }
+    },
+    {
+      "id": "google-name-and-viewport-is-a-guess",
+      "input": { "urls": ["https://www.google.com/maps/place/Al+Rashid+Mall/@26.29,50.18,17z"] },
+      "expect": { "kind": "place", "lat": 26.29, "lon": 50.18, "confidence": "guess", "src": "share.google", "name": "Al Rashid Mall" }
+    },
+    {
+      "id": "google-name-only",
+      "input": { "urls": ["https://www.google.com/maps/place/Al+Rashid+Mall"] },
+      "searches": { "Al Rashid Mall": [{ "name": "Al Rashid Mall", "lat": 26.29, "lon": 50.18 }, { "name": "Al Rashid Mall 2", "lat": 26.3, "lon": 50.2 }] },
+      "expect": { "kind": "choices", "query": "Al Rashid Mall", "count": 2 }
+    },
+    {
+      "id": "google-q-name",
+      "input": { "urls": ["https://www.google.com/maps?q=Al+Rashid+Mall"] },
+      "searches": { "Al Rashid Mall": [{ "name": "Al Rashid Mall", "lat": 26.29, "lon": 50.18 }] },
+      "expect": { "kind": "choices", "query": "Al Rashid Mall", "count": 1 }
+    },
+    {
+      "id": "google-country-domain",
+      "input": { "urls": ["https://www.google.com.sa/maps/place/Example/data=!3d26.290457!4d50.184555"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.google", "name": "Example" }
+    },
+    {
+      "id": "waze-ll",
+      "input": { "urls": ["https://waze.com/ul?ll=26.290457,50.184555&navigate=yes"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.waze" }
+    },
+    {
+      "id": "waze-ll-encoded",
+      "input": { "urls": ["https://www.waze.com/ul?ll=26.290457%2C50.184555"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.waze" }
+    },
+    {
+      "id": "waze-live-map-to",
+      "input": { "urls": ["https://www.waze.com/live-map/directions?to=ll.26.290457%2C50.184555"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.waze" }
+    },
+    {
+      "id": "waze-geohash",
+      "note": "Decoded locally, no network.",
+      "input": { "urls": ["https://waze.com/ul/hthettfp30b"] },
+      "expect": { "kind": "place", "lat": 26.2904575, "lon": 50.1845545, "confidence": "exact", "src": "share.waze", "tolerance": 0.00001, "followed": 0 }
+    },
+    {
+      "id": "geo-uri",
+      "input": { "urls": ["geo:26.290457,50.184555"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.geo" }
+    },
+    {
+      "id": "geo-uri-with-uncertainty",
+      "input": { "urls": ["geo:26.290457,50.184555;u=35"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.geo" }
+    },
+    {
+      "id": "geo-uri-query-with-name",
+      "input": { "texts": ["geo:0,0?q=26.290457,50.184555(%D8%A7%D9%84%D8%B1%D8%A7%D8%B4%D8%AF)"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.geo", "name": "الراشد" }
+    },
+    {
+      "id": "whatsapp-text-with-link",
+      "input": { "texts": ["هذا موقعي https://maps.google.com/?q=26.290457,50.184555"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.google" }
+    },
+    {
+      "id": "telegram-link",
+      "input": { "texts": ["https://maps.google.com/maps?q=26.290457,50.184555&ll=26.290457,50.184555&z=16"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.google" }
+    },
+    {
+      "id": "text-decimal",
+      "input": { "texts": ["26.290457, 50.184555"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.text" }
+    },
+    {
+      "id": "text-decimal-with-a-name",
+      "input": { "texts": ["الراشد مول 26.290457,50.184555"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.text", "name": "الراشد مول" }
+    },
+    {
+      "id": "text-arabic-indic-digits",
+      "note": "Arabic-Indic digits, the Arabic decimal mark and the Arabic comma.",
+      "input": { "texts": ["٢٦٫٢٩٠٤٥٧، ٥٠٫١٨٤٥٥٥"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.text" }
+    },
+    {
+      "id": "text-direction-marks",
+      "input": { "texts": ["‏26.290457‎, ‏50.184555‎"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.text" }
+    },
+    {
+      "id": "text-degrees-minutes-seconds",
+      "input": { "texts": ["26°17'25.6\"N 50°11'04.4\"E"] },
+      "expect": { "kind": "place", "lat": 26.2904444, "lon": 50.1845556, "confidence": "exact", "src": "share.text", "tolerance": 0.00001 }
+    },
+    {
+      "id": "text-hemisphere-letters",
+      "input": { "texts": ["N26.290457 E50.184555"] },
+      "expect": { "kind": "place", "lat": 26.290457, "lon": 50.184555, "confidence": "exact", "src": "share.text" }
+    },
+    {
+      "id": "text-two-decimals-is-only-a-guess",
+      "note": "12.50, 13.75 could be two prices. Show it and ask.",
+      "input": { "texts": ["26.29, 50.18"] },
+      "expect": { "kind": "place", "lat": 26.29, "lon": 50.18, "confidence": "guess", "src": "share.text" }
+    },
+    {
+      "id": "text-out-of-range-is-not-coordinates",
+      "input": { "texts": ["95.123456, 200.123456"] },
+      "searches": { "95.123456, 200.123456": [] },
+      "expect": { "kind": "nothing" }
+    },
+    {
+      "id": "short-address",
+      "note": "Four letters and four digits: searched, and picked by hand.",
+      "input": { "texts": ["EDMA2510"] },
+      "searches": { "EDMA2510": [{ "name": "EDMA2510", "lat": 26.4, "lon": 50.1 }] },
+      "expect": { "kind": "choices", "query": "EDMA2510", "count": 1 }
+    },
+    {
+      "id": "short-address-in-a-sentence",
+      "input": { "texts": ["العنوان المختصر edma2510 لو سمحت"] },
+      "searches": { "EDMA2510": [{ "name": "EDMA2510", "lat": 26.4, "lon": 50.1 }] },
+      "expect": { "kind": "choices", "query": "EDMA2510", "count": 1 }
+    },
+    {
+      "id": "short-address-arabic-indic-digits",
+      "input": { "texts": ["EDMA٢٥١٠"] },
+      "searches": { "EDMA2510": [{ "name": "EDMA2510", "lat": 26.4, "lon": 50.1 }] },
+      "expect": { "kind": "choices", "query": "EDMA2510", "count": 1 }
+    },
+    {
+      "id": "plain-text-is-a-search",
+      "input": { "texts": ["قهوة السوق"] },
+      "searches": { "قهوة السوق": [{ "name": "قهوة السوق", "lat": 26.4, "lon": 50.1 }] },
+      "expect": { "kind": "choices", "query": "قهوة السوق", "count": 1 }
+    },
+    {
+      "id": "safari-page-with-a-title",
+      "input": { "urls": ["https://example.com/some/page"], "texts": ["مطعم البيك"] },
+      "searches": { "مطعم البيك": [{ "name": "البيك", "lat": 26.4, "lon": 50.1 }] },
+      "expect": { "kind": "choices", "query": "مطعم البيك", "count": 1, "followed": 0 }
+    },
+    {
+      "id": "safari-page-alone-is-nothing",
+      "input": { "urls": ["https://example.com/some/page"] },
+      "expect": { "kind": "nothing", "followed": 0 }
+    },
+    {
+      "id": "a-search-with-no-results-is-nothing",
+      "input": { "texts": ["كلام ما له مكان"] },
+      "searches": { "كلام ما له مكان": [] },
+      "expect": { "kind": "nothing" }
+    },
+    {
+      "id": "nothing-shared",
+      "input": {},
+      "expect": { "kind": "nothing" }
+    }
+  ]
+}

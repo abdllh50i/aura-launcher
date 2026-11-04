@@ -1,0 +1,39 @@
+# The iPhone app عمري, in ios/. No tags and no releases from here: the car's updater reads this repo's releases. The IPA
+# is an artifact of the run.
+name: Amri iPhone
+on:
+  push:
+    branches: [ios-app]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  kit:
+    name: AMRIKit and the fake unit
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: ios
+          filter: blob:none
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test the fake unit
+        run: node --test ios/tools/fake_unit.test.mjs
+      - name: Test AMRIKit (parsers, discovery on loopback, retries)
+        run: |
+          set -o pipefail
+          swift test --package-path ios/AMRIKit 2>&1 | tee kit-tests.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kit-logs
+          path: kit-tests.log
+          retention-days: 7
