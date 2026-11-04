@@ -231,9 +231,9 @@ Checking it on the emulator (Android's own rules, not the firmware's: `persist.n
   `dev-install.ps1` starts Home through a home intent whichever is chosen.
 * Count with `dumpsys activity activities | grep -E 'Stack #|Task id|Hist #'`. `Activities:` in `dumpsys meminfo` counts
   objects not yet collected: it stays at 2 for a while after Back.
-* `BootHome`: the home choice there is per package (the Home role), so with `BootHome` on a chosen home is dropped at once
-  ("Result set changed, dropping preferred activity"), `set-home-activity .home.BootHome` does not take, and a reboot ends
-  in the chooser (`home after 15426 ms: android/...ResolverActivity`). For a boot like the unit's, `pm disable
+* `BootHome`: with it on, a chosen home is dropped at once ("Result set changed, dropping preferred activity"),
+  `set-home-activity .home.BootHome` does not take (the record it leaves names `HomeActivity`), and a reboot ends in the
+  chooser (`home after 15426 ms: android/...ResolverActivity`). For a boot like the unit's, `pm disable
   com.android.launcher3` first: the answer then goes by priority, `BootHome` (−900) over FallbackHome (−1000) while locked,
   `HomeActivity` (0) once unlocked. `pm enable` and `set-home-activity` again afterwards.
 * `BootHome`'s last resort cannot come up by itself there: `setprop debug.aura.boothome 1`, start the app, then `am start -n
