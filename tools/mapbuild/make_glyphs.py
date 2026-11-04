@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 """The map's fonts as a pack piece: glyphs.db, signed distance fields of the OS's own typeface, in the 256-code-point ranges MapLibre asks for.
 
-  python -I make_glyphs.py <font.ttf> <out glyphs.db> [--report out.json]
+  python -I make_glyphs.py <font.ttf> <out glyphs.db> [--family "Readex Pro AMRI"] [--report out.json]
+
+A change of the UI's font: run this with the new font and a new --family, make_pack.py with the same --family, and change MapStyle.PACK_FONT in the app: the three must say the same name.
 
 Why not the font as it is: MapLibre 10.3.7 shapes Arabic itself (ICU u_shapeArabic), turning letters into Unicode presentation forms (U+FB50-FDFF, U+FE70-FEFF), and draws one
 signed-distance glyph per code point. Readex Pro AMRI has its joined forms behind OpenType features (init, medi, fina, rlig), with no code points. So each presentation form is
@@ -28,7 +30,7 @@ from fontTools.varLib import instancer
 from PIL import Image, ImageDraw
 from scipy import ndimage
 
-STACKS = {"Readex Pro AMRI Regular": 400, "Readex Pro AMRI Bold": 700}
+WEIGHTS = {"Regular": 400, "Bold": 700}
 RANGES = [0, 256, 512, 768, 1536, 1792, 7680, 8192, 8448, 64256, 64512, 64768, 65024, 65280]  # OfflineMaps.GLYPH_RANGES, and 7680-7935: real tags such as "Wādī al Mulayḩ"
 SIZE = 24  # what MapLibre expects: glyphs at 24 px
 BUFFER = 3
@@ -206,8 +208,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("font")
     ap.add_argument("out")
+    ap.add_argument("--family", default="Readex Pro AMRI", help="the stacks' names are this + Regular, Bold; the font must be a variable one with a wght axis")
     ap.add_argument("--report")
     a = ap.parse_args()
+    stacks = {f"{a.family} {name}": w for name, w in WEIGHTS.items()}
     sys.stdout.reconfigure(encoding="utf-8")
     report = {"font": os.path.basename(a.font), "font_sha256": hashlib.sha256(open(a.font, "rb").read()).hexdigest(), "stacks": {}, "ranges": RANGES}
     if os.path.exists(a.out):
@@ -217,7 +221,7 @@ def main():
     db.execute("PRAGMA journal_mode=OFF")
     db.execute("CREATE TABLE glyphs(name TEXT PRIMARY KEY, data BLOB NOT NULL)")
     total = 0
-    for stack, weight in STACKS.items():
+    for stack, weight in stacks.items():
         font = instancer.instantiateVariableFont(TTFont(a.font), {"wght": weight, "HEXP": 0})
         glyphset = font.getGlyphSet()
         cmap = font.getBestCmap()

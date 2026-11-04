@@ -1,4 +1,4 @@
-# Compiles the app's real nav\MapStyle.kt and nav\Poi.kt with the stubs in .\style_dump and writes the four style JSON files.
+# Compiles the app's real nav\MapStyle.kt, nav\MapPalette.kt and nav\Poi.kt with the stubs in .\style_dump and writes the four style JSON files.
 # Uses the Kotlin compiler already in Gradle's cache. Nothing in the app is changed.
 #   powershell -File dump_style.ps1 -Out <folder> [-Work <folder for jars and classes>]
 param([Parameter(Mandatory)][string]$Out, [string]$Work = (Join-Path $env:TEMP 'style-dump'))
@@ -15,7 +15,7 @@ foreach ($n in 'kotlin-compiler-embeddable-2.0.21.jar', 'kotlin-stdlib-2.0.21.ja
 }
 $cp = (Get-ChildItem "$Work\jars\*.jar" | ForEach-Object { $_.FullName }) -join ';'
 $std = "$Work\jars\kotlin-stdlib-2.0.21.jar"
-$src = @(Get-ChildItem "$here\style_dump\*.kt" | ForEach-Object { $_.FullName }) + @("$app\MapStyle.kt", "$app\Poi.kt")
+$src = @(Get-ChildItem "$here\style_dump\*.kt" | ForEach-Object { $_.FullName }) + @("$app\MapStyle.kt", "$app\MapPalette.kt", "$app\Poi.kt")
 & java "-Djava.io.tmpdir=$Work" -cp $cp org.jetbrains.kotlin.cli.jvm.K2JVMCompiler -no-stdlib -no-reflect -nowarn -jvm-target 17 -cp $std -d "$Work\classes" @src
 if ($LASTEXITCODE -ne 0) { throw "kotlinc failed" }
 & java -cp "$Work\classes;$std" styledump.MainKt $Out

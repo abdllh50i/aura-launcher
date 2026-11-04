@@ -64,6 +64,7 @@ object OfflineMaps {
         if (app != null) return
         val c = ctx.applicationContext
         app = c
+        PackTiles.paths = CurrentPackFolder(c.filesDir)
         TileServer.start()
         val db = File(dir(c), "map.db")
         if (db.exists()) {

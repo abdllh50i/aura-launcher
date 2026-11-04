@@ -121,7 +121,7 @@ def main():
     if a.out:
         if os.path.exists(a.out):
             os.remove(a.out)
-        dst = sqlite3.connect(a.out)
+        dst = sqlite3.connect(f"file:{a.out}", uri=True)  # (a connection opened with a plain name cannot ATTACH the read-only source below)
         dst.execute("PRAGMA journal_mode=off")
         dst.execute("PRAGMA synchronous=off")
         for (sql,) in src.execute("SELECT sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY type='view', type='index'"):

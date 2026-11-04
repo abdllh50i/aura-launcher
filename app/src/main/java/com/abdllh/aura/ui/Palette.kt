@@ -103,7 +103,7 @@ object Palette {
             success = 0xFF2FD07A.toInt()
             warn = 0xFFF5A524.toInt()
             danger = 0xFFE5484D.toInt()
-            mapLand = 0xFF1D2127.toInt()
+            mapLand = 0xFF1B2230.toInt()
         } else {
             bg = 0xFFECEEF1.toInt()
             card = 0xFFFFFFFF.toInt()
@@ -129,7 +129,7 @@ object Palette {
             success = 0xFF17804A.toInt()
             warn = 0xFFA86200.toInt()
             danger = 0xFFC9363B.toInt()
-            mapLand = 0xFFF0EDE6.toInt()
+            mapLand = 0xFFF1F2EF.toInt()
         }
         accentFg = foreground(accent)
     }

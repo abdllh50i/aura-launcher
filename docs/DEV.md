@@ -365,7 +365,7 @@ view alpha would draw it through an offscreen layer on every frame). `placeOverl
 tilt only when they changed (0.5 px / 0.5°). Callers still pass bearing 0 for a fix without one; below 6 km/h the
 last heading is kept anyway.
 
-**The style** (`MapStyle`):
+**The style** (`MapStyle`; in 2.0 the colours below are the design's and much of the land changed: "The map on the pack"):
 * The route's colour (`routeBase()`, also the turn arrow's, the car's and the destination's) is the guidance colour,
   `Guide.color()`, the same as the sign's over the map: the owner's accent when it is blue, cyan or violet, otherwise
   the default blue (amber is the motorways' colour, red the cameras', green the parks' and graphite the roads': a
@@ -632,6 +632,85 @@ and never breaks a working map.
   * A real trip in `NavSession`: stopped about a second after the broadcast, no byte in 6 s; during the whole-file hash the thread used nothing in 3 s; goes on after. Pause, resume, pause, resume without waiting: nothing stuck or ran twice.
   * `adb reboot` at 48 %: PAUSED, nothing by itself, 3 chunks marked before and after. `echo b > /proc/sysrq-trigger` at 46 %, no sync, no unmount: the same, and the part came back at exactly 16 MiB, two sync steps: what was not synced was gone and nothing else. Every file right by `sha256sum` on the device in every case above.
 * **Not known until the unit:** free space on `/data`; speed of the eMMC and of SHA-256 and gunzip on the A53s in 32-bit (`last-install.txt`, `PackManager.lastInstall`, says fetch, hash, unpack, whole hash and open in seconds: the first real numbers); `posix_fallocate` on its ext4 and 4.9 kernel (falls back to a plain length); whether the app can read a mount itself or goes through root, and the mount names (from strings, never seen); a real hotspot; GitHub's `latest/download` 302 (measured for `download/<tag>` only).
+
+### The map on the pack (2.0: `MapStyle`, `MapPalette`, `Poi`, `offline/PackTiles`, `offline/KsaOutline`, `TileServer`, `tools/mapbuild`)
+The style above reads the pack: colours from the design, labels in the OS's own font, places from Overture and OSM, on a unit that
+has no internet. A unit with no pack sees the same colours and today's chain (online OpenFreeMap, `files/offline/map.db`), with Noto
+Sans and OpenMapTiles' places.
+
+**Palette.** `scripts/gen_map_palette.py` turns the design's `map-day.json` and `map-night.json` into `nav/MapPalette.kt` (and
+`polygon/ksa.poly` into `offline/KsaOutlineData.kt`): one command after a polish, and it stops on a missing key or a colour that is
+not `#RRGGBB`. Kotlin rather than an asset: nothing to read at run time, nothing that can fail while the home screen starts. The
+default accent draws in the palette's own route and casing (`#1F6BFF` by day, the sign is still the accent's `#3E6AE1` until the design's
+tokens come with the shell); an accent the owner picked (blue, cyan, violet) is worked out as before, line and sign in one colour.
+Cameras, signals and bumps keep their colours in code, as they were.
+`Palette.mapLand` is the same value as `land`, as `tokens.json` says.
+
+**What changed in the layers, and why** (each found on real tiles):
+* The tiles' `park` layer is no park. In the Kingdom it holds reserves the size of countries and the Haram's boundary, whose class is
+  whatever a mapper wrote in `protection_title` (`منطقة_مقدسة_إسلامية`): at 0.9 opacity all of Makkah and the reserves were green. Now
+  only classes named in the style: `forest` is green; a reserve (`national_park`, `nature_reserve`, `protected_area`,
+  `protected_site`) is a 9 % tint up to z9 that is gone by z11, with its name (`park-name`, z7 to z11).
+* `landcover` by subclass: class `grass` also holds `scrub`, `heath` and `grassland`, and `wetland` holds the salt flats: half the
+  Eastern Province came out as a lawn. Only gardens, parks, golf and meadows at 0.9, fields (`farmland`) at 0.45.
+* `sand` is the land's own colour in the palettes: its layer is left out while that is so.
+* `waterway` from z10.5 with a fade to z12, no `drain` or `ditch`: a river here is a dry wadi, and thousands of them laid a blue web
+  over the desert at the zooms of a long drive. `intermittent` water on a layer of its own at 0.45 (a data-driven opacity would have
+  moved all water out of the opaque pass).
+* Borders: `maritime != 1` (they crossed the Gulf and the causeway); a region's border thinner and fainter than the country's, gone by z11.
+* Seas: no tile holds the Arabian Gulf or the Red Sea (`water_name` has the Gulf of Bahrain and the Straits of Tiran, from z8), so
+  `MapStyle.SEAS` are fixed points in a small GeoJSON source, far ones only from z7, to z9. Names in the code, as data of the map like a
+  tile's names; both languages there, no strings file. `water-name` from z8 with a halo of the water's own colour.
+* `place-region` (`state`, `province`) regular, small, grey, z5 to z8, listed before the towns: the last layer in the list places first,
+  so a region gives way to a town. Bold and larger, and placed first, they had pushed Makkah and Madinah off the country view. The
+  country's name only under z5. In English some regions read as their city (Riyadh, Medina twice at z5): left.
+* A casing is an edge at any zoom (`edge()`): 30 % of its width at z5, whole from z12. At street-level width a dual carriageway at z5
+  was two grey bands.
+* `road-name-major` from z11, far apart while far out; `road-name` a little more room between names.
+
+**The fonts.** `MapStyle.PACK_FONT` (`Readex Pro AMRI`) is the one name in the app; `make_glyphs.py --family` and `make_pack.py --family`
+must say the same (the font itself is `make_glyphs.py`'s first argument). The style asks for it when the unit has `glyphs.db` and the
+tile server is up, else for `Noto Sans`, which is all OpenFreeMap has. glyphs.db unreadable: the server answers the request from
+the Noto stack, so a damaged pack costs the font, not the words. A range the pack has no row for is 204 at once.
+
+**Places.** `places.mbtiles` (layer `places`, fields `name`, `name:en`, `kind`, `cat`, `rank`, `id`) is a source of its own on
+`/p/{z}/{x}/{y}.pbf`, z12 to z14. `kind` is new: `cat.icon`, the colour group, because `cat.id` changes between builds and the style would
+have had to read table `cat` for it. Its `rank` is 1 to 100, higher more important, the opposite of OpenMapTiles': `poi-a` is `rank >= 60`
+from z14 (at z13 only `rank >= 80`: hospitals, malls, big hotels, from z12.6), `poi-b` 45 to 60 from z15, `poi-c` 30 to 45 from z16, `poi-d`
+below from z17; bands, not `symbol-sort-key`, which splits a bucket into one draw per key. The names `poi-a..d` stay (the design's
+`hiddenWhileNavigating`, `NAV_HIDDEN`); on a unit with a pack OpenMapTiles' places are `omt-poi-a..d`, which only tiles from OpenFreeMap
+fill, outside the Kingdom. `AuraMap.tapPlace` reads either; `onPlaceRow(id)` gives the row of `places.db`.
+OpenMapTiles' `poi` layer has left `base.mbtiles` (`strip_tiles.py`, a step of `run_build.ps1`, `check_tiles.py` refuses it). What else
+read it: only the style and the tap. `PlaceIndex.build` and `Region.roadTiles` read `TileStore`, `files/offline/map.db`, OpenFreeMap's
+tiles, never the pack: a note in the tile report said the strip would cost PlaceIndex its places, and it does not.
+
+**The server.** `PackTiles` opens the three files read only, on a tile thread at the first request, with `NO_LOCALIZED_COLLATORS`.
+Not `TileStore`, which creates tables and turns on WAL. A failed open is tried again a minute later; the style only asks whether the
+files are there, which reads nothing. Android's default error handler deletes a database it finds corrupt: `PackTiles` passes its own, a
+download of minutes stays where it is for the pack manager to judge. `PackTiles.paths` is the one lookup (`MapPackPaths`; `CurrentPackFolder`,
+files/maps2/current/, stands in until the pack's own paths are merged; debug: `setprop debug.aura.pack name`); `PackTiles.changed()` after a switch.
+The choice (`TileServer.tile`): a tile that touches the Kingdom's outline (`KsaOutline.touchesTile`, Liang-Barsky against 308 edges, a few
+microseconds on the PC, nothing kept) comes from the pack, and a missing row is 204, an empty tile (more than a third of z14 is), never
+the internet. Any other tile: store, OpenFreeMap, and the pack when those fail (it holds the sea and far shores over its rectangle).
+
+**The second copy.** `Cache-Control: no-store` does not stop MapLibre 10.3.7: the string is not in `libmapbox-gl.so`, it reads `max-age` and
+`must-revalidate` only, and every tile is packed again and written to `mbgl-offline.db`. `Source.setVolatile(true)` does stop it
+(`MapStyle.afterLoad`; the JSON key `volatile` is not in that library either, so it is the Java call, after the style loads). The price: online tiles
+outside the Kingdom are not kept on a unit with a pack. Measured on the emulator, 10 cameras: `mbgl-offline.db` 0.27 MB after 155 tiles read,
+2.62 MB after 166 with the sources not volatile. Reading the database stays: a tile cached under the same address before a pack came is shown until
+it expires (a day, then the pack's replaces it), so the pack manager should call `OfflineManager.clearAmbientCache` once after a switch.
+
+**The credit.** `MapStyle.attribution(at)`: `© OpenStreetMap contributors · © OpenMapTiles · Overture Maps` while the pack draws (a pack, and
+the middle of the map inside the outline or no internet), `© OpenStreetMap · OpenFreeMap` otherwise, updated when the map comes to rest
+(`AuraMap.onCameraIdle`). The Home map has no credit yet: the shell's step must add it there.
+
+**Looking at it** (`debug/MapLookActivity`, `scripts/map-look.ps1`): the real map alone on the screen at any camera, 37 cameras, offline, the pack's read
+times per shot and anything MapLibre complains of. `tools/mapbuild/adversary/dump_style.ps1` still writes the style as JSON for the GL JS plates.
+Seen on the x86_64 emulator with MapLibre Native 10.3.7, day and night, Arabic and English, against `final2/assets/plates`; not an ARM GPU, nothing on the unit.
+Reads there, the emulator's disk image on a spinning disk shared with other emulators: mean 1 to 23 ms a tile per camera, worst 91 ms; one run while the disk was busy, mean 42 ms, worst 420 ms (the PC itself: 0.04 ms). The unit's eMMC is unmeasured.
+What differs from the plates, on purpose or not: the words are Readex Pro AMRI, the plates' Noto Sans; the places are the pack's, not OpenFreeMap's, so other names and more
+Latin on an Arabic screen; edges of fills have no multisampling; the labels' fade exists on the unit and not on a plate.
+The rectangle's south edge, 16.2 N, shows as a straight line across the Red Sea below Jazan at z7 to z9 (a tile that touches the outline comes from the pack even online): rare here, a rebuild with a lower edge cures it.
 
 ### Map additions: limits, cameras, signals, bumps (`tools/map-editor`, `nav/MapExtras.kt`)
 What the map data does not have, the owner draws himself and every unit picks up.

@@ -7,4 +7,15 @@ object TileServer {
     val running = true
     val tilesUrl = "TILES_URL/{z}/{x}/{y}.pbf"
     val glyphsUrl = "GLYPHS_URL/{fontstack}/{range}.pbf"
+    val placesUrl = "PLACES_URL/{z}/{x}/{y}.pbf"
+    val offline = false
 }
+
+/** A unit with a pack: the style of the pack's fonts and places. */
+object PackTiles {
+    val present = true
+    val hasFonts = true
+    val hasPlaces = true
+}
+
+object KsaOutline { fun contains(lat: Double, lon: Double) = true }

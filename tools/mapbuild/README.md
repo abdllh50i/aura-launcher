@@ -26,11 +26,11 @@ Only to look at results, with the design kit's headless Chrome (a folder given w
 
 | File | What | Read by |
 |---|---|---|
-| `base.mbtiles` | Base map z0-14, OpenMapTiles schema, ar and en, over the rectangle 34.4,16.2,55.7,32.2 | `TileServer`; `polygon\ksa.poly` says what is inside the Kingdom, for the app's online-or-pack choice |
+| `base.mbtiles` | Base map z0-14, OpenMapTiles schema without its `poi` layer (`strip_tiles.py`: places come from `places.mbtiles`), ar and en, over the rectangle 34.4,16.2,55.7,32.2 | `TileServer`; `polygon\ksa.poly` says what is inside the Kingdom, for the app's online-or-pack choice |
 | `route.tar` | Valhalla 3.9.1 tiles, driving only, `index.bin` first | The JNI library with `device-config.json` |
 | `places.db` | Search, spots, gates, zones: `SEARCH_SPEC.md` | The app's search |
-| `places.mbtiles` | Places on the map z12-14 | `TileServer` |
-| `glyphs.db` | Map fonts as glyph PBFs: stacks `Readex Pro AMRI Regular`, `Readex Pro AMRI Bold` | `TileServer`'s `/f/` |
+| `places.mbtiles` | Places on the map z12-14: layer `places`, fields name, name:en, kind (the colour group, `cat.icon`), cat, rank, id | `TileServer`'s `/p/` |
+| `glyphs.db` | Map fonts as glyph PBFs: stacks `Readex Pro AMRI Regular`, `Readex Pro AMRI Bold` (`make_glyphs.py --family`, `make_pack.py --family` and `MapStyle.PACK_FONT` must say the same name) | `TileServer`'s `/f/` |
 | `pack\` | All of it in gzip chunks of 64 MiB, `manifest.json`, the notices | The unit's pack manager, or a USB stick |
 
 ## Checks

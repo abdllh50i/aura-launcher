@@ -29,19 +29,19 @@ import mvt  # noqa: E402
 # What MapStyle.kt reads. layer -> (fields read, classes it filters or colours by)
 # Checked below against the file itself, so a new source-layer in the style fails this script.
 STYLE = {
-    "landcover": ({"class"}, {"sand", "wood", "forest", "grass", "farmland", "wetland"}),
+    "landcover": ({"class", "subclass"}, {"sand", "wood", "forest", "grass", "farmland"}),
     "landuse": ({"class"}, {"residential", "suburb", "neighbourhood", "commercial", "retail", "industrial", "railway",
                             "garages", "quarry", "hospital", "school", "university", "college", "kindergarten",
                             "cemetery", "stadium", "pitch", "playground", "track"}),
-    "park": (set(), set()),
-    "waterway": (set(), set()),
-    "water": (set(), set()),
+    "park": ({"class", "name", "name:ar", "name:en", "name:latin"}, {"national_park", "nature_reserve", "protected_area", "protected_site", "forest"}),
+    "waterway": ({"class"}, set()),
+    "water": ({"intermittent"}, set()),
     "aeroway": ({"class"}, {"runway", "taxiway"}),
     "building": ({"render_height", "render_min_height"}, set()),
-    "boundary": ({"admin_level"}, set()),
+    "boundary": ({"admin_level", "maritime"}, set()),
     "transportation": ({"class", "brunnel", "ramp"}, {"motorway", "trunk", "primary", "secondary", "tertiary", "minor",
                                                       "service", "track", "rail", "transit"}),
-    "poi": ({"name", "name:ar", "name:en", "name:latin", "rank", "class"}, None),  # classes: from Poi.kt
+
     "water_name": ({"name", "name:ar", "name:en", "name:latin"}, set()),
     "housenumber": ({"housenumber"}, set()),
     "transportation_name": ({"class", "name", "name:ar", "name:en", "name:latin", "ref"},
@@ -104,6 +104,10 @@ class Report:
         print(s.encode("ascii", "replace").decode(), flush=True)
 
 
+# Layers the style reads that are not in this file: places.mbtiles, and the poi layer of OpenFreeMap's tiles (strip_tiles.py took it out of the base).
+ELSEWHERE = {"places": {"name", "name:en", "kind", "cat", "rank", "id"}, "poi": {"name", "name:ar", "name:en", "name:latin", "rank", "class"}}
+
+
 def check_style_file(style_path, poi_path, say):
     src = open(style_path, encoding="utf-8").read()
     used = set(re.findall(r'"source-layer":"([a-z_]+)"', src))
@@ -111,14 +115,14 @@ def check_style_file(style_path, poi_path, say):
     used.discard("$layer")
     fixed = {u for u in used if not u.startswith("$")}
     say("source-layers named in MapStyle.kt:", sorted(fixed))
-    unknown = fixed - set(STYLE)
+    unknown = fixed - set(STYLE) - set(ELSEWHERE)
     if unknown:
         sys.exit(f"MapStyle.kt reads layers this script does not know: {unknown}")
     gets = set(re.findall(r'\["get","([^"]+)"\]', src))
     say("fields read with [\"get\",...] in MapStyle.kt:", sorted(gets))
-    known = set().union(*(v[0] for v in STYLE.values()))
-    # label is a field of the app's own extras source; kind too
-    unknown = gets - known - {"label", "kind"}
+    known = set().union(*(v[0] for v in STYLE.values()), *ELSEWHERE.values())
+    # label is a field of the app's own extras source, minz of its seas source
+    unknown = gets - known - {"label", "minz"}
     if unknown:
         sys.exit(f"MapStyle.kt reads fields this script does not know: {unknown}")
     poi = open(poi_path, encoding="utf-8").read()
@@ -242,8 +246,6 @@ def main():
 
     problems = []
     for layer, (flds, classes) in sorted(STYLE.items()):
-        if layer == "poi":
-            classes = poi_classes
         present = feats_seen[layer]
         miss_f = sorted(f for f in flds if keys_seen[layer][f] == 0)
         miss_c = sorted(c for c in (classes or ()) if classes_seen[layer][c] == 0)
@@ -258,6 +260,8 @@ def main():
         for c in miss_c:
             problems.append(f"{layer} class {c} never seen")
     say("  layers in the tiles that the style does not read:", sorted(set(feats_seen) - set(STYLE)))
+    if feats_seen["poi"]:
+        problems.append("the poi layer is still in the base: places would show twice (strip_tiles.py --drop-layers poi)")
     say("  PROBLEMS:", problems if problems else "none")
 
     say("\n== 4. Arabic names, today's offline area, z14, deduped like the nav report")
