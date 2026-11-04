@@ -90,7 +90,7 @@ internal object RouteProbe {
 
     /**
      * Debug builds: `am broadcast -a com.abdllh.aura.debug.ROUTE_PROBE`, with `--es exe <path>` another test program (for the
-     * emulator's CPU), `--es crash <stage>` a real SIGSEGV in that stage, `--es hang <stage>` that stage never ending.
+     * emulator's CPU), `--es crash <stage>[,<stage>...]` a real SIGSEGV in those stages, `--es hang <stage>` that stage never ending.
      */
     fun debugInit(ctx: Context) {
         val app = ctx.applicationContext
@@ -276,7 +276,7 @@ internal object RouteProbe {
         val o = JSONObject()
         val t0 = SystemClock.elapsedRealtimeNanos()
         try {
-            if (BuildConfig.DEBUG && stage == crashIn) Process.sendSignal(Process.myPid(), 11).also { SystemClock.sleep(5000) }
+            if (BuildConfig.DEBUG && crashIn?.split(',')?.contains(stage) == true) Process.sendSignal(Process.myPid(), 11).also { SystemClock.sleep(5000) }
             if (BuildConfig.DEBUG && stage == hangIn) SystemClock.sleep(STAGE_MS * 3)
             work(o)
         } catch (t: Throwable) {
@@ -312,8 +312,8 @@ internal object RouteProbe {
         val body = v.route(c, request(doubleArrayOf(mid.getDouble(1), mid.getDouble(0))).toByteArray())
         o.put("ms", (SystemClock.elapsedRealtimeNanos() - t0) / 1_000_000).put("bytes", body.size)
         val a = JSONObject(String(body, Charsets.UTF_8))
-        o.put("code", a.opt("code") ?: JSONObject.NULL).put("plainKm", p.getJSONArray("routes").getJSONObject(0).optDouble("distance", 0.0) / 1000)
-        a.optJSONArray("routes")?.optJSONObject(0)?.let { o.put("km", Math.round(it.optDouble("distance", 0.0) * 100) / 100.0) }
+        o.put("code", a.opt("code") ?: JSONObject.NULL).put("plainKm", Math.round(p.getJSONArray("routes").getJSONObject(0).optDouble("distance", 0.0) / 10) / 100.0)
+        a.optJSONArray("routes")?.optJSONObject(0)?.let { o.put("km", Math.round(it.optDouble("distance", 0.0) / 10) / 100.0) }
         if (a.opt("code") != "Ok") o.put("message", a.optString("message").take(200))
         // (an answer of any kind is what is asked here: no crash, and the request understood)
         o.put("ok", a.has("code"))
