@@ -123,12 +123,11 @@ It follows "Design system (1.12)" throughout: type roles, `Radius` / `Space` / `
   a second fill of the same colour, is gone from home and Settings, and deleted).
 * **Entrance.** Everything but the car settles in about half a second (it was ~1 s): header at 0 ms, the map row's
   three parts at 80/110/140, the player at 140, the quick buttons at 160, each `View.enter`. The map panel only moves
-  (16 dp, `LONG`): it holds the live map's surface, which a fade would draw through a layer on every frame. The dock
+  (16 dp, `LONG`), with its picture: the live map comes later, under the window, where nothing moves it. The dock
   rises with its tiles 25 ms apart, translation only. The car's spin is 1400 ms (was 1900) from 100 ms.
 * **Start-up.** Nothing heavy competes with the entrance any more:
-  * The live map is built by `MapPanel.startLive()`, 700 ms after the entrance starts (at once after a restyle).
-    `MapPanel` keeps the activity's lifecycle (created/started/resumed) and replays it on the map when it is built.
-    Until then, and until the map has drawn, its last picture shows (see Aura Maps, "The home map's start").
+  * The live map is built by `MapController.startForHome()`, 700 ms after the entrance starts. Until then, and until the map
+    has drawn, its last picture shows in the card, and the wall has no hole yet (see "One engine"; Aura Maps, "The home map's start").
   * The CPU path's decoding threads run at default priority (they were above the UI thread). `CarFrames.warmUp`
     only runs when the GPU cannot draw this start's spin (no frame file known yet, or the GPU failed): see "Memory and
     start-up cuts" below. Until 1.19 it decoded the whole spin at every start.
@@ -166,7 +165,7 @@ It follows "Design system (1.12)" throughout: type roles, `Radius` / `Space` / `
   language, like the transport row) within 3 s of the press, else rising; the movement follows the title only
   (Bluetooth sends title, artist and cover separately). A new song without a cover keeps the old one dimmed for up to
   1.5 s. App names for the source line are cached.
-* **Small things.** A tap on the map shows the press tint (a drawable state; nothing moves the TextureView). The gear's
+* **Small things.** A tap on the map shows the press tint (a drawable state). The gear's
   letters take their lit colour by how much of the sliding circle covers them, frame by frame, with one weight, so a
   shift only redraws. Both sheets' close buttons are 56 dp.
 * Checking it: force-stop and start `.home.HomeActivity` for the entrance; pin six apps (long-press in the drawer) and
@@ -245,10 +244,10 @@ Checking it on the emulator (Android's own rules, not the firmware's: `persist.n
 
 ### One window (2.0 step 2: `home/HomeActivity.kt`, `Panel.kt`, `PanelStack.kt`, `PanelMotion.kt`, `ShellRoot.kt`, `Entry.kt`)
 `HomeActivity` is the shell: one window, and nothing of any screen in it. `ShellRoot` is its content, in layers: `mapHost`
-(the map's slot, empty until step 3: always attached, always visible, never follows the keyboard), `panelLayer`, `chrome`
+(the map's slot, see "One engine" below: always attached, always visible, never follows the keyboard), `panelLayer`, `chrome`
 (empty until the new design), `sheets` (Controls and the drawer, the same classes). `setContentView` runs once: a new theme
 rebuilds what is in the layers. The home screen moved unchanged to `HomePanel`, the bottom of the stack; Settings to
-`SettingsPanel`, the first panel above it, built on open, dropped on close. Maps and Music are still activities. Nothing
+`SettingsPanel`, the first panel above it, built on open, dropped on close. Maps followed at step 3; Music is still an activity. Nothing
 looks different; a screen that is a panel opens in the window, with no activity start.
 
 **A panel** (`Panel`) is a `ContextWrapper` of the activity, so code moved from an activity keeps working on `this`, and its
@@ -293,7 +292,7 @@ panel changes. That is also what ends the enrolment card on the Home key, whose 
 more (the Home key no longer stops anything under a panel).
 
 **The window has no background** (`Theme.window(fill = false)`): each opaque panel draws its own room, the one full-screen
-fill at rest, as the design wants and as a map under the window will need. The car still stands on `Palette.bg`: it is the
+fill at rest, as the design wants and as the map under the window needs. The car still stands on `Palette.bg`: it is the
 room's colour now. `CarStage.redraw` no longer pushes frames to the GPU while it is not shown: nothing takes them under another
 panel, and its thread would hang in the swap two frames later (an animation does not stop for that).
 
@@ -342,6 +341,73 @@ GC, two passes each, before and after: Home at rest 94.6, 107.9 / 100.5, 104.3 M
 102.6, 106.2 / 102.5, 104.0; after 15 more rounds 107.5, 116.8 / 104.7, 108.7 (native 69-73 / 61-66). Views 222 / 228 on Home, 317 / 320
 with Settings; window roots 2 / 1 with Settings open. On the unit that is one window's buffers instead of two while Settings is
 up, plus one screen-sized layer during a move; not measured. Not tried on the unit: all of it.
+
+### One engine (2.0 step 3: `nav/MapController.kt`, `nav/AuraMap.kt`, `nav/MapsPanel.kt`, `home/Wall.kt`, `home/ShellRoot.kt`)
+One `AuraMap` for the window's whole life, on a SurfaceView, in `ShellRoot.mapHost`, under everything. It is never moved, resized, hidden or
+faded, from the first time it is wanted until the window ends: only covered, and only its camera changes. Maps is `MapsPanel` now, nothing but cards
+over that map, and the home screen is a wall with a hole in it. So going from one to the other is the wall fading off and the camera easing: no engine to
+build, no surface to make, no tile to load, no activity to start. Why a surface and not a TextureView is measured in `understand/home-shell.md` 4 (a moving
+map makes the window redraw 23.6 times a second with a texture, and not at all with a surface). The new look lands on this; this step only moved what was there.
+
+**`MapController` is the only one that talks to the map.** It owns the `AuraMap` (`shell.map.map`), brings it through the window's lifecycle, and is the only listener to
+`NavSession` and `CarLocation` for it and the only caller of `setRoute`, `setRouteAhead`, `setDestination`, `setTurn`, `setCamera`, `setCar`. The home screen and Maps each had their
+own copy of that logic and the copies had drifted (the arrow's "shown" check was Maps' alone; it is everybody's now). A panel keeps its chrome, listens for that if it must (a banner, a
+speed) and calls the map's names on the controller: `setRoute` and `setDestination` there mean what the panel shows *when no trip is on the map*, and wait for the trip's end. It holds
+`CarLocation` as "shell" from the window's start to its stop, so under Settings the fixes (and `RoadWatch`'s tones) go on where they used to stop with Home's `onStop`. `toHome()` and
+`toMaps(side)` say who has the map: a panel calls one in its `onShow`, and a panel that says neither (Settings) leaves it as it is.
+
+**The room, not the layout.** `AuraMap.setRoom(l, t, r, b, navTop)` says what part of the view can be seen, and the camera keeps the car in the middle of that part; this replaces `startPadding`,
+and the home screen's "top padding of a smaller view" comes out the same inside its card. A new room is a blend (`springK`, the design's section 9: 95 % at 365 ms), and with the zoom the same that is
+a pure pan. `setInteractive` is the run-time switch for gestures. A map that follows nothing yet (no fix ever) still takes the room, around where it looks. Going home from Maps: gestures off,
+Maps' zoom given back (`zoomBack`), and a camera the driver dragged follows again; Maps does not remember it yet (the design wants that, `MapController` is where it goes).
+
+**The states** (`home-shell.md` 5.3). LIVE: as ever, the frame loop runs only while something moves and draws at most 30 a second, 60 only on Maps on a trip (and a map that fell back to 30 stays there
+for the trip: `fellBehind`). FROZEN: an opaque panel at rest on top (`mapHost.covered`, set by `PanelStack`, cleared *before* anything is uncovered); nothing sets the camera, so nothing is drawn (measured: 0
+map frames in 4 s under Settings on a trip, 10 a second just before); fixes go on being taken in and uncovered the camera is simply where the car is. STOPPED: the window's `onStop`; its surface goes with the window.
+ABSENT: `MapGuard` refused: no MapView at all, and the wall stays whole, an opaque screen with today's grid picture in the card, until the driver asks for Maps, which builds one (a crash then is
+a crash he asked for, and the next start still has none at Home).
+**The cover** (`mapHost.cover`, the land's colour, a flat fill) is over the map from a start until `onDrawn`, wherever it could be seen, so a surface that is not back yet never shows as black.
+Not for a new style: tried, and on a trip it hid the car and the route for seconds; the surface is there and shows the new land at once, with the car and the route on it, while the tiles come.
+
+**The window.** No background and `PixelFormat.TRANSLUCENT` from `onCreate` (a SurfaceView makes ViewRootImpl change an opaque format by itself with its first traversal; better not under a running window). `ShellRoot.gatherTransparentRegion` empties
+the region: the hint a SurfaceView asks for is worked out at layout passes, and nothing here moves or shows by layout, so what is drawn outside the last one can be cut (the design's section 14, question 2; DEV's views that vanished over a panned surface). The window is one rectangle, its alpha alone reveals the map.
+`PanelMotion.OverMap` is the move to and from Maps: what covered the map (Home with all that is on it, Settings' room) fades as one layer, 240 ms on `Motion.STANDARD`, a hole in it where the card is, and the cards come in. Nothing pops at the end: what stays under a panel at rest is not drawn, and by then it is transparent.
+
+**Home's wall** (`Wall`, the room's drawable): one flat fill until the map has drawn, so nothing of the entrance changes and a map that never comes costs nothing; then the card's rectangle is left out, four rectangles and four small corner bitmaps (the surface cannot be rounded: the corners are the wall's, no path, no layer). The picture of the
+card (`MapPanel`'s backdrop, the land's fill) stands over the hole and fades as ever, so nothing shows the moment it opens. The camera's room is the card's laid-out rectangle (`HomePanel.cardPlaced`, from a layout pass). The picture kept for the next start is cut to the card (`pictureArea`), so it is the same file for the same view, under the same name. On the light theme the card has
+lost its low shadow while it is a hole: a shadow reaches inside its caster (which normally covers it itself) and lay as a grey ring over the map; the design bakes it into the wall. `solid` is new on `Panel`: Home is not `opaque` any more (the map stays awake) but no touch reaches the map through it.
+
+**A panel that is kept** (`MapsPanel`: `keep`, built ahead 3 s after the entrance, `PanelStack.prepare`, so nothing is built in a tap): what an activity forgot at its destroy goes through `Panel.onOff`, told once it is off the stack and at rest, and `isOff` tells in `onHide` that this hide is the leaving kind. A search, a chosen place, a place being picked go; a trip does not; another app or a panel over it forgets nothing, as before. Listeners on the map must not touch hidden views: a change to a view under an INVISIBLE frame still asks the window for a frame (`turnCompass`).
+`softInput` stays `adjustResize|stateHidden`: on the unit (`policy_control`) the window does not resize, the keyboard covers the lower part of the results as it always did, and the only field is above it, so nothing pans; `mapHost` does not follow either way. The results' own measure is unchanged.
+
+**A new look.** `MapController.lookMayChange` is one rule for every panel, Maps' old one: not while the car moves on a trip with a manoeuvre near (a highway at dusk: on the first long stretch), and at once if the map has that look already. `MapsPanel.onLook` builds its cards again in place and `lookChanged` reloads the style on the same engine (`AuraMap.reloadStyle`): route, turn, destination and additions go back on as the style comes. `HomePanel.rebuild` the same; its picture of the window has a hole where the card is (the copy keeps the window's alpha, on the emulator; `openCard` cuts it open if the unit's comes out solid). A language is still the whole window, the one time the engine is built again.
+
+**MapGuard** also counts a map that goes down after its first frame: `no_backup/map-live` ("<boot id> <elapsedRealtime>") from the first frame to `onStop`. Found at the next start: counted only if the boot id is this one and the map came up less than 3 minutes ago (a car losing its power with the map up is another boot; a process killed later is not the map's fault as far as can be told; `liveMarkCounts`, unit tests). Two in a boot and it is ABSENT until the next boot: fewer than the guard's three dead starts in a row, so a map that cannot run costs the map and not the home screen. In prefs file `aura_shell`, as 1.19 reads `aura_mapguard`. Settings → About: "The map at this start" says when it drew, or why it is not there. Nothing about telling the map may throw into the home screen (`MapController.safely`); a native crash cannot be caught and is what the mark is for.
+
+**Hooks.** `setprop debug.aura.frames 1` and a restart: which view asks for each frame of the window (`AuraShell`). A force-stop with the map up counts as a death: `rm no_backup/map-live` first when testing, or the third force-stop within 3 minutes has no map. `MapsActivity --es mock_loc`, `--ez simulate true`, `--es q`, `--es pick`, `no3d` work as before, through `Entry`. `AuraMap` logs `engine #n`, `style load #n`: one engine, and one style per look, is the proof that nothing reloads.
+
+Walked on the emulator with AMRI the real home (`set-home-activity`, the Home key), the map up throughout and no second activity, ever: `['home']`, one instance, in every step. The last step's whole walk again (Settings' pages, the sheets, the Home key from a deep page and from a dialog, another app and back, a call card and the volume display, by the old names with one alive and with none and the trap after it, the hooks, language and theme both ways, a permission dialog, the keyboard, the pick, Screen check). And Maps: from the map, the dock, "Where to?" with the keyboard and a search and a result, the place card, Back through results and place, the Home key with a place up and a menu up (nothing of it the next time), the pick by Back and by Save, a trip by the Work button and by the debug hook, Home and Maps on a trip, a dragged map and the Home key, Settings over a trip, End, a third-party app over Home and over Maps, the old name from another app, the music key and Music as an activity, sunset on a trip (it waits near a turn, comes on a long stretch, reloads on the same engine with the car and the route showing throughout), Arabic and the light theme, 120 rounds of the stress with Settings, Maps and the probe. `scripts/phone-server-test.py` (taught that Maps is a panel), the phone's place and the voice's "go to" through `Trips`: 98 checks, 0 failed. A native crash (`kill -11`) with the map up, twice: the third start has the grid and no surface layer, Maps on request builds the map, a mark of another boot and one 200 s old count nothing. A map that cannot be built (`debug.aura.mapfail 1`): the kept picture at Home, the land under Maps' cards, no crash. No crash line in any of it. Black frames: 358 frames recorded across 24 moves (Home and Maps both ways, back from another app, from Settings, from Music), the card's rectangle never under a brightness of 36 where black would be 16 (that 36 is Music's own room; on Home and Maps never under 58).
+
+Numbers, emulator, a shared PC, interleaved with the build before the panels (`2fc4680`). Times do not carry over to the unit, GPU memory is in none of them, and PSS differences under about 5 MB mean nothing:
+
+| | before the panels | now |
+|---|---:|---:|
+| Home to Maps, to the first frame | `am start -W`, median per run of 10: 454, 654, 850, 1132 ms (315-5478), and then the map still has to draw | from the tap's handler, median per run of 10: 21-63 ms over six runs (14-118), the map is there |
+| Maps to Home, to the first frame | not comparable (a window animation) | median 20-33 ms (10-88, once 394) |
+| Window frames in a move, medians, and the longest frame's median | open 4-5, 314-938 ms; back 2, 80-224 ms | open and back 15-23, 24-139 ms |
+| Engines in 10 rounds | a new one at every open, by the code | 1 engine, 1 style (the log: `engine #1`, `style load #1`) |
+| Window frames with the car moving at Home (1 fix a second, no other change) | 23.6 a second (1.19.0, `home-shell.md` 4) | **0 in 30 s**, and 0 on Maps |
+| Map frames at Home with the car stopped; under Settings on a trip | | 0 in 12 s; 0 in 4 s |
+| PSS after a GC / native, MB: Home at rest | 77.5 / 36.6, 77.6 / 37.1 | 82.3 / 41.5, 90.1 / 46.4, 89.7 / 48.2 |
+| Maps open | 89.7 / 48.1, 94.8 / 53.7 | 82.2 / 41.3, 90.5 / 46.9, 91.3 / 49.8 |
+| A trip at Home | 96.5 / 53.1, 96.4 / 54.4 | 108.2 / 65.2, 98.8 / 54.2, 112.4 / 68.7 |
+| A trip on Maps | 141.2 / 97.9, 144.3 / 102.0 | 114.6 / 72.5, 121.6 / 76.5, 119.7 / 75.9 |
+| After the trip and 10 more rounds of Maps | 128.1 / 83.6, 135.3 / 92.0 | 112.6 / 70.4, 121.4 / 77.2, 113.9 / 70.0 |
+| Views, window roots | 222 / 1 at Home, 317 / 2 on Maps | 316 / 1, always (Maps' panel is kept) |
+
+So Home itself weighs 5 to 12 MB more (a map of the whole screen, Maps' cards kept), and what used to be two engines costs 20 to 25 MB less on a trip and does not grow with rounds. On the unit, GPU memory: one surface of 1024 x 600 under the window where there were a 607 x 484 TextureView and a Maps surface; not measured.
+
+Only the unit can tell: whether its composer gives the map and the window planes of their own (the window is translucent over the map all the time now, and the screen check's `MapRig` was the first look at that), how the map's 614 k pixels at up to 30 a second at Home feel on the Mali-G31 compared with 294 k, whether the surface comes back from a stop with a flash (the cover is there for it), the first frame of the move on that GPU (two window-sized layers), a native crash or GPU hang of the real driver, and the firmware's behaviour around a translucent home window. Settings → About shows the map's line and the last panel's open time, for the owner's photo.
 
 ### Memory and start-up cuts (the foundations of 2.0: nothing looks different)
 Home was the heavy screen, and almost none of its weight was code: the car's CPU path, its leftovers, the map's sprites and
@@ -667,13 +733,13 @@ last heading is kept anyway.
   colour, on top of everything). In 1.11 it was a pin view, which trailed the GL map by a frame during every flight
   and pan.
 
-**The home map's start** (`MapPanel`, `AuraMap.onDrawn` / `pictureFile`, `MapBackdropView`):
-* `MapPanel.startLive()` builds the live map 700 ms after the home screen's entrance starts (at once after a restyle),
-  and replays the activity's lifecycle on it (see "Home screen in 1.12").
+**The home map's start** (`MapController`, `MapPanel`, `AuraMap.onDrawn` / `pictureFile`, `MapBackdropView`; since 2.0's step 3 the one map, under
+the window, see "One engine"):
+* `MapController.startForHome()` builds the live map 700 ms after the home screen's entrance starts.
 * `AuraMap.onDrawn` fires when the map has drawn with its style loaded (`onDidFinishRenderingFrame(fully)`), or 2.5 s
   after its first frame (offline, tiles that never come); `MapGuard.ok` still comes on the first frame. It replaced
   `onFirstFrame`, which fired on the first frame of land colour before any tile.
-* The home map keeps a picture of itself (`pictureFile`, `cacheDir/home-map-{dark|light}-{lang}.webp`, WebP 80),
+* The home map keeps a picture of the card (`pictureFile`, `pictureArea`, `cacheDir/home-map-{dark|light}-{lang}.webp`, WebP 80),
   taken with `MapboxMap.snapshot` 3 s after the map came to rest, at most once a minute, and only of the view the next
   start opens on (`pictureWorthy()`: FOLLOW, no route, no destination; a picture taken at a red light while navigating
   cross-faded into the north-up start as a double exposure).
@@ -682,11 +748,9 @@ last heading is kept anyway.
   yet (the first start for a theme and language, or `cacheDir` cleared) it is the plain land colour: the invented
   street grid ghosted over the real streets during the fade. The grid (`grid = true`) is only for the `MapGuard`
   fallback, in the style's own colours (`MapStyle.tones()`).
-* The backdrop is not shown again at `onStop`: the TextureView keeps its last frame across a stop (going home from
-  Maps, the map is there at once). Once the map has drawn, the panel's own `mapLand` fill is dropped (it sat under an
-  opaque map on every frame). `Palette.mapLand` is the only map colour left in `Palette`; the others are the style's.
-* The Maps screen's window background is the map's land (no root background over it): the screen is all map, and
-  the two fills were drawn under every frame.
+* The backdrop is not shown again after a stop: the land-coloured cover over the slot stands in until the surface has
+  drawn again. Once the map has drawn, the panel's own `mapLand` fill is dropped and the wall opens.
+  `Palette.mapLand` is the only map colour left in `Palette`; the others are the style's.
 
 **MapExtras**: `spots`, `published`, `mine`, `speeds`, `grid` and `updatedAt` are written on the main thread only (the io
 thread parses and posts; a fetch that finished while a camera was being marked could put the old set back). `version`
@@ -694,7 +758,7 @@ counts every change; `geoJson(arabic)` is cached per (version, language) and `Au
 that map does not show it yet. Until 1.11 the whole FeatureCollection was rebuilt and parsed again at every start of
 the home screen and of Maps.
 
-### Guidance, panels and words (1.12: `GuidanceBanner`, `MapsActivity`, `Instructions`, `Router`, `NavSession`)
+### Guidance, panels and words (1.12: `GuidanceBanner`, `MapsPanel`, `Instructions`, `Router`, `NavSession`)
 **The guidance sign** (`nav/GuidanceBanner.kt`) is one view for every map that guides: Maps uses it full size, the home
 map `compact = true`. It reads `NavSession` itself; a caller adds it, calls `update()` on every session change and
 `reveal()`s it in and out.
@@ -807,12 +871,12 @@ and the zoom capsule by scale. `TextView.setIfChanged(s)` (same file) sets a lab
   within 150 m; a route's first words at the start and after a reroute; "استمر على … لمسافة …" just past a manoeuvre with
   over 3 km to the next.
 
-**Theme, accent and language while Maps is open**: `MapsActivity` remembers what it was built in and checks it in
-`onResume` and on every minute's tick (and time, time zone and locale changes) while resumed: a sunset under "auto" or
-a change in Settings recreates it. A new language at once; a theme or accent not while a place is chosen, the search
-is open or a route is being found (the next tick tries again). A trip being driven goes on (`NavSession` is the
-app's). There is no snapshot cross-fade on this recreate yet (it would need HomeActivity's PixelCopy fade moved into a
-shared helper in `ui/`).
+**Theme, accent and language while Maps is open**: `MapsPanel` remembers what it was built in and checks it at `onShow`,
+in `onLook` and so on every minute's tick (and time, time zone and locale changes) while resumed: a sunset under "auto" or
+a change in Settings builds its cards again and reloads the style, on the same engine ("One engine", "A new look"). A new
+language at once (the whole window); a theme or accent not while a place is chosen, the search is open or a route is being
+found, nor when `MapController.lookMayChange` says no (the next tick tries again). A trip being driven goes on (`NavSession` is
+the app's). There is no picture cross-fade on the cards, and the map's colours cut: the design's section 8 replaces all of this.
 
 **Road additions**: "Camera here" (`CameraMark.mark`) takes only a fresh (under 5 s), precise (30 m or better) fix;
 NavSim's and the debug mock fixes count (NavSim stamps `elapsedRealtimeNanos`). `CarLocation.last` can be yesterday's
@@ -2155,7 +2219,7 @@ newer one replaces it); a screen listens (`addListener`) and reads `attempt` to 
 really happened: STARTED only after `NavSession.start` returned, FAILED, NO_FIX, DROPPED. The asker's own position
 (`origin`) is used only while the car has no fresh fix (2 minutes), and with no position at all it waits up to 10 minutes
 for the first fix, holding the GPS itself because no screen may be. A route gets 60 s (a router that never answers must
-not hold a place for ever). `NavSession.start` throwing is a FAILED, not a crash. `MapsActivity` keeps today's behaviour
+not hold a place for ever). `NavSession.start` throwing is a FAILED, not a crash. `MapsPanel` keeps today's behaviour
 for its own paths: Back during a Home/Work route still means no trip (`wanted`), no fix still means `select`.
 
 **`link/PhoneServer.kt`: HTTP/1.1 on every interface, port 47101.** Why the unit serves: Safari, a Shortcut, a share
