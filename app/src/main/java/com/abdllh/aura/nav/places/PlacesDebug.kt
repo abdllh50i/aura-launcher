@@ -110,7 +110,7 @@ internal object PlacesDebug {
                 val j = JSONObject(input.readText())
                 writer(out).use { w ->
                     w.beginObject()
-                    w.name("status").value(PlaceSearch.status.state.name).name("why").value(PlaceSearch.status.why)
+                    w.name("status").value(PlaceSearch.status.state.name).name("why").value(PlaceSearch.status.why).name("open_ns").value(PlaceSearch.openNs)
                     if (e != null) {
                         j.optJSONArray("searches")?.let { searches(e, it, w) }
                         j.optJSONArray("reverse")?.let { reverses(e, it, w) }
@@ -221,7 +221,7 @@ internal object PlacesDebug {
             w.name("zones").beginArray()
             for (z in warn.zones) {
                 w.beginObject().name("id").value(z.id).name("kind").value(z.kind).name("name").value(z.name ?: z.en).name("enter").value(z.enterAlong).name("last").value(z.lastAlong).name("inside_m").value(z.insideMetres)
-                    .name("starts").value(z.startsInside).name("ends").value(z.endsInside).name("entered").value(z.entered).name("off_main_m").value(z.offMainMetres).name("warn").value(z.warn).endObject()
+                    .name("starts").value(z.startsInside).name("ends").value(z.endsInside).name("entered").value(z.entered).name("off_main_m").value(z.offMainMetres).name("minor_m").value(z.minorMetres).name("warn").value(z.warn).endObject()
             }
             w.endArray()
             for (key in arrayOf("fuel", "mosque")) {
@@ -301,10 +301,12 @@ internal object PlacesDebug {
         w.endArray()
     }
 
-    private fun memory(w: JsonWriter, name: String) {
-        System.gc()
-        System.runFinalization()
-        System.gc()
+    private fun memory(w: JsonWriter, name: String, collect: Boolean = true) {
+        if (collect) {
+            System.gc()
+            System.runFinalization()
+            System.gc()
+        }
         val m = Debug.MemoryInfo()
         Debug.getMemoryInfo(m)
         w.name(name).beginObject().name("pss_kb").value(m.totalPss).name("java_kb").value(m.dalvikPss).name("native_kb").value(m.nativePss).name("other_kb").value(m.otherPss).endObject()
@@ -334,8 +336,10 @@ internal object PlacesDebug {
                     onEngine { }
                     memory(w, "open")
                     onEngine { e -> if (e != null) for (q in queries) e.search(q.first, q.second) }
+                    memory(w, "after_searches_uncollected", collect = false)
                     memory(w, "after_searches")
                     onEngine { e -> if (e != null) for (q in queries) e.search(q.first, q.second) }
+                    memory(w, "after_searches_2_uncollected", collect = false)
                     memory(w, "after_searches_2")
                     PlaceSearch.closeForTest()
                     Thread.sleep(500)

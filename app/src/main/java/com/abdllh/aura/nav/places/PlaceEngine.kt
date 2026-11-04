@@ -158,7 +158,7 @@ internal class PlaceEngine(val db: PlacesDb) {
         }
     }
 
-    /** The answer to a query, best first. A later reader of [SearchStats.matches] sees each MATCH string run, as the reference's debug does. */
+    /** The answer to a query, best first. [stats]: where the time went and each MATCH string run, as the reference's debug has them. */
     fun search(query: String, near: LatLon?, limit: Int = 12, cs: CancellationSignal? = null, stats: SearchStats? = null): List<PlaceHit> {
         val syn = db.syn
         stats?.start()
@@ -317,7 +317,7 @@ internal class PlaceEngine(val db: PlacesDb) {
         return RoadAhead.spotsAlong(line, db.spots(b[0], b[1], cs))
     }
 
-    /** What to tell before a route starts: gates and zones on it, by the rule of SEARCH_SPEC.md section 1. [roadClass]: the class of a segment of the line, numbered as `gate.road`. */
+    /** What to tell before a route starts: gates and zones on it, by the rule of SEARCH_SPEC.md section 1 ([ZoneHit.warn] says where it differs). [roadClass]: the class of a segment of the line, numbered as `gate.road`. */
     fun warnings(line: Polyline, roadClass: ((Int) -> Int)?, cs: CancellationSignal? = null): RouteWarnings {
         val b = RoadAhead.latBand(line) ?: return RouteWarnings(emptyList(), emptyList())
         val gates = RoadAhead.gatesAlong(line, db.gates(b[0], b[1], cs))

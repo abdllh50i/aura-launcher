@@ -51,6 +51,16 @@ class RoadAheadTest {
         assertEquals(0, s.junctionsBetween(2100.0, 2500.0))
     }
 
+    @Test fun theSecondSignalIsTheSecondJunction() {
+        val s = spots(north(4.0),
+            spot(2, 500.0, j = 1), spot(2, 530.0, j = 1), // one junction of two nodes
+            spot(2, 1500.0, j = 2), spot(2, 1540.0, j = 2), spot(2, 3000.0, j = 3))
+        assertEquals(2, s.signalNumberAt(0.0, 1510.0))
+        assertEquals(1, s.signalNumberAt(0.0, 520.0))
+        assertEquals(1, s.signalNumberAt(600.0, 1510.0)) // the car is past the first
+        assertEquals(0, s.signalNumberAt(0.0, 2200.0)) // a turn at no signal
+    }
+
     @Test fun aRouteThatComesBackPassesTheJunctionAgain() {
         // up 1.5 km, back down: the same junction twice, as two signals on the way
         val up = List(31) { at(it * 50.0) }
@@ -142,12 +152,21 @@ class RoadAheadTest {
         assertEquals(1000.0, h.insideMetres, 3.0)
     }
 
-    @Test fun leavingTheMainRoadsInsideWarns() {
+    @Test fun leavingForASmallRoadInsideWarns() {
         val line = north(5.0)
-        // a primary road (2) from 1.5 km on
-        val h = RoadAhead.zoneAlong(zone(3, 1000.0, 2000.0), line) { seg -> if (line.cumulative[seg] >= 1500.0) 2 else 1 }!!
+        // a tertiary road (4) from 1.5 km on
+        val h = RoadAhead.zoneAlong(zone(3, 1000.0, 2000.0), line) { seg -> if (line.cumulative[seg] >= 1500.0) 4 else 1 }!!
         assertTrue(h.warn)
+        assertEquals(500.0, h.minorMetres!!, 60.0)
         assertEquals(500.0, h.offMainMetres!!, 60.0)
+    }
+
+    @Test fun aPrimaryRoadThroughABaseSaysNothing() {
+        // Jubail-Dammam on King Abdul Aziz street: OSM's primary and the spec's own example of a road that must not warn
+        val h = RoadAhead.zoneAlong(zone(3, 1000.0, 2000.0), north(5.0)) { 2 }!!
+        assertFalse(h.warn)
+        assertEquals(1000.0, h.offMainMetres!!, 3.0)
+        assertEquals(0.0, h.minorMetres!!, 0.0)
     }
 
     @Test fun aSlipRoadsEndIsNotLeaving() {
@@ -169,6 +188,7 @@ class RoadAheadTest {
         val h = RoadAhead.zoneAlong(zone(3, 1000.0, 2000.0), north(5.0), null)!!
         assertFalse(h.warn)
         assertNull(h.offMainMetres)
+        assertNull(h.minorMetres)
         assertEquals(1000.0, h.insideMetres, 3.0)
     }
 

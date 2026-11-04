@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="places_approx">موقع تقريبي</string>
-    <string name="places_missing">ملف الأماكن بدون نت لسه مو موجود على الجهاز</string>
-    <string name="places_damaged">ملف الأماكن بدون نت فيه خلل، لازم ينزل من جديد</string>
-    <string name="places_other_version">ملف الأماكن بدون نت ما يناسب هالنسخة من AMRI، حدّث الخريطة أو التطبيق</string>
+    <string name="places_missing">ملف الأماكن للحين ما نزل على الجهاز</string>
+    <string name="places_damaged">ملف الأماكن فيه خلل، لازم ينزل من جديد</string>
+    <string name="places_other_version">ملف الأماكن ما يناسب هالنسخة من AMRI، حدّث الخريطة أو التطبيق</string>
 </resources>

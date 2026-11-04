@@ -151,7 +151,6 @@ def prepare(a):
     job("set200", set200)
     job("golden", golden)
     # what a driver goes through on the way to those: every prefix of a hundred of them, with the last space, and with no position at all
-    all_q = list(dict.fromkeys(set200 + [(q, tuple(n) if n else None) for q, n in golden]))
     all_q = [(q, list(n) if n else None) for q, n in dict.fromkeys((q, tuple(n) if n else None) for q, n in set200 + golden)]
     pick = rnd.sample(all_q, 100)
     prefixes = [(q[:i], n) for q, n in pick for i in range(1, len(q))]
@@ -199,6 +198,10 @@ def prepare(a):
     dump(os.path.join(a.out, "routes.exp.json"), {"routes": [twin_route(db, r) for r in routes], "points": [twin_near(db, p, "parking") for p in park],
                                                   "haram": [dict(zip(("id", "name", "json"), db.execute("SELECT id,name,ring FROM zone WHERE kind=? ORDER BY id", (k,)).fetchone())) for k in (1, 2)]})
     print("routes", len(routes), flush=True)
+    # a cold file cache: one query per job, the script drops the kernel's cache before each and the app opens the file again
+    for i, (q, n) in enumerate(rnd.sample(set200, 30)):
+        dump(os.path.join(a.out, f"cold{i:02d}.job.json"), {"searches": [{"q": q, "near": n}]})
+        dump(os.path.join(a.out, f"cold{i:02d}.exp.json"), {"searches": [answer(db, syn, q, n)]})
     # typing: letters through the real entry, at four speeds
     typed = [{"q": q, "near": n} for q, n in rnd.sample([x for x in set200 if len(x[0]) >= 5], 30)]
     dump(os.path.join(a.out, "typing.job.json"), {"queries": typed, "cadence_ms": [0, 40, 120, 300]})
@@ -325,7 +328,7 @@ def twin_route(db, r):
         ring = json.loads(ring)
         # fine sampling every 5 m along the stretches near the box: slow, no crossings arithmetic
         ins = None
-        metres = off_main = 0.0
+        metres = off_main = minor = 0.0
         first = None
         last_in = 0.0
         entered = False
@@ -351,12 +354,14 @@ def twin_route(db, r):
                     last_in = cum[i] + ln * t
                     if entered and r["classes"][i] >= 2:
                         off_main += ln / steps
+                    if entered and r["classes"][i] >= 4:
+                        minor += ln / steps
                 now = here
         if first is None and not start:
             continue
         ends = inside(pts[-1][0], pts[-1][1], ring)
-        warn = entered and (kind <= 2 or ends or off_main >= 50.0)
-        zones.append({"id": zid, "kind": kind, "name": name or en, "inside_m": metres, "starts": start, "ends": ends, "entered": entered, "off_main_m": off_main, "warn": warn})
+        warn = entered and (kind <= 2 or ends or minor >= 50.0)
+        zones.append({"id": zid, "kind": kind, "name": name or en, "inside_m": metres, "starts": start, "ends": ends, "entered": entered, "off_main_m": off_main, "minor_m": minor, "warn": warn})
     return {"id": r["id"], "spots": hits, "gates": gates, "zones": zones}
 
 
@@ -389,7 +394,7 @@ def times(got):
     return out
 
 
-def compare_searches(name, exp, got, report):
+def compare_searches(name, exp, got, report, label=None):
     exp = exp["searches"]
     got = got.get("searches", [])
     c = {"queries": len(exp), "answered": len(got), "errors": 0, "top1": 0, "top3": 0, "ids": 0, "scores": 0, "km": 0, "shown": 0, "detail": 0, "shown_en": 0, "approx": 0, "match": 0, "cand": 0}
@@ -417,11 +422,12 @@ def compare_searches(name, exp, got, report):
                 bad.append(k)
         if bad:
             examples.append({"q": job[i]["q"], "near": job[i]["near"], "bad": bad, "py": {k: e[k] for k in bad if k in e}, "kt": {k: g[k] for k in bad if k in g}, "py_ids": e["ids"], "kt_ids": g["ids"], "py_scores": e["scores"], "kt_scores": g["scores"]})
-    report["searches"][name] = {"counts": c, "times": times(got)}
-    report["examples"][name] = examples[:30]
-    print(name, json.dumps(c), flush=True)
-    if report["searches"][name]["times"]:
-        t = report["searches"][name]["times"]
+    label = label or name
+    report["searches"][label] = {"counts": c, "times": times(got)}
+    report["examples"][label] = examples[:30]
+    print(label, json.dumps(c), flush=True)
+    if report["searches"][label]["times"]:
+        t = report["searches"][label]["times"]
         print("   ms: median", t["total_median_ms"], "p90", t["total_p90_ms"], "worst", t["total_worst_ms"], " ".join(f'{s}={t[s]["median"]}/{t[s]["worst"]}' for s in STAGES), flush=True)
 
 
@@ -433,7 +439,21 @@ def compare(a):
             compare_searches(name, load(os.path.join(a.out, name + ".exp.json")), load(f), report)
     f = os.path.join(a.out, "set200.warm.got.json")
     if os.path.exists(f):
-        compare_searches("set200", load(os.path.join(a.out, "set200.exp.json")), load(f), report)
+        compare_searches("set200", load(os.path.join(a.out, "set200.exp.json")), load(f), report, "set200 warm")
+    cold = sorted(x for x in os.listdir(a.out) if re.fullmatch(r"cold\d+\.got\.json", x))
+    if cold:
+        rows = []
+        bad = 0
+        opens = []
+        for x in cold:
+            g = load(os.path.join(a.out, x))
+            e = load(os.path.join(a.out, x.replace(".got.", ".exp.")))
+            opens.append(g["open_ns"] / 1e6)
+            rows += g.get("searches", [])
+            bad += sum(1 for p, q in zip(e["searches"], g.get("searches", [])) if p["ids"] != q.get("ids"))
+        t = times(rows)
+        report["cold"] = {"mismatch": bad, "times": t, "open_ms": {"median": round(statistics.median(opens), 1), "worst": round(max(opens), 1)}}
+        print("cold file cache, each query after a fresh open:", len(rows), "queries, ids mismatch", bad, "ms: median", t["total_median_ms"], "p90", t["total_p90_ms"], "worst", t["total_worst_ms"], "; the open itself (checks, cat, syn): median", report["cold"]["open_ms"]["median"], "worst", report["cold"]["open_ms"]["worst"], flush=True)
     # the golden file of the build, the same ids and scores
     gold = os.path.join(a.out, "golden.got.json")
     if a.golden and os.path.exists(a.golden) and os.path.exists(gold):
@@ -478,14 +498,14 @@ def compare(a):
             za = {x["id"]: x for x in e["zones"]}
             zb = {x["id"]: x for x in g["zones"]}
             zbad = [k for k in set(za) | set(zb) if k not in za or k not in zb or za[k]["warn"] != zb[k]["warn"] or za[k]["ends"] != zb[k]["ends"] or za[k]["entered"] != zb[k]["entered"]]
-            metres = [(k, round(za[k]["inside_m"]), round(zb[k]["inside_m"]), round(za[k]["off_main_m"]), round(zb[k]["off_main_m"] or 0)) for k in set(za) & set(zb)]
+            metres = [(k, round(za[k]["inside_m"]), round(zb[k]["inside_m"]), round(za[k]["minor_m"]), round(zb[k]["minor_m"] or 0)) for k in set(za) & set(zb)]
             counts = {k: sum(1 for x in g["spots"] if x["kind"] == k) for k in (1, 2, 3)}
             row = {"id": g["id"], "km": round(g["metres"] / 1000, 1), "cameras": counts[1], "junctions": counts[2], "bumps": counts[3], "spots_same_as_second_hand": sa == sb, "gates_same": ga == gb, "zones_bad": zbad,
-                   "gates_warn": [x for x in g["gates"] if x["warn"]], "zones": [{k: x[k] for k in ("id", "kind", "name", "inside_m", "starts", "ends", "off_main_m", "warn")} for x in g["zones"]], "metres_py_kt": metres,
+                   "gates_warn": [x for x in g["gates"] if x["warn"]], "zones": [{k: (round(x[k]) if k.endswith("_m") and x[k] is not None else x[k]) for k in ("id", "kind", "name", "inside_m", "starts", "ends", "off_main_m", "minor_m", "warn")} for x in g["zones"]], "metres_py_kt": metres,
                    "fuel": [(x["name"], round(x["along"] / 1000, 1), round(x["off"]), x["right"]) for x in g["fuel"]], "mosque": [(x["name"], round(x["along"] / 1000, 1), round(x["off"]), x["right"]) for x in g["mosque"]],
                    "ms": {k: round(g[k + "_ns"] / 1e6, 1) for k in ("spots", "warn", "fuel", "mosque")}}
             rows.append(row)
-            print(json.dumps({k: row[k] for k in ("id", "km", "cameras", "junctions", "bumps", "spots_same_as_second_hand", "gates_same", "zones_bad", "ms")}, ensure_ascii=False), flush=True)
+            print(json.dumps({k: row[k] for k in ("id", "km", "cameras", "junctions", "bumps", "spots_same_as_second_hand", "gates_same", "zones_bad", "metres_py_kt", "ms")}, ensure_ascii=False), flush=True)
             for z in row["zones"]:
                 print("    zone", json.dumps(z, ensure_ascii=False))
             for g2 in row["gates_warn"]:

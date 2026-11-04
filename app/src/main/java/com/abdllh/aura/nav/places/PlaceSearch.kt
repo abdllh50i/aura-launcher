@@ -56,6 +56,8 @@ object PlaceSearch {
 
     /** Debug builds: searches begun, answered, stopped on the way, dropped before they began. */
     internal val counters = IntArray(4)
+    /** Debug builds: how long the last open took: the file's checks, table cat, table syn. */
+    @Volatile internal var openNs = 0L
 
     fun init(ctx: Context) { app = ctx.applicationContext }
 
@@ -81,7 +83,9 @@ object PlaceSearch {
         if (s == stamp) return engine
         closeNow()
         stamp = s
+        val t0 = System.nanoTime()
         val (db, st) = PlacesDb.open(f)
+        openNs = System.nanoTime() - t0
         status = st
         if (db == null) {
             Log.w(TAG, "${f.path}: ${st.state}: ${st.why}")
@@ -200,8 +204,8 @@ object PlaceSearch {
     fun spotsAlong(line: Polyline, done: (RouteSpots?) -> Unit) = later(null, done) { it.spotsAlong(line) }
 
     /**
-     * What to tell before a route starts. [roadClass]: the class of a segment of the line, numbered as `gate.road` ([roadClassNumber] for Valhalla's names); without it, of the
-     * zones of kinds 3 and 4 only a route that ends inside is known to warn.
+     * What to tell before a route starts. [roadClass]: the class of a segment of the line, numbered as `gate.road` ([roadClassNumber] for Valhalla's names, from trace_attributes); without
+     * it, of the zones of kinds 3 and 4 only a route that ends inside is known to warn.
      */
     fun routeWarnings(line: Polyline, roadClass: ((Int) -> Int)?, done: (RouteWarnings?) -> Unit) = later(null, done) { it.warnings(line, roadClass) }
 

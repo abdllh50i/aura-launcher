@@ -45,8 +45,21 @@ class RouteSpots internal constructor(val hits: List<SpotHit>) {
     /** The first of a kind from a distance along the line. */
     fun next(kind: Int, from: Double): SpotHit? = hits.firstOrNull { it.kind == kind && it.along >= from }
 
-    /** How many junctions with signals between two distances along the line: the 2 of "at the second signal" when the turn is at [to]. Junctions, never signal nodes. */
+    /** How many junctions with signals between two distances along the line. Junctions, never signal nodes. */
     fun junctionsBetween(from: Double, to: Double): Int = hits.count { it.kind == SpotHit.SIGNAL && it.along > from && it.along <= to }
+
+    /** The number of the junction with signals a turn is at, counted from [from]: 2 is "at the second signal". 0: the turn is at none. A junction is met a little before or after the step's own point. */
+    fun signalNumberAt(from: Double, turnAlong: Double, slack: Double = 60.0): Int {
+        var n = 0
+        var at = 0
+        for (h in hits) {
+            if (h.kind != SpotHit.SIGNAL || h.along <= from) continue
+            if (h.along > turnAlong + slack) break
+            n++
+            if (h.along >= turnAlong - slack) at = n
+        }
+        return at
+    }
 }
 
 /** A node that can stop a car, on the route. sub: 1 gate 2 private or no entry 3 checkpoint 4 border post 5 toll booth 6 block or bollard. road: 0 motorway .. 8 service. */
@@ -66,9 +79,16 @@ class ZoneHit internal constructor(
     val endsInside: Boolean,
     /** Came in from outside (a route that only drives out of it was already in). */
     val entered: Boolean,
-    /** Metres inside on anything but a motorway or trunk, after coming in from outside; null when the road classes were not given. */
+    /** Metres inside on anything but a motorway or trunk, after coming in from outside; null when the road classes were not given. The spec's words, kept for whoever wants to judge by them. */
     val offMainMetres: Double?,
-    /** By the rule of the spec. Haram: any route that comes in. Military and private: a route that ends inside or leaves the motorway and trunk roads inside. Without classes only the first is known. */
+    /** Metres inside on a tertiary road or less, after coming in from outside; null when the road classes were not given. What [warn] goes by. */
+    val minorMetres: Double?,
+    /**
+     * Haram: any route that comes in. Military and private: a route that ends inside, or goes on a tertiary road or less inside. Without classes only the first is known.
+     * The spec says "leaves the motorway and trunk roads", and gives Jubail-Dammam as the public highway that must not warn: but that road is OSM's primary for 9 km in the
+     * naval base's ring, and the rings are coarse (519 holds 1,289 POIs of Khobar and Dhahran). Over the 56 test trips the spec's words warn 11 times, 1 of them a guarded
+     * place (gate-air); this rule 3 times (gate-air, and ithra and j1, which end inside), and a guard that OSM knows is told by table gate anyway.
+     */
     val warn: Boolean
 )
 
@@ -109,8 +129,10 @@ internal object RoadAhead {
     const val ONE_JUNCTION_M = 300.0
     /** Two spots of one kind so close along the road are one (Pairs within 15 m exist in the file, of cameras 9): one warning. */
     const val ONE_SPOT_M = 25.0
-    /** Under this inside a zone off the main roads is a slip road's end, not a route that left them. */
+    /** Under this inside a zone on small roads is a slip road's end, not a route that left the big ones. */
     const val OFF_MAIN_M = 50.0
+    /** From this class of `gate.road` on (tertiary) a stretch inside a military or private zone counts as leaving the roads the public drives through. */
+    const val MINOR_CLASS = 4
 
     private const val LAT_M = 110540.0
     private const val LON_M = 111320.0
@@ -357,6 +379,7 @@ internal object RoadAhead {
         var last = 0.0
         var metres = 0.0
         var off = 0.0
+        var minor = 0.0
         var i = 0
         while (i < pts.size - 1) {
             // whole windows out of the zone's box go at once
@@ -385,14 +408,15 @@ internal object RoadAhead {
                 val b = pts[seg + 1]
                 val len = line.cumulative[seg + 1] - line.cumulative[seg]
                 val cross = crossings(a, b, ring)
-                val offMain = roadClass != null && roadClass(seg) >= 2
+                val cl = roadClass?.invoke(seg) ?: -1
                 var from = 0.0
                 for (k in 0..cross.size) {
                     val t = if (k < cross.size) cross[k] else 1.0
                     if (now) {
                         val m = (t - from) * len
                         metres += m
-                        if (offMain && entered) off += m
+                        if (entered && cl >= 2) off += m
+                        if (entered && cl >= MINOR_CLASS) minor += m
                         last = line.cumulative[seg] + t * len
                     }
                     if (k < cross.size) {
@@ -416,9 +440,9 @@ internal object RoadAhead {
         if (first.isNaN()) return null
         val endsInside = inside(pts[pts.size - 1].lat, pts[pts.size - 1].lon, ring)
         val haram = z.kind == 1 || z.kind == 2
-        val offMain = if (roadClass != null) off else null
-        val warn = entered && (haram || endsInside || (offMain != null && offMain >= OFF_MAIN_M))
-        return ZoneHit(z.id, z.kind, z.name, z.en, first, last, metres, startsInside, endsInside, entered, offMain, warn)
+        val known = roadClass != null
+        val warn = entered && (haram || endsInside || (known && minor >= OFF_MAIN_M))
+        return ZoneHit(z.id, z.kind, z.name, z.en, first, last, metres, startsInside, endsInside, entered, if (known) off else null, if (known) minor else null, warn)
     }
 
     /** Walks a line from [fromAlong] in stretches of up to 5 km, with each one's box in 1e-6 degrees; [each] says whether to go on. */

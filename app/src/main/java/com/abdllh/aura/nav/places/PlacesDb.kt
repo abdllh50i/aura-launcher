@@ -151,7 +151,8 @@ internal class PlacesDb private constructor(private val db: SQLiteDatabase, val 
         /** Opens and checks: a [PlacesDb], or null and why not. Never throws. */
         fun open(file: File): Pair<PlacesDb?, PlacesStatus> {
             val length = file.length()
-            if (!file.isFile || length == 0L) return null to PlacesStatus(PlacesState.MISSING, "no file at ${file.path}")
+            if (!file.isFile) return null to PlacesStatus(PlacesState.MISSING, "no file at ${file.path}")
+            if (length == 0L) return null to PlacesStatus(PlacesState.TRUNCATED, "an empty file")
             var db: SQLiteDatabase? = null
             try {
                 val head = ByteArray(PlacesFile.HEADER)
