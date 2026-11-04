@@ -213,6 +213,14 @@ the unit, without the extras; the firmware's `isHomeIntent` allows extras, tried
   line tells of the by-name case and of `BootHome`'s last resort, because nothing here could be tried on the unit first:
   a healthy unit has no such line.
 
+Walked before and after on the emulator with AMRI the real home, 73 steps (Home key, Back, Maps, Music and Settings from
+the dock, the map, the drawer, the sheet and the voice button, another app and back, the pick from Settings, voice, the
+music key's first and second press, the stock music screen, `HomeGuard`, a trip and music with their notifications, an
+update, the language): the same screen and the same one home-type instance in every step, so step 0 changes nothing
+there. What changes is the trap above: its sequences, `dev-install`, `HomeGuard` with no Home alive, the music key with
+no Home alive and `BootHome`'s fallback ended in 2 instances and now in 1. Right after a by-name start the finished
+record can still be listed for a moment beside the new one (no window, gone by the next look).
+
 `Front.panel`, `setPanel` and `ownIs(name, withinMs)` are the same idea for "which screen is in front". Today `panel` is
 set when an activity resumes (`Screens.panelOf`); the shell will call `setPanel` at every switch. `ownIs(Class)` stays
 next to it, deprecated with the reason: a screen that is a panel never resumes as its class, so that overload would still
@@ -231,6 +239,9 @@ Checking it on the emulator (Android's own rules, not the firmware's: `persist.n
 * `BootHome`'s last resort cannot come up by itself there: `setprop debug.aura.boothome 1`, start the app, then `am start -n
   com.abdllh.aura/.home.BootHome --ez behind true` (debug builds; the plain answer is taken as nothing found).
 * The music key's first and second press: `am broadcast -a com.nwd.action.ACTION_KEY_VALUE --ei extra_key_value 83`.
+* After the debug assertion the Home key shows the chooser: stock Android clears the chosen home when a non-system home
+  process crashes. `set-home-activity` again. The note written just before the throw is lost with the process in a debug
+  build (`apply()`); a release build does not throw.
 
 ## Design system (1.12)
 Everything a screen is made of comes from `ui/`: colours (`Palette.kt`), sizes (`Tokens.kt`), shapes and shadows
