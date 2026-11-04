@@ -60,7 +60,7 @@ class IconButton @JvmOverloads constructor(
     init {
         isClickable = true
         isFocusable = true
-        if (kind == Kind.PILL) background = Surface.PILL.drawable(ctx)
+        if (kind == Kind.PILL) background = SurfaceBackground(ctx, Surface.PILL)
         needSelected()
         tintGlyph()
     }
@@ -96,7 +96,7 @@ class IconButton @JvmOverloads constructor(
         selected?.recolour()
         edge?.recolour()
         pressTint?.recolour()
-        if (kind == Kind.PILL) background = Surface.PILL.drawable(context)
+        (background as? SurfaceBackground)?.recolour()
         tintGlyph()
         invalidate()
     }

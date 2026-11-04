@@ -128,21 +128,21 @@ class SnackHost(a: Context) : FrameLayout(a), Recolours {
     private inner class Pill(a: Context) : LinearLayout(a), Recolours {
         private val img = ImageView(a)
         private val text = a.label(Type.chip, { Palette.ink })
+        private val plate = SurfaceBackground(a, Surface.PILL)
 
         init {
             orientation = HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = Surface.PILL.drawable(a)
+            background = plate
             val o = Surface.PILL.outset
             setPadding(o + 22, o, o + 22, o)
             img.visibility = GONE
             addView(img, lp(26, 26).apply { marginEnd = 10 })
-            text.maxWidth = 620 - 44 - 36
             addView(text, lp(WRAP, Type.chip.viewH))
         }
 
         override fun onLook() {
-            background = Surface.PILL.drawable(context)
+            plate.recolour()
             img.setColorFilter(Palette.ink2)
         }
 
@@ -153,12 +153,14 @@ class SnackHost(a: Context) : FrameLayout(a), Recolours {
 
         private fun set(msg: CharSequence, icon: Int) {
             text.text = msg
+            text.maxWidth = MAX_W - 44 - if (icon != 0) 36 else 0
             if (icon != 0) { img.icon(icon, Palette.ink2); img.visibility = VISIBLE } else img.visibility = GONE
         }
     }
 
     private companion object {
         const val HEIGHT = 60
+        const val MAX_W = 620
         const val Y = 446
         const val IN_MS = 160L
     }

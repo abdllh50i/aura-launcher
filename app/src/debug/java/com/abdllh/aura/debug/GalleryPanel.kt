@@ -137,9 +137,10 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
         root.addView(s, flp(MATCH, MATCH))
         s.addView(View(ctx).look { setBackgroundColor(Palette.bg) }, flp(MATCH, MATCH))
         when (page) {
-            "type1" -> type(s, 0, 30)
-            "type2" -> type(s, 30, 30)
-            "type3" -> type(s, 60, 30)
+            "type1" -> type(s, 0)
+            "type2" -> type(s, 1)
+            "type3" -> type(s, 2)
+            "type4" -> type(s, 3)
             "digits" -> digits(s)
             "surfaces" -> surfaces(s)
             "plates" -> plates(s)
@@ -157,6 +158,8 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
             "confirm" -> confirm(s)
             "menu" -> menu(s)
             "snack" -> snack(s)
+            "snack-words" -> snack(s, "ما فيه إنترنت", 0)
+            "snack-long" -> snack(s, "ما قدرت أحفظ المكان لأن الذاكرة ممتلئة، احذف شي من أماكني وجرب مرة ثانية الحين", 0)
             "field" -> field(s)
             "wash" -> wash(s)
             "covers" -> covers(s)
@@ -181,7 +184,7 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
     }
 
     private fun FrameLayout.head(s: String, x: Int, y: Int) {
-        addView(ctx.label(Type.sectionHead, { Palette.ink2 }).apply { text = s; textDirection = View.TEXT_DIRECTION_LTR; layoutDirection = View.LAYOUT_DIRECTION_LTR }, at(x, y, 500, 30))
+        addView(ctx.label(Type.sectionHead, { Palette.ink2 }).apply { text = s; textDirection = View.TEXT_DIRECTION_LTR; layoutDirection = View.LAYOUT_DIRECTION_LTR }, at(x, y, 1012 - x, 30))
     }
 
     private fun image(res: Int, token: () -> Int): ImageView = ImageView(ctx).apply { setImageResource(res) }.glyph(token)
@@ -189,8 +192,8 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
     private fun FrameLayout.icon(res: Int, px: Int, x: Int, y: Int, token: () -> Int) = addView(image(res, token), at(x, y, px, px))
 
     /** A label at a line box, its right edge at [right] (the reading edge in Arabic). */
-    private fun FrameLayout.textR(role: Type.Role, s: String, right: Int, line: Int, token: () -> Int, w: Int = 400): AText {
-        val l = ctx.label(role, token).apply { text = s; gravity = Gravity.RIGHT or Gravity.TOP; textAlignment = View.TEXT_ALIGNMENT_GRAVITY }
+    private fun FrameLayout.textR(role: Type.Role, s: String, right: Int, line: Int, token: () -> Int, w: Int = 400, moving: Boolean = false): AText {
+        val l = ctx.label(role, token, moving = moving).apply { text = s; gravity = Gravity.RIGHT or Gravity.TOP; textAlignment = View.TEXT_ALIGNMENT_GRAVITY }
         addView(l, role.box(right - w, line, w))
         return l
     }
@@ -272,14 +275,19 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
     private fun Context.surfaceImageRes(res: Int): ImageView = ImageView(this).apply { setImageBitmap(Surfaces.res(context, res)) }
 
     // ------------------------------------------------------------------------------------------ type
-    private fun type(s: FrameLayout, from: Int, n: Int) {
-        val roles = TypeList.all.drop(from).take(n)
+    private fun type(s: FrameLayout, page: Int) {
+        var on = 0
         var x = 8
         var y = 4
         val colW = 336
-        for (r in roles) {
+        for (r in TypeList.all) {
             val h = r.viewH.coerceAtLeast(r.line) + 19
-            if (y + h > 596) { y = 4; x += colW }
+            if (y + h > 596) {
+                y = 4
+                x += colW
+                if (x + colW > 1024) { x = 8; on++ }
+            }
+            if (on != page) { y += h; continue }
             s.caption(x, y, "${r.name} ${r.px}/${r.weight} line ${r.line}", colW)
             // the line box, faintly, and the baseline: the label's centre must be the box's
             val top = y + 19 + (r.viewH - r.line).coerceAtLeast(0) / 2
@@ -298,12 +306,12 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
     /** Section 14's question 6: a number alone, with its unit in spans, and shaped in one run with Arabic. scripts/gallery_compare.py --digits measures them. */
     private fun digits(s: FrameLayout) {
         s.addView(ctx.label(Type.dist, { Palette.ink }).apply { text = "600" }, Type.dist.box(600, 40, 400))
-        s.addView(ctx.label(Type.dist, { Palette.ink }).apply { text = withUnit("600", "م", Type.distUnit, Palette.ink2Move) }, Type.dist.box(600, 140, 400))
+        s.addView(ctx.label(Type.dist, { Palette.ink }).look { text = withUnit("600", "م", Type.distUnit, Palette.ink2Move) }, Type.dist.box(600, 140, 400))
         s.addView(ctx.label(Type.dist, { Palette.ink }).apply { text = "600 متر" }, Type.dist.box(600, 240, 400))
         s.addView(ctx.label(Type.dist, { Palette.ink }).apply { text = "600" ; typeface = Fonts.get(600) }, Type.dist.box(100, 40, 400))
         s.addView(ctx.label(Type.speed, { Palette.ink }).apply { text = "120" }, Type.speed.box(100, 140, 400))
         s.addView(ctx.label(Type.etaValue, { Palette.ink }).apply { text = Fmt.clock(java.util.Date(0), false) }, Type.etaValue.box(100, 240, 400))
-        s.caption(12, 340, "digits are 0.600 em wide in every weight: these columns must line up")
+        s.caption(12, 340, "digits are 0.600 em wide in every weight: these columns must line up", 800)
         val wide = listOf("1111", "0000", "8888", "7:38", "1:11")
         for ((i, w) in wide.withIndex()) {
             s.addView(ctx.label(Type.speed, { Palette.ink }).apply { text = w; textDirection = View.TEXT_DIRECTION_LTR; textAlignment = View.TEXT_ALIGNMENT_VIEW_START; layoutDirection = View.LAYOUT_DIRECTION_LTR }, Type.speed.box(40 + 180 * i, 370, 170))
@@ -379,7 +387,7 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
             s.icon(res, 36, 4 + (i % cols) * cell + 5, top + (i / cols) * 58) { Palette.icon }
             s.caption(4 + (i % cols) * cell, top + 36 + (i / cols) * 58, n, cell)
         }
-        s.head("mirrors in this language: back, chev-left, chev-right, send", 12, 470)
+        s.head("mirrors: back, chevrons, send", 12, 470)
         for ((i, r) in listOf(R.drawable.ic_back, R.drawable.ic_chev_left, R.drawable.ic_chev_right, R.drawable.ic_send).withIndex()) {
             s.icon(r, 38, 12 + 54 * i, 504) { Palette.ink }
         }
@@ -516,7 +524,7 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
         s.head("ProgressBar 6 high: 40 %, 100 %", 460, 204)
         s.addView(ProgressBar(ctx).apply { set(.4f) }, at(460, 244, 200, 6))
         s.addView(ProgressBar(ctx).apply { set(1f) }, at(680, 244, 200, 6))
-        s.head("LimitSign: 68, 40, 34, 2 and 3 digits, the Night Panel's", 12, 350)
+        s.head("LimitSign: 68, 40, 34, dim", 12, 350)
         var x = 12
         for (kmh in intArrayOf(80, 120)) { s.addView(LimitSign(ctx).apply { this.kmh = kmh }, at(x, 386, 68, 68)); x += 78 }
         for (kmh in intArrayOf(80, 120)) { s.addView(LimitSign(ctx, LimitSign.HOME).apply { this.kmh = kmh }, at(x, 400, 40, 40)); x += 50 }
@@ -524,7 +532,7 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
         s.addView(LimitSign(ctx, dim = true).apply { kmh = 120 }, at(x, 386, 68, 68))
         x += 88
         s.head("Still eq; state dots", x, 350)
-        s.addView(EqGlyph(ctx).apply { color = Palette.accentInk }, at(x, 390, 28, 28))
+        s.addView(EqGlyph(ctx).look { color = Palette.accentInk }, at(x, 390, 28, 28))
         s.addView(ctx.stateDot("مربوط", true), at(x + 40, 386, 120, 36))
         s.addView(ctx.stateDot("غير متصل", false), at(x + 170, 386, 150, 36))
         s.head("Tones in res/raw: tick, saher, over (tap to hear)", 12, 470)
@@ -633,10 +641,11 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
         }, 300)
     }
 
-    private fun snack(s: FrameLayout) {
+    /** The Snack in its three shapes: words, an icon and words, words at the most it holds. It comes and goes by itself, so the shot follows the first frame. */
+    private fun snack(s: FrameLayout, text: String = "تم الحفظ في أماكني", icon: Int = R.drawable.ic_check) {
         s.mapPlate("browse")
         s.dockRow("maps")
-        root.postDelayed({ Snack.show(shell, "تم الحفظ في أماكني", icon = R.drawable.ic_check, long = true) }, 200)
+        root.postDelayed({ Snack.show(shell, text, icon = icon, long = true) }, 200)
     }
 
     private fun field(s: FrameLayout) {
@@ -689,7 +698,7 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
         x = 12
         s.head("No cover: fill2 plate, music glyph in ink2 at 45 %", 12, 256)
         for ((p, r) in sizes) {
-            val v = View(ctx).apply { background = Backdrop.noArt(ctx, p, r) }
+            val v = View(ctx).look { background = Backdrop.noArt(ctx, p, r) }
             s.addView(v, at(x, 290, p, p))
             x += p + 12
         }
@@ -801,7 +810,7 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
         val back = ImageView(ctx).apply { scaleType = ImageView.ScaleType.FIT_XY }
         s.addView(back, flp(MATCH, MATCH))
         val b = ctx.assets.open("gallery/sea.jpg").use { BitmapFactory.decodeStream(it) }
-        Backdrop.washAsync(ctx, b, Palette.dark) { w -> back.setImageBitmap(w.panel) }
+        back.look { Backdrop.washAsync(ctx, b, Palette.dark) { w -> back.setImageBitmap(w.panel) } }
         s.addView(ctx.surfaceImage("cover-shadow"), at(44, 0, 300, 300))
         s.addView(coverView("sea", 204, 20), at(92, 48, 204, 204))
         s.textC(Type.musicTitle, "سهر الطريق", 24, 258, 340) { Palette.ink }
@@ -872,27 +881,26 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
         s.addView(ctx.surfaceImage(R.drawable.turn_glow_night, R.drawable.turn_glow_day), at(76, 44, 300, 190))
         s.addView(View(ctx).apply { background = ctx.getDrawable(R.drawable.tile_accent) }, at(272 - 16, 58 - 16, 122, 122))
         s.icon(R.drawable.ic_turn_right, 84, 275, 61) { Palette.onAccent }
-        val dist = s.textR(Type.dist, "600", 258, 46, { Palette.ink }, w = 200)
-        dist.typeface = Fonts.of(Type.dist, true)
+        val dist = s.textR(Type.dist, "600", 258, 46, { Palette.ink }, w = 200, moving = true)
         dist.look { text = withUnit("600", "م", Type.distUnit, Palette.ink2Move, moving = true) }
-        s.textR(Type.road, "طريق الملك فهد", 258, 101, { Palette.ink }, w = 240).typeface = Fonts.of(Type.road, true)
-        s.textR(Type.hint, "عند الإشارة الثانية", 360, 172, { Palette.ink2Move }, w = 336).typeface = Fonts.of(Type.hint, true)
+        s.textR(Type.road, "طريق الملك فهد", 258, 101, { Palette.ink }, w = 240, moving = true)
+        s.textR(Type.hint, "عند الإشارة الثانية", 360, 172, { Palette.ink2Move }, w = 336, moving = true)
         s.addView(SurfaceCard(ctx, Surface.CARD), Surface.CARD.at(12, 242, 232, 88))
         s.textR(Type.speed, "87", 230, 246, { Palette.ink }, w = 94).digitSpacing(-0.5f)
-        s.textR(Type.speedUnit, "كم/س", 230, 300, { Palette.ink2Move }, w = 94).typeface = Fonts.of(Type.speedUnit, true)
+        s.textR(Type.speedUnit, "كم/س", 230, 300, { Palette.ink2Move }, w = 94, moving = true)
         s.addView(LimitSign(ctx).apply { kmh = 120 }, at(22, 252, 68, 68))
         s.addView(SurfaceCard(ctx, Surface.CARD), Surface.CARD.at(12, 338, 364, 80))
         s.addView(ABtn(ctx).apply { kind = ABtn.Kind.DANGER; text = "إنهاء"; setHeightOverride(58); setPadding(0, 0, 0, 4) }, at(23, 349, 100, 58))
-        s.textR(Type.etaUnit, "الوصول", 360, 344, { Palette.ink2Move }, w = 110).typeface = Fonts.of(Type.etaUnit, true)
+        s.textR(Type.etaUnit, "الوصول", 360, 344, { Palette.ink2Move }, w = 110, moving = true)
         s.textR(Type.etaValue, "7:38 م", 281, 344, { Palette.ink }, w = 110).apply { textDirection = View.TEXT_DIRECTION_RTL }
-        s.textR(Type.etaSub, "18 دقيقة · 21.8 كم", 360, 382, { Palette.ink2Move }, w = 222).typeface = Fonts.of(Type.etaSub, true)
+        s.textR(Type.etaSub, "18 دقيقة · 21.8 كم", 360, 382, { Palette.ink2Move }, w = 222, moving = true)
         val mini = ImageView(ctx)
         s.addView(mini, at(12 - 30, 426 - 30, 424, 140))
         val b = ctx.assets.open("gallery/sea.jpg").use { BitmapFactory.decodeStream(it) }
-        Backdrop.washAsync(ctx, b, Palette.dark) { w -> mini.setImageBitmap(w.mini) }
+        mini.look { Backdrop.washAsync(ctx, b, Palette.dark) { w -> mini.setImageBitmap(w.mini) } }
         s.addView(coverView("sea", 52, 12).look { alpha = if (Palette.dark) .8f else 1f }, at(316, 440, 52, 52))
         s.textR(Type.miniTitle, "سهر الطريق", 306, 434, { Palette.ink }, w = 160)
-        s.textR(Type.miniSub, "فرقة الساحل", 306, 468, { Palette.ink2Move }, w = 160).typeface = Fonts.of(Type.miniSub, true)
+        s.textR(Type.miniSub, "فرقة الساحل", 306, 468, { Palette.ink2Move }, w = 160, moving = true)
         s.addView(IconButton(ctx, R.drawable.ic_pause, 36, 64, 80, IconButton.Kind.TONAL, plateToken = { Palette.fill }, plateRadius = 16, token = { Palette.ink }), at(12, 426, 64, 80))
         s.addView(IconButton(ctx, R.drawable.ic_next, 36, 68, 80, IconButton.Kind.TONAL, plateToken = { Palette.fill }, plateRadius = 16, token = { Palette.ink }), at(76, 426, 68, 80))
         s.dockRow("maps")
@@ -949,6 +957,9 @@ class GalleryReceiver : BroadcastReceiver() {
         val s = HomeActivity.current ?: return
         if (i.getBooleanExtra("probe", false)) { probe(s); return }
         val args = Bundle(i.extras ?: Bundle())
+        // (no page: a theme alone. What is open stays open, to be seen changing; a panel's show closes the sheets)
+        val top = s.panels.top
+        if (top is GalleryPanel && !i.hasExtra("page") && !i.hasExtra("lang")) { top.onArgs(args); return }
         s.panels.show("gallery", args)
         i.getStringExtra("lang")?.let { l ->
             if (Prefs.lang != l) {

@@ -46,23 +46,24 @@ fun Context.label(
 /**
  * A label in one of the [Type] roles, built as SPEC.md section 3 says: one line, 1.5 em tall, or for text that wraps
  * ([lines] other than 1) the role's line box with no multiplier. Its colour here is fixed; `.ink { Palette.ink2 }` makes it
- * follow the theme.
+ * follow the theme. [moving]: on a moving screen, in the role's weight for that, heavier at night.
  */
 fun Context.label(
     role: Type.Role,
     color: Int = Palette.text,
     lines: Int = 1,
-    gravity: Int = Gravity.NO_GRAVITY
+    gravity: Int = Gravity.NO_GRAVITY,
+    moving: Boolean = false
 ): AText = AText(this).apply {
     setTextColor(color)
-    if (lines == 1) oneLine(role) else wrapping(role, lines)
+    if (lines == 1) oneLine(role, moving) else wrapping(role, lines, moving)
     alignStart = true
     if (gravity != Gravity.NO_GRAVITY) this.gravity = gravity
 }
 
 /** A label of a role whose colour is a token, in this theme and the next. */
-fun Context.label(role: Type.Role, token: () -> Int, lines: Int = 1, gravity: Int = Gravity.NO_GRAVITY): AText =
-    label(role, token(), lines, gravity).ink(token)
+fun Context.label(role: Type.Role, token: () -> Int, lines: Int = 1, gravity: Int = Gravity.NO_GRAVITY, moving: Boolean = false): AText =
+    label(role, token(), lines, gravity, moving).ink(token)
 
 /** Gives an existing label a [Type] role (size and weight). */
 fun AText.textRole(role: Type.Role) {

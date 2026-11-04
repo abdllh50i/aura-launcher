@@ -12,7 +12,14 @@ open class AText @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyle: Int = 0
-) : TextView(context, attrs, defStyle) {
+) : TextView(context, attrs, defStyle), Recolours {
+    /** The role of a label on a moving screen, whose weight goes with the theme. */
+    private var movingRole: Type.Role? = null
+
+    /** The one thing about a label's look that its tokens do not say. Only a moving screen's labels: a change of weight lays out that label. */
+    override fun onLook() {
+        movingRole?.let { typeface = Fonts.of(it, true) }
+    }
 
     var weight: Int = Fonts.REGULAR
         set(value) {
@@ -43,12 +50,14 @@ open class AText @JvmOverloads constructor(
 
     /**
      * A one-line label of a role (SPEC.md section 3): 1.5 em tall, placed by [Type.Role.box] so that its centre is the line
-     * box's. An emoji in a title cannot move its baseline. [moving]: its weight on a moving screen, heavier at night.
+     * box's. An emoji in a title cannot move its baseline. [moving]: its weight on a moving screen, heavier at night, in this
+     * theme and the next; call it again when the screen goes from one to the other.
      * The line's direction is the language's: a name inside it keeps its own by BidiFormatter.unicodeWrap, where it comes from.
      */
     fun oneLine(role: Type.Role, moving: Boolean = false) {
         textDirection = TEXT_DIRECTION_LOCALE
         setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, role.sp)
+        movingRole = if (moving) role else null
         typeface = Fonts.of(role, moving)
         maxLines = 1
         ellipsize = android.text.TextUtils.TruncateAt.END
@@ -59,6 +68,7 @@ open class AText @JvmOverloads constructor(
     fun wrapping(role: Type.Role, lines: Int = 0, moving: Boolean = false) {
         textDirection = TEXT_DIRECTION_LOCALE
         setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, role.sp)
+        movingRole = if (moving) role else null
         typeface = Fonts.of(role, moving)
         if (lines > 0) {
             maxLines = lines

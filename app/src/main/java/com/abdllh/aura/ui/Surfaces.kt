@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.drawable.Drawable
+import android.graphics.drawable.DrawableWrapper
 import android.graphics.drawable.NinePatchDrawable
 import android.util.Log
 import android.view.Gravity
@@ -33,6 +34,21 @@ enum class Surface(private val nightRes: Int, private val dayRes: Int, @JvmField
     internal fun warm(ctx: Context, keep: MutableList<Drawable>) {
         keep.add(ctx.getDrawable(nightRes)!!)
         keep.add(ctx.getDrawable(dayRes)!!)
+    }
+}
+
+/**
+ * A view's background on a surface, whose 9-patch changes with the theme in place ([recolour]). `view.background = ` at a theme change would be
+ * wrong: `View.setBackgroundDrawable` takes the padding of a 9-patch's guides over the view's own (a Modal's card, a Snack, a Menu lost theirs), and
+ * asks for a layout.
+ */
+class SurfaceBackground(private val ctx: Context, private val surface: Surface) : DrawableWrapper(surface.drawable(ctx)) {
+    private var res = surface.res
+
+    fun recolour() {
+        if (surface.res == res) return
+        res = surface.res
+        drawable = surface.drawable(ctx)
     }
 }
 
@@ -114,16 +130,15 @@ object Surfaces {
  * visible rect. Always give it an exact size: a 9-patch's minimum is its whole bitmap, so WRAP_CONTENT would give 156 px.
  */
 open class SurfaceCard(ctx: Context, @JvmField val surface: Surface = Surface.CARD) : FrameLayout(ctx), Recolours {
+    private val plate = SurfaceBackground(ctx, surface)
     private var kept = false
 
     init {
-        background = surface.drawable(ctx)
+        background = plate
     }
 
     /** Takes the new theme's bitmap: same outset, same size, so nothing is laid out again. */
-    override fun onLook() {
-        background = surface.drawable(context)
-    }
+    override fun onLook() = plate.recolour()
 
     override fun dispatchTouchEvent(e: MotionEvent): Boolean {
         if (e.actionMasked == MotionEvent.ACTION_DOWN) {
@@ -143,16 +158,15 @@ open class SurfaceCard(ctx: Context, @JvmField val surface: Surface = Surface.CA
  * card above.
  */
 open class SurfaceColumn(ctx: Context, @JvmField val surface: Surface = Surface.CARD, private val maxH: Int = 0) : LinearLayout(ctx), Recolours {
+    private val plate = SurfaceBackground(ctx, surface)
     private var kept = false
 
     init {
         orientation = VERTICAL
-        background = surface.drawable(ctx)
+        background = plate
     }
 
-    override fun onLook() {
-        background = surface.drawable(context)
-    }
+    override fun onLook() = plate.recolour()
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         var h = heightMeasureSpec
