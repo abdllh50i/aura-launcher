@@ -33,5 +33,5 @@ if (-not $NoInstall) {
 & $adb -s $serial shell "pm grant com.abdllh.aura android.permission.RECORD_AUDIO; appops set com.abdllh.aura SYSTEM_ALERT_WINDOW allow; cmd package set-home-activity com.abdllh.aura/.home.HomeActivity" | Out-Null
 & $adb -s $serial shell "am start -n com.abdllh.aura/.settings.SettingsActivity --es lang ar" | Out-Null
 Start-Sleep -Seconds 2
-& $adb -s $serial shell "am force-stop com.abdllh.aura; am start -n com.abdllh.aura/.home.HomeActivity; sleep 3; am start -n com.abdllh.aura/.settings.SettingsActivity --ei page 5" | Out-Null
+& $adb -s $serial shell "am force-stop com.abdllh.aura; am start -a android.intent.action.MAIN -c android.intent.category.HOME com.abdllh.aura; sleep 3; am start -n com.abdllh.aura/.settings.SettingsActivity --ei page 5" | Out-Null
 Write-Output "Ready: AMRI's voice assistant page is open on the emulator with Google's services ($serial)."

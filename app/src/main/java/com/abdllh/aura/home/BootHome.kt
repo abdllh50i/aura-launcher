@@ -76,15 +76,29 @@ class BootHome : Activity() {
             return
         }
         val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-        val found = try { packageManager.resolveActivity(home, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo } catch (_: Throwable) { null }
+        // (debug: the last resort below, which a stock Android cannot show by itself. docs/DEV.md, "One way to the screens")
+        val found = if (com.abdllh.aura.BuildConfig.DEBUG && intent.getBooleanExtra("behind", false)) null else find(home)
         when {
             found != null && found.name != javaClass.name -> hand(home, "${found.packageName}/${found.name}")
-            // the package manager still answers with this screen (a step behind the unlock): asked again, then AMRI's
-            // home screen by name
+            // the package manager still answers with this screen (a step behind the unlock): asked again
             waited < BEHIND_MS -> main.postDelayed(again, 400L)
-            else -> hand(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).setClassName(packageName, HomeActivity::class.java.name), "by name")
+            else -> {
+                // then the home intent limited to this package, where HomeActivity comes first by its priority. Not
+                // the class by name, which would make it an ordinary activity ([Screens]) and finds nothing more: the
+                // package manager filters a name the same way. Nothing but this screen there either: as when the
+                // user stays locked, a screen that works is better than a black one
+                val own = Screens.homeIntent(this, Screens.FROM_BOOT)
+                val mine = find(own)
+                when {
+                    mine != null && mine.name != javaClass.name -> hand(own, "own package: ${mine.name}")
+                    waited > STUCK_MS -> hand(Intent().setClassName(STOCK_PKG, STOCK_HOME), "only this screen is found after ${waited / 1000} s")
+                    else -> main.postDelayed(again, 400L)
+                }
+            }
         }
     }
+
+    private fun find(i: Intent) = try { packageManager.resolveActivity(i, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo } catch (_: Throwable) { null }
 
     private fun hand(to: Intent, what: String) {
         handed = true

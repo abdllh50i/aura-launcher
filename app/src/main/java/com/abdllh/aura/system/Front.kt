@@ -10,6 +10,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
+import com.abdllh.aura.home.Screens
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
@@ -41,7 +42,26 @@ object Front {
         private set
     val ownResumed get() = own.isNotEmpty() && ownLeftAt == 0L
 
+    /**
+     * AMRI's own screen in front (or the last one that was), by its name in [Screens], whatever hosts it. Today every
+     * screen is an activity and its resume says so. Once a screen is a panel of the home activity, the activity's
+     * resume says "home" and the shell calls [setPanel] right after it, and at every switch.
+     */
+    var panel = ""
+        private set
+
+    fun setPanel(name: String) {
+        if (name == panel) return
+        panel = name
+        Log.i(TAG, "panel: $name")
+    }
+
+    /** [panel] is [name] and is in front, or was until less than [withinMs] ago. */
+    fun ownIs(name: String, withinMs: Long): Boolean =
+        panel == name && (ownLeftAt == 0L || SystemClock.elapsedRealtime() - ownLeftAt < withinMs)
+
     /** [own] is [activity] and is in front, or was until less than [withinMs] ago. */
+    @Deprecated("By the screen's name: once the screen is a panel its activity never resumes, and this still compiles and is never true")
     fun ownIs(activity: Class<*>, withinMs: Long): Boolean =
         own == activity.name && (ownLeftAt == 0L || SystemClock.elapsedRealtime() - ownLeftAt < withinMs)
 
@@ -52,7 +72,7 @@ object Front {
         val application = ctx.applicationContext as? Application ?: return
         app = application
         application.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
-            override fun onActivityResumed(a: Activity) { own = a.javaClass.name; ownLeftAt = 0L }
+            override fun onActivityResumed(a: Activity) { own = a.javaClass.name; ownLeftAt = 0L; setPanel(Screens.panelOf(a)) }
             override fun onActivityPaused(a: Activity) { if (own == a.javaClass.name) ownLeftAt = SystemClock.elapsedRealtime() }
             override fun onActivityCreated(a: Activity, b: Bundle?) {}
             override fun onActivityStarted(a: Activity) {}

@@ -74,7 +74,7 @@ object Actions {
     /** Opens Aura Maps (default) or the chosen navigation app. */
     fun nav(ctx: Context): Boolean {
         if (com.abdllh.aura.util.Prefs.builtInMaps) {
-            com.abdllh.aura.nav.MapsActivity.open(ctx)
+            Screens.maps(ctx)
             return true
         }
         val pkg = AppRepo.navPackage(ctx) ?: return false

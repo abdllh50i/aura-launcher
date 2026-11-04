@@ -118,7 +118,7 @@ object AppRepo {
 
     fun launch(ctx: Context, pkg: String): Boolean = try {
         when (pkg) {
-            DockPins.MUSIC -> { com.abdllh.aura.music.MusicActivity.open(ctx); true }
+            DockPins.MUSIC -> { Screens.music(ctx); true }
             DockPins.MAPS -> Actions.nav(ctx)
             Known.ZLINK -> com.abdllh.aura.system.ZLinkGuard.open(ctx) // kept off by Aura: turned on first
             else -> {

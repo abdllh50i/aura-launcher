@@ -134,7 +134,7 @@ class Dock(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
         for (id in DockPins.get()) {
             val style = DockTiles.style(id)
             when (id) {
-                DockPins.MUSIC -> list.add(App(id, ctx.getString(R.string.dock_music), style, null) { com.abdllh.aura.music.MusicActivity.open(ctx) })
+                DockPins.MUSIC -> list.add(App(id, ctx.getString(R.string.dock_music), style, null) { Screens.music(ctx) })
                 DockPins.MAPS -> list.add(App(id, ctx.getString(R.string.dock_nav), style, null) {
                     if (!Actions.nav(ctx)) host.toast(ctx.getString(R.string.err_no_nav))
                 })

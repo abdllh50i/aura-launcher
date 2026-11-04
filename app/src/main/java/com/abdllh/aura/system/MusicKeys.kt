@@ -7,8 +7,8 @@ import android.content.IntentFilter
 import android.os.SystemClock
 import android.util.Log
 import com.abdllh.aura.home.Known
+import com.abdllh.aura.home.Screens
 import com.abdllh.aura.media.MediaMonitor
-import com.abdllh.aura.music.MusicActivity
 import com.abdllh.aura.util.Prefs
 
 /**
@@ -199,15 +199,15 @@ object MusicKeys {
             return
         }
         val same = bt == (Prefs.raw.getString("musicSource", "local") == "bt")
-        if (same && Front.ownResumed && Front.own == MusicActivity::class.java.name) {
+        if (same && Front.ownResumed && Front.panel == Screens.MUSIC) {
             Log.i(TAG, "the music key inside Aura Music: the home screen")
             openedAt = now
-            HomeGuard.showHome(c)
+            Screens.home(c, "music key")
             return
         }
         openedAt = now
         Log.i(TAG, "the ${if (bt) "Bluetooth music" else "music"} key: Aura Music")
-        MusicActivity.openInstead(c, bt)
+        Screens.musicOn(c, bt)
     }
 
     private fun note(what: String) {
@@ -276,16 +276,16 @@ object MusicKeys {
         // out, to the home screen (the stock screen it brought up is covered like the first time, by the home screen
         // now). Another source's screen is its own button: AMRI Music changes source, as before.
         val same = bt == (Prefs.raw.getString("musicSource", "local") == "bt")
-        if (same && Front.ownIs(MusicActivity::class.java, AGAIN_MS)) {
+        if (same && Front.ownIs(Screens.MUSIC, AGAIN_MS)) {
             if (!Front.ownResumed) { again(c); return }
             // (still in front as far as this process knows: only if something really comes up over it)
-            main.postDelayed({ if (!Front.ownResumed && Front.ownIs(MusicActivity::class.java, AGAIN_MS)) again(c) }, 250L)
+            main.postDelayed({ if (!Front.ownResumed && Front.ownIs(Screens.MUSIC, AGAIN_MS)) again(c) }, 250L)
             return
         }
         openedAt = now
         Log.i(TAG, "stock ${if (bt) "Bluetooth music" else "music"} screen came up: Aura Music instead")
         note("stock ${if (bt) "BT music" else "music"} screen")
-        MusicActivity.openInstead(c, bt)
+        Screens.musicOn(c, bt)
     }
 
     private fun again(c: Context) {
@@ -293,7 +293,7 @@ object MusicKeys {
         if (now - openedAt < ONCE_MS) return
         openedAt = now
         Log.i(TAG, "the music button again, inside Aura Music: the home screen")
-        HomeGuard.showHome(c)
+        Screens.home(c, "music button")
     }
 
     /** The signs of one stock screen coming up arrive within this long of each other. */

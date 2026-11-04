@@ -8,8 +8,8 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
-import com.abdllh.aura.home.HomeActivity
 import com.abdllh.aura.home.Known
+import com.abdllh.aura.home.Screens
 import com.abdllh.aura.util.Prefs
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -124,15 +124,6 @@ object HomeGuard {
             Prefs.raw.edit().putString(KEY_NOTE, "$at  ${cls.substringAfterLast('.').ifEmpty { pkg }}").apply()
         } catch (_: Throwable) {
         }
-        showHome(c)
-    }
-
-    /** AMRI's home screen to the front (from anywhere: AMRI may start screens from the background). */
-    fun showHome(c: Context) {
-        try {
-            c.startActivity(Intent(c, HomeActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        } catch (t: Throwable) {
-            Log.w(TAG, "home: $t")
-        }
+        Screens.home(c, "home guard")
     }
 }

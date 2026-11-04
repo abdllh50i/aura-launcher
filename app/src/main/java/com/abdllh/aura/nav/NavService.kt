@@ -3,7 +3,6 @@ package com.abdllh.aura.nav
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -60,8 +59,7 @@ class NavService : Service() {
     }
 
     private fun build(text: String): Notification {
-        val open = PendingIntent.getActivity(this, 0, Intent(this, MapsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            PendingIntent.FLAG_UPDATE_CURRENT)
+        val open = com.abdllh.aura.home.Screens.pending(this, com.abdllh.aura.home.Screens.MAPS, 0)
         val title = NavSession.destination?.name ?: getString(R.string.nav_title)
         val p = NavSession.progress
         val sub = if (p != null) "${Units.duration(p.timeLeft, Locale.getDefault().language == "ar")} · ${Units.arrival(p.timeLeft, Prefs.clock24)}" else ""

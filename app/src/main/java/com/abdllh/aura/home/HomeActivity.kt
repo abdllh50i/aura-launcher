@@ -19,7 +19,6 @@ import android.widget.LinearLayout
 import com.abdllh.aura.R
 import com.abdllh.aura.media.MediaMonitor
 import com.abdllh.aura.nav.CarLocation
-import com.abdllh.aura.settings.SettingsActivity
 import com.abdllh.aura.system.CarAudio
 import com.abdllh.aura.system.CrashGuard
 import com.abdllh.aura.system.NwdBridge
@@ -58,6 +57,7 @@ class HomeActivity : Activity(), HomeHost {
     private var resumedNow = false
     private var startedNow = false
     private var packagesWatched = false
+    private var counted = false
 
     private val tick = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
@@ -111,7 +111,12 @@ class HomeActivity : Activity(), HomeHost {
             finish()
             return
         }
+        // (before the by-name check: home is wanted either way, and a re-ask that fails is then a start that never drew)
         com.abdllh.aura.guard.GuardMarks.homeWanted()
+        if (Screens.homeByName(this)) return
+        Screens.homeBuilt(intent, alive)
+        alive++
+        counted = true
         Fonts.refreshLocale(this)
         Theme.refresh()
         builtLang = Prefs.lang
@@ -197,6 +202,7 @@ class HomeActivity : Activity(), HomeHost {
     }
 
     override fun onDestroy() {
+        if (counted) { counted = false; alive-- }
         if (::mapPanel.isInitialized) mapPanel.onDestroy()
         if (packagesWatched) try { unregisterReceiver(packages) } catch (_: Throwable) { }
         super.onDestroy()
@@ -364,7 +370,7 @@ class HomeActivity : Activity(), HomeHost {
     }
 
     override fun openSettings(page: Int) {
-        startActivity(Intent(this, SettingsActivity::class.java).putExtra(SettingsActivity.EXTRA_PAGE, page))
+        Screens.settings(this, page)
     }
 
     override fun toast(msg: String, outlives: Boolean) {
@@ -431,6 +437,8 @@ class HomeActivity : Activity(), HomeHost {
     companion object {
         /** The home screen has been built once in this process: later builds have no starting window before them. */
         private var processStarted = false
+        /** Home activities alive in this process: one at most ([Screens.homeBuilt]; a recreate destroys before it builds). */
+        private var alive = 0
         /** The light theme's start cover fades on this spring: critically damped, mostly gone in about 0.4 s. */
         private const val COVER_STIFFNESS = 100f
         /** Height of the dock (big touch targets: the unit's 1024x600 panel is about 120 dpi, 1 dp = 1 px). */

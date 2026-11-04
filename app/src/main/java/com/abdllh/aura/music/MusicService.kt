@@ -3,7 +3,6 @@ package com.abdllh.aura.music
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -54,8 +53,7 @@ class MusicService : Service() {
 
     private fun build(): Notification {
         val t = Player.current
-        val open = PendingIntent.getActivity(this, 1, Intent(this, MusicActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val open = com.abdllh.aura.home.Screens.pending(this, com.abdllh.aura.home.Screens.MUSIC, 1)
         return Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_music)
             .setContentTitle(t?.title ?: getString(R.string.music_title))

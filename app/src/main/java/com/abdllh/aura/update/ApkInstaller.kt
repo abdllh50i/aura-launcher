@@ -87,9 +87,7 @@ class PackageReplacedReceiver : BroadcastReceiver() {
         try {
             // only when Aura is the home app (someone who chose the stock launcher should stay on it)
             if (!com.abdllh.aura.system.Device.isDefaultHome(ctx)) return
-            val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-                .setPackage(ctx.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            ctx.startActivity(home)
+            com.abdllh.aura.home.Screens.home(ctx, "update")
         } catch (_: Throwable) {
         }
     }

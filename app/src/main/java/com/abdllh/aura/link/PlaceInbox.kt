@@ -8,10 +8,10 @@ import android.util.Log
 import com.abdllh.aura.R
 import com.abdllh.aura.home.Actions
 import com.abdllh.aura.home.AppRepo
+import com.abdllh.aura.home.Screens
 import com.abdllh.aura.nav.CarLocation
 import com.abdllh.aura.nav.Geo
 import com.abdllh.aura.nav.LatLon
-import com.abdllh.aura.nav.MapsActivity
 import com.abdllh.aura.nav.NavSession
 import com.abdllh.aura.nav.Place
 import com.abdllh.aura.nav.Trips
@@ -242,13 +242,7 @@ internal object PlaceInbox {
     }
 
     private fun openOnMap(c: Context, x: Incoming) {
-        MapsActivity.open(c) {
-            putExtra(MapsActivity.EXTRA_LAT, x.place.pos.lat)
-            putExtra(MapsActivity.EXTRA_LON, x.place.pos.lon)
-            putExtra(MapsActivity.EXTRA_NAME, x.place.name)
-            putExtra(MapsActivity.EXTRA_DETAIL, x.place.detail)
-            putExtra(MapsActivity.EXTRA_KEEP, mayKeep(x))
-        }
+        Screens.mapsPlace(c, x.place.pos.lat, x.place.pos.lon, x.place.name, x.place.detail, mayKeep(x))
     }
 
     private fun progressCard(c: Context, x: Incoming, phase: Trips.Phase) {
@@ -275,7 +269,7 @@ internal object PlaceInbox {
             }
         }
         // the way it has always come forward; it shows the place while the route is found
-        if (Trips.attempt?.place === x.place) MapsActivity.open(c)
+        if (Trips.attempt?.place === x.place) Screens.maps(c)
     }
 
     /** Apple's terms keep its place data off the unit's lists (companion.md 2.6). */

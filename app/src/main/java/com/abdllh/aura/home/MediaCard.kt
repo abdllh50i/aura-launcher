@@ -150,10 +150,10 @@ class MediaCard(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
     private fun openSource() {
         val pkg = np?.sourcePkg
         if (pkg == null || pkg == MediaMonitor.SOURCE_BT || pkg == context.packageName || !AppRepo.isInstalled(context, pkg)) {
-            com.abdllh.aura.music.MusicActivity.open(context)
+            Screens.music(context)
             return
         }
-        if (!AppRepo.launch(context, pkg)) com.abdllh.aura.music.MusicActivity.open(context)
+        if (!AppRepo.launch(context, pkg)) Screens.music(context)
     }
 
     private fun bind(n: NowPlaying?) {

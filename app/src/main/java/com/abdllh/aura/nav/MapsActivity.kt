@@ -1296,19 +1296,12 @@ class MapsActivity : Activity() {
         /** At this speed and above the car moves on a trip: a new theme or accent waits ([checkLook]). */
         private const val MOVING_KMH = 3
 
-        /** Extras: a place to show with its route and Go ([handle]). */
+        /** Extras: a place to show with its route and Go ([handle]; sent by [com.abdllh.aura.home.Screens.mapsPlace]). */
         const val EXTRA_LAT = "dest_lat"
         const val EXTRA_LON = "dest_lon"
         const val EXTRA_NAME = "dest_name"
         const val EXTRA_DETAIL = "dest_detail"
         /** false: not for the recent places (Apple's place data: companion.md 2.6). */
         const val EXTRA_KEEP = "dest_keep"
-
-        fun open(ctx: Context, extras: Intent.() -> Unit = {}) {
-            try {
-                ctx.startActivity(Intent(ctx, MapsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).apply(extras))
-            } catch (_: Throwable) {
-            }
-        }
     }
 }

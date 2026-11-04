@@ -7,14 +7,13 @@ import android.os.SystemClock
 import android.util.Log
 import com.abdllh.aura.BuildConfig
 import com.abdllh.aura.home.Actions
+import com.abdllh.aura.home.Screens
 import com.abdllh.aura.media.MediaMonitor
 import com.abdllh.aura.media.NowPlaying
-import com.abdllh.aura.music.MusicActivity
 import com.abdllh.aura.music.PhoneLink
 import com.abdllh.aura.nav.CarLocation
 import com.abdllh.aura.nav.Geo
 import com.abdllh.aura.nav.Instructions
-import com.abdllh.aura.nav.MapsActivity
 import com.abdllh.aura.nav.NavSession
 import com.abdllh.aura.nav.Place
 import com.abdllh.aura.nav.Places
@@ -90,7 +89,7 @@ internal object NavBridge {
         val c = ctx ?: return "busy"
         if (Amri.reversing) return "reversing"
         if (NavSession.state == NavSession.State.NAVIGATING) return "navigating"
-        MapsActivity.open(c) { putExtra("search", true); putExtra("q", q) }
+        Screens.mapsSearch(c, q)
         return ""
     }
 
@@ -152,7 +151,7 @@ internal object NavBridge {
             "screen.off" -> if (!Actions.screenOff(c)) return o.put("state", "refused").put("reason", "failed")
             "voice.mute" -> NavSession.voiceOn = !NavSession.voiceOn
             "open.maps" -> if (!Actions.nav(c)) return o.put("state", "refused").put("reason", "no_app")
-            "open.music" -> MusicActivity.open(c)
+            "open.music" -> Screens.music(c)
         }
         return o.put("state", "ok").put("volume", CarAudio.volume()).put("muted", CarAudio.muted()).put("navVoice", NavSession.voiceOn)
     }

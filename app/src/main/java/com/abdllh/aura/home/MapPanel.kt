@@ -16,7 +16,6 @@ import com.abdllh.aura.nav.CarLocation
 import com.abdllh.aura.nav.GuidanceBanner
 import com.abdllh.aura.nav.LatLon
 import com.abdllh.aura.nav.MapGuard
-import com.abdllh.aura.nav.MapsActivity
 import com.abdllh.aura.nav.NavSession
 import com.abdllh.aura.nav.Places
 import com.abdllh.aura.nav.reveal
@@ -307,7 +306,7 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
 
     private fun openMaps(search: Boolean) {
         if (!Prefs.builtInMaps) { if (!Actions.nav(context)) host.toast(context.getString(R.string.err_no_nav)); return }
-        MapsActivity.open(context) { if (search) putExtra("search", true) }
+        if (search) Screens.mapsSearch(context) else Screens.maps(context)
     }
 
     /** Home / Work: Aura Maps drives there at once; with an external navigation app the saved address is handed over. */
@@ -317,10 +316,10 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
             val saved = if (which == "home") Places.home else Places.work
             val legacy = if (which == "home") Prefs.homeAddress else Prefs.workAddress
             if (saved == null && legacy.isBlank()) {
-                MapsActivity.open(context) { putExtra("pick", which) } // choose it on the map
+                Screens.mapsPick(context, which) // choose it on the map
                 return
             }
-            MapsActivity.open(context) { putExtra("go", which) }
+            Screens.mapsGo(context, which)
             return
         }
         if (AppRepo.navPackage(context) == null) { host.toast(context.getString(R.string.err_no_nav)); return }

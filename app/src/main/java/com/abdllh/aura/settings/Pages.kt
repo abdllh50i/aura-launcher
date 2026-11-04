@@ -368,7 +368,7 @@ class NavigationPage(private val act: SettingsActivity) : Page(R.string.set_navi
         val legacy = if (which == "home") Prefs.homeAddress else Prefs.workAddress
         val value = saved?.name ?: legacy
         return ctx.settingRow(icon, ctx.getString(title), value.ifBlank { ctx.getString(R.string.home_tap_to_set) }, ctx.iconView(R.drawable.ic_pin, 22, Palette.text3)) {
-            com.abdllh.aura.nav.MapsActivity.open(ctx) { putExtra("pick", which) }
+            com.abdllh.aura.home.Screens.mapsPick(ctx, which)
         }
     }
 }
@@ -576,6 +576,8 @@ class AboutPage(private val act: SettingsActivity) : Page(R.string.set_about, R.
         com.abdllh.aura.system.HomeGuard.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_home, R.string.about_covered, it) }
         // how the music button last reached AMRI: its own key (no stock screen), or a stock screen that had to be covered
         com.abdllh.aura.system.MusicKeys.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_steering, R.string.about_music_key, it) }
+        // the last time the home screen started in a way it should not have to: a healthy unit has no such line
+        com.abdllh.aura.home.Screens.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_home, R.string.about_home_start, it) }
         // the last Bluetooth song's lookup: where its cover and length came from, or why nothing came
         com.abdllh.aura.music.CoverSearch.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_disc, R.string.about_cover, it) }
         // how the last song handed to YouTube's app went (it could not be tried before the unit)
