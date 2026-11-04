@@ -122,7 +122,11 @@ private struct PinsMap: View {
             }
         }
         .onChange(of: pick) { _, new in
-            if let new { search.selected = new }
+            if let new {
+                search.selected = new
+            } else if search.selected != nil {
+                search.deselect()
+            }
         }
         .onChange(of: search.selected) { _, new in
             pick = new
@@ -151,6 +155,9 @@ private struct TappableMap: View {
                 search.selected = place
             } else if let feature = new?.feature {
                 search.choose(feature: feature)
+            } else if search.selected != nil {
+                // A tap on nothing: back from this place to the list, as anywhere else.
+                search.deselect()
             }
         }
         .onChange(of: search.selected) { _, new in

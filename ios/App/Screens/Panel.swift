@@ -86,9 +86,16 @@ private struct BrowsePanel: View {
         .onChange(of: typing) { _, now in
             if now { detent = .large }
         }
-        .onChange(of: search.phase) { old, new in
-            // A list to look at: enough of the sheet to read it, and the map above it.
-            if new == .results, !typing, detent == Panel.peek { detent = .medium }
+        .onChange(of: search.phase) { _, new in
+            switch new {
+            case .searching:
+                typing = false
+            case .results:
+                // A list to look at: enough of the sheet to read it, and Apple's map above it, which is where its results belong.
+                detent = .medium
+            default:
+                break
+            }
         }
     }
 }
