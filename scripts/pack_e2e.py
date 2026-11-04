@@ -431,6 +431,44 @@ def drops():
     ctl("reset=1")
 
 
+def nooverlap():
+    """Is the overlap needed? The same hard cuts, resuming exactly where the part ends."""
+    wipe()
+    m, total, largest = manifest_totals()
+    sh("setprop debug.aura.pack.overlap 0")
+    ctl("drop_mb=7&drop_rst=1")
+    start_app()
+    t0 = time.time()
+    bc(start=True)
+    try:
+        ok = install_and_check("no overlap", timeout=400)
+    finally:
+        sh("setprop debug.aura.pack.overlap ''")
+    st = stats()
+    wrong = T.log.since(t0, r"hash [0-9a-f]+, wanted")
+    result("resets with no overlap (a question, not a requirement)", True, f"finished {ok}; {st['drops']} resets, {time.time() - t0:.0f} s; served {st['served_total'] - total} over; chunks found wrong and fetched again: {len(wrong)}")
+    ctl("reset=1")
+
+
+def nat(overlap, name):
+    """The same question through the emulator's own network (10.0.2.2) instead of adb's tunnel."""
+    wipe()
+    m, total, largest = manifest_totals()
+    sh(f"setprop debug.aura.pack.overlap {overlap}; setprop debug.aura.pack.base http://10.0.2.2:{T.port}/releases/download/data-2026.11/")
+    ctl("drop_mb=10&drop_rst=1")
+    start_app()
+    t0 = time.time()
+    bc(start=True)
+    try:
+        ok = install_and_check(name, timeout=500)
+    finally:
+        sh("setprop debug.aura.pack.overlap ''")
+    st = stats()
+    wrong = T.log.since(t0, r"hash [0-9a-f]+, wanted")
+    result(name, True, f"finished {ok}; {st['drops']} resets, {time.time() - t0:.0f} s; served {st['served_total'] - total} over; chunks found wrong and fetched again: {len(wrong)}: {[w.split('): ', 1)[-1][:40] for w in wrong][:6]}")
+    ctl("reset=1")
+
+
 def faults():
     wipe()
     m, total, largest = manifest_totals()
@@ -848,7 +886,7 @@ def misc():
     result("home screen, crashes", alive and T.pkg not in crash, f"home alive {alive}; crash buffer for this app: {crash!r}")
 
 
-SCENARIOS = {"hotspot": hotspot, "misc": misc, "refusals": refusals, "space": space, "full": full, "kill": kill, "points": points, "drops": drops, "faults": faults, "update": update, "usb": usb, "usbroot": usbroot,
+SCENARIOS = {"nat0": lambda: nat(0, "resets through the emulator's NAT, no overlap"), "nat64": lambda: nat(65536, "resets through the emulator's NAT, 64 KB overlap"), "nooverlap": nooverlap, "hotspot": hotspot, "misc": misc, "refusals": refusals, "space": space, "full": full, "kill": kill, "points": points, "drops": drops, "faults": faults, "update": update, "usb": usb, "usbroot": usbroot,
              "trip": trip, "reboot": reboot, "powercut": powercut, "fulldisk": fulldisk}
 
 

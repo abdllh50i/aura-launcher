@@ -90,7 +90,7 @@ internal class HttpSource(base: String) : PackSource {
         if (have > bytes) { t.bytes(-have); part.delete(); have = 0L }
         if (have == bytes) return
         // (the end of what is kept is fetched again: PackRules.OVERLAP)
-        val from = PackRules.resumeAt(have)
+        val from = PackRules.resumeAt(have, if (BuildConfig.DEBUG) SystemProps.get("debug.aura.pack.overlap").toLongOrNull() ?: PackRules.OVERLAP else PackRules.OVERLAP)
         if (from != have) t.bytes(from - have)
         val c = open(PackRules.join(base, name), from)
         try {
