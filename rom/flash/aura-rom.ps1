@@ -252,6 +252,7 @@ cmd notification disallow_listener com.abdllh.aura/com.abdllh.aura.media.AuraNot
 [ "$(settings get system phone_connect_style 2>/dev/null)" = "0" ] && settings put system phone_connect_style 3 && settings put system recheck_phone_connect_style 1
 setprop persist.nwd.launcher.default com.android.launcher
 pm uninstall com.abdllh.aura >/dev/null 2>&1
+rm -rf /data/local/tmp/amri-rollback
 echo undone
 '@
     $follow = ($follow -replace "`r`n", "`n") + "`n"

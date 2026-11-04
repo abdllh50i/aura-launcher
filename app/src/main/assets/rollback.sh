@@ -1,0 +1,123 @@
+#!/system/bin/sh
+# AMRI's way back. update/Rollback.kt copies this file to /data/local/tmp/amri-rollback/ as root; any root caller may
+# run it from there: Settings, the guard, AMRI Rescue, a PC at the car, a phone.
+#
+#   sh /data/local/tmp/amri-rollback/rollback.sh          back to aura-prev.apk; if that fails, the kill switch and the
+#                                                         stock launcher
+#   sh /data/local/tmp/amri-rollback/rollback.sh --test   the same, but a failure leaves everything as it was
+#   sh /data/local/tmp/amri-rollback/rollback.sh --stock  only the kill switch and the stock launcher (at once)
+#
+# Going back runs detached: replacing the package kills every process of the app, and with it whoever asked. The outcome
+# is in result ("EXIT=n"), the script's own output in runner.log.
+#
+# It never runs pm uninstall: when the ROM copy is older than the /data copy that deletes AMRI's data (docs/DEV.md).
+
+PKG=com.abdllh.aura
+STOCK=com.android.launcher
+D=/data/local/tmp/amri-rollback
+APK=$D/aura-prev.apk
+JSON=$D/aura-prev.json
+R=$D/result
+
+# What a dead AMRI cannot give back by itself. A living one does the same through its watcher of the kill switch; both
+# together are harmless. The same steps as the ROM restore's, as far as they are not AMRI's own business.
+give_back() {
+    pm enable com.android.launcher/com.launcher.FloatBar >/dev/null 2>&1
+    am startservice -n com.android.launcher/com.launcher.FloatBar >/dev/null 2>&1
+    case "$(settings get system key_bt_state 2>/dev/null)" in
+        3|4|5) ;; # never during a call: it restarts the phone process
+        *) pm enable com.nwd.android.phone/com.nwd.android.phone.FloatBar >/dev/null 2>&1 ;;
+    esac
+    K=/data/nwdappconfig/app/KeyRuleConfig.xml
+    [ -f $K.pre-aura ] && cat $K.pre-aura > $K && rm -f $K.pre-aura
+    case "$(settings get global policy_control 2>/dev/null)" in
+        *immersive.*) settings delete global policy_control >/dev/null 2>&1 ;;
+    esac
+}
+
+to_stock() {
+    setprop persist.aura.disabled 1
+    setprop persist.nwd.launcher.default $STOCK
+    give_back
+    am start -a android.intent.action.MAIN -c android.intent.category.HOME -p $STOCK 2>&1 | grep -q Error \
+        && am start -a android.intent.action.MAIN -c android.intent.category.HOME >/dev/null 2>&1
+}
+
+case "$1" in
+    --stock)
+        to_stock
+        echo stock-done
+        exit 0
+        ;;
+    --run)
+        shift
+        ;;
+    *)
+        [ "$(id -u)" = 0 ] || { echo "needs root"; exit 1; }
+        L=$(cat $D/running 2>/dev/null)
+        if [ -n "$L" ] && grep -q rollback.sh /proc/$L/cmdline 2>/dev/null; then
+            echo already-running
+            exit 0
+        fi
+        rm -f $R
+        S=
+        command -v setsid >/dev/null 2>&1 && S=setsid
+        nohup $S sh $D/rollback.sh --run "$@" > $D/runner.log 2>&1 < /dev/null &
+        echo started
+        exit 0
+        ;;
+esac
+
+# ---- detached from here on: the caller is gone or about to be
+trap '' HUP PIPE
+echo $$ > $D/running
+MODE=back
+[ "$1" = "--test" ] && MODE=test
+
+note() { echo "$*" >> $R; }
+installed() { dumpsys package $PKG 2>/dev/null | grep -E 'versionCode=|versionName=' | head -n 2 | tr -s ' ' | tr '\n' ' '; }
+
+failed() {
+    if [ $MODE = test ]; then
+        setprop persist.aura.disabled "${was:-0}"
+    else
+        to_stock
+    fi
+    note "HOME=$(getprop persist.nwd.launcher.default) DISABLED=$(getprop persist.aura.disabled)"
+    note DONE
+    rm -f $D/running
+    exit 1
+}
+
+note "MODE=$MODE"
+note "FROM=$(installed)"
+want=$(sed -n 's/.*"sha256"[^"]*"\([0-9a-f]*\)".*/\1/p' $JSON 2>/dev/null)
+ver=$(sed -n 's/.*"version"[^"]*"\([^"]*\)".*/\1/p' $JSON 2>/dev/null)
+note "TO=$ver"
+was=$(getprop persist.aura.disabled)
+
+have=$(sha256sum $APK 2>/dev/null | cut -d' ' -f1)
+if [ -z "$want" ] || [ "$want" != "$have" ]; then
+    note "the saved copy does not match its hash: want=$want have=$have"
+    note "EXIT=99"
+    failed
+fi
+
+# the new process must not find the switch on, and so read the home screen as not its own
+setprop persist.aura.disabled 0
+rm -f /data/data/$PKG/files/disable_home /data/aura_disabled
+
+T=
+command -v timeout >/dev/null 2>&1 && T="timeout -k 5 300"
+$T pm install -r -d $APK >> $R 2>&1
+code=$?
+note "EXIT=$code"
+[ "$code" = 0 ] || failed
+
+note "NOW=$(installed)"
+sync
+setprop persist.nwd.launcher.default $PKG
+am start -a android.intent.action.MAIN -c android.intent.category.HOME >/dev/null 2>&1
+note DONE
+rm -f $D/running
+exit 0

@@ -599,6 +599,8 @@ class AboutPage(private val act: SettingsActivity) : Page(R.string.set_about, R.
             col.addRow(ctx.group(ctx.settingRow(R.drawable.ic_home, ctx.getString(R.string.about_home_now), if (isAura) ctx.getString(R.string.app_name) else cur.ifEmpty { "-" }, btn)))
         }
 
+        WaybackCard.addTo(col, ctx, act) // the way back to the previous version, and what the guard has seen
+
         CrashGuard.lastCrash(ctx)?.let {
             col.addSection(ctx.getString(R.string.about_diag))
             col.addRow(ctx.group(ctx.settingRow(R.drawable.ic_alert, ctx.getString(R.string.about_last_crash), it.lineSequence().take(3).joinToString("\n"), null, Palette.warn)))

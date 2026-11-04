@@ -102,11 +102,16 @@ class HomeActivity : Activity(), HomeHost {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (CrashGuard.bailedOut) { // (AuraApp has done it: nothing else of AMRI started in this process)
+            finish()
+            return
+        }
         if (CrashGuard.isCrashLoop()) {
             CrashGuard.bailOut(this)
             finish()
             return
         }
+        com.abdllh.aura.guard.GuardMarks.homeWanted()
         Fonts.refreshLocale(this)
         Theme.refresh()
         builtLang = Prefs.lang
@@ -287,6 +292,7 @@ class HomeActivity : Activity(), HomeHost {
         val r = root ?: return
         r.afterNextDraw {
             if (isDestroyed) return@afterNextDraw
+            com.abdllh.aura.guard.GuardMarks.homeDrawn() // (the guard's "OK" follows in about 20 s)
             for ((v, dy, delay) in cards) v.enter(dy = dy, delay = delay)
             mapPanel.animate().translationY(0f).setStartDelay(0L).setDuration(Motion.LONG).setInterpolator(Motion.EMPHASIZED).start()
             dock.animate().translationY(0f).setStartDelay(0L).setDuration(Motion.LONG).setInterpolator(Motion.EMPHASIZED).start()

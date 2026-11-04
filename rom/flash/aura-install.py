@@ -9,6 +9,7 @@ Runs on Linux (Ubuntu), macOS and Windows with Python 3.8+ and nothing else (it 
     python3 aura-install.py              find the unit on the network, show what it has, install the AMRI OS ROM
     python3 aura-install.py status       find the unit and show what is installed (writes nothing)
     python3 aura-install.py restore      put the stock firmware back
+    python3 aura-install.py rollback     back to the previous AMRI version, keeping its data (the app keeps that version on the unit)
     python3 aura-install.py scan         only look for the unit
 
 The laptop and the unit must be on the same network (a phone hotspot, or the laptop's own hotspot). The program only ever
@@ -35,6 +36,7 @@ PACK = os.path.join(HERE, "patch")
 FLASH_SH = os.path.join(HERE, "aura-flash.sh")
 PACK_FILES = ["forward.bin", "reverse.bin", "ranges.txt", "order-apply.txt", "order-revert.txt", "hashes.txt"]
 REMOTE = "/data/local/tmp/aura-rom"
+ROLLBACK_DIR = "/data/local/tmp/amri-rollback"
 PORT = 5555
 EXPECT_MODEL = "K2501"
 WAIT_FIRST = 15      # seconds before looking for the unit again after the restart command
@@ -166,6 +168,28 @@ M = {
     "back_timeout": {"en": "The unit has not shown up again yet. The first start can take a while - run 'status' later.",
                      "ar": "الشاشة ما ظهرت من جديد بعد. أول تشغيل ياخذ وقت - شغّل status بعدين."},
     "lost": {"en": "The connection to the unit was lost ({why}).", "ar": "انقطع الاتصال بالشاشة ({why})."},
+    "back_none": {"en": "This unit has no saved version to go back to (no {path}). AMRI 1.19.1 or newer prepares one a minute after it starts, "
+                        "once it has internet. Without one, 'restore' is the way back (it needs the ROM pack that is on the unit, and it wipes AMRI's data).",
+                  "ar": "هذي الشاشة ما فيها نسخة محفوظة ترجع لها (ما فيه {path}). عمري 1.19.1 أو أحدث يجهّزها بعد ما يشتغل بدقيقة إذا فيه إنترنت. "
+                        "بدونها طريق الرجوع هو restore (يحتاج حزمة النظام اللي على الشاشة، ويمسح بيانات عمري)."},
+    "back_running": {"en": "The app on the unit is now {now}.", "ar": "التطبيق على الشاشة الحين {now}."},
+    "back_ready": {"en": "READY TO GO BACK from {now} to the saved version {ver}.\n"
+                         "  - your settings, maps and everything else of AMRI stay (it installs over the app, it does not remove it)\n"
+                         "  - if the install fails: the stock launcher becomes the home screen and AMRI is switched off, nothing is lost",
+                   "ar": "جاهز للرجوع من {now} للنسخة المحفوظة {ver}.\n"
+                         "  - إعداداتك وخرائطك وكل بيانات عمري تبقى (يثبّت فوق التطبيق، ما يحذفه)\n"
+                         "  - لو فشل التثبيت: اللانشر الأصلي يصير الشاشة الرئيسية وعمري ينطفي، وما يضيع شي"},
+    "back_already": {"en": "The saved version {ver} is not older than the one on the unit ({now}). Nothing to do.",
+                     "ar": "النسخة المحفوظة {ver} مو أقدم من اللي على الشاشة ({now}). ما في شي أسويه."},
+    "back_going": {"en": "Going back; the unit does this by itself, the connection may drop ...",
+                   "ar": "جاري الرجوع؛ الشاشة تسويها لحالها، وممكن ينقطع الاتصال ..."},
+    "back_noscript": {"en": "The way-back script is not on the unit ({out}). Open AMRI on the unit, wait a minute and run this again.",
+                      "ar": "سكربت الرجوع مو موجود على الشاشة ({out}). افتح عمري على الشاشة، انتظر دقيقة وشغّل هذا من جديد."},
+    "back_ok": {"en": "DONE: AMRI went back. {now}", "ar": "تم: عمري رجع. {now}"},
+    "back_failed": {"en": "Going back did not work. The installer said:\n{why}\nThe unit should now be on the stock launcher with AMRI switched off.",
+                    "ar": "الرجوع ما زبط. التثبيت قال:\n{why}\nالمفروض الشاشة الحين على اللانشر الأصلي وعمري مطفي."},
+    "back_timeout": {"en": "No answer from the unit yet. It works by itself: look at {path} on the unit, or run this again in a few minutes.",
+                     "ar": "ما جاء رد من الشاشة بعد. هي تشتغل لحالها: شوف الملف {path} على الشاشة، أو شغّل هذا بعد كم دقيقة."},
 }
 
 LANG = "en"
@@ -790,6 +814,66 @@ class Installer:
             feed("\n")
         return lines
 
+    # -- the way back: the saved version, through the script the app keeps on the unit (no ROM pack, no write to the system partition)
+    def installed_version(self):
+        out = self.unit.shell("dumpsys package com.abdllh.aura | grep -E 'versionCode=|versionName=' | head -n 2")
+        name = re.search(r"versionName=(\S+)", out)
+        code = re.search(r"versionCode=(\d+)", out)
+        return (name.group(1) if name else "?"), (int(code.group(1)) if code else 0)
+
+    def rollback(self):
+        a = self.args
+        saved = self.unit.shell("cat %s/aura-prev.json 2>/dev/null" % ROLLBACK_DIR).strip()
+        ver = re.search(r'"version"\s*:\s*"([^"]+)"', saved)
+        code = re.search(r'"code"\s*:\s*(\d+)', saved)
+        if not ver or not code:
+            die(t("back_none", path=ROLLBACK_DIR + "/aura-prev.apk"))
+        ver, code = clean(ver.group(1)), int(code.group(1))
+        now_name, now_code = self.installed_version()
+        now = "%s (%d)" % (clean(now_name), now_code)
+        if now_code and code >= now_code:
+            say()
+            say(t("back_already", ver=ver, now=now), "green")
+            return 0
+        say()
+        say(t("back_ready", now=now, ver=ver), "yellow")
+        if not a.yes:
+            try:
+                answer = input(t("type_yes"))
+            except EOFError:
+                answer = ""
+            if answer.strip() != "YES":
+                die(t("cancelled"))
+        say()
+        say(t("back_going"), "cyan")
+        out = self.unit.shell("sh %s/rollback.sh" % ROLLBACK_DIR)
+        if "started" not in out and "already-running" not in out:
+            die(t("back_noscript", out=clean(out.strip())[:200]))
+        start = time.monotonic()
+        result = ""
+        while time.monotonic() - start < WAIT_TOTAL:
+            time.sleep(WAIT_POLL)
+            try:
+                result = self.unit.shell("cat %s/result 2>/dev/null" % ROLLBACK_DIR)
+            except AdbError as ex:
+                say(t("lost", why=ex), "yellow")
+                return 1
+            if "DONE" in result.splitlines() or "DONE\r" in result.splitlines():
+                break
+            say(".", end="")
+        say()
+        lines = [l.rstrip("\r") for l in result.splitlines()]
+        if "DONE" not in lines:
+            say(t("back_timeout", path=ROLLBACK_DIR + "/result"), "yellow")
+            return 1
+        if "EXIT=0" in lines:
+            now = next((l[4:] for l in lines if l.startswith("NOW=")), "")
+            say(t("back_ok", now=clean(now)), "green")
+            return 0
+        why = next((l for l in lines if l.startswith("Failure") or "hash" in l), None) or next((l for l in lines if l.startswith("EXIT=")), "?")
+        say(t("back_failed", why=clean(why)), "red")
+        return 1
+
     # -- the whole run
     def run(self):
         a = self.args
@@ -799,6 +883,8 @@ class Installer:
             return 0
         self.connect()
         self.check_unit()
+        if action == "rollback":
+            return self.rollback()
         self.push_pack()
 
         say()
@@ -940,6 +1026,8 @@ class Installer:
                       # its system copy is gone: drop it (a system-only copy refuses, and goes away at the restart);
                       # should anything of it survive, the kill switch keeps it from touching the stock system
                       'pm uninstall com.abdllh.aura >/dev/null 2>&1\n'
+                      # the way back's saved version and script (they are of no use without AMRI)
+                      'rm -rf /data/local/tmp/amri-rollback\n'
                       'echo undone\n')
             expect = "undone"
         try:
@@ -1023,8 +1111,9 @@ class Installer:
 def main(argv=None):
     global LANG, EXPECT_MODEL
     ap = argparse.ArgumentParser(prog="aura-install", description="AMRI OS ROM installer for the K2501 car head unit.")
-    ap.add_argument("command", nargs="?", default="install", choices=["install", "status", "restore", "scan"],
-                    help="install (default): stock -> AMRI OS | status | restore: AMRI OS -> stock | scan: only look for the unit")
+    ap.add_argument("command", nargs="?", default="install", choices=["install", "status", "restore", "rollback", "scan"],
+                    help="install (default): stock -> AMRI OS | status | restore: AMRI OS -> stock | "
+                         "rollback: back to the previous AMRI version, data kept (no pack needed) | scan: only look for the unit")
     ap.add_argument("--ip", help="skip the search and use this address (ADDR or ADDR:PORT)")
     ap.add_argument("--scan", action="append", metavar="CIDR", help="search this network instead of the laptop's own (repeatable)")
     ap.add_argument("--port", type=int, default=PORT, help="adb port (default 5555)")

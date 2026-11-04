@@ -123,6 +123,76 @@ class Base(unittest.TestCase):
         return rc, buf.getvalue(), inst
 
 
+class RollbackUnit(FakeUnit):
+    """A unit where the app keeps a saved version: the script's outcome comes out of the result file."""
+
+    def __init__(self, saved='{"version":"1.19.0","code":1190099,"sha256":"ab","size":1,"source":"published"}', now=("1.19.1", 1190199),
+                 script_out="started\n", result="MODE=back\nSuccess\nEXIT=0\nNOW=versionCode=1190099 versionName=1.19.0 \nDONE\n", **kw):
+        super().__init__(**kw)
+        self.saved, self.now, self.script_out, self.result = saved, now, script_out, result
+
+    def _answer(self, cmd):
+        if "aura-prev.json" in cmd:
+            return self.saved
+        if cmd.startswith("dumpsys package com.abdllh.aura"):
+            return "    versionCode=%d minSdk=26\n    versionName=%s\n" % (self.now[1], self.now[0])
+        if cmd.startswith("sh ") and "rollback.sh" in cmd:
+            return self.script_out
+        if "amri-rollback/result" in cmd:
+            return self.result
+        return super()._answer(cmd)
+
+
+class Rollback(Base):
+    def test_goes_back_without_a_pack_or_a_write_to_the_system_partition(self):
+        u = RollbackUnit()
+        ai.PACK = os.path.join(self.tmp.name, "no-such-folder")
+        rc, out, _ = self.run_installer(u, "rollback")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("went back", out)
+        self.assertIn("versionName=1.19.0", out)
+        self.assertTrue(any(c.startswith("sh ") and "rollback.sh" in c for c in u.log))
+        self.assertFalse(any("aura-flash.sh" in c or "pm uninstall" in c for c in u.log))
+        self.assertFalse(u.rebooted)
+
+    def test_it_asks_first(self):
+        u = RollbackUnit()
+        rc, out, _ = self.run_installer(u, "rollback", yes=False, answer="no")
+        self.assertTrue(str(rc).startswith("STOP"), out)
+        self.assertFalse(any("rollback.sh" in c for c in u.log))
+
+    def test_no_saved_version_says_so_and_runs_nothing(self):
+        u = RollbackUnit(saved="")
+        rc, out, _ = self.run_installer(u, "rollback")
+        self.assertTrue(str(rc).startswith("STOP") and "no saved version" in str(rc), (rc, out))
+        self.assertFalse(any("rollback.sh" in c for c in u.log))
+
+    def test_saved_version_not_older_is_left_alone(self):
+        u = RollbackUnit(now=("1.19.0", 1190099))
+        rc, out, _ = self.run_installer(u, "rollback")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("not older", out)
+        self.assertFalse(any("rollback.sh" in c for c in u.log))
+
+    def test_failed_install_is_reported(self):
+        u = RollbackUnit(result="MODE=back\nFailure [INSTALL_FAILED_NO_MATCHING_ABIS]\nEXIT=1\nHOME=com.android.launcher DISABLED=1\nDONE\n")
+        rc, out, _ = self.run_installer(u, "rollback")
+        self.assertEqual(rc, 1, out)
+        self.assertIn("INSTALL_FAILED_NO_MATCHING_ABIS", out)
+        self.assertIn("stock launcher", out)
+
+    def test_script_missing_is_reported(self):
+        u = RollbackUnit(script_out="sh: /data/local/tmp/amri-rollback/rollback.sh: No such file\n")
+        rc, out, _ = self.run_installer(u, "rollback")
+        self.assertTrue(str(rc).startswith("STOP") and "script" in str(rc), (rc, out))
+
+    def test_a_unit_that_is_not_a_k2501_is_refused(self):
+        u = RollbackUnit(model="SomeTV")
+        rc, out, _ = self.run_installer(u, "rollback")
+        self.assertTrue(str(rc).startswith("STOP"), out)
+        self.assertFalse(any("rollback.sh" in c for c in u.log))
+
+
 class Decisions(Base):
     def test_install_on_stock_writes_and_restarts(self):
         u = FakeUnit(state="STOCK", uptimes=[500.0, 5.0])

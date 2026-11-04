@@ -3,7 +3,8 @@
 #   ./install-linux.sh              find the unit, show what it has, install
 #   ./install-linux.sh status       only show what is installed (writes nothing)
 #   ./install-linux.sh restore      put the stock firmware back
-# (the same as: python3 aura-install.py [status|restore])
+#   ./install-linux.sh rollback     back to the previous AMRI version, keeping its data (no pack needed)
+# (the same as: python3 aura-install.py [status|restore|rollback])
 cd "$(dirname "$0")" || exit 1
 if ! command -v python3 >/dev/null 2>&1; then
     echo "Python 3 is needed (it is normally part of Ubuntu):  sudo apt install python3"

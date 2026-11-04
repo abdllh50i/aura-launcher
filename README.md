@@ -66,6 +66,7 @@ unzip aura-rom-1.5.0.zip -d aura && cd aura
 ./install-linux.sh            # finds the K2501, shows its state, asks for YES, installs, restarts, checks
 ./install-linux.sh status     # only look
 ./install-linux.sh restore    # put the stock firmware back
+./install-linux.sh rollback   # back to the previous AMRI version, keeping its data (1.19.1 and newer; no pack needed)
 ```
 
 It only ever touches a unit that reports itself as a K2501, writes nothing unless the system partition is exactly the stock
