@@ -42,6 +42,8 @@ object MediaMonitor {
 
     private var controller: MediaController? = null
     private var broadcastInfo: NowPlaying? = null
+    /** The app of the broadcasts has said whether it plays: a player, for a media key to be meant for. */
+    private var broadcastStates = false
 
     fun observe(l: (NowPlaying?) -> Unit) {
         listeners.add(l)
@@ -123,6 +125,7 @@ object MediaMonitor {
         // extra_media_app_src_inout = 1 when the source was closed.
         if (intent.action == ACTION_NWD_INFO && (e?.get("extra_media_app_src_inout") as? Int) == 1) {
             broadcastInfo = null
+            broadcastStates = false
             publish()
             return
         }
@@ -136,12 +139,9 @@ object MediaMonitor {
         }
         val title = s("extra_media_name", "track", "title", "name", "song", "songname", "music_name")
         val artist = s("extra_media_artist", "artist", "singer", "artistname")
-        // (a broadcast that says nothing of its state does not play by saying nothing)
-        val playing = when (val p = e?.get("playing") ?: e?.get("isPlaying") ?: e?.get("state")) {
-            is Boolean -> p
-            is Int -> p == 1 || p == 3
-            else -> broadcastInfo?.playing ?: false
-        }
+        val said = e?.get("playing") ?: e?.get("isPlaying") ?: e?.get("state")
+        if (said is Boolean || said is Int) broadcastStates = true
+        val playing = NowPlayingRule.broadcastPlaying(said, broadcastInfo?.playing)
         if (intent.action == "com.android.music.playstatechanged" && title.isEmpty()) {
             broadcastInfo = broadcastInfo?.copy(playing = playing) ?: return
         } else if (title.isNotEmpty() || artist.isNotEmpty()) {
@@ -346,6 +346,9 @@ object MediaMonitor {
     /** What [pauseNow] paused plays again, with a command that can only play. */
     fun playAgain(ctx: Context, p: Paused) = command(ctx, p, true)
 
+    /** There is something to tell to play: a source that can be told. A broadcast that never said it plays cannot. */
+    val playable: Boolean get() = current?.let { it.sourcePkg != null || broadcastStates } == true
+
     /** The song of the card plays, if it does not already (the source's own command, never a toggle). */
     fun play(ctx: Context) {
         val c = current ?: return
@@ -362,6 +365,9 @@ object MediaMonitor {
                 p.source == ctx.packageName -> if (play) player.resume() else player.pause()
                 p.session != null -> if (play) p.session.transportControls.play() else p.session.transportControls.pause()
                 else -> {
+                    // (a key goes to whichever session has the keys, and that is not an app that only ever told a title: it
+                    // would start something else, or nothing)
+                    if (!broadcastStates) { Log.i(TAG, "no key: that app never said it plays"); return }
                     val code = if (play) KeyEvent.KEYCODE_MEDIA_PLAY else KeyEvent.KEYCODE_MEDIA_PAUSE
                     val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
                     am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code))
@@ -417,6 +423,13 @@ object MediaMonitor {
 internal object NowPlayingRule {
     /** For [pick]'s lastPlayed: an app known only from its broadcasts (they name no package). */
     const val BROADCAST = "broadcast"
+
+    /** Does an app's broadcast say it plays? [said]: its state as it came, if any; [before]: what it said last. Saying nothing is not playing. */
+    fun broadcastPlaying(said: Any?, before: Boolean?): Boolean = when (said) {
+        is Boolean -> said
+        is Int -> said == 1 || said == 3
+        else -> before ?: false
+    }
 
     /**
      * What plays wins: Bluetooth music, Aura Music, another app's session, its broadcast. When nothing plays, what played

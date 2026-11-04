@@ -1,7 +1,9 @@
 package com.abdllh.aura.media
 
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NowPlayingRuleTest {
@@ -18,11 +20,32 @@ class NowPlayingRuleTest {
         val bt = song(MediaMonitor.SOURCE_BT, true)
         val aura = song(own, true)
         val session = song(app, true)
-        val broadcast = song(null, true)
+        val broadcast = song(null, true) // (one that said it plays: broadcastsThatSayNothing)
         assertSame(bt, pick(bt, aura, session, broadcast, last = own))
         assertSame(aura, pick(song(MediaMonitor.SOURCE_BT, false), aura, session, broadcast))
         assertSame(session, pick(song(MediaMonitor.SOURCE_BT, false), song(own, false), session, broadcast))
         assertSame(broadcast, pick(song(MediaMonitor.SOURCE_BT, false), song(own, false), song(app, false), broadcast))
+    }
+
+    /** The stock Bluetooth app tells every title with no state: that was "playing" for ever, and took the card and the assistant's resume. */
+    @Test fun broadcastsThatSayNothing() {
+        assertFalse(NowPlayingRule.broadcastPlaying(null, null))
+        assertFalse(NowPlayingRule.broadcastPlaying("what", null))
+        // (what it said last stands: a title on its own says nothing about that)
+        assertTrue(NowPlayingRule.broadcastPlaying(null, true))
+        assertFalse(NowPlayingRule.broadcastPlaying(null, false))
+        assertTrue(NowPlayingRule.broadcastPlaying(true, false))
+        assertFalse(NowPlayingRule.broadcastPlaying(false, true))
+        assertTrue(NowPlayingRule.broadcastPlaying(1, null))
+        assertTrue(NowPlayingRule.broadcastPlaying(3, null))
+        assertFalse(NowPlayingRule.broadcastPlaying(2, true))
+    }
+
+    @Test fun aBroadcastThatSaidNothingTakesNothingFromThePausedPhone() {
+        val bt = song(MediaMonitor.SOURCE_BT, false)
+        val silent = song(null, false)
+        assertSame(bt, pick(bt, song(own, false), null, silent, last = MediaMonitor.SOURCE_BT))
+        assertSame(bt, pick(bt, song(own, false), null, silent, chosenBt = true))
     }
 
     /** The bug: the phone paused handed the card (and the play button) to the old local queue. */

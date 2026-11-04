@@ -217,7 +217,7 @@ object Amri {
         }
     }
 
-    /** Another source plays by now: what [p] paused does not take the speakers from it. */
+    /** Another source plays by now: what [p] paused does not take the speakers from it. (A broadcast counts only if it said it plays: [com.abdllh.aura.media.NowPlayingRule.broadcastPlaying].) */
     private fun somethingElsePlays(p: MediaMonitor.Paused) = MediaMonitor.current?.let { it.playing && it.sourcePkg != p.source } == true
 
     /** Is there internet now (a validated network that the car's Wi-Fi watchdog does not know to be down)? */
@@ -469,7 +469,7 @@ object Amri {
                 when {
                     p != null -> { paused = null; MediaMonitor.playAgain(c, p) }
                     MediaMonitor.current?.playing == true -> {}
-                    MediaMonitor.current != null -> MediaMonitor.play(c)
+                    MediaMonitor.playable -> MediaMonitor.play(c)
                     else -> openMusic(c, false)
                 }
                 Answer(s(R.string.amri_playing))
