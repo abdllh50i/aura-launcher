@@ -2192,7 +2192,9 @@ sign, a trip resumed or not and why) is the first real measurement.
 * **A trip survives the process** (`nav/TripMemory.kt`): `navTrip` in the prefs, at the start and once a minute. A process start
   looks 4 s later: same boot and under 30 minutes by the monotonic clock; another boot, under 30 minutes by GPS's clock and within 3 km of
   where the car stopped (a head unit's wall clock is set late); within 300 m of the place, he is there. Each try is counted on disk
-  first, and after two that did not reach a minute the trip is dropped, so it cannot walk the home screen into the crash guard.
+  first, and after two that did not reach a minute the trip is dropped, so it cannot walk the home screen into the crash guard. It
+  starts through `Trips` (`by` is `resumed` in `/v1/state`) and keeps `remember`: Apple's place stays off the recents after a resume
+  too, and is on the disk only as long as its trip runs. A place being asked for at that moment (`Trips.attempt`) comes first.
 * **Arrival:** within 30 m of the place in a straight line counts only with under 300 m of the route left, or off the route: a place
   seen across a divided road used to end the trip with the way round still ahead.
 * **Day and night** (`ui/Daylight.kt`): the sun's real height at the last fix (NOAA's formulas), night under -6 degrees: civil
