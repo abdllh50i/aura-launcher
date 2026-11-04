@@ -109,9 +109,13 @@ final class FakeUnit: @unchecked Sendable {
 
     var address: UnitAddress { UnitAddress(host: "127.0.0.1", port: port) }
 
+    /// Never `waitUntilExit`: it spins this thread's run loop, and on a concurrency thread it can wait for ever (one CI run
+    /// sat 20 minutes with node already gone). A bounded look is all the next test needs: each stand-in has its own ports.
     func stop() {
         process.terminate()
-        process.waitUntilExit()
+        for _ in 0..<100 where process.isRunning {
+            usleep(10_000)
+        }
     }
 
     func control(_ path: String, _ body: [String: Any]? = nil) async throws -> [String: Any] {

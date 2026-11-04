@@ -405,6 +405,7 @@ struct LocalNetworkCard: View {
             .accessibilityIdentifier("openSettings")
         }
         .cardSurface()
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("localNetworkCard")
     }
 }
@@ -457,6 +458,8 @@ struct TripCard: View {
             }
         }
         .cardSurface()
+        // A name on a plain stack would replace the names of everything inside it.
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("tripCard")
     }
 

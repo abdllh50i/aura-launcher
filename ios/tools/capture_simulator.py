@@ -4,6 +4,7 @@ screenshots. Run from ios/ after a simulator build.
 """
 import json
 import os
+import plistlib
 import subprocess
 import sys
 import time
@@ -49,6 +50,20 @@ def shoot(udid, screen, language, suffix=""):
     run("xcrun", "simctl", "io", udid, "screenshot", "--type=png", str(OUT / name))
 
 
+def arabic_before_boot(udid):
+    """The whole phone in Arabic, like his: the system's own share sheet and the extension too, which launch arguments do not
+    reach. Written while it is off, because changing it on a running simulator costs a second boot (7 minutes on CI)."""
+    path = Path.home() / "Library/Developer/CoreSimulator/Devices" / udid / "data/Library/Preferences/.GlobalPreferences.plist"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    values = {}
+    if path.exists():
+        with path.open("rb") as existing:
+            values = plistlib.load(existing)
+    values.update(AppleLanguages=["ar"], AppleLocale="ar_SA")
+    with path.open("wb") as out:
+        plistlib.dump(values, out, fmt=plistlib.FMT_BINARY)
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     Path("evidence").mkdir(exist_ok=True)
@@ -56,17 +71,12 @@ def main():
     udid = device["udid"]
     Path("evidence/simulator-udid.txt").write_text(udid)
     Path("evidence/simulator.txt").write_text(json.dumps(device, indent=2))
-    if device["state"] != "Booted":
-        run("xcrun", "simctl", "boot", udid)
-    run("xcrun", "simctl", "bootstatus", udid, "-b", timeout=420)
-    if "--arabic-device" in sys.argv:
-        # The whole phone in Arabic, like his: the system's own share sheet and the extension too. Launch arguments only
-        # reach the app's own process.
-        run("xcrun", "simctl", "spawn", udid, "defaults", "write", "Apple Global Domain", "AppleLanguages", "-array", "ar")
-        run("xcrun", "simctl", "spawn", udid, "defaults", "write", "Apple Global Domain", "AppleLocale", "-string", "ar_SA")
+    if device["state"] == "Booted":
         run("xcrun", "simctl", "shutdown", udid)
-        run("xcrun", "simctl", "boot", udid)
-        run("xcrun", "simctl", "bootstatus", udid, "-b", timeout=420)
+    arabic_before_boot(udid)
+    run("xcrun", "simctl", "boot", udid)
+    run("xcrun", "simctl", "bootstatus", udid, "-b", timeout=420)
+    print("system language:", run("xcrun", "simctl", "spawn", udid, "defaults", "read", "Apple Global Domain", "AppleLanguages").split(), flush=True)
     run("xcrun", "simctl", "status_bar", udid, "override", "--time", "9:41", "--batteryState", "charged",
         "--batteryLevel", "100", "--wifiBars", "3", "--cellularBars", "4")
     run("xcrun", "simctl", "location", udid, "set", "26.2894,50.1975")

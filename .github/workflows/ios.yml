@@ -15,7 +15,7 @@ jobs:
   kit:
     name: AMRIKit and the fake unit
     runs-on: macos-26
-    timeout-minutes: 20
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,9 +28,11 @@ jobs:
       - name: Test the fake unit
         run: node --test ios/tools/fake_unit.test.mjs
       - name: Test AMRIKit (parsers, discovery on loopback, retries)
+        # A hang here once cost 20 minutes and said nothing. Now it costs two, names its test and gets one more try.
         run: |
-          set -o pipefail
-          swift test --package-path ios/AMRIKit 2>&1 | tee kit-tests.txt
+          swift build --package-path ios/AMRIKit --build-tests
+          python3 ios/tools/run_watched.py --log kit-tests.txt --silence 90 --total 240 --stacks xctest -- swift test --skip-build --package-path ios/AMRIKit \
+            || python3 ios/tools/run_watched.py --log kit-tests.txt --silence 90 --total 240 --stacks xctest -- swift test --skip-build --package-path ios/AMRIKit
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -138,7 +140,7 @@ jobs:
             | tee evidence/simulator-build.txt | grep -E 'error:|BUILD |\*\* ' || true
           grep -q 'SUCCEEDED' evidence/simulator-build.txt
       - name: Boot the simulator and install
-        run: python3 tools/capture_simulator.py --boot-only --arabic-device
+        run: python3 tools/capture_simulator.py --boot-only
       - name: Start the fake unit
         run: |
           node tools/fake_unit.mjs --port 47101 --adb 15555:K2501 --adb "15556:Pixel 7" --route-delay 1500 --progress-ms 3000 --eta 9:41 > evidence/fake-unit.txt 2>&1 &

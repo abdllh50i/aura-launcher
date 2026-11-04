@@ -75,6 +75,7 @@ struct PairScreen: View {
                 }
             }
             .frame(height: 240)
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("qrCamera")
         }
     }
