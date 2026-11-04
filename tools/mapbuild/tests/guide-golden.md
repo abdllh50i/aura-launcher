@@ -266,7 +266,7 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
 - choice 1, the router's 1: 948.4 km, 618.1 min: الأسرع | fastest
 - choice 2, the router's 2: 1224.9 km, 724.9 min: أبطأ بـ 1 س 47 د، أطول بـ 277 كم | slower by 1 h 47 min, longer by 277 km
 - fuel on the way: 76, longest gap 83.3 km; at the start: أقرب محطة بعد 950 م
-- on the road, going its way: 5 cameras, 0 bumps, 7 signal junctions
+- on the road, going its way: 5 cameras, 0 bumps, 8 signal junctions
 - arrival: وجهتك على يسارك، أقرب مواقف 50 م
 
 ```
@@ -396,7 +396,7 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
 - choice 1, the router's 1: 1356.7 km, 853.8 min: الأسرع | fastest
 - choice 2, the router's 2: 1623.1 km, 955.1 min: أبطأ بـ 1 س 41 د، أطول بـ 266 كم | slower by 1 h 41 min, longer by 266 km
 - fuel on the way: 119, longest gap 99.6 km; at the start: أقرب محطة بعد 3.3 كم
-- on the road, going its way: 6 cameras, 0 bumps, 6 signal junctions
+- on the road, going its way: 6 cameras, 0 bumps, 7 signal junctions
 - arrival: وجهتك على يسارك، أقرب مواقف 50 م
 
 ```
@@ -1216,16 +1216,16 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    near: في آخر الطريق لف يسار
    en:   At the end of the road, turn left / Feras Al-Nadher Street | At the end of the road, turn left onto Feras Al-Nadher Street
 4. km 2.1  [end of road | right]
-   sign: في آخر الطريق لف يمين / طريف الأمير فيصل بن فهد
-   far:  بعد 500 متر، في آخر الطريق لف يمين على شارع طريف الأمير فيصل بن فهد
-   near: بعد 150 مترًا، في آخر الطريق لف يمين على شارع طريف الأمير فيصل بن فهد
+   sign: في آخر الطريق لف يمين / طريق الأمير فيصل بن فهد
+   far:  بعد 500 متر، في آخر الطريق لف يمين على طريق الأمير فيصل بن فهد
+   near: بعد 150 مترًا، في آخر الطريق لف يمين على طريق الأمير فيصل بن فهد
    en:   At the end of the road, turn right / Prince Faisal Bin Fahd Rd | In 500 metres, at the end of the road, turn right onto Prince Faisal Bin Fahd Rd | In 150 metres, at the end of the road, turn right onto Prince Faisal Bin Fahd Rd
 5. km 6.3  [fork | slight right]
-   sign: الزم اليمين / طريف الأمير فيصل بن فهد
+   sign: الزم اليمين / طريق الأمير فيصل بن فهد
    far:  بعد 500 متر، الزم اليمين
    near: بعد 150 مترًا، الزم اليمين
    en:   Keep right / Prince Faisal Bin Fahd Rd | In 500 metres, keep right | In 150 metres, keep right
-   on:   كمّل على شارع طريف الأمير فيصل بن فهد لمسافة 4 كيلومترات | Continue on Prince Faisal Bin Fahd Rd for 4 kilometres
+   on:   كمّل على طريق الأمير فيصل بن فهد لمسافة 4 كيلومترات | Continue on Prince Faisal Bin Fahd Rd for 4 kilometres
 6. km 6.6  [off ramp | slight left]
    sign: خذ المخرج على اليسار / شارع الأمير تركي
    near: بعد 150 مترًا، خذ المخرج على اليسار باتجاه شارع الأمير تركي
@@ -1255,7 +1255,7 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
 - choice 1, the router's 1: 6.7 km, 7.7 min: الأسرع | fastest
 - choice 2, the router's 2: 8.0 km, 9.8 min: أبطأ بدقيقتين، أطول بـ 1.3 كم | slower by 2 min, longer by 1.3 km
 - choice 3, the router's 3: 12.4 km, 12.9 min: أبطأ بـ 5 دقائق، أطول بـ 5.7 كم | slower by 5 min, longer by 5.7 km
-- on the road, going its way: 1 cameras, 0 bumps, 4 signal junctions
+- on the road, going its way: 1 cameras, 0 bumps, 5 signal junctions
 - arrival: وجهتك على يمينك
 
 ```
@@ -1263,15 +1263,15 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    sign: انطلق
    en:   Head out
 2. km 0.2  [turn | right]
-   sign: لف يمين / طريف الأمير فيصل بن فهد
-   near: بعد 150 مترًا، لف يمين على طريق طريف الأمير فيصل بن فهد
+   sign: لف يمين / طريق الأمير فيصل بن فهد
+   near: بعد 150 مترًا، لف يمين على طريق الأمير فيصل بن فهد
    en:   Turn right / Prince Faisal Bin Fahd Rd | In 150 metres, turn right onto Prince Faisal Bin Fahd Rd
 3. km 5.7  [fork | slight right]
-   sign: الزم اليمين / طريف الأمير فيصل بن فهد
+   sign: الزم اليمين / طريق الأمير فيصل بن فهد
    far:  بعد 500 متر، الزم اليمين
    near: بعد 150 مترًا، الزم اليمين
    en:   Keep right / Prince Faisal Bin Fahd Rd | In 500 metres, keep right | In 150 metres, keep right
-   on:   كمّل على طريق طريف الأمير فيصل بن فهد لمسافة 5 كيلومترات | Continue on Prince Faisal Bin Fahd Rd for 5 kilometres
+   on:   كمّل على طريق الأمير فيصل بن فهد لمسافة 5 كيلومترات | Continue on Prince Faisal Bin Fahd Rd for 5 kilometres
 4. km 6.0  [fork | slight right]
    sign: الزم اليمين / شارع الأمير تركي
    near: بعد 150 مترًا، الزم اليمين باتجاه شارع الأمير تركي
@@ -1328,8 +1328,8 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    near: بعد 150 مترًا، لف يسار
    en:   Turn left / Abdullah bin Omar Street | In 150 metres, turn left
 8. km 1.4  [turn | right]
-   sign: لف يمين / طريف الأمير فيصل بن فهد
-   near: بعد 150 مترًا، لف يمين على شارع طريف الأمير فيصل بن فهد
+   sign: لف يمين / طريق الأمير فيصل بن فهد
+   near: بعد 150 مترًا، لف يمين على طريق الأمير فيصل بن فهد
    en:   Turn right / Prince Faisal Bin Fahd Rd | In 150 metres, turn right onto Prince Faisal Bin Fahd Rd
 9. km 2.8  [turn | right]
    sign: عند الإشارة الثانية لف يمين / طريق الملك فهد الفرعي
@@ -1418,8 +1418,8 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    near: بعد 150 مترًا، لف وارجع من الدوران
    en:   Make a U-turn at the gap / Makkah Al Mukarramah Street | In 150 metres, make a U-turn at the gap
 3. km 0.4  [turn | right]
-   sign: عند الإشارة لف يمين / طريف الأمير فيصل بن فهد
-   near: عند الإشارة لف يمين على شارع طريف الأمير فيصل بن فهد
+   sign: عند الإشارة لف يمين / طريق الأمير فيصل بن فهد
+   near: عند الإشارة لف يمين على طريق الأمير فيصل بن فهد
    en:   At the signal, turn right / Prince Faisal Bin Fahd Rd | At the signal, turn right onto Prince Faisal Bin Fahd Rd
 4. km 2.9  [turn | right]
    sign: عند الإشارة الثانية لف يمين / طريق الملك فهد الفرعي
@@ -1589,11 +1589,11 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    near: بعد 150 مترًا، الزم اليسار، ثم لف يمين
    en:   Keep left / King Faisal Road | In 500 metres, keep left | In 150 metres, keep left, then turn right
 11. km 8.3  [turn | right]
-   sign: لف يمين / طريف الأمير فيصل بن فهد
-   near: بعد 100 متر، لف يمين على شارع طريف الأمير فيصل بن فهد
+   sign: لف يمين / طريق الأمير فيصل بن فهد
+   near: بعد 100 متر، لف يمين على طريق الأمير فيصل بن فهد
    en:   Turn right / Prince Faisal Bin Fahd Rd | In 100 metres, turn right onto Prince Faisal Bin Fahd Rd
 12. km 10.4  [continue | uturn]
-   sign: لف وارجع من الدوران / طريف الأمير فيصل بن فهد
+   sign: لف وارجع من الدوران / طريق الأمير فيصل بن فهد
    far:  الدوران بعد 500 متر
    near: بعد 150 مترًا، لف وارجع من الدوران
    en:   Make a U-turn at the gap / Prince Faisal Bin Fahd Rd | U-turn in 500 metres | In 150 metres, make a U-turn at the gap
@@ -1927,7 +1927,7 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
 
 24.7 km, Valhalla 22.6 min, estimate 26.7 min
 - before starting: الطريق يعبر جسر الملك فهد، فيه رسوم وجوازات | The route crosses the King Fahd Causeway: toll and passports, at 12.6 km
-- on the road, going its way: 7 cameras, 0 bumps, 2 signal junctions
+- on the road, going its way: 7 cameras, 0 bumps, 3 signal junctions
 - arrival: وجهتك على يمينك
 
 ```

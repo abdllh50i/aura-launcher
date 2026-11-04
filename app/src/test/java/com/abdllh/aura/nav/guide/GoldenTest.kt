@@ -157,7 +157,7 @@ class GoldenTest {
             path.writeText(made, Charsets.UTF_8)
             return
         }
-        assertEquals("guide-golden.md is out of date: run this test with GUIDE_GOLDEN_UPDATE=1 and read the diff", path.readText(Charsets.UTF_8), made)
+        assertEquals("guide-golden.md is out of date: run this test with GUIDE_GOLDEN_UPDATE=1 and read the diff", path.readText(Charsets.UTF_8).replace("\r\n", "\n"), made)
     }
 
     @Test fun everyWordHasAText() {

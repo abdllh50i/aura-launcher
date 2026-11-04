@@ -59,7 +59,7 @@ object Names {
         val mine = words.filter { hasArabic(it) == arabic }
         val other = words.filter { hasArabic(it) != arabic }
         if (mine.isNotEmpty()) {
-            val n = mine.first()
+            val n = mended(mine.first())
             return RoadName(n, spokenForm(n, arabic, stepMetres), shield, if (arabic) RoadName.Kind.ARABIC else RoadName.Kind.LATIN)
         }
         if (arabic) for (n in other) {
@@ -72,6 +72,9 @@ object Names {
         val shown = if (arabic) "طريق $shield" else "Route $shield"
         return RoadName(shown, if (digits || !arabic) shown else null, shield, RoadName.Kind.NUMBER)
     }
+
+    /** OSM's typo on a main road of Dhahran, on 5 of the 30 test trips: "طريف الأمير فيصل بن فهد". طريف alone is a town: only before a title. */
+    private fun mended(n: String) = if (n.startsWith("طريف الأمير") || n.startsWith("طريف الملك")) "طريق" + n.substring(4) else n
 
     /** "الخرمة" alone is odd to hear after "لف يمين على": "شارع الخرمة". Only what is said: the banner shows the name as it is. */
     private fun spokenForm(n: String, arabic: Boolean, stepMetres: Double): String? {

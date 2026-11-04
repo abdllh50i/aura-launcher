@@ -76,6 +76,14 @@ class WarningsTest {
         assertEquals(0, a.kmh)
     }
 
+    @Test fun aSignalForAChip() {
+        val g = Guidance.build(Kit.route(), true, Kit.world(listOf(Kit.signal(1500.0, 1), Kit.signal(1500.0, 2, dir = 270))))
+        assertEquals(1, g.spots.size)
+        val a = g.nextSignal(g.spots[0].along - 300)!!
+        assertEquals("إشارة بعد 300 متر", Speech.text(a.parts(), true))
+        assertNull(g.nextSignal(g.spots[0].along + 1))
+    }
+
     // ---------------------------------------------------------------- the limit
     @Test fun theLimitsOrder() {
         assertEquals(LimitNow.Source.MINE, Limits.pick(80, 120, "motorway").source)

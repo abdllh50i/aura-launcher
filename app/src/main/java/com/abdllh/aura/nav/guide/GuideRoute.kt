@@ -59,6 +59,31 @@ class GuideRoute(val line: Polyline, val steps: List<GuideStep>, val distance: D
     /** `trace_attributes` over this very line, when the route side asked for it ([RoadFacts.parse]); limits and flyovers need it. */
     var facts: RoadFacts? = null
     val hasFerry get() = steps.any { it.onFerry }
+
+    /** Where along the line the answer's own class changes, and whether it says motorway from there on. */
+    private val motorwayMarks: Pair<DoubleArray, BooleanArray> by lazy {
+        val at = ArrayList<Double>()
+        val on = ArrayList<Boolean>()
+        for (s in steps) for (c in s.crossings) {
+            val here = line.cumulative.getOrNull(c.lineIndex) ?: continue
+            val m = "motorway" in c.classes
+            if (on.lastOrNull() != m) { at.add(here); on.add(m) }
+        }
+        at.toDoubleArray() to on.toBooleanArray()
+    }
+
+    /** The answer says motorway here (it has no other class of road: for trunk and below, [facts]). */
+    fun motorwayAt(along: Double): Boolean {
+        val (at, on) = motorwayMarks
+        var lo = 0
+        var hi = at.size - 1
+        var best = -1
+        while (lo <= hi) {
+            val mid = (lo + hi) ushr 1
+            if (at[mid] <= along) { best = mid; lo = mid + 1 } else hi = mid - 1
+        }
+        return best >= 0 && on[best]
+    }
 }
 
 class Waypoint(val pos: LatLon, val snapMetres: Double)
@@ -145,9 +170,12 @@ class GuideAnswer(val routes: List<GuideRoute>, val warnings: List<Int>, val way
             val line = route.line
             val steps = route.steps
             var run = 0.0
+            var last = 0.0
             for (s in steps) {
+                // (by the running distance when the index is missing or goes back, as a second leg's might)
                 val index = s.crossings.firstOrNull()?.lineIndex ?: -1
-                s.at = if (index in line.cumulative.indices) line.cumulative[index] else run
+                s.at = line.cumulative.getOrNull(index)?.takeIf { it >= last } ?: run
+                last = s.at
                 run = s.at + s.distance
             }
             for ((i, s) in steps.withIndex()) {

@@ -38,4 +38,6 @@ python -I $T\zone_gate_check.py $W\out\places.db $U $O\var-default <out.json>   
 python -I $T\glyph_plate.py $W\out\glyphs.db <out.png>                                              # labels drawn from glyphs.db with no renderer, to see the letters join
 ```
 
+Guidance: `python -I $T\guide_fixtures.py $W\out app\src\test\resources\guide` cuts the 30 reference trips and their place rows for `nav/guide`'s tests (`docs/DEV.md`); `guide-golden.md` here holds all their words, written by `GoldenTest`.
+
 Pack: `python -I $T\test_pack.py $W\out ..\lock.json $W\out\pack` tries make_pack.py's refusals and a damaged chunk.

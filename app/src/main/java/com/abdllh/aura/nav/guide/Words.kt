@@ -51,7 +51,6 @@ object Words {
         "end.road" to Word("في آخر الطريق", "at the end of the road,"),
         "depart" to Word("انطلق", "head out"),
         // U-turn honesty: said as a place ahead, then as what to do there
-        "uturn" to Word("لف وارجع", "make a U-turn"),
         "uturn.gap" to Word("لف وارجع من الدوران", "make a U-turn at the gap"),
         "uturn.ahead" to Word("الدوران", "U-turn"),
         // arriving

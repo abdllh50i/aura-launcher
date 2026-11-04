@@ -87,6 +87,13 @@ class NamesTest {
         assertEquals("الأمير فيصل بن سعد بن عبدالرحمن بن محمد آل سعود", long.shown)
     }
 
+    @Test fun aTypoOnAMainRoad() {
+        assertEquals("طريق الأمير فيصل بن فهد", Names.pick("طريف الأمير فيصل بن فهد; Prince Faisal Bin Fahd Rd", "", true).shown)
+        assertEquals("طريق الأمير فيصل بن فهد", Names.pick("طريف الأمير فيصل بن فهد; Prince Faisal Bin Fahd Rd", "", true).spoken)
+        // the town stays
+        assertEquals("شارع طريف", Names.pick("طريف", "", true).spoken)
+    }
+
     @Test fun arabicDigits() {
         assertEquals("٨".let { Names.westernDigits(it) }, "8")
         assertEquals("11", Names.westernDigits("١١"))

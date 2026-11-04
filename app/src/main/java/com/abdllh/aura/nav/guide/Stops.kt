@@ -38,17 +38,7 @@ internal class StopsAlong(route: GuideRoute, c: Corridor, rows: List<PoiRow>) {
     /** A motorway, by the facts or the answer's own class: its other side cannot be reached. */
     private fun roadIsDivided(route: GuideRoute, along: Double): Boolean {
         val s = route.facts?.at(along)
-        if (s != null) return s.roadClass == "motorway"
-        val c = route.line.cumulative
-        var last: Crossing? = null
-        for (st in route.steps) {
-            if (st.at > along) break
-            for (x in st.crossings) {
-                if (x.lineIndex !in c.indices || c[x.lineIndex] > along) break
-                last = x
-            }
-        }
-        return last?.classes?.contains("motorway") == true
+        return if (s != null) s.roadClass == "motorway" else route.motorwayAt(along)
     }
 
     companion object {

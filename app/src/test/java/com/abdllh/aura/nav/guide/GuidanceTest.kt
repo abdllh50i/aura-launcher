@@ -10,10 +10,12 @@ import org.junit.Test
 
 class GuidanceTest {
     private fun guide(world: RouteWorld, vararg steps: GuideStep) = Guidance.build(Kit.route(*steps), true, world)
-    private val turnAt3km get() = Kit.step(3000.0, "turn", "right")
+    /** The point of the line nearest 3 km: a step stands on a point. */
+    private val turnM = Kit.line.cumulative[30]
+    private val turnAt3km get() = Kit.step(turnM, "turn", "right")
 
     // ---------------------------------------------------------------- signals
-    private val threeJunctions = listOf(Kit.signal(1000.0, 1), Kit.signal(2000.0, 2), Kit.signal(3000.0, 3))
+    private val threeJunctions = listOf(Kit.signal(1000.0, 1), Kit.signal(2000.0, 2), Kit.signal(turnM, 3))
 
     @Test fun theSignalsAreCountedFromWhereTheCarIs() {
         val g = guide(Kit.world(threeJunctions), turnAt3km)
@@ -36,19 +38,35 @@ class GuidanceTest {
 
     @Test fun nodesOfOneJunctionCountOnce() {
         // (427 nodes are 137 junctions in his box)
-        val spots = listOf(Kit.signal(1000.0, 1), Kit.signal(1030.0, 1), Kit.signal(1040.0, 1, right = 10.0), Kit.signal(3000.0, 3))
+        val spots = listOf(Kit.signal(1000.0, 1), Kit.signal(1030.0, 1), Kit.signal(1040.0, 1, right = 10.0), Kit.signal(turnM, 3))
         val g = guide(Kit.world(spots), turnAt3km)
         assertEquals(2, g.signalCount(g.told[1], 500.0))
     }
 
     @Test fun signalsOnTheOtherCarriagewayDoNotCount() {
-        val spots = listOf(Kit.signal(1000.0, 1, dir = 270), Kit.signal(3000.0, 3))
+        val spots = listOf(Kit.signal(1000.0, 1, dir = 270), Kit.signal(turnM, 3))
         val g = guide(Kit.world(spots), turnAt3km)
         assertEquals(1, g.signalCount(g.told[1], 500.0))
     }
 
+    @Test fun aSignalOnTheRoadAcrossIsTheJunctions() {
+        val spots = listOf(Kit.signal(1000.0, 1, right = 10.0, dir = 0), Kit.signal(turnM, 3))
+        val g = guide(Kit.world(spots), turnAt3km)
+        assertEquals(2, g.signalCount(g.told[1], 500.0))
+    }
+
+    @Test fun aTurnJustShortOfTheSignalIsNotAtIt() {
+        val at = Kit.route(turnAt3km).steps[1].at
+        val g = guide(Kit.world(listOf(Kit.signal(at + 30, 1))), turnAt3km)
+        assertEquals(0, g.signalCount(g.told[1], 500.0))
+        assertEquals("لف يمين", g.banner(1, 500.0).action)
+        // its bearing is unknown, or it is the junction's own: at it
+        guide(Kit.world(listOf(Kit.signal(at + 30, 1, dir = null))), turnAt3km).let { assertEquals(1, it.signalCount(it.told[1], 500.0)) }
+        guide(Kit.world(listOf(Kit.signal(at + 5, 1))), turnAt3km).let { assertEquals(1, it.signalCount(it.told[1], 500.0)) }
+    }
+
     @Test fun manySignalsAreNotCountedAloud() {
-        val spots = (1..5).map { Kit.signal(it * 500.0, it) } + Kit.signal(3000.0, 6)
+        val spots = (1..5).map { Kit.signal(it * 450.0, it) } + Kit.signal(turnM, 6)
         val g = guide(Kit.world(spots), turnAt3km)
         assertEquals(6, g.signalCount(g.told[1], 100.0))
         val s = Kit.said(g, 1, 100.0)
@@ -70,13 +88,13 @@ class GuidanceTest {
 
     // ---------------------------------------------------------------- the order of the rule
     @Test fun aSignalComesBeforeAPlace() {
-        val g = guide(Kit.world(listOf(Kit.signal(3000.0, 1)), listOf(Kit.poi(2980.0, 20.0, "محطة الدريس", "fuel"))), turnAt3km)
+        val g = guide(Kit.world(listOf(Kit.signal(turnM, 1)), listOf(Kit.poi(2980.0, 20.0, "محطة الدريس", "fuel"))), turnAt3km)
         assertEquals("عند الإشارة لف يمين", g.banner(1, 2500.0).action)
     }
 
     @Test fun aRoundaboutIsItsOwnLandmark() {
         val s = Kit.step(3000.0, "roundabout", "right", exit = 2)
-        val g = guide(Kit.world(listOf(Kit.signal(3000.0, 1))), s)
+        val g = guide(Kit.world(listOf(Kit.signal(turnM, 1))), s)
         assertTrue(g.banner(1, 2000.0).action.startsWith("عند الدوار"))
         assertEquals(0, g.signalCount(g.told[1], 2000.0))
     }
@@ -188,6 +206,22 @@ class GuidanceTest {
         val plain = guide(NoWorld, Kit.step(3000.0, "off ramp", "slight right", destinations = "Exit"))
         assertEquals("خذ المخرج على اليمين", plain.banner(1, 2000.0).action)
         assertEquals("", plain.banner(1, 2000.0).toward)
+    }
+
+    @Test fun anExitNumberTheVoiceCannotRead() {
+        val g = guide(NoWorld, Kit.step(3000.0, "off ramp", "slight right", exits = "3B"))
+        val at = g.told[1].step.at
+        assertEquals("خذ المخرج على اليمين", g.banner(1, at - 500).action)
+        assertEquals("3B", g.banner(1, at - 500).exit)
+        assertEquals("بعد 500 متر، خذ المخرج على اليمين", Kit.said(g, 1, at - 500))
+    }
+
+    @Test fun aBadIndexIsNoCrash() {
+        val g = guide(NoWorld)
+        assertEquals("", g.banner(99, 0.0).action)
+        assertTrue(g.spoken(99, 0.0).isEmpty())
+        assertNull(g.junction(99))
+        assertEquals(-1, g.toldOfStep(99))
     }
 
     // ---------------------------------------------------------------- the U-turn, the ferry

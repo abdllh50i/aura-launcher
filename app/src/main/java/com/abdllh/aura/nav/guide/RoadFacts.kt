@@ -130,20 +130,6 @@ object Limits {
 
     fun at(route: GuideRoute, along: Double, owner: Int): LimitNow {
         val s = route.facts?.at(along)
-        return pick(owner, s?.limit ?: 0, s?.roadClass ?: if (motorwayAt(route, along)) "motorway" else null, s?.use)
-    }
-
-    /** The answer's own class at a place along the line, where no facts are at hand. */
-    private fun motorwayAt(route: GuideRoute, along: Double): Boolean {
-        val c = route.line.cumulative
-        var last: Crossing? = null
-        for (s in route.steps) {
-            if (s.at > along) break
-            for (x in s.crossings) {
-                if (x.lineIndex !in c.indices || c[x.lineIndex] > along) break
-                last = x
-            }
-        }
-        return last?.classes?.contains("motorway") == true
+        return pick(owner, s?.limit ?: 0, s?.roadClass ?: if (route.motorwayAt(along)) "motorway" else null, s?.use)
     }
 }

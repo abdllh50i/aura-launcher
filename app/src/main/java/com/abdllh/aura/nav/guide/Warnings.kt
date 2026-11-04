@@ -17,12 +17,15 @@ object AlongRoad {
     private const val REACH_M = 25.0
     private const val REACH_NO_DIR_M = 15.0
     private const val SAME_WAY_DEG = 50.0
+    private const val NOT_AGAINST_DEG = 130.0
 
     internal fun match(c: Corridor, rows: List<SpotRow>): List<AlongSpot> {
         val out = ArrayList<AlongSpot>()
         for (s in rows) {
             for (h in c.hits(s.pos, if (s.dir != null) REACH_M else REACH_NO_DIR_M)) {
-                if (s.dir != null && abs(Geo.angleDiff(s.dir.toDouble(), h.bearing)) > SAME_WAY_DEG) continue
+                // (a signal on the road across is the same junction's, and stops this road too; only the other carriageway's is not ours)
+                val limit = if (s.kind == SpotRow.SIGNAL) NOT_AGAINST_DEG else SAME_WAY_DEG
+                if (s.dir != null && abs(Geo.angleDiff(s.dir.toDouble(), h.bearing)) > limit) continue
                 out.add(AlongSpot(s.kind, h.along, s.pos, s.kmh, s.junction, s.owner))
             }
         }
@@ -36,7 +39,7 @@ class SpotAlert(val spot: AlongSpot, val metres: Double, val kmh: Int) {
     /** "ساهر بعد 500 متر، السرعة 80"; "مطب بعد 150 متر". */
     fun parts(): List<Part> {
         val out = ArrayList<Part>(6)
-        out.add(Part.Clip(if (spot.kind == SpotRow.CAMERA) "camera" else "bump"))
+        out.add(Part.Clip(when (spot.kind) { SpotRow.CAMERA -> "camera"; SpotRow.SIGNAL -> "signal.ahead"; else -> "bump" }))
         if (metres >= 40) { out.add(Part.Clip("in")); out.add(Part.Clip(Words.distanceId(metres))) }
         if (spot.kind == SpotRow.CAMERA && kmh > 0) {
             out.add(Part.Clip("pause")); out.add(Part.Clip("limit")); out.add(Part.Clip("num.$kmh"))

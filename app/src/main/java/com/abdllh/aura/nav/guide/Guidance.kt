@@ -26,8 +26,12 @@ sealed class Mark {
     class Place(val mark: PoiMark) : Mark()
 }
 
-/** The sign for a manoeuvre. [action]: its main line, landmark and all; [road]: the road or the ferry as its own line; [toward]: the sign's places. */
-class Banner(val action: String, val road: String, val shield: String, val toward: String, val turn: Turn, val ringNumber: Int, val ringAngle: Float)
+/**
+ * The sign for a manoeuvre. [action]: its main line, landmark and all; [road]: the road or the ferry as its own line; [shield]: its number, when it
+ * has a name too; [toward]: the sign's places; [exit]: the exit's number on the sign, also one the voice cannot read ("3B"). [ringNumber], [ringAngle]: for
+ * [com.abdllh.aura.nav.ManeuverView]'s ring, 0 and NaN when not.
+ */
+class Banner(val action: String, val road: String, val shield: String, val toward: String, val exit: String, val turn: Turn, val ringNumber: Int, val ringAngle: Float)
 
 /**
  * The guidance of one route for one language: every told manoeuvre's words, its landmarks, and what is on the road, from the
@@ -173,7 +177,7 @@ class Guidance internal constructor(
      * with a landmark in sight: the signal or the corner says where.
      */
     fun spoken(i: Int, along: Double, withThen: Boolean = true): List<Part> {
-        val t = told[i]
+        val t = told.getOrNull(i) ?: return emptyList()
         val metres = metresTo(t, along)
         val out = ArrayList<Part>(10)
         // a median U-turn said as a place ahead: he has to drive on to it, and the sign's arrow already bends
@@ -235,7 +239,7 @@ class Guidance internal constructor(
 
     /** The sign. Latin names show here: only the voice leaves them out. */
     fun banner(i: Int, along: Double, destination: String? = null): Banner {
-        val t = told[i]
+        val t = told.getOrNull(i) ?: return Banner("", "", "", "", "", Turn.STRAIGHT, 0, Float.NaN)
         val s = t.step
         val road = when {
             s.type == "arrive" -> destination.orEmpty()
@@ -245,7 +249,7 @@ class Guidance internal constructor(
         val sign = t.sign
         val toward = sign?.toward?.joinToString(if (arabic) "، " else ", ").orEmpty()
         val shield = if (t.road.kind == RoadName.Kind.NUMBER) "" else t.road.ref
-        return Banner(Speech.text(doing(t, along, saysDistance = false), arabic, said = false), road, shield, toward, arrow(s),
+        return Banner(Speech.text(doing(t, along, saysDistance = false), arabic, said = false), road, shield, toward, sign?.number.orEmpty(), arrow(s),
             t.ringNumber, if (s.entersRing && !s.angle.isNaN()) (if (s.angle > 160) -178f else s.angle.toFloat()) else Float.NaN)
     }
 
@@ -267,7 +271,7 @@ class Guidance internal constructor(
 
     /** The junction for the sign's view, null when there is no choice to show. */
     fun junction(i: Int): JunctionView? {
-        val t = told[i]
+        val t = told.getOrNull(i) ?: return null
         return Junctions.of(t.step, route.steps.getOrNull(t.index + 1))
     }
 
@@ -283,6 +287,9 @@ class Guidance internal constructor(
         }
         return null
     }
+
+    /** The next signal on the way, for a chip ("إشارة بعد 300 متر"), by the same direction rule. Not said by default: a signal is seen. */
+    fun nextSignal(along: Double): SpotAlert? = signals.firstOrNull { it.along > along }?.let { SpotAlert(it, it.along - along, 0) }
 
     /** "أقرب محطة بعد 38 كم", on a long road: null while the trip is short or none is known ahead. */
     fun nextFuel(along: Double): StopAhead? = if (route.line.length - along < FUEL_TRIP_MIN_M) null else stops.next("fuel", along)
@@ -315,6 +322,7 @@ class Guidance internal constructor(
     companion object {
         /** A signal this near the manoeuvre is its junction's. */
         private const val TURN_AT_SIGNAL_M = 40.0
+        private const val SIGNAL_BEYOND_M = 15.0
         /** `spot.j` joins nodes within 60 m. */
         private const val JUNCTION_M = 60.0
         private const val SAY_NOTHING_M = 60.0
@@ -332,10 +340,11 @@ class Guidance internal constructor(
         private val FORK_LIKE = setOf("fork", "off ramp", "on ramp")
         private val TURN_LIKE = setOf("turn", "end of road", "continue", "new name")
 
-        /**
-         * All of it for one route. Never throws: a world that fails, or a shape not seen before, gives plainer words. [endSnap]:
-         * [GuideAnswer.endSnapMetres].
-         */
+        /** [build], or null when something not seen before goes wrong: the app then has the old wording, and the trip goes on. */
+        fun safely(route: GuideRoute, arabic: Boolean, world: RouteWorld = NoWorld, endSnap: Double = 0.0): Guidance? =
+            try { build(route, arabic, world, endSnap) } catch (_: Throwable) { null }
+
+        /** All of it for one route. A world that fails gives plainer words, no failure. [endSnap]: [GuideAnswer.endSnapMetres]. */
         fun build(route: GuideRoute, arabic: Boolean, world: RouteWorld = NoWorld, endSnap: Double = 0.0): Guidance {
             val corridor = Corridor(route.line)
             val spotRows = ask { world.spots(corridor.boxes(30.0)) }
@@ -348,6 +357,14 @@ class Guidance internal constructor(
             val warnings = try { TripCheck.check(route, corridor, gates, zones, endSnap) } catch (_: Throwable) { emptyList() }
             val stops = StopsAlong(route, corridor, stopRows)
             return Guidance(route, arabic, told, spots, warnings, stops, parking)
+        }
+
+        /** This road's own signal stands further on than the turn: the car turns before it, not at it (a side street just short of the junction). */
+        private fun beyondTheTurn(signal: SpotRow, s: GuideStep): Boolean {
+            val dir = signal.dir ?: return false
+            if (kotlin.math.abs(Geo.angleDiff(dir.toDouble(), s.bearingBefore.toDouble())) > 50) return false
+            val ahead = Geo.distance(s.pos, signal.pos) * kotlin.math.cos(Math.toRadians(Geo.angleDiff(s.bearingBefore.toDouble(), Geo.bearing(s.pos, signal.pos))))
+            return ahead > SIGNAL_BEYOND_M
         }
 
         /** What the world says, or nothing: its failing must not stop a trip. */
@@ -371,7 +388,7 @@ class Guidance internal constructor(
                 val sign = if (s.type == "off ramp" || s.type == "on ramp" || s.type == "fork" || s.type == "merge") Signs.read(s.exits, s.destinations, arabic)?.without(road) else null
                 val turnLike = s.type in TURN_LIKE && (s.modifier.contains("left") || s.modifier.contains("right") || s.modifier == "uturn")
                 val junction = if (!turnLike || i == 0) -1 else signals
-                    .filter { it.kind == SpotRow.SIGNAL && Geo.distance(it.pos, s.pos) <= TURN_AT_SIGNAL_M }
+                    .filter { it.kind == SpotRow.SIGNAL && Geo.distance(it.pos, s.pos) <= TURN_AT_SIGNAL_M && !beyondTheTurn(it, s) }
                     .minByOrNull { Geo.distance(it.pos, s.pos) }?.junction ?: -1
                 var mark: Mark? = null
                 if (junction < 0 && !s.entersRing && i > 0 && s.type != "arrive") {
