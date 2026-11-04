@@ -13,6 +13,7 @@ import com.abdllh.aura.system.SystemProps
  *   setprop debug.aura.guard.hang 1        the main thread stuck right after home's first frame
  *   setprop debug.aura.guard.slow 150000   AuraApp.onCreate takes this many ms (a first start while dexopt runs)
  *   setprop debug.aura.guard.trialmin 2    the guard's trial takes this many minutes of use instead of 30
+ *   setprop debug.aura.guard.livedsec 30   a start is a healthy one this many seconds after its first frame instead of 5 minutes
  */
 internal object GuardTest {
     private const val TAG = "AuraGuardTest"
@@ -31,6 +32,8 @@ internal object GuardTest {
     }
 
     fun trialMinutes(): Int? = SystemProps.get("debug.aura.guard.trialmin").toIntOrNull()
+
+    fun livedSeconds(): Int? = SystemProps.get("debug.aura.guard.livedsec").toIntOrNull()
 
     private fun stuck() {
         Log.w(TAG, "the main thread is stuck on purpose")
