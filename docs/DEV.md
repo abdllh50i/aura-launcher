@@ -634,6 +634,69 @@ What the map data does not have, the owner draws himself and every unit picks up
 * Debug: `setprop debug.aura.extras http://10.0.2.2:8765/api/data` reads the editor on the PC directly (run it with
   `--dry-run`); `adb emu geo fix` + `MapsActivity --ez simulate true` drives a route past them.
 
+### Valhalla in its own process (2.0: `nav/route/`)
+The router of 2.0, over the pack's `route.tar`; still behind a preference. Everything below was measured on the x86_64 emulator with
+the real tar; nothing here has run on ARM on the real kernel. That is what the probe at the end of this section is for.
+
+* **The library:** only `libvalhalla-wrapper.so` of valhalla-mobile 0.6.4 (`jniLibs`, 6,017,176 B on armeabi-v7a, stored), and
+  `com.valhalla.valhalla.ValhallaKotlin`, whose name and methods its symbols fix (R8 rule). No AAR, no Moshi. Errors come as JSON with a
+  numeric code ({"code":171}), no exception. A missing tar still gives an actor, and 171 for every route.
+* **`:route`:** `RouteService`, bound by `RouteClient` when a route is asked for, let go 3 minutes after the last request but not while
+  a trip runs; then the process ends by itself (`RouteProcess`), the memory back at once. `AuraApp` does nothing there, as for `:boot`.
+  A cold process answers Jubail-Dammam in 367 ms here. Nothing on the main thread waits for it: the request goes one-way over Binder, the
+  answer is read on a thread of its own.
+* **The answer (2.35 MB at the worst, Najran-Tabuk with the old options: 592 ms in the library, 596 ms parsing, 1.6 s in all)** never
+  goes over Binder. `:route` parses it with `Router.parseRoute` and writes the same `Route` and `Step` objects, whatever `Router.prepare`
+  measured included, to a pipe that came with the request (`RouteCodec`). A process that dies closes the pipe: a frame cut anywhere
+  reads as nothing, and the caller hears `DIED` at once. That is how a death is noticed; the connection only tidies up.
+* **One at a time:** a newer request ends the wait for the older one (`CANCELLED`, every caller hears exactly once) but not its work:
+  the native call cannot be stopped, so the newer one waits for it, inside its own 30 s. After 30 s the process is killed.
+* **The request** (`RouteRequest`) is `tools/mapbuild/route-request.json`, see there and `trips.py` why: heading with 45 degrees when known,
+  `search_cutoff` 1000 on the destination (or Jana Island gets code Ok and a route ending 22 km away), `search_filter` for the service-road
+  switch, `exclude_polygons` (Jeddah-Taif avoiding the Haram 207.7 km, as on the PC; a destination inside: `NO_ROUTE`), via points
+  (`through`, or `break` for a stop). Khafji's post, 1,108 m from a road, is refused by the cutoff: as the tests asked, and worth a real
+  drive's opinion.
+* **Its reading** (`StepTune.kt`): one name per step, by the screen's script (`pick_name` of `route_fields.py`), before `prepare`. Each
+  step's time times the factor for its own speed, `Route.etaEstimate` true: an estimate, fitted against OSRM and no real drive; raw -13.6 %
+  against OSRM's time over the 30 trips, scaled +2.1 %. `RouteAnswer.rawSeconds` keeps Valhalla's own, for the owner's logged drives.
+  The fastest route goes first, as the tests asked, but not if over 3 % longer than Valhalla's first (my limit): Riyadh-Salwa offered 523 km
+  against 474 for 1 % of a time that is itself an estimate. Three of the 30 trips start on an alternate this way, each shorter and closer to OSRM's.
+* **Speed limits:** BRouter's `messages` fed the sign, and Valhalla's route answer has none. `trace_attributes` with `edge_walk` on the
+  chosen route, 190 km at a time (the request's limit), comes as a second frame on the same pipe, so a route never waits for it, and
+  is put on `Route.limits` on the main thread. 30 ms for 948 km. A newer request stops it. A point it cannot walk (a via) only costs the
+  few points around it: each failing piece is halved. The alternates have none.
+* **`RouteGuard`:** while a request is worked on `files/diag/route-working.marker` lies there. A death with work in hand counts, by the
+  pipe, the connection or, after a restart, the marker of a pid no longer alive; a timeout counts too; an idle process the system reclaims
+  does not. Two in a row trip it; any answer of the engine ends the row. State in `route-guard.state`, gone with a new versionCode or after
+  7 days; a clock before the trip says nothing. All it decides, and each time the chain moves on, in `route-guard.log` (at most 16 KB).
+* **A minute's rest after every death.** A second crash of one process within a minute is what makes Android put "AMRI OS keeps
+  stopping" over the home screen: seen here with two real SIGSEGVs 4 s apart (AppErrors, `MIN_CRASH_INTERVAL`, the first crash shows nothing). So
+  `allowed()` says no for 65 s after a death and the chain goes to the next router. The same two crashes 69 s apart: tripped, and nothing on the
+  screen. The probe waits the same way.
+* **`RouteChain`:** Valhalla; BRouter when it is guarded, the pack is missing or it failed; OSRM as the last try. Abroad (`assets/route/ksa.poly`, either
+  end) with a connection OSRM comes first. "No road" or "no route" inside the Kingdom is believed: OSRM would give a route that ends at the nearest
+  road, code Ok. `Router.route` comes here when `Prefs.raw` `routeValhalla` is true, default off; with it off nothing has changed and
+  no process starts. New screens: `RouteChain.ask(RouteRequest(...)) { answer -> }`: all the routes, `answer.engine`; only Valhalla honours via points, polygons, the switch.
+* **`TarCheck`:** the library trusts the tar's index. Without this check a tar cut at 200 MB is a SIGSEGV in `libvalhalla-wrapper.so` (seen). With it: `BAD_PACK`
+  in 2 ms, by reading the index, the file's first entry, once for each file. A new file under the same path gets a new actor (by length and date).
+* **Debug:** `am broadcast -a com.abdllh.aura.debug.ROUTE`: `--ez valhalla true`, `--es tar <path>`, `--es ask a,b,c,d[,heading]` with `--es ring`, `--es via`,
+  `--es road`, `--es raw`; `--es chain ...`; `--es batch <file>`; `--el delay_ms` (the service sits on a request, marker down, so it can be killed in the middle),
+  `--el idle_ms`, `--ez guard true`, `--ez guard_reset true` (`RouteDebug.kt`; `setprop debug.aura.osrm` for OSRM). A tar on the AVD: push to
+  `files/maps2/current/route.tar`, chown to the app's user, `restorecon`. `tools/mapbuild/tests/app_route_check.py` runs the 30 trips and compares.
+* **Measured on the emulator, not true on the unit:** 30 trips in 8 s: 26 the same first route as `out/ref-routes` to the metre, minute and step, 3 an
+  alternate first as above, Khafji refused; the worst 231 ms in the library, 133 ms parsing. 150 routes in a row, one process: its PSS flat at 151-158 MB (native heap
+  about 33 MB, Java 4 MB, the rest the tar's clean pages, which the kernel can drop), threads and file descriptors no more than before. Probe in a release
+  build: PSS 60-66 MB, HWM 148 MB. R8: the same 30 answers. Long JSON on a slow CPU is the open question: `Router.parseRoute`'s placing of steps
+  (`line.snap` over the rest of the line, for each step) is quadratic, and the probe times the JSON on the unit.
+
+**The route probe (`RouteProbe.kt`, the scout release):** does Valhalla run on the real ARM32 userspace at all? Started from the main process (`RouteProbe.start`, the Screen
+check page is to call it; debug: `am broadcast -a com.abdllh.aura.debug.ROUTE_PROBE`), it works in `:route`, stage by stage: RAM, `/data`, kernel; the static AArch64 program
+(`tools/route-probe`, 664 B, two system calls), straight from app storage, then through `LocalAdb`; the 1.5 MB tar unpacked and its SHA-256; the library's load time, the actor;
+four trips with ms twice, km against the reference (Jubail-Khobar 104.85), JSON ms, VmPeak, VmHWM, PSS; a sparse 400 MB mapping, since `route.tar` is mapped whole. A marker before
+each stage and the report written after each (`files/diag/route-probe.json`): a crash or a hang (90 s) is that stage's, `died` or `hung`, the next process goes on after a minute's rest,
+three deaths at most. It is its own commit: cherry-picked onto `v2-fixes` it builds and runs. Here, direct exec gives error 13 under enforcing SELinux and the root shell runs the
+x86_64 twin. The firmware is said to be permissive; the report will tell (`getenforce`, `uname -a` in `root.output`).
+
 ## Aura Music (`music/`)
 `Library.kt` reads MediaStore (internal storage, `/mnt/media_rw/udisk*`, SD card) and groups by album / artist / folder;
 `ArtLoader` decodes covers off the main thread into an LRU. `Player.kt` (MediaPlayer, queue, shuffle/repeat, MediaSession,

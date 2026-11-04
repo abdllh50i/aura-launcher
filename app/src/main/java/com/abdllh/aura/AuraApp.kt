@@ -33,6 +33,8 @@ class AuraApp : Application() {
         // BootHome's process, right after a power-on: the user's storage is still closed (settings would throw) and
         // nothing of AMRI is wanted yet but that one waiting screen
         if (processName().endsWith(":boot")) return
+        // Valhalla's process (nav/route/RouteProcess.kt): its crash is not the home screen's, and it has no use for any of this
+        if (processName().endsWith(":route")) return
         CrashGuard.install(this) // first: a crash while the rest of the start-up runs must be counted as well
         if (BuildConfig.DEBUG) {
             // emulator tests: the root shell through scripts/fake_adbd.py  (setprop debug.aura.adb 10.0.2.2:15555)
@@ -49,6 +51,8 @@ class AuraApp : Application() {
         com.abdllh.aura.nav.offline.OfflineMaps.init(this)
         com.abdllh.aura.nav.MapExtras.init(this) // what the owner added to the map (cameras, bumps, signals, limits)
         if (BuildConfig.DEBUG) com.abdllh.aura.nav.NavDebug.init(this)
+        if (BuildConfig.DEBUG) com.abdllh.aura.nav.route.RouteProbe.debugInit(this)
+        if (BuildConfig.DEBUG) com.abdllh.aura.nav.route.RouteDebug.init(this)
         UpdateManager.init(this)
         CarAudio.init(this)
         // the status bar, the volume display and the screen-change animations are Aura's to change only while Aura is
