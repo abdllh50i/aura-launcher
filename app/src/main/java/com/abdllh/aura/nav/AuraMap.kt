@@ -113,7 +113,8 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
     private var speedKmh = 0.0
     private var lastFix: LatLon? = null
     private var lastFixAt = 0L
-    // fixes arrive about once a second (measured): the car glides over that interval, so it never stops in between
+    // fixes arrive about once a second on the emulator, one in 2 s on the owner's unit (its Screen check, 1.19.1): the car glides
+    // over that interval, so it never stops in between
     private var fixInterval = 1000.0
 
     // On the driven route the car moves along the line, not across: from where it is drawn towards where the car will
@@ -572,7 +573,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         glideFromB = carBearing
         glideTurn = Geo.angleDiff(carBearing, b)
         glideStart = now
-        glideMs = fixInterval.toLong().coerceIn(500L, 1600L)
+        glideMs = fixInterval.toLong().coerceIn(500L, 2600L) // (it was 1600, and at the unit's 2 s the car stood still 400 ms in every fix)
         return true
     }
 
