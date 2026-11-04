@@ -668,7 +668,7 @@ class CarStage(context: Context) : FrameLayout(context) {
         private const val FRICTION = 2.4f         // per second (exponential decay of the spin)
         private const val IDLE_MS = 3200L
         private const val INTRO_WAIT_MS = 400L    // longest the intro waits for its first frame on the CPU
-        private const val GPU_WAIT_MS = 1500L     // longest it waits for the GPU's, after the screen's first frame
+        private const val GPU_WAIT_MS = 2000L     // longest it waits for the GPU's, after the screen's first frame
         private const val FOLLOW = 24f            // per second: how fast the car catches up with the finger
         const val FLOOR_Y = 262f / 360f           // the turntable floor's centre, as a fraction of the frame height
         const val FLOOR_R = 0.34f                 // radius of the floor light, as a fraction of the frame width

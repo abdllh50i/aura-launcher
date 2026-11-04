@@ -194,9 +194,10 @@ of it could be tried on the unit first.
     one not in yet uses the nearest that is (`texOf`).
   * The car stays faded out until the GPU's first frame, and that frame starts the spin: a slow GPU can only show a wait,
     never a pop. Nothing is decoded for it meanwhile (`cpuDraws` false).
-  * Fallbacks: the GPU's first frame more than 1.5 s after the screen's (`onGpuLate`): no spin, the car fades in at rest
-    from one frame on the CPU and the GPU takes over in place. The GPU failing: `warmUp` and the CPU's spin, as on a first
-    start. A rebuilt screen (a theme change): the resting frame and its neighbours first, one CPU frame until they are in.
+  * Fallbacks: the GPU's first frame more than 2 s after the screen's (`onGpuLate`; a loaded emulator came near 1.5 s, and the
+    spin is worth a longer wait): no spin, the car fades in at rest from one frame on the CPU and the GPU takes over in place.
+    The GPU failing: `warmUp` and the CPU's spin, as on a first start. A rebuilt screen (a theme change): the resting frame and
+    its neighbours first, one CPU frame until they are in.
   * Debug builds: `setprop debug.aura.car.slow <ms>`, `debug.aura.car.fail 1`, `debug.aura.car.noreport 1` (no frame
     report: the 1 s wait).
 * **Nothing of the CPU path stays once the GPU draws (`CarFrames.gpuDraws`).** The decoded and encoded frames and the
@@ -225,13 +226,48 @@ of it could be tried on the unit first.
   `LocalAdb`, on the unit only, off the main thread: 37 of the 38 stock privileged apps ship compiled, AMRI does not, and
   whether the system's idle job ever runs on a unit that goes off with the car is not known. First look 5 minutes (of the
   unit being awake) after the process started, as the profile needs a run behind it, then every minute until the gear
-  says P, the screen is on and no call is up; three attempts per build. dex2oat runs under installd and swaps its files in
-  when it ends, so the running process is left alone and the new code is used from the next start. A debuggable build
-  always ends at `quicken` and says so. Debug builds with the fake adbd: `setprop debug.aura.compile <minutes>`.
+  says P, the screen is on and no call is up; three attempts per build. dex2oat runs under installd at nice 10 (seen on the
+  emulator: 0.9 s, 4 threads, 2.2 s of CPU, 70 MB) and swaps its files in when it ends, so the running process is left alone and
+  the new code is used from the next start. A debuggable build always ends at `quicken` and says so. Debug builds with the fake
+  adbd: `setprop debug.aura.compile <minutes>`, `debug.aura.adb 10.0.2.2:<port>`.
 * **What it reports.** Settings → About: how the car started, with the GPU's times; the map library's load; the last
   collection (PSS before and after); the compile. The same in the log: `AuraCar`, `AuraMap`, `AuraGc`, `AuraCompile`.
 
-@@NUMBERS@@
+What it came to, 1.19.0 against now, on the emulator (restarted first, release builds, the method of
+`understand/perf-weight.md`). Its GL drifts and the PC is shared, so only interleaved runs compare, and none of this is the
+unit's:
+
+| | 1.19.0 | now |
+|---|---:|---:|
+| Home's first frame, `am start -W` `TotalTime`, interleaved, 12 starts each (a trivial app: 272) | 483 ms (439–569) | **399 ms** (318–460) |
+| Home, highest PSS in the first seconds, 8 runs | 127–213 MB, at 1.9 s | **104–114 MB**, at 3.6–5 s (the live map) |
+| Home, PSS at 18 s, before any collection, 9 runs | 116 MB (102–143) | **84–87 MB** (72–93) |
+| The same after a collection | 94 MB (84–99) | 84–87 MB (72–91) |
+| HWUI's texture cache (GPU memory, not in PSS), for as long as Home's window lives | 26 MB (23–30, once 7.8) | **5.9 MB** |
+| Other apps' files mapped at 18 s | 13.8 MB | **0** |
+| Bitmaps at 18 s (heap dump) | 16.5 MB (117) | **5.0 MB** (91) |
+| App's Java heap at 18 s (heap dump) | 6.2 MB | **1.4 MB** |
+| `MapPanel.startLive` on the main thread (sampled, 4 starts) | 71 ms | **19 ms** |
+| Music screen with a song playing: window redraws | 10.8 a second | **8.1 a second** |
+
+* The look: frame sheets of a cold start (dark, light, Arabic, as a real home), a touch in the middle of it, Music and back,
+  the screen off and on, the first start of an APK, the GPU late or failed: no pop. The car's fade-in shows when it did (from
+  the window settled, one recording each: 436 ms, 435 ms). The log puts the GPU's first frame 210–260 ms after the screen's on
+  a quiet PC, 600–920 ms on a loaded one.
+* Not better here: the CPU of the first 12 s (2.7–3.1 s against 2.8–3.6 s). The decoding threads' 220–300 ms are gone, but `car-gl`
+  draws the whole spin now, and that thread is encoder and pipe work on the emulator, nothing like a driver. The Music screen's
+  CPU is lost in the noise (3–4 % of a core either way). The 26 redraws a second of the report did not come back: one round
+  was 10.8 in every run, with song changes and tab changes too; the second round is closed by reading the code alone.
+* Compile: `speed-profile` took the JIT thread's 135 ms away and added about 3 MB of PSS (one reading); the starts after it
+  fell in a slower stretch of the emulator (the trivial app 508 → 899 ms), so they say nothing.
+* What should carry over to the unit: what is gone is gone (the decoded frames, the texture cache's 20 MB, 6.35 MB of sprites,
+  the other apps' mappings, the library's load on the main thread), and the order of things. Not the times: part of the
+  first frame's gain is the decoders and the GL thread no longer running beside the emulator's slow GL. Settings → About
+  shows the real times there; `dumpsys gfxinfo` and `dumpsys meminfo` settle the rest (`understand/perf-weight.md` §11).
+* Measured, not applied: **the car with 90 frames** (every second one; the shader blends two anyway). 1.8 MB less in the
+  APK, 20.7 MB less in `/data` (10.4 MB per frame file), 10.4 MB less GPU memory [computed], PSS and load time the same
+  (25 frames in 311–373 ms against 47 in 315–336: EGL and the program are most of it). The spin's middle frames show a little
+  ghosting at 4 degrees a frame; it would need a look on the panel.
 
 ## Design system (1.12)
 Everything a screen is made of comes from `ui/`: colours (`Palette.kt`), sizes (`Tokens.kt`), shapes and shadows
