@@ -1,0 +1,3 @@
+*.poly text eol=lf
+*.geojson text eol=lf
+*.json text eol=lf

@@ -45,7 +45,12 @@ EDGES = [
 
 
 def request(a, b, alternates=2):
-    """The request the app will send (maps.md section 7.4)."""
+    """The request the app will send (maps.md section 7.4).
+
+    top_speed 140 is Valhalla's own default here; do not lower it to bring the times closer to the road: at 130 and below
+    Dammam to Riyadh leaves highway 40 for a road 40-60 km longer and 75-110 minutes slower (api_checks.py). A correction of the
+    time belongs on the answer's durations.
+    """
     return {
         "locations": [{"lat": a[0], "lon": a[1], "type": "break"}, {"lat": b[0], "lon": b[1], "type": "break"}],
         "costing": "auto",

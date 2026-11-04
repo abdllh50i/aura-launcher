@@ -148,7 +148,7 @@ def hav(a, b):
 
 def main():
     src = sys.argv[1]
-    files = [src] if os.path.isfile(src) else sorted(f for f in glob.glob(os.path.join(src, "*.json")) if not os.path.basename(f).startswith(("summary", "names", "fields", "mem")))
+    files = [src] if os.path.isfile(src) else sorted(f for f in glob.glob(os.path.join(src, "*.json")) if not os.path.basename(f).startswith(("summary", "names", "fields", "mem", "api")))
     t = Tally()
     extra_step_keys = collections.Counter()
     extra_man_keys = collections.Counter()
