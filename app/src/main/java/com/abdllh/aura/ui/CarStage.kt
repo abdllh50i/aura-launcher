@@ -685,5 +685,19 @@ class CarStage(context: Context) : FrameLayout(context) {
         @Volatile var gpuFirstMs = -1L      // from the GL thread's start to the first frames being in
         @Volatile var gpuAllMs = -1L        // from then until all frames were in (-1: not yet, or some did not come)
         @Volatile var gpuAfterDrawMs = -1L  // from the screen's first frame to the GPU's
+
+        /** How this start's car came on screen, and the GPU's times (for Settings → About). */
+        fun startNote(c: Context): String {
+            val path = when (startPath) {
+                PATH_GPU -> com.abdllh.aura.R.string.about_car_start_gpu
+                PATH_CPU -> com.abdllh.aura.R.string.about_car_start_cpu
+                PATH_LATE -> com.abdllh.aura.R.string.about_car_start_late
+                PATH_FAILED -> com.abdllh.aura.R.string.about_car_start_failed
+                else -> return ""
+            }
+            val all = if (gpuAllMs >= 0L) " · ${gpuAllMs} ms" else ""
+            return c.getString(path) + (if (gpuFirstMs >= 0L) " · ${gpuFirstMs} ms$all" else "") +
+                (if (gpuAfterDrawMs > 0L) " · +${gpuAfterDrawMs} ms" else "")
+        }
     }
 }

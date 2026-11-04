@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Settings, About: what the start-up cuts did, for reports from the unit -->
+    <string name="about_car_start">How the car started</string>
+    <string name="about_car_start_gpu">The GPU, from its first frame</string>
+    <string name="about_car_start_cpu">The CPU (first start of this version)</string>
+    <string name="about_car_start_late">The GPU was late: one frame, at rest</string>
+    <string name="about_car_start_failed">The GPU failed: the CPU drew it</string>
+    <string name="about_map_lib">Map library at start</string>
+    <string name="about_idle_gc">Last memory clean-up</string>
+    <string name="about_compile">App code compile</string>
+</resources>
