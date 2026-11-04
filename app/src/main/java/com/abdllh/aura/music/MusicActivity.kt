@@ -2521,9 +2521,15 @@ class EqualizerView(ctx: Context) : View(ctx) {
     var color = Palette.accent
         set(v) { if (v != field) { field = v; invalidate() } }
     var animating = false
-        set(v) { if (v != field) { field = v; invalidate() } }
+        set(v) { if (v != field) { field = v; removeCallbacks(next); invalidate() } }
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val r = RectF()
+    private val next = Runnable { invalidate() }
+
+    override fun onDetachedFromWindow() {
+        removeCallbacks(next)
+        super.onDetachedFromWindow()
+    }
 
     override fun onDraw(c: Canvas) {
         p.color = color
@@ -2536,6 +2542,11 @@ class EqualizerView(ctx: Context) : View(ctx) {
             r.set(x, height - bh, x + bw, height.toFloat())
             c.drawRoundRect(r, bw / 2, bw / 2, p)
         }
-        if (animating && isAttachedToWindow) postInvalidateDelayed(80)
+        // One redraw waiting, never more. Until 1.19 each draw posted its own: any other reason for a draw (a bind, a
+        // colour) started one more round that never ended, and two rounds already made the whole window redraw 26 times a second.
+        if (animating && isAttachedToWindow) {
+            removeCallbacks(next)
+            postDelayed(next, 80)
+        }
     }
 }
