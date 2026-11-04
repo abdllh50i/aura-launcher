@@ -21,6 +21,7 @@ import java.io.File
  *   --ez check true | scan true | start true | startusb true | resume true | pause true | cancel true | delete true | free true    what the screens can do
  *   --ez worked true          the pack in use "has served": what a real user of the pack will say (PackPaths.noteWorked)
  *   --ez dump true            the status and where the five files are, one line each
+ *   --es adb host:port        the root shell, from now on, is scripts/fake_adbd.py (the app's own start-up kept away from it)
  *   --es dieat <point>        the process dies at that point of the work: after-fetch, after-unpack, after-mark, before-ok, before-rename, before-pointer, after-pointer
  *   --ez trip true|false      a real trip begins or ends in NavSession (no route server needed)
  *   --ez reader true|false    a reader asks PackPaths twice a second, opens places.db read only, keeps what it opened: shows who it reads through a switch
@@ -32,6 +33,7 @@ internal object PackDebug {
     private const val ACTION = "com.abdllh.aura.debug.PACK"
     @Volatile private var reader: Thread? = null
     private var lastDump = 0L
+    private var lastState: PackManager.State? = null
 
     fun init(ctx: Context) {
         val app = ctx.applicationContext
@@ -43,7 +45,7 @@ internal object PackDebug {
             }, IntentFilter(ACTION))
             PackManager.addListener {
                 val now = SystemClock.elapsedRealtime()
-                if (now - lastDump >= 5000L) { lastDump = now; dumpLine() }
+                if (now - lastDump >= 5000L || PackManager.status.state != lastState) { lastDump = now; lastState = PackManager.status.state; dumpLine() }
             }
         } catch (t: Throwable) {
             Log.w(TAG, "$t")
@@ -52,6 +54,7 @@ internal object PackDebug {
 
     private fun handle(app: Context, i: Intent) {
         i.getStringExtra("dieat")?.let { PackManager.dieAt = it.ifEmpty { null }; Log.i(TAG, "dieat=$it") }
+        i.getStringExtra("adb")?.split(':')?.takeIf { it.size == 2 }?.let { (h, p) -> com.abdllh.aura.system.LocalAdb.host = h; com.abdllh.aura.system.LocalAdb.port = p.toInt() }
         if (i.getBooleanExtra("check", false)) PackManager.checkUpdate()
         if (i.getBooleanExtra("scan", false)) PackManager.scanUsb()
         if (i.getBooleanExtra("start", false)) PackManager.startDownload()
@@ -149,7 +152,8 @@ internal object PackDebug {
         }
         val m = PackManifest.parse(good, code)
         Log.i(TAG, "selftest the real manifest: ${m.id} built ${m.built}, ${m.pieces.size} pieces, ${m.chunkCount} chunks, disk ${m.diskBytes}, download ${m.downloadBytes}, need ${m.needBytes}, valhalla ${m.valhalla}, norm ${m.normVersion}, attribution ${m.attribution}")
-        if (m.diskBytes != 713123840L || m.downloadBytes != 386591369L + 22048L || m.needBytes != 989947904L) { failed++; Log.i(TAG, "selftest FAIL sizes") }
+        val o0 = JSONObject(good)
+        if (m.diskBytes + PackRules.CHUNK + PackRules.MARGIN != o0.getLong("needBytes") || m.downloadBytes != o0.getLong("downloadBytes") + m.notices.sumOf { it.bytes } || m.needBytes != o0.getLong("needBytes")) { failed++; Log.i(TAG, "selftest FAIL sizes") }
         refused("format 2", PackProblem.APP_TOO_OLD) { it.put("format", 2) }
         refused("no format", PackProblem.APP_TOO_OLD) { it.remove("format") }
         refused("minApp above this app", PackProblem.APP_TOO_OLD) { it.put("minApp", code + 1) }

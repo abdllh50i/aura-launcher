@@ -73,6 +73,8 @@ internal class HttpSource(base: String) : PackSource {
             if (code == 404) throw PackMissing("manifest.json")
             if (code != 200) throw IOException("manifest: HTTP $code")
             val text = c.inputStream.use { readCapped(it, PackManifest.MAX_TEXT) }
+            // a hotspot's sign-in page answers 200 for anything: that is no internet yet, not a bad pack
+            if (!text.trimStart().startsWith("{")) throw IOException("not a manifest: ${c.contentType}")
             PackRules.releaseBase(hops)?.let { base = it }
             return text
         } finally {

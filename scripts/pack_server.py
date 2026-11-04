@@ -13,6 +13,7 @@ GET /__ctl?name=value sets faults, GET /__stats answers what was served. All fau
   drop_mb=N          each answer's connection is cut after N MB
   drop_rst=1         cut with a reset instead of a plain close
   slow_kbps=N        at most N kilobytes a second, per answer
+  stall=N            the next N answers go silent after 1 MB, without closing (a frozen hotspot)
   corrupt=NAME       one flipped byte in the middle of that file, in corrupt_times answers (default 1)
   splice=NAME        the first answer for that file comes from another version of it (other bytes, another ETag), cut after 3 MB; later ones are the real file: a resume
                      splices the two, as a CDN that ignores If-Range would. Test: only a hash can catch it
@@ -50,6 +51,7 @@ class State:
         self.drop_mb = 0.0
         self.drop_rst = False
         self.slow_kbps = 0
+        self.stall = 0
         self.corrupt = None
         self.corrupt_times = 1
         self.splice = None
@@ -138,6 +140,8 @@ class Handler(BaseHTTPRequestHandler):
                     st.drop_rst = v == "1"
                 elif k == "slow_kbps":
                     st.slow_kbps = int(v)
+                elif k == "stall":
+                    st.stall = int(v)
                 elif k == "corrupt":
                     st.corrupt = v or None
                 elif k == "corrupt_times":
@@ -158,8 +162,9 @@ class Handler(BaseHTTPRequestHandler):
                 elif k == "latest":
                     st.latest = v
                 elif k == "patch":
-                    tag, key, val = v.split(",", 2)
-                    st.patches.setdefault(tag, {})[key] = json.loads(val)
+                    for one in vs:
+                        tag, key, val = one.split(",", 2)
+                        st.patches.setdefault(tag, {})[key] = json.loads(val)
         self.small(200, b"ok")
 
     def serve(self, tag, name):
@@ -209,7 +214,12 @@ class Handler(BaseHTTPRequestHandler):
         head_start = start
         other_version = False
         cut_after = int(st.drop_mb * 1024 * 1024) if st.drop_mb > 0 else 0
+        stall_now = False
         with st.lock:
+            if st.stall > 0 and name != "manifest.json":
+                st.stall -= 1
+                stall_now = True
+                st.faults.append(f"silence in {name} after 1 MB")
             if st.splice == name:
                 st.splice = None
                 other_version = True
@@ -261,9 +271,10 @@ class Handler(BaseHTTPRequestHandler):
                     if keep > 0:
                         self.wfile.write(data[:keep])
                         sent += keep
+                        with st.lock:
+                            st.served[name] = st.served.get(name, 0) + keep
                     with st.lock:
                         st.drops += 1
-                        st.served[name] = st.served.get(name, 0) + sent
                     self.wfile.flush()
                     if st.drop_rst:
                         self.connection.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
@@ -273,6 +284,14 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(data)
                 sent += len(data)
                 pos += len(data)
+                with st.lock:
+                    st.served[name] = st.served.get(name, 0) + len(data)
+                if stall_now and sent >= 1024 * 1024:
+                    self.wfile.flush()
+                    time.sleep(60)
+                    self.close_connection = True
+                    self.connection.close()
+                    return
                 if st.slow_kbps:
                     want = sent / (st.slow_kbps * 1024.0)
                     wait = want - (time.time() - t0)
@@ -283,8 +302,6 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             if f:
                 f.close()
-        with st.lock:
-            st.served[name] = st.served.get(name, 0) + sent
 
 
 def main():

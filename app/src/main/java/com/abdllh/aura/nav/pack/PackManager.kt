@@ -183,6 +183,7 @@ object PackManager {
 
     private fun scan(c: Context, quiet: Boolean) {
         if (running || !scanning.compareAndSet(false, true)) return
+        if (!quiet) update { it.copy(state = State.CHECKING, problem = null) }
         background("aura-pack-usb") {
             try {
                 val f = PackUsb.scan(c)

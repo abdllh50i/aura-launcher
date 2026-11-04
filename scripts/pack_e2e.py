@@ -42,7 +42,7 @@ def bc(**extras):
         if isinstance(v, bool):
             parts.append(f"--ez {k} {'true' if v else 'false'}")
         else:
-            parts.append(f"--es {k} {v}")
+            parts.append(f"--es {k} {v if v else repr('')}")
     sh(" ".join(parts))
 
 
@@ -53,7 +53,10 @@ def ctl(query):
 
 def stats():
     with urllib.request.urlopen(f"http://127.0.0.1:{T.port}/__stats", timeout=10) as r:
-        return json.load(r)
+        d = json.load(r)
+    # (the chunks and notices: what the pack costs; manifests are asked for at every start)
+    d["served_total"] -= d["served"].get("manifest.json", 0)
+    return d
 
 
 class Logcat(threading.Thread):
@@ -103,6 +106,14 @@ def wait_state(states, timeout=600, every=1.0):
             return last
         time.sleep(every)
     raise TimeoutError(f"waited for {states}, last {last}")
+
+
+def wait_log(pattern, t0, timeout):
+    while time.time() - t0 < timeout:
+        if T.log.since(t0, pattern):
+            return True
+        time.sleep(0.1)
+    raise TimeoutError(pattern)
 
 
 def wait_percent(p, timeout=600):
@@ -274,21 +285,26 @@ def full():
     t0 = time.time()
     bc(start=True)
     samples = []
-    cpu0 = proc_cpu(p)
-    t_cpu = time.time()
+    cpu0 = None
+    cpu1 = None
     while True:
         s = status()
         if s.get("state") in ("INSTALLED", "FAILED", "NO_SPACE"):
             break
         samples.append((time.time() - t0, s.get("state"), int(s.get("percent", 0)), int(s.get("speed", 0)), pss_kb()))
+        # (the thread's numbers are gone once it ends: the last look while it runs)
+        now = proc_cpu(p)
+        if cpu0 is None:
+            cpu0, t_cpu = now, time.time()
+        cpu1, t_cpu1 = now, time.time()
         time.sleep(3)
     took = time.time() - t0
-    cpu1 = proc_cpu(p)
     ok, how = hashes_ok("ksa-2026.11")
     st = stats()
     hz = 100.0
-    pack_cpu = (cpu1[0] - cpu0[0]) / hz / (time.time() - t_cpu) * 100
-    proc = (cpu1[1] - cpu0[1]) / hz / (time.time() - t_cpu) * 100
+    span = max(t_cpu1 - t_cpu, 1)
+    pack_cpu = (cpu1[0] - cpu0[0]) / hz / span * 100
+    proc = (cpu1[1] - cpu0[1]) / hz / span * 100
     pss = [x[4] for x in samples if x[4]]
     fetch = [x for x in samples if x[1] == "FETCHING"]
     verify = [x for x in samples if x[1] == "VERIFYING"]
@@ -313,17 +329,17 @@ def kill():
     for at in (15, 40, 70):
         s = wait_percent(at)
         p = pid()
-        before = stats()["served_total"]
         partlen = sh(f"ls -l {app_dir()}/maps2/staging/*/*.part 2>/dev/null | head -1")
         sh(f"kill -9 {p}")
-        time.sleep(1)
+        time.sleep(1.5)
+        before = stats()["served_total"]
         kills.append((s.get("percent"), partlen.split()[-1].split('/')[-1] if partlen else "", partlen.split()[4] if partlen else "0"))
         start_app()
         time.sleep(4)
         s2 = status()
         after = stats()["served_total"]
         # nothing goes on by itself: the state says stopped and no byte more was asked for
-        if s2.get("state") != "PAUSED" or after > before + 2 * 1024 * 1024:
+        if s2.get("state") != "PAUSED" or after != before:
             result("kill -9", False, f"after a restart: {s2}, served {before} -> {after}")
             return
         print(f"    killed at {s.get('percent')}%: part {kills[-1][1]} of {kills[-1][2]} bytes kept; after restart: {s2.get('state')} {s2.get('percent')}%")
@@ -414,17 +430,22 @@ def faults():
     wipe()
     m, total, largest = manifest_totals()
     # a wrong byte in one chunk, another version spliced in another, and what a hotspot's portal and a busy CDN answer
-    ctl("corrupt=base.mbtiles.004.gz&splice=places.mbtiles.000.gz&portal=2&status=503,2")
+    # (first on the manifest: a busy server, then a sign-in page: it waits, it does not call the pack bad)
+    ctl("portal=1&status=503,1")
     start_app()
     t0 = time.time()
     bc(start=True)
+    wait_log(r"failure 2", t0, 30)
+    ctl("corrupt=base.mbtiles.004.gz&splice=places.mbtiles.000.gz&slow_kbps=30000")
+    wait_percent(2, 120)
+    ctl("portal=2&status=503,2&stall=1&slow_kbps=0")
     ok = install_and_check("faults")
     st = stats()
     wrong = T.log.since(t0, r"hash [0-9a-f]+, wanted")
     extra = st["served_total"] - total
     sizes = {c["url"]: c["bytes"] for p in m["pieces"] for c in p["chunks"]}
     allowed = sizes["base.mbtiles.004.gz"] + sizes["places.mbtiles.000.gz"] * 2
-    result("wrong byte, splice, portal, 503", ok and len(wrong) == 2 and extra <= allowed, f"faults {st['faults']}; chunks refused by their hash: {len(wrong)}; {extra} bytes over; {T.last_hash}")
+    result("wrong byte, splice, portal, 503, a frozen link", ok and len(wrong) == 2 and extra <= allowed, f"faults {st['faults']}; chunks refused by their hash: {len(wrong)}; {extra} bytes over; took {time.time() - t0:.0f} s; {T.last_hash}")
     # the same chunk wrong every time: it stops and says so, nothing broken, and goes on when asked
     wipe()
     ctl("corrupt=glyphs.db.000.gz&corrupt_times=3")
@@ -468,7 +489,8 @@ def update():
     start_app()
     bc(start=True)
     install_and_check("first pack")
-    sh(f"mkdir -p {app_dir()}/offline/segments4; cp {app_dir()}/maps2/packs/ksa-2026.11/glyphs.db {app_dir()}/offline/map.db; echo x > {app_dir()}/offline/segments4/E45_N25.rd5; chown -R $(stat -c %u {app_dir()}):$(stat -c %g {app_dir()}) {app_dir()}/offline")
+    sh(f"mkdir -p {app_dir()}/offline/segments4; cp {app_dir()}/maps2/packs/ksa-2026.11/glyphs.db {app_dir()}/offline/map.db; echo x > {app_dir()}/offline/segments4/E45_N25.rd5")
+    own(f"{app_dir()}/offline")
     stop_app()
     ctl("clear=1&latest=data-2026.12&patch=data-2026.12,id,\"ksa-2026.12\"&patch=data-2026.12,built,\"2026-12-01T00:00Z\"")
     sh(f"setprop debug.aura.pack.base http://127.0.0.1:{T.port}/releases/latest/download/")
@@ -554,6 +576,11 @@ def update():
     result("delete", bool(paths) and "base=null" in paths[-1] and not sh(f"ls {app_dir()}/maps2/packs 2>/dev/null"), f"{paths[-1].split('paths ', 1)[1] if paths else ''}")
 
 
+def own(path):
+    """What root put in the app's folder becomes the app's."""
+    sh(f"chown -R $(stat -c %u {app_dir()}):$(stat -c %g {app_dir()}) {path}; restorecon -R {path}")
+
+
 def push_fake_usb(where):
     """The pack's files in a folder on the emulator, standing in for a stick."""
     sh(f"rm -rf {where}; mkdir -p {where}/amri-maps")
@@ -569,7 +596,7 @@ def usb():
     m, total, largest = manifest_totals()
     where = f"{app_dir()}/fakeusb"
     n = push_fake_usb(where)
-    sh(f"chown -R $(stat -c %u {app_dir()}):$(stat -c %g {app_dir()}) {where}")
+    own(where)
     sh(f"setprop debug.aura.pack.usb {where}; setprop debug.aura.pack.base ''")
     start_app()
     t0 = time.time()
@@ -604,10 +631,11 @@ def usbroot():
     try:
         time.sleep(1)
         adb("reverse", "tcp:15578", "tcp:15578")
-        sh("setprop debug.aura.adb 127.0.0.1:15578; setprop debug.aura.pack.base ''")
+        sh("setprop debug.aura.pack.base ''")
         start_app()
         t0 = time.time()
-        bc(scan=True)
+        # (only the pack manager's commands: the app's own start-up keeps its hands off the emulator)
+        bc(adb="127.0.0.1:15578", scan=True)
         s = wait_state(["OFFER", "NONE"], 60)
         found = "ksa-2026.11" in s.get("usbOffer", "")
         bc(startusb=True)
@@ -617,7 +645,7 @@ def usbroot():
         time.sleep(1)
         start_app()
         s2 = status()
-        bc(resume=True)
+        bc(adb="127.0.0.1:15578", resume=True)
         ok = install_and_check("usb root")
         took = time.time() - t0
         st = stats()
@@ -626,7 +654,7 @@ def usbroot():
     finally:
         srv.kill()
         adb("reverse", "--remove", "tcp:15578")
-        sh(f"setprop debug.aura.adb ''; rm -rf {real} /mnt/media_rw/udisk1")
+        sh(f"rm -rf {real} /mnt/media_rw/udisk1")
 
 
 def trip():
@@ -654,20 +682,25 @@ def trip():
     c = stats()["served_total"]
     time.sleep(5)
     d = stats()["served_total"]
+    # hands that do not wait: nothing may stick or run twice
+    bc(resume=True)
+    bc(pause=True)
+    bc(resume=True)
+    bc(pause=True)
     bc(resume=True)
     ctl("reset=1")
-    wait_state("VERIFYING", 300, every=0.3)
+    wait_log(r"status state=VERIFYING", t1 := time.time(), 400)
     # a trip during the whole-file hash
     t1 = time.time()
     bc(trip=True)
-    s4 = wait_state("TRIP_HOLD", 30)
+    s4 = wait_state(["TRIP_HOLD", "INSTALLED"], 30)
     held2 = time.time() - t1
     cpu = proc_cpu(pid())
     time.sleep(3)
     cpu2 = proc_cpu(pid())
     bc(trip=False)
     ok = install_and_check("trip")
-    result("no work during a trip", s.get("state") == "TRIP_HOLD" and b - a <= 256 * 1024 and d - c == 0 and ok and cpu2[0] - cpu[0] <= 2, f"held {held_after:.1f} s after the trip began, {b - a} bytes in 6 s of it; {(line[-1].split('line: ', 1)[-1]) if line else ''}; pause: {d - c} bytes in 5 s; during the hash: held in {held2:.1f} s, its thread used {cpu2[0] - cpu[0]} jiffies in 3 s; {T.last_hash}")
+    result("no work during a trip", s.get("state") == "TRIP_HOLD" and b - a <= 256 * 1024 and d - c == 0 and ok and s4.get("state") == "TRIP_HOLD" and cpu2[0] - cpu[0] <= 2, f"held {held_after:.1f} s after the trip began, {b - a} bytes in 6 s of it; {(line[-1].split('line: ', 1)[-1]) if line else ''}; pause: {d - c} bytes in 5 s; during the hash: {s4.get('state')} in {held2:.1f} s, its thread used {cpu2[0] - cpu[0]} jiffies in 3 s; {T.last_hash}")
 
 
 def reboot_common(name, how):
@@ -682,8 +715,11 @@ def reboot_common(name, how):
     how()
     time.sleep(5)
     for _ in range(180):
-        if adb("get-state", timeout=20) == "device" and sh("getprop sys.boot_completed") == "1":
-            break
+        try:
+            if adb("get-state", timeout=20) == "device" and sh("getprop sys.boot_completed", timeout=20) == "1":
+                break
+        except subprocess.TimeoutExpired:
+            pass
         time.sleep(2)
     adb("root")
     time.sleep(3)
@@ -711,7 +747,12 @@ def reboot():
 
 def powercut():
     # no sync, no unmount: the machine stops as it is, what the kernel had not written is gone
-    reboot_common("power cut (sysrq b)", lambda: subprocess.run([ADB, "-s", T.serial, "shell", "echo b > /proc/sysrq-trigger"], capture_output=True, timeout=20))
+    def cut():
+        try:
+            subprocess.run([ADB, "-s", T.serial, "shell", "echo 1 > /proc/sys/kernel/sysrq; echo b > /proc/sysrq-trigger"], capture_output=True, timeout=20)
+        except subprocess.TimeoutExpired:
+            pass
+    reboot_common("power cut (sysrq b)", cut)
 
 
 def fulldisk():
@@ -739,7 +780,70 @@ def fulldisk():
     print("    after cancel:", s.get("state"), sh(f"ls {app_dir()}/maps2/staging 2>/dev/null"), sh("df -h /data | tail -1"))
 
 
-SCENARIOS = {"refusals": refusals, "space": space, "full": full, "kill": kill, "points": points, "drops": drops, "faults": faults, "update": update, "usb": usb, "usbroot": usbroot,
+def hotspot():
+    """What it costs at a phone's speed: a slow link for a minute, then stopped."""
+    wipe()
+    ctl("slow_kbps=1500")
+    start_app()
+    p = pid()
+    pss0 = pss_kb()
+    bc(start=True)
+    time.sleep(8)
+    c0 = proc_cpu(p)
+    t0 = time.time()
+    pss = []
+    speeds = []
+    for _ in range(9):
+        time.sleep(5)
+        pss.append(pss_kb())
+        s = status()
+        speeds.append(int(s.get("speed", 0)))
+    c1 = proc_cpu(p)
+    took = time.time() - t0
+    bc(cancel=True)
+    wait_state(["OFFER", "NONE"], 40)
+    ctl("reset=1")
+    result("at 1.5 MB/s", True, f"shown speed {min(speeds) // 1024}-{max(speeds) // 1024} KB/s; thread aura-pack {(c1[0] - c0[0]) / took:.1f}% of one core, process {(c1[1] - c0[1]) / took:.1f}%; PSS {pss0 // 1024} MB before, {min(pss) // 1024}-{max(pss) // 1024} MB while working (emulator)")
+
+
+def misc():
+    """Files as the others will find them; the words; crashes in all of this."""
+    wipe()
+    ctl("reset=1&clear=1")
+    start_app()
+    bc(start=True)
+    wait_state("INSTALLED", 300)
+    t0 = time.time()
+    bc(reader=True)
+    time.sleep(2)
+    bc(reader=False)
+    time.sleep(1)
+    ended = T.log.since(t0, r"reader ended")
+    listing = sh(f"ls -la {app_dir()}/maps2/packs/ksa-2026.11; ls -la {app_dir()}/maps2; cat {app_dir()}/maps2/current; echo; cat {app_dir()}/maps2/last-install.txt")
+    print(listing)
+    side = [l for l in listing.splitlines() if "-wal" in l or "-shm" in l or "-journal" in l]
+    pieces_ro = all(l.startswith("-r--") for l in listing.splitlines() if re.search(r"(mbtiles|route\.tar|places\.db|glyphs\.db)$", l))
+    result("files as the others find them", not side and pieces_ro and bool(ended) and " 0 errors" in ended[-1], f"pieces read only {pieces_ro}, side files {side}; a read-only open: {ended[-1].split('reader ended: ', 1)[-1] if ended else ''}")
+    # Arabic
+    stop_app()
+    sh(f"am start -n {T.pkg}/com.abdllh.aura.settings.SettingsActivity --es lang ar")
+    time.sleep(4)
+    t1 = time.time()
+    bc(pause=False, dump=True)
+    time.sleep(0.8)
+    line = T.log.since(t1, r"line: ")
+    print("    ", line[-1] if line else "no line")
+    sh(f"am start -n {T.pkg}/com.abdllh.aura.settings.SettingsActivity --es lang en")
+    time.sleep(1)
+    # the real home screen on top of a pack, and what crashed anywhere in this session
+    sh(f"am start -n {T.pkg}/com.abdllh.aura.home.HomeActivity")
+    time.sleep(6)
+    alive = bool(pid())
+    crash = sh(f"logcat -d -b crash | grep -E 'Process: {T.pkg}|FATAL' | tail -5")
+    result("home screen, crashes", alive and T.pkg not in crash, f"home alive {alive}; crash buffer for this app: {crash!r}")
+
+
+SCENARIOS = {"hotspot": hotspot, "misc": misc, "refusals": refusals, "space": space, "full": full, "kill": kill, "points": points, "drops": drops, "faults": faults, "update": update, "usb": usb, "usbroot": usbroot,
              "trip": trip, "reboot": reboot, "powercut": powercut, "fulldisk": fulldisk}
 
 
@@ -772,6 +876,8 @@ def main():
     T.log = Logcat()
     T.log.start()
     time.sleep(1)
+    start_app()  # (so that its files folder is its own, whatever comes first)
+    stop_app()
     names = list(SCENARIOS) if a.scenarios == ["all"] else a.scenarios
     try:
         for n in names:
