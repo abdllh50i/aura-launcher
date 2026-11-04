@@ -6,8 +6,8 @@ import com.abdllh.aura.util.TextMatch
 /**
  * What the owner asked for, from what the speech recogniser heard (Gulf Arabic, or English). Simple rules over the
  * normalised words, the most specific first: questions (what is playing, how long to go, the date), the sound and the
- * screen, then places, apps, then the music. Long keys also match a word one letter off (the recogniser's spellings:
- * "الاضايه" for "الإضاءة", "بانزين" for "بنزين").
+ * screen, then places, apps, then the music. A key matches a word or a word's beginning; the recogniser's spellings
+ * ("بانزين" for "بنزين") are keys of their own (one letter off was tried, and read "الماجد" as "المسجد").
  */
 internal sealed class Command {
     object Next : Command()

@@ -42,13 +42,9 @@ object Prefs {
         get() = sp.getString("navPackage", "") ?: ""
         set(v) { sp.edit().putString("navPackage", v).apply() }
 
-    var homeAddress: String
-        get() = sp.getString("homeAddress", "") ?: ""
-        set(v) { sp.edit().putString("homeAddress", v).apply() }
-
-    var workAddress: String
-        get() = sp.getString("workAddress", "") ?: ""
-        set(v) { sp.edit().putString("workAddress", v).apply() }
+    /** Home and work as typed up to 1.2: only read now (a unit may still hold one; the first use keeps it as a place, Places). */
+    val homeAddress: String get() = sp.getString("homeAddress", "") ?: ""
+    val workAddress: String get() = sp.getString("workAddress", "") ?: ""
 
     /** Hide Android's top status bar system-wide (swipe down to show it). */
     var hideStatusBar: Boolean
@@ -68,10 +64,6 @@ object Prefs {
     var dockLabels: Boolean
         get() = sp.getBoolean("dockLabels", false)
         set(v) { sp.edit().putBoolean("dockLabels", v).apply() }
-
-    var hiddenApps: Set<String>
-        get() = sp.getStringSet("hiddenApps", emptySet()) ?: emptySet()
-        set(v) { sp.edit().putStringSet("hiddenApps", HashSet(v)).apply() }
 
     // ---- updater
     var updateRepo: String
@@ -111,20 +103,8 @@ object Prefs {
         get() = sp.getString("availableTag", "") ?: ""
         set(v) { sp.edit().putString("availableTag", v).apply() }
 
-    // ---- setup / safety
-    var setupDone: Boolean
-        get() = sp.getBoolean("setupDone", false)
-        set(v) { sp.edit().putBoolean("setupDone", v).apply() }
-
-    var setupBannerDismissed: Boolean
-        get() = sp.getBoolean("setupBannerDismissed", false)
-        set(v) { sp.edit().putBoolean("setupBannerDismissed", v).apply() }
-
+    // ---- safety
     var safeModeNotice: Boolean
         get() = sp.getBoolean("safeModeNotice", false)
         set(v) { sp.edit().putBoolean("safeModeNotice", v).apply() }
-
-    var adbBridge: Boolean
-        get() = sp.getBoolean("adbBridge", true)
-        set(v) { sp.edit().putBoolean("adbBridge", v).apply() }
 }

@@ -1354,7 +1354,7 @@ file). The feel is set in degrees, so another frame step needs no retuning. Sett
 and how fast it turned last time. The model itself is not in the repo.
 
 ### The voice assistant "عمري" (`voice/`)
-* Wake word, offline and without a model to download: a personal template matcher. The owner says "عمري" 4 times
+* Wake word, offline and without a model to download: a personal template matcher. The owner says "عمري" 6 times
   (Settings → Voice assistant; best in the car with the engine running); each later word is compared with those.
   `WakeWord.kt`: `Segmenter` splits the microphone into words (background = the 4th quietest 10 ms of the last 1.5 s,
   measured after a first difference that takes away road rumble; up to 2 s of near silence while a recording starts

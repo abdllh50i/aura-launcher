@@ -91,7 +91,6 @@ class AmriService : Service() {
         }
         val m = model ?: return
         val detector = WakeDetector(m, { Limits.of(Amri.sensitivity) }, WakeNegatives.file(this), onVerdict = { v ->
-            lastScore = v.score
             if (v.score < 2f) Log.d(TAG, "word: $v")
         }) { c -> onWake(c) }
         lateinit var l: MicLoop
@@ -134,9 +133,6 @@ class AmriService : Service() {
         private const val RUNNING = 2
         private var state = STOPPED
         private var instance: AmriService? = null
-
-        /** The last word's distance from the wake word (diagnostics: under the threshold wakes it). */
-        @Volatile var lastScore = 0f; private set
 
         fun start(ctx: Context) {
             if (state != STOPPED) { instance?.sync(); return }

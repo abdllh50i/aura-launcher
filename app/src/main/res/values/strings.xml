@@ -100,7 +100,7 @@
     <string name="set_full_off_sub">Instead of sleep mode. The screen then starts from scratch each time, which takes longer</string>
     <string name="set_off_now">Turn the screen off now</string>
     <string name="set_off_now_sub">Completely off, not sleep: it starts again when you switch the car off and on</string>
-    <string name="set_power_hint">Both go through the unit\'s own power controller (the same option as in the factory settings). They have not been tried on this unit yet.</string>
+    <string name="set_power_hint">Both go through the unit\'s own power controller (the same option as in the factory settings).</string>
     <string name="off_now_title">Turn the screen off?</string>
     <string name="off_now_text">The screen turns off completely now (not sleep mode). It starts again the next time you switch the car off and on.</string>
     <string name="off_now_action">Turn off</string>

@@ -82,27 +82,25 @@ object AppRepo {
         false
     }
 
-    /** All launchable apps, alphabetically. Hidden ones are filtered unless [includeHidden]. */
-    fun load(ctx: Context, includeHidden: Boolean = false): List<AppInfo> {
+    /** All launchable apps, alphabetically. */
+    fun load(ctx: Context): List<AppInfo> {
         val pm = ctx.packageManager
         val i = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        val hidden = Prefs.hiddenApps
         val seen = HashSet<String>()
         val out = ArrayList<AppInfo>()
         for (ri in pm.queryIntentActivities(i, 0)) {
             val ai = ri.activityInfo ?: continue
             if (ai.packageName == ctx.packageName) continue // the home screen itself (Maps and Music are added below)
             if (!seen.add(ai.packageName)) continue
-            if (!includeHidden && ai.packageName in hidden) continue
             val sys = (ai.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
             out.add(AppInfo(ai.packageName, ai.name, ri.loadLabel(pm).toString(), sys))
         }
         // Aura's own Maps and Music (they can be pinned to the dock like any app)
         for ((id, res) in listOf(DockPins.MAPS to com.abdllh.aura.R.string.dock_nav, DockPins.MUSIC to com.abdllh.aura.R.string.dock_music)) {
-            if (includeHidden || id !in hidden) out.add(AppInfo(id, "", ctx.getString(res), true))
+            out.add(AppInfo(id, "", ctx.getString(res), true))
         }
         // ZLink kept off by Aura is disabled, so it has no launcher entry: it stays in the list (opening it turns it on)
-        if (Known.ZLINK !in seen && (includeHidden || Known.ZLINK !in hidden) && com.abdllh.aura.system.ZLinkGuard.available(ctx)) {
+        if (Known.ZLINK !in seen && com.abdllh.aura.system.ZLinkGuard.available(ctx)) {
             try {
                 val ai = pm.getApplicationInfo(Known.ZLINK, PackageManager.MATCH_DISABLED_COMPONENTS)
                 out.add(AppInfo(Known.ZLINK, "", ai.loadLabel(pm).toString(), true))
