@@ -636,6 +636,33 @@ def t_events(token):
     time.sleep(1)
 
 
+def t_busy(token):
+    """The main thread held up (a map's first frame on a slow GPU): the server answers on, and says only what is true."""
+    home()
+    fix()
+    home()
+    req("POST", "/v1/nav/go", {"id": I("busy-trip"), "place": {"name": "الرحلة", "lat": 26.35, "lon": 50.15}, "mode": "start"}, token)
+    check("busy: first a trip", wait_state(token, lambda x: x["nav"]["state"] == "navigating", 45) is not None, state(token)["nav"])
+    time.sleep(6)
+    req("POST", "/debug/block", {"ms": 5000})
+    time.sleep(0.2)
+    t0 = time.time()
+    s, _, _, _ = req("GET", "/v1/ping")
+    check("busy: the ping answers at once", s == 200 and time.time() - t0 < 1.0, (s, time.time() - t0))
+    s, j, _, _ = req("POST", "/v1/nav/go", {"id": I("busy-go"), "place": {"name": "مكان", "lat": 26.3, "lon": 50.2}, "mode": "start"}, token)
+    check("busy: a place is taken at once", s == 202 and j["state"] == "accepted" and time.time() - t0 < 1.5, (s, j, time.time() - t0))
+    s, j, _, _ = req("POST", "/v1/remote", {"cmd": "volume.up"}, token)
+    check("busy: a command is on its way, not an error", s == 202 and j["state"] == "pending", (s, j))
+    s, j, _, _ = req("POST", "/v1/nav/stop", {"id": I("busy-stop")}, token)
+    check("busy: a stop is on its way, not an error", s == 202 and j["state"] == "pending", (s, j))
+    s, j, _, _ = req("GET", "/v1/state", token=token)
+    print("     state while held up: %s %s" % (s, (j or {}).get("reason")))
+    j = wait_state(token, lambda x: x["nav"]["state"] == "idle", 15)
+    check("busy: when it comes free the stop has happened", j is not None, state(token)["nav"])
+    req("POST", "/v1/remote", {"cmd": "volume.down"}, token)
+    home()
+
+
 def t_slow(token):
     # sends a byte a second: closed at 10 s, not a second later
     c = socket.create_connection(("127.0.0.1", PORT), timeout=20)
@@ -1241,6 +1268,8 @@ def main():
         t_qr()
     if want("events"):
         t_events(token)
+    if want("busy"):
+        t_busy(token)
     if want("slow"):
         t_slow(token)
     if want("many"):

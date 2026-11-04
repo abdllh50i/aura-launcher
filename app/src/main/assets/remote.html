@@ -144,7 +144,11 @@ function newId() {
 function say(text, sub, kind) {
   var el = $("status");
   el.textContent = text;
-  if (sub) { var small = document.createElement("small"); small.textContent = sub; el.appendChild(small); }
+  if (sub) String(sub).split("\n").forEach(function (line) {
+    var small = document.createElement("small");
+    small.textContent = line;
+    el.appendChild(small);
+  });
   el.className = "status" + (kind ? " " + kind : "");
 }
 
@@ -420,7 +424,7 @@ function remote(cmd) {
   send("/v1/remote", {id: newId(), cmd: cmd}).then(function (r) {
     if (r.status === 0) { say("ما قدرت أوصل للشاشة", null, "bad"); return; }
     if (r.json.volume != null) $("vol").textContent = r.json.muted ? "مكتوم" : "الصوت " + r.json.volume;
-    if (r.status !== 200) say("الشاشة ما سوتها", r.json.reason, "warn");
+    if (r.status !== 200 && r.status !== 202) say("الشاشة ما سوتها", r.json.reason, "warn");
   });
 }
 
@@ -431,7 +435,7 @@ function pair(code) {
       token = r.json.token;
       try { localStorage.setItem("amriToken", token); } catch (e) {}
       say("انربط الجوال", null, "ok");
-      start();
+      setTimeout(start, 600); // (the words stay a moment before what the unit reports replaces them)
       return;
     }
     if (r.status === 0) { say("ما قدرت أوصل للشاشة", null, "bad"); return; }
@@ -439,13 +443,22 @@ function pair(code) {
   });
 }
 
+// Looks for the unit until it answers (the hotspot comes and goes, the unit's main thread can be busy for a moment).
+var startAgain = null;
+function again() {
+  clearTimeout(startAgain);
+  startAgain = setTimeout(start, 3000);
+}
+
 function start() {
+  clearTimeout(startAgain);
   call("GET", "/v1/ping").then(function (p) {
-    if (p.status !== 200) { dot(false); say("ما قدرت أوصل للشاشة", "تأكد إن الجوال والشاشة على نفس الشبكة", "bad"); return; }
+    if (p.status !== 200) { dot(false); say("ما قدرت أوصل للشاشة", "تأكد إن الجوال والشاشة على نفس الشبكة", "bad"); again(); return; }
     if (!token) { setPaired(false); say("الشاشة موجودة: " + (p.json.name || p.json.unit), "الجوال مو مربوط"); return; }
+    setPaired(true);
     call("GET", "/v1/state").then(function (s) {
-      if (s.status !== 200) { if (!token) { say("الجوال مو مربوط"); } return; }
-      setPaired(true);
+      if (s.status === 401 || s.status === 403) { forget(); say("الشاشة ما تعرف هذا الجوال", "اربطه من جديد", "warn"); return; }
+      if (s.status !== 200) { say("الشاشة مشغولة، أحاول مرة ثانية…"); again(); return; }
       onNav(s.json.nav);
       onMusic(s.json.music);
       refreshPlaces();
@@ -463,6 +476,7 @@ $("stop").addEventListener("click", function () {
   send("/v1/nav/stop", {id: newId()}).then(function (r) {
     if (r.status === 0) say("ما قدرت أوصل للشاشة", null, "bad");
     else if (r.json.state === "idle") say("ما فيه رحلة الحين");
+    else if (r.json.state === "pending") say("طلبت إنهاء الرحلة، الشاشة مشغولة لحظة…", null, "warn");
     else if (r.status !== 200) say("الشاشة ما وقفتها", r.json.reason, "warn");
   });
 });

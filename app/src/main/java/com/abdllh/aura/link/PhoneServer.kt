@@ -457,6 +457,13 @@ object PhoneServer {
 
     private fun wrong(c: Conn) = reply(c, 405, reason("method"))
 
+    /**
+     * The main thread is held up: what was asked will still happen when it comes free, so "busy" would be a lie. The
+     * phone hears it is on its way ([NavBridge.ask] waits for a limited time, the work stays posted), the events tell the rest.
+     */
+    private fun pending(c: Conn, id: String?) =
+        reply(c, 202, JSONObject().put("state", "pending").also { o -> id?.let { o.put("id", it) } })
+
     /** The token, or told what is missing. */
     private fun needToken(c: Conn, r: Request): Boolean {
         if (r.paired) return true
@@ -634,7 +641,7 @@ object PhoneServer {
         val id = idOf(c, b) ?: return
         if (!firstTime(id)) { reply(c, 200, JSONObject().put("id", id).put("state", "duplicate")); return }
         val was = NavBridge.ask(1500) { PlaceInbox.stop("phone") }
-        if (was == null) { reply(c, 503, reason("busy")); return }
+        if (was == null) { pending(c, id); return }
         reply(c, 200, JSONObject().put("id", id).put("state", if (was) "stopped" else "idle"))
     }
 
@@ -655,7 +662,7 @@ object PhoneServer {
             return
         }
         when (val refused = NavBridge.ask(1500) { NavBridge.searchHere(app, q) }) {
-            null -> reply(c, 503, reason("busy"))
+            null -> pending(c, null)
             "" -> reply(c, 202, JSONObject().put("state", "accepted"))
             else -> reply(c, 409, reason(refused))
         }
@@ -663,7 +670,7 @@ object PhoneServer {
 
     private fun state(c: Conn, r: Request) {
         if (!needToken(c, r)) return
-        val o = NavBridge.ask(1500) { NavBridge.snapshot() }
+        val o = NavBridge.ask(3000) { NavBridge.snapshot() }
         if (o == null) reply(c, 503, reason("busy")) else reply(c, 200, o)
     }
 
@@ -694,7 +701,7 @@ object PhoneServer {
         val favourites = many("favourites")
         val recents = many("recents")
         val now = NavBridge.ask(1500) { NavBridge.setPlaces(home, work, favourites, recents); NavBridge.places() }
-        if (now == null) reply(c, 503, reason("busy")) else reply(c, 200, now)
+        if (now == null) pending(c, null) else reply(c, 200, now)
     }
 
     private fun remote(c: Conn, r: Request) {
@@ -705,7 +712,7 @@ object PhoneServer {
         if (!NavBridge.isCommand(cmd)) { reply(c, 400, reason("bad_cmd")); return }
         if (!firstTime(id)) { reply(c, 200, JSONObject().put("id", id).put("state", "duplicate")); return }
         val o = NavBridge.ask(1500) { NavBridge.remote(app, cmd) }
-        if (o == null) { reply(c, 503, reason("busy")); return }
+        if (o == null) { pending(c, id); return }
         reply(c, if (o.optString("state") == "ok") 200 else 409, o.put("id", id))
     }
 
@@ -809,6 +816,8 @@ object PhoneServer {
                 send(c, 200, "image/png", png.toByteArray(), "X-Qr-Size: ${m.size}\r\n")
             }
             "/debug/code" -> reply(c, 200, JSONObject().put("code", Pairing.show(SystemClock.elapsedRealtime())))
+            // the main thread held up, as a map's first frame on a slow GPU does
+            "/debug/block" -> { NavBridge.post("block") { Thread.sleep(b.optLong("ms", 3000L)) }; reply(c, 200, JSONObject()) }
             // what the voice would make of a sentence, and the one place it would take a search's answer to mean
             "/debug/command" -> reply(c, 200, JSONObject().put("command", com.abdllh.aura.voice.Command.parse(b.optString("text"))?.let { it.javaClass.simpleName + " " + it }))
             "/debug/answer" -> {

@@ -1710,8 +1710,9 @@ service did not answer in 9 s, which is not "nothing found". `/v1/nav/saved` is 
 other, not Maps' `go` extra: that one starts at once, and a route must not change silently during a trip.
 
 `link/NavBridge.kt` is the server's only door into the app: everything runs posted to the main thread, caught, and a
-server thread that needs the answer waits at most 1.5 s, then says 503 `busy` (a map's first frame can hold the main
-thread that long on the emulator). The main thread never waits for anybody here. The live feed listens only while a
+server thread that needs the answer waits a limited time (a map's first frame can hold the main thread for seconds on the
+emulator). What was asked still happens when the main thread comes free, so the phone is told 202 `pending`, not an error;
+only a plain read (`/v1/state`, 3 s) says 503 `busy`. The main thread never waits for anybody here. The live feed listens only while a
 phone does. The redesign may rename the Maps internals: this file changes then, the server does not.
 
 **`link/PlaceInbox.kt`: what the unit does with a place** (`TripCard` is its one overlay, in the look of the call and
