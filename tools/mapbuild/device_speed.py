@@ -10,6 +10,7 @@ Times are of the SQLite statements alone: the scoring of up to 200 rows in Kotli
 """
 import argparse
 import json
+import math
 import os
 import re
 import sqlite3
@@ -39,14 +40,22 @@ def statements(db):
         plan = S.plan_query(q, syn)
         if not plan.required:
             continue
-        m = S.fts_string(plan).replace("'", "''")
-        la = int(near[0] * 1e6)
-        lo = int(near[1] * 1e6)
-        import math
-        k = math.cos(math.radians(near[0])) ** 2
-        base = f"SELECT {S.COLUMNS} FROM f CROSS JOIN p ON p.id=f.docid WHERE f MATCH '{m}' "
-        out.append((f"{q} | nearest {S.NEAREST}", base + f"ORDER BY (p.lat-{la})*(p.lat-{la})+(p.lon-{lo})*(p.lon-{lo})*{k:.6f} LIMIT {S.NEAREST};"))
-        out.append((f"{q} | best {S.BEST}", base + f"ORDER BY p.rank DESC, p.id LIMIT {S.BEST};"))
+        order = S.nearest_sql(near)
+        want_best = S.wants_best(plan, syn)
+        band = S.id_band(db, near[0])
+        out.append((f"{q} | band of ids", f"SELECT id FROM p WHERE lat>={int((near[0] - S.BAND) * 1e6)} ORDER BY lat LIMIT 1;"))
+        for m in S.first_stages(plan):  # the statements search() runs for this query, as candidates() decides
+            quoted = m.replace("'", "''")
+            base = f"SELECT {S.COLUMNS} FROM f CROSS JOIN p ON p.id=f.docid WHERE f MATCH '{quoted}' "
+            sql = base + f"AND f.docid BETWEEN {band[0]} AND {band[1]} " + order + ";"
+            out.append((f"{q} | nearest in the band", sql))
+            n = len(db.execute(sql).fetchall())
+            if n < S.NEAREST:
+                sql = base + order + ";"
+                out.append((f"{q} | nearest", sql))
+                n = len(db.execute(sql).fetchall())
+            if n == S.NEAREST and want_best:
+                out.append((f"{q} | best {S.BEST}", base + f"ORDER BY p.rank DESC, p.id LIMIT {S.BEST};"))
     near = (26.29, 50.20)
     la, lo = int(near[0] * 1e6), int(near[1] * 1e6)
     out.append(("reverse", f"SELECT {S.COLUMNS} FROM p WHERE p.lat BETWEEN {la - 7000} AND {la + 7000} AND p.lon BETWEEN {lo - 7800} AND {lo + 7800} AND p.kind>=5;"))
@@ -99,10 +108,14 @@ def verify(serial, remote, db, stm):
 def report(rows):
     for label, ms in rows:
         print(f"{ms:8.1f} ms  {label}")
-    near = [ms for label, ms in rows if label.endswith(f"nearest {S.NEAREST}")]
-    if near:
-        near_sorted = sorted(near)
-        print(f"nearest-candidates statement: median {near_sorted[len(near) // 2]:.1f} ms, worst {near_sorted[-1]:.1f} ms over {len(near)} queries")
+    per_query = {}
+    for label, ms in rows:
+        if " | " in label:
+            q = label.split(" | ")[0]
+            per_query[q] = per_query.get(q, 0.0) + ms
+    if per_query:
+        all_ms = sorted(per_query.values())
+        print(f"all candidate reads of one search, added up: median {all_ms[len(all_ms) // 2]:.1f} ms, worst {all_ms[-1]:.1f} ms over {len(all_ms)} queries")
 
 
 def main():

@@ -339,21 +339,47 @@ def fts_typo_string(plan):
 
 NEAREST = 150
 BEST = 50
+BAND = 1.0  # degrees of latitude either side of the car, about 110 km
 COLUMNS = "p.id,p.kind,p.name,p.alt,p.cat,p.lat,p.lon,p.area,p.rank"
 
 
-def candidates(db, match, near):
+def id_band(db, lat):
+    """Ids run south to north, so a band of latitude is a range of ids, which FTS4 can skip to without reading the rows."""
+    a = db.execute("SELECT id FROM p WHERE lat>=? ORDER BY lat LIMIT 1", (int((lat - BAND) * 1e6),)).fetchone()
+    b = db.execute("SELECT id FROM p WHERE lat<=? ORDER BY lat DESC LIMIT 1", (int((lat + BAND) * 1e6),)).fetchone()
+    return (a[0], b[0]) if a and b else None
+
+
+def nearest_sql(near):
+    la = int(near[0] * 1e6)
+    lo = int(near[1] * 1e6)
+    k = math.cos(math.radians(near[0])) ** 2
+    return f"ORDER BY (p.lat-{la})*(p.lat-{la})+(p.lon-{lo})*(p.lon-{lo})*{k:.6f} LIMIT {NEAREST}"
+
+
+def wants_best(plan, syn):
+    """Does a far row have a chance against 150 near ones? Not when only a kind of place is asked for, unless it is an airport.
+    This saves most of the time of the commonest searches (مسجد, مطعم)."""
+    if plan.required and all(g.cats for g in plan.required):
+        return any(syn.airport in g.cats for g in plan.required)
+    return True
+
+
+def candidates(db, match, near, want_best=True):
     """Up to NEAREST nearest and BEST best-ranked rows answering a MATCH string."""
     rows = {}
     base_sql = f"SELECT {COLUMNS} FROM f CROSS JOIN p ON p.id=f.docid WHERE f MATCH ? "
     if near:
-        la = int(near[0] * 1e6)
-        lo = int(near[1] * 1e6)
-        k = math.cos(math.radians(near[0])) ** 2
-        got = db.execute(base_sql + f"ORDER BY (p.lat-{la})*(p.lat-{la})+(p.lon-{lo})*(p.lon-{lo})*{k:.6f} LIMIT {NEAREST}", (match,)).fetchall()
+        order = nearest_sql(near)
+        got = []
+        band = id_band(db, near[0])
+        if band:
+            got = db.execute(base_sql + f"AND f.docid BETWEEN {band[0]} AND {band[1]} " + order, (match,)).fetchall()
+        if len(got) < NEAREST:
+            got = db.execute(base_sql + order, (match,)).fetchall()
         for r in got:
             rows[r[0]] = r
-        if len(got) == NEAREST:
+        if len(got) == NEAREST and want_best:
             for r in db.execute(base_sql + f"ORDER BY p.rank DESC, p.id LIMIT {BEST}", (match,)):
                 rows[r[0]] = r
     else:
@@ -578,6 +604,22 @@ def dedupe(scored):
     return out
 
 
+def first_stages(plan):
+    """The MATCH strings every search runs, in order."""
+    out = []
+    plain = fts_string(plan)
+    if any(g.role == 5 for g in plan.required):
+        # شاورما: the shops called that, or the many near restaurants would crowd them out of the candidates
+        out.append(fts_string(plan, in_names=True, no_cats=True))
+    if len(plan.required) > 1:
+        # the rows that hold all the words in their name, so that a thing itself is never crowded out by the many rows that are merely in it
+        names = fts_string(plan, in_names=True)
+        if names != plain:
+            out.append(names)
+    out.append(plain)
+    return out
+
+
 def search(db, query, near=None, limit=12, syn=None, debug=None):
     """The answer to a query: a list of dicts, best first. near is (lat, lon) in degrees or None."""
     syn = syn or Syn(db)
@@ -588,21 +630,11 @@ def search(db, query, near=None, limit=12, syn=None, debug=None):
     if letters < 2 and not (plan.road_hint and plan.required[0].words[0].isdigit()):  # one letter says nothing; "شارع 9" does
         return []
     rows = {}
-    stages = []
-    m = fts_string(plan)
-    if any(g.role == 5 for g in plan.required):
-        # شاورما: the shops called that, or the many near restaurants would crowd them out of the candidates
-        m0 = fts_string(plan, in_names=True, no_cats=True)
-        stages.append(m0)
-        rows.update(candidates(db, m0, near))
-    if len(plan.required) > 1:
-        # first the rows that hold all the words in their name, so that a thing itself is never crowded out by the many rows that are merely in it
-        m1 = fts_string(plan, in_names=True)
-        if m1 != m:
-            stages.append(m1)
-            rows.update(candidates(db, m1, near))
-    stages.append(m)
-    rows.update(candidates(db, m, near))
+    stages = first_stages(plan)
+    best = wants_best(plan, syn)
+    for m in stages:
+        rows.update(candidates(db, m, near, best))
+    m = stages[-1]
     if len(rows) < 6:
         m2 = fts_string(plan, loose=True)
         if m2 != m:

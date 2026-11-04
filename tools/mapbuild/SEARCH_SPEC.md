@@ -25,7 +25,7 @@ meta(k, v)                                    -- schema, norm_version, built, ov
 `f` is contentless: `SELECT` only `docid` and use `MATCH`. Tokens in `k` that start with `§` are consonant skeletons, with `¤` a category id. They are never shown.
 `p.lat` has an index, `spot.lat` too: a box is a `lat BETWEEN` with a `lon` filter.
 
-There are no prefix tables in `f` on purpose. Measured on the same rows: `prefix='2,4'` 65.0 MB, `prefix='4'` 53.8 MB, none 39.4 MB, and on the PC a two-letter search took the same time in all three (`مط`: 12.4, 13.2, 11.1 ms), because the time goes into reading rows from `p`, not into the index. (FTS4's prefix lengths are bytes: an Arabic letter counts 2.)
+There are no prefix tables in `f` on purpose. Measured on the same rows: `prefix='2,4'` 65.0 MB, `prefix='4'` 53.8 MB, none 39.4 MB. All the reads of one search on the emulator's SQLite 3.22, 26 queries with a warm file cache: with `2,4` median 5 ms, worst 22 ms; with none median 6 ms, worst 25 ms. With a cold cache: median 9 and 14 ms, worst 120 and 136 ms. A small gain for two thirds more file, because the time goes into reading rows from `p`, not into the index. (FTS4's prefix lengths are bytes: an Arabic letter counts 2.) Not measured on the unit's eMMC.
 
 ## 2. Text
 
@@ -81,12 +81,12 @@ For each required group, the alternatives are:
 - when there is one required group, or for the names-only string: `k:` in front of each alternative except a phrase (FTS4 cannot put a column on a phrase).
 The alternatives are joined by ` OR `, the groups by a space.
 
-**Candidates** (`candidates(match, near)`): with a position,
+**Candidates** (`candidates(match, near)`): ids run south to north, so a band of latitude is a range of ids. With a position, find the band of 1 degree either side of the car once (`SELECT id FROM p WHERE lat>=? ORDER BY lat LIMIT 1`, and `lat<=? ORDER BY lat DESC LIMIT 1`) and run
 ```sql
-SELECT p.id,p.kind,p.name,p.alt,p.cat,p.lat,p.lon,p.area,p.rank FROM f CROSS JOIN p ON p.id=f.docid WHERE f MATCH ?
+SELECT p.id,p.kind,p.name,p.alt,p.cat,p.lat,p.lon,p.area,p.rank FROM f CROSS JOIN p ON p.id=f.docid WHERE f MATCH ? AND f.docid BETWEEN A AND B
  ORDER BY (p.lat-LA)*(p.lat-LA)+(p.lon-LO)*(p.lon-LO)*K LIMIT 150      -- LA, LO in 1e-6 degrees; K = cos(lat)^2 to 6 decimals
 ```
-and if that returned a full 150, also `ORDER BY p.rank DESC, p.id LIMIT 50`. Without a position only `ORDER BY p.rank DESC, p.id LIMIT 200`.
+If that returned fewer than 150, run the same without the band, and use that answer instead. If the answer is a full 150, also `ORDER BY p.rank DESC, p.id LIMIT 50` (without the band), unless every required group has cats and none of them is the airport category: a far row has no chance there, and this saves most of the time of the commonest searches. Without a position only `ORDER BY p.rank DESC, p.id LIMIT 200`.
 
 **Stages**, the rows of all of them together:
 0. With a role 5 group: the names-only string without any category alternatives.
@@ -144,7 +144,7 @@ From `p` with `lat` within 7000 (0.007°) and `lon` within `7000/cos(lat)`, kind
 
 ## 7. On the unit
 
-- Run on one background thread, one search at a time; a newer query cancels (the app's `generation`). A 250 ms debounce while typing.
+- Run on one background thread, one search at a time; a newer query cancels (the app's `generation`). A 250 ms debounce while typing. Catch `SQLiteException` around the reads and answer with nothing.
 - `query_words` on a name is called for up to 200 rows: keep the fold table in a `CharArray` or a `when`.
 - Use `SQLiteDatabase.openDatabase(path, null, OPEN_READONLY)`; do not create it through a helper, which would write. Use `rawQuery` with a bound `?` for `MATCH`.
 - The database has `page_size=4096`. A `PRAGMA mmap_size` is not needed for this file's speed (not measured on the unit).
