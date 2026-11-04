@@ -10,6 +10,7 @@ import com.abdllh.aura.ui.ABtn
 import com.abdllh.aura.ui.AText
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Space
+import com.abdllh.aura.ui.Spinner
 import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.WRAP
 import com.abdllh.aura.ui.label

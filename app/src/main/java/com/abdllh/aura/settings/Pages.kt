@@ -18,7 +18,6 @@ import com.abdllh.aura.system.CrashGuard
 import com.abdllh.aura.system.Device
 import com.abdllh.aura.ui.ABtn
 import com.abdllh.aura.ui.AuraSlider
-import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
@@ -98,9 +97,6 @@ class GeneralPage(private val act: SettingsPanel) : Page(R.string.set_general, R
             langLater?.then { act.restyle() }
         }
         langLater = Later(lang)
-        // (the Arabic name in the Arabic typeface, also in the English UI; its letters are drawn smaller than Latin
-        // ones at one size, so it is a little larger to look the same size as "English" beside it)
-        lang.item(1).apply { Fonts.arabic()?.let { typeface = it }; textSize = Type.BUTTON.sp + 2f }
         col.addRow(ctx.group(ctx.block(null, null, null, lang)))
         return col
     }

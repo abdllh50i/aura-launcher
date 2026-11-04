@@ -94,7 +94,6 @@ class InternetCard(private val ctx: Context) {
             row.addView(ctx.label(Type.CAPTION, Palette.text3).apply {
                 text = time(e.at)
                 textDirection = View.TEXT_DIRECTION_LTR
-                fontFeatureSettings = "tnum"
             }, lp(96.dp, WRAP).apply { marginEnd = Space.M.dp })
             row.addView(ctx.label(Type.CAPTION, if (e.type == "lost") Palette.text else Palette.text2, lines = 2).apply {
                 text = describe(ctx, e)

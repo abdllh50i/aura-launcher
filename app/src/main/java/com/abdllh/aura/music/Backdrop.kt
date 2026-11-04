@@ -1,14 +1,27 @@
 package com.abdllh.aura.music
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
+import android.graphics.Shader
+import android.graphics.drawable.Drawable
+import android.graphics.drawable.InsetDrawable
+import android.graphics.drawable.LayerDrawable
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import com.abdllh.aura.R
 import com.abdllh.aura.ui.Palette
+import com.abdllh.aura.ui.Plates
+import com.abdllh.aura.ui.Surfaces
+import com.abdllh.aura.ui.Tint
+import com.abdllh.aura.ui.Tokens2
 import java.util.concurrent.Executors
 
 /**
@@ -180,14 +193,209 @@ internal object Backdrop {
     }
 
     /** [c] mixed toward white (dark theme) or black (light) only as far as it takes to reach [ratio] on [on]. */
-    private fun reach(c: Int, on: Int, ratio: Double, dark: Boolean): Int {
-        val toward = if (dark) Color.WHITE else Color.BLACK
-        var k = 0f
-        var out = c
-        while (k < 0.8f && Palette.contrast(out, on) < ratio) {
-            k += 0.04f
-            out = Palette.mix(c, toward, k)
+    private fun reach(c: Int, on: Int, ratio: Double, dark: Boolean): Int = Palette.reach(c, on, ratio, dark)
+
+    // ------------------------------------------------------------------------------------------ the song's colour in 2.0
+    /**
+     * What a song gives the design (SPEC.md section 4, "Song colour, on the unit"), once per song on the single worker, nothing per
+     * frame. [panel]: the Music panel's background, one 48 x 28 opaque bitmap to stretch with FILTER on to 1024 x 600. [widget] and
+     * [mini]: Home's widget and the mini card, card, edge and shadow in one bitmap, to show in a plain ImageView at the card's rect grown
+     * by [CARD_MARGIN]; no clip. [fill]: the song's colour as a fill. [wordPill] and [wordPillInk]: the current word's pill.
+     */
+    class Wash(val night: Boolean, val fill: Int, val wordPill: Int, val wordPillInk: Int, val panel: Bitmap, val widget: Bitmap?, val mini: Bitmap?)
+
+    /** The margin of [Wash.widget] and [Wash.mini] round the card: `wash-*` of the design. */
+    const val CARD_MARGIN = 30
+    private const val WASH_W = 364
+    private const val WIDGET_H = 182
+    private const val MINI_H = 80
+    private const val ASPECT = 1024f / 600f
+
+    /** Stops of the sea cover, each keeping its saturation and value and taking its hue from the song's fill. */
+    private val NIGHT_STOPS = floatArrayOf(0f, .45f, .8f, 1f)
+    private val NIGHT_RGB = intArrayOf(Color.rgb(5, 13, 24), Color.rgb(7, 28, 44), Color.rgb(9, 50, 72), Color.rgb(12, 64, 88))
+    private val DAY_STOPS = floatArrayOf(0f, .6f, 1f)
+    private val DAY_RGB = intArrayOf(Color.WHITE, Color.rgb(240, 248, 252), Color.rgb(219, 238, 248))
+    /** A song with no cover: its luminance is a constant, so only the vignette gives it shape. */
+    private const val NO_COVER_W = .52f
+
+    /** [wash] off the main thread, then [done] on it. */
+    fun washAsync(ctx: Context, cover: Bitmap?, night: Boolean, done: (Wash) -> Unit) {
+        val app = ctx.applicationContext
+        worker.execute {
+            val w = wash(app, cover, night)
+            main.post { done(w) }
         }
+    }
+
+    /** On the worker. Never throws for a bad cover: a song with no readable cover has the no-cover wash. */
+    fun wash(ctx: Context, cover: Bitmap?, night: Boolean): Wash {
+        val c = if (night) Tokens2.NIGHT else Tokens2.DAY
+        val t = Theme(night, c.bg, c.cardFlat, c.accent, c.accentInk, ASPECT)
+        val readable = try {
+            cover?.let { if (Build.VERSION.SDK_INT >= 26 && it.config == Bitmap.Config.HARDWARE) it.copy(Bitmap.Config.ARGB_8888, false) else it }
+        } catch (_: Throwable) { null }
+        val px = try { readable?.let { small(it, ASPECT) } } catch (_: Throwable) { null }
+        val fill = try { readable?.let { colours(swatch(it), t).first } } catch (_: Throwable) { null } ?: c.accent
+        val h = height(ASPECT)
+        // the luminance, normalised to 0..1
+        val lum = FloatArray(W * h)
+        if (px == null) lum.fill(NO_COVER_W)
+        else {
+            var lo = 1f
+            var hi = 0f
+            for (i in lum.indices) {
+                val p = px[i]
+                val l = (0.299f * ((p shr 16) and 0xFF) + 0.587f * ((p shr 8) and 0xFF) + 0.114f * (p and 0xFF)) / 255f
+                lum[i] = l
+                if (l < lo) lo = l
+                if (l > hi) hi = l
+            }
+            val span = (hi - lo).coerceAtLeast(0.001f)
+            for (i in lum.indices) lum[i] = (lum[i] - lo) / span
+        }
+        val hsv = FloatArray(3)
+        Color.colorToHSV(fill, hsv)
+        val hue = hsv[0]
+        val stops = if (night) NIGHT_STOPS else DAY_STOPS
+        val rgb = (if (night) NIGHT_RGB else DAY_RGB).map { rehue(it, hue) }.toIntArray()
+        val out = IntArray(W * h)
+        for (y in 0 until h) {
+            val yy = y / h.toFloat()
+            for (x in 0 until W) {
+                val xx = x / W.toFloat()
+                var o = ramp(stops, rgb, (lum[y * W + x] * .9f).coerceIn(0f, 1f))
+                if (night) {
+                    val v = 1f - .38f * ((xx - .55f) * (xx - .55f) * 2.2f + (yy - .42f) * (yy - .42f) * 2.6f)
+                    o = Color.rgb((Color.red(o) * v).toInt(), (Color.green(o) * v).toInt(), (Color.blue(o) * v).toInt())
+                }
+                out[y * W + x] = o
+            }
+        }
+        val panel = Bitmap.createBitmap(out, W, h, Bitmap.Config.ARGB_8888)
+        val coverWash = if (px != null) Bitmap.createBitmap(px, W, h, Bitmap.Config.ARGB_8888) else panel
+        val black = Palette.mix(fill, Color.BLACK, .82f)
+        val widget = try {
+            if (night) card(ctx, "widget", WIDGET_H, coverWash, black, .68f, .82f, true) else card(ctx, "widget", WIDGET_H, coverWash, Color.WHITE, .80f, .86f, false)
+        } catch (_: Throwable) { null }
+        val mini = try {
+            if (night) card(ctx, "mini", MINI_H, panel, Color.rgb(0x15, 0x18, 0x1F), .42f, .42f, true) else card(ctx, "mini", MINI_H, panel, Color.WHITE, .10f, .10f, false)
+        } catch (_: Throwable) { null }
+        val pill = if (night) Palette.reach(fill, c.wordPillInk, 4.5, true) else Palette.reach(fill, c.wordPillInk, 4.5, false)
+        return Wash(night, fill, if (px == null) c.wordPill else pill, c.wordPillInk, panel, widget, mini)
+    }
+
+    private fun rehue(c: Int, hue: Float): Int {
+        val hsv = FloatArray(3)
+        Color.colorToHSV(c, hsv)
+        hsv[0] = hue
+        return Color.HSVToColor(hsv)
+    }
+
+    private fun ramp(stops: FloatArray, rgb: IntArray, t: Float): Int {
+        var i = 1
+        while (i < stops.lastIndex && t > stops[i]) i++
+        val k = ((t - stops[i - 1]) / (stops[i] - stops[i - 1])).coerceIn(0f, 1f)
+        return Palette.mix(rgb[i - 1], rgb[i], k)
+    }
+
+    /**
+     * One song's card, in a software canvas: [base] scaled to cover the card at [CARD_MARGIN], the veil over it, `DST_IN` with
+     * `wash-mask-<size>`, then `wash-frame-<size>-<theme>` for edge and shadow. A little noise, as a stretched wash would band.
+     */
+    private fun card(ctx: Context, size: String, h: Int, base: Bitmap, veil: Int, top: Float, bottom: Float, night: Boolean): Bitmap? {
+        val mask = Surfaces.software(ctx, "wash-mask-$size") ?: return null
+        val frame = Surfaces.software(ctx, "wash-frame-$size-${if (night) "night" else "day"}") ?: return null
+        val out = Bitmap.createBitmap(mask.width, mask.height, Bitmap.Config.ARGB_8888)
+        val c = Canvas(out)
+        val m = CARD_MARGIN
+        // to cover: the middle of the bitmap, in the card's shape
+        val k = maxOf(WASH_W / base.width.toFloat(), h / base.height.toFloat())
+        val sw = (WASH_W / k).toInt()
+        val sh = (h / k).toInt()
+        val sx = (base.width - sw) / 2
+        val sy = (base.height - sh) / 2
+        val dst = Rect(m, m, m + WASH_W, m + h)
+        c.drawBitmap(base, Rect(sx, sy, sx + sw, sy + sh), dst, FILTER)
+        val px = IntArray(WASH_W * h)
+        out.getPixels(px, 0, WASH_W, m, m, WASH_W, h)
+        dither(px)
+        out.setPixels(px, 0, WASH_W, m, m, WASH_W, h)
+        val v = Paint().apply {
+            shader = LinearGradient(0f, m.toFloat(), 0f, (m + h).toFloat(), Palette.withAlpha(veil, top), Palette.withAlpha(veil, bottom), Shader.TileMode.CLAMP)
+        }
+        c.drawRect(dst, v)
+        c.drawBitmap(mask, 0f, 0f, Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN) })
+        c.drawBitmap(frame, 0f, 0f, null)
+        mask.recycle()
+        frame.recycle()
         return out
+    }
+
+    /** Triangular noise of about one level, from a small generator: a stretched wash bands on an 8 bit panel without it. */
+    private fun dither(p: IntArray) {
+        var s = 0x2545F491
+        for (i in p.indices) {
+            s = s xor (s shl 13); s = s xor (s ushr 17); s = s xor (s shl 5)
+            val n = ((s and 3) + ((s ushr 2) and 3) - 3) / 2
+            val c = p[i]
+            val r = (((c shr 16) and 0xFF) + n).coerceIn(0, 255)
+            val g = (((c shr 8) and 0xFF) + n).coerceIn(0, 255)
+            val b = ((c and 0xFF) + n).coerceIn(0, 255)
+            p[i] = (c and 0xFF000000.toInt()) or (r shl 16) or (g shl 8) or b
+        }
+    }
+
+    /** [round] off the main thread, then [done] on it. */
+    fun roundAsync(ctx: Context, cover: Bitmap, size: Int, radius: Int, done: (Bitmap) -> Unit) {
+        val app = ctx.applicationContext
+        worker.execute {
+            val b = round(app, cover, size, radius)
+            main.post { done(b) }
+        }
+    }
+
+    /**
+     * A cover rounded once, at its displayed size, so no cover uses clipToOutline: `DST_IN` with the plate drawn at that size. Big 204 r
+     * 20, widget 84 r 16, moving widget 72 r 14, mini 52 r 12, glance 44 r 12, row 56 r 12, album 120 r 16. Only on a worker.
+     */
+    fun round(ctx: Context, cover: Bitmap, size: Int, radius: Int): Bitmap {
+        var b = if (Build.VERSION.SDK_INT >= 26 && cover.config == Bitmap.Config.HARDWARE) cover.copy(Bitmap.Config.ARGB_8888, false) else cover
+        // the middle square, halved step by step: one bilinear step from 640 to 52 samples a few pixels and drops the rest
+        val side = minOf(b.width, b.height)
+        val src = Rect((b.width - side) / 2, (b.height - side) / 2, (b.width + side) / 2, (b.height + side) / 2)
+        var w = side
+        while (w / 2 >= size) {
+            val next = Bitmap.createBitmap(w / 2, w / 2, Bitmap.Config.ARGB_8888)
+            Canvas(next).drawBitmap(b, src, Rect(0, 0, next.width, next.height), FILTER)
+            if (b !== cover) b.recycle()
+            b = next
+            src.set(0, 0, next.width, next.height)
+            w = next.width
+        }
+        val out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val c = Canvas(out)
+        c.drawBitmap(b, src, Rect(0, 0, size, size), FILTER)
+        if (b !== cover) b.recycle()
+        val mask = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val mc = Canvas(mask)
+        // (the nearest baked plate at or over the radius, scaled to it: the same curve)
+        val baked = when { radius <= 12 -> 12; radius <= 16 -> 16; radius <= 18 -> 18; radius <= 20 -> 20; radius <= 23 -> 23; else -> 26 }
+        val k = radius / baked.toFloat()
+        mc.scale(k, k)
+        val plate = ctx.getDrawable(Plates.res(baked))!!.mutate()
+        plate.setBounds(0, 0, (size / k + .5f).toInt(), (size / k + .5f).toInt())
+        plate.draw(mc)
+        c.drawBitmap(mask, 0f, 0f, Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN) })
+        mask.recycle()
+        return out
+    }
+
+    /** A song with no cover, at any size: a `fill2` plate at the cover's rect with the `music` glyph in `ink2` at 45 % of its size. */
+    fun noArt(ctx: Context, size: Int, radius: Int): Drawable {
+        val plate = Tint(ctx, Plates.res(radius)) { Palette.fill2 }
+        val glyph = Tint(ctx, R.drawable.ic_music) { Palette.ink2 }
+        val inset = (size - size * 45 / 100) / 2
+        return LayerDrawable(arrayOf(plate.drawable, InsetDrawable(glyph.drawable, inset)))
     }
 }

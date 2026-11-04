@@ -85,13 +85,9 @@ class AppDrawer(ctx: Context, private val host: HomeHost) : Sheet(ctx, true) {
             layoutParams = flp(22.dp, 22.dp, Gravity.START or Gravity.CENTER_VERTICAL).apply { marginStart = 18.dp }
         })
         top.addView(searchBox, lp(0, Touch.MIN.dp, 1f))
-        val closeBtn = FrameLayout(ctx).apply {
-            background = Shapes.tonalOval()
-            isClickable = true
+        val closeBtn = com.abdllh.aura.ui.IconButton(ctx, R.drawable.ic_close, 28, Touch.MIN, Touch.MIN, token = { Palette.ink2 }).apply {
             contentDescription = ctx.getString(R.string.btn_cancel)
-            pressScale(Motion.PRESS_ICON)
             setOnClickListener { close() }
-            addView(ctx.iconView(R.drawable.ic_close, 24, Palette.text).apply { layoutParams = flp(24.dp, 24.dp, Gravity.CENTER) })
         }
         top.addView(closeBtn, lp(Touch.MIN.dp, Touch.MIN.dp).apply { marginStart = Space.M.dp })
         content.addView(top, lp(MATCH, WRAP))

@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The theme's few XML colours: the dark Palette's (ui/Palette.kt is the source; views take every colour from there).
-     Only the window theme reads these, before any code runs. -->
+<!-- The theme's few XML colours: only the window theme reads these, before any code runs, and it cannot know day from night, so
+     they are the one neutral of SPEC.md section 6.7 and the night tokens (views take every colour from ui/Palette.kt). -->
 <resources>
-    <color name="bg">#0B0C0E</color>
-    <color name="text">#F2F3F5</color>
-    <color name="text2">#A3A8B0</color>
-    <color name="text3">#80868F</color>
-    <color name="accent">#3E6AE1</color>
+    <color name="bg">#0B0D12</color>
+    <color name="text">#F4F6F9</color>
+    <color name="text2">#B7BFCC</color>
+    <color name="text3">#8D96A5</color>
+    <color name="accent">#2E63F9</color>
 </resources>

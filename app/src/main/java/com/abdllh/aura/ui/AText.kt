@@ -1,12 +1,13 @@
 package com.abdllh.aura.ui
 
 import android.content.Context
+import android.os.Build
 import android.util.AttributeSet
 import android.view.Gravity
 import android.widget.TextView
 import com.abdllh.aura.R
 
-/** TextView that picks the right typeface/weight for the current language. Use app:weight in XML. */
+/** TextView that takes its typeface from [Fonts] by weight or by role. Use app:weight in XML. */
 open class AText @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
@@ -37,6 +38,34 @@ open class AText @JvmOverloads constructor(
         }
         weight = w
         includeFontPadding = false
+    }
+
+    /**
+     * A one-line label of a role (SPEC.md section 3): 1.5 em tall, placed by [Type.Role.box] so that its centre is the line
+     * box's. An emoji in a title cannot move its baseline. [moving]: its weight on a moving screen, heavier at night.
+     */
+    fun oneLine(role: Type.Role, moving: Boolean = false) {
+        setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, role.sp)
+        typeface = Fonts.of(role, moving)
+        maxLines = 1
+        ellipsize = android.text.TextUtils.TruncateAt.END
+        if (Build.VERSION.SDK_INT >= 28) isFallbackLineSpacing = false
+    }
+
+    /** Text that wraps (only Settings' hints, the no-phone text, parked lyric lines): the role's line box, no multiplier. */
+    fun wrapping(role: Type.Role, lines: Int = 0, moving: Boolean = false) {
+        setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, role.sp)
+        typeface = Fonts.of(role, moving)
+        if (lines > 0) {
+            maxLines = lines
+            ellipsize = android.text.TextUtils.TruncateAt.END
+        }
+        if (Build.VERSION.SDK_INT >= 28) lineHeight = role.line
+    }
+
+    /** Letter-spacing in px, only ever on digits (section 3: clock -1, speed -0.5, a three-digit limit -0.8). */
+    fun digitSpacing(px: Float) {
+        letterSpacing = px / textSize
     }
 
     override fun setGravity(gravity: Int) {

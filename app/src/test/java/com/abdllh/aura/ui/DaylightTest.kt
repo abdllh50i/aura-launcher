@@ -47,14 +47,13 @@ class DaylightTest {
         assertEquals(4 * 60 + 47.0, rise2.toDouble(), 2.0)
     }
 
-    @Test fun nightStartsAtCivilDuskNotAtSunset() {
-        val nov3 = ksa(2026, 11, 3, 0, 0)
-        val sunset = minutesInto(nov3, crossing(jubail, ksa(2026, 11, 3, 15, 0), ksa(2026, 11, 3, 19, 0), -0.833, false))
-        val dusk = minutesInto(nov3, crossing(jubail, ksa(2026, 11, 3, 15, 0), ksa(2026, 11, 3, 19, 0), Daylight.NIGHT_BELOW_DEG, false))
-        // about 23 minutes of dusk at this latitude
-        assertEquals(23.0, (dusk - sunset).toDouble(), 3.0)
-        assertFalse(Daylight.isNight(jubail.first, jubail.second, ksa(2026, 11, 3, 17, 0)))
-        assertTrue(Daylight.isNight(jubail.first, jubail.second, ksa(2026, 11, 3, 17, 30)))
+    @Test fun nightStartsAtSunsetAndEndsAtSunrise() {
+        // SPEC.md section 8: day ends at Maghrib and begins at sunrise. Jubail, 3 Nov: 05:52 and 16:57
+        assertEquals(-0.833, Daylight.NIGHT_BELOW_DEG, 0.0)
+        assertFalse(Daylight.isNight(jubail.first, jubail.second, ksa(2026, 11, 3, 16, 50)))
+        assertTrue(Daylight.isNight(jubail.first, jubail.second, ksa(2026, 11, 3, 17, 5)))
+        assertTrue(Daylight.isNight(jubail.first, jubail.second, ksa(2026, 11, 3, 5, 45)))
+        assertFalse(Daylight.isNight(jubail.first, jubail.second, ksa(2026, 11, 3, 6, 0)))
     }
 
     @Test fun middayAndMidnightEveryMonth() {

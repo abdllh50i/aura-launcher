@@ -14,7 +14,7 @@ import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Radius
-import com.abdllh.aura.ui.RoundBtn
+import com.abdllh.aura.ui.IconButton
 import com.abdllh.aura.ui.Shapes
 import com.abdllh.aura.ui.Space
 import com.abdllh.aura.ui.Touch
@@ -50,11 +50,11 @@ class CarPanel(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
     /** The quick buttons' capsule. */
     val quick: LinearLayout
 
-    private val wifi = RoundBtn(ctx, R.drawable.ic_wifi, BTN, flat = true)
-    private val link = RoundBtn(ctx, R.drawable.ic_smartphone, BTN, flat = true)
-    private val screenOff = RoundBtn(ctx, R.drawable.ic_power, BTN, flat = true)
-    private val car = RoundBtn(ctx, R.drawable.ic_car, BTN, flat = true)
-    private val voice = RoundBtn(ctx, R.drawable.ic_mic, BTN, flat = true)
+    private val wifi = IconButton(ctx, R.drawable.ic_wifi, 30, BTN, BTN)
+    private val link = IconButton(ctx, R.drawable.ic_smartphone, 30, BTN, BTN)
+    private val screenOff = IconButton(ctx, R.drawable.ic_power, 30, BTN, BTN)
+    private val car = IconButton(ctx, R.drawable.ic_car, 30, BTN, BTN)
+    private val voice = IconButton(ctx, R.drawable.ic_mic, 30, BTN, BTN)
 
     init {
         orientation = VERTICAL

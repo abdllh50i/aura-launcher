@@ -91,7 +91,7 @@ class GuidanceBanner(ctx: Context, val compact: Boolean = false) : LinearLayout(
         top.addView(icon, lp(iconSize.dp, iconSize.dp))
         // the distance in the display role (tabular figures: a changing number does not jiggle); MATCH widths, so a
         // new number on every fix only redraws the line instead of measuring the screen again
-        dist = if (compact) ctx.label(Type.HEADLINE, on).apply { fontFeatureSettings = "tnum" } else ctx.label(Type.DISPLAY_M, on)
+        dist = if (compact) ctx.label(Type.HEADLINE, on) else ctx.label(Type.DISPLAY_M, on)
         action = ctx.label(if (compact) Type.BODY else Type.TITLE, on)
         // every word on the sign in full white (a faded one fell under 4.5:1 on it): the lines differ by size alone
         road = ctx.label(if (compact) Type.FOOTNOTE else Type.BODY, on).apply { ellipsize = TextUtils.TruncateAt.END }
@@ -104,8 +104,8 @@ class GuidanceBanner(ctx: Context, val compact: Boolean = false) : LinearLayout(
             top.addView(View(ctx).apply { setBackgroundColor(Palette.withAlpha(on, 0.25f)) },
                 lp(1.dp, 40.dp).apply { marginStart = Space.M.dp; marginEnd = Space.M.dp })
             val eta = LinearLayout(ctx).apply { orientation = VERTICAL }
-            arriveAt = ctx.label(Type.LABEL, on).apply { fontFeatureSettings = "tnum" }
-            left = ctx.label(Type.CAPTION, on).apply { fontFeatureSettings = "tnum" }
+            arriveAt = ctx.label(Type.LABEL, on)
+            left = ctx.label(Type.CAPTION, on)
             eta.addView(arriveAt, lp(MATCH, WRAP))
             eta.addView(left, lp(MATCH, WRAP))
             top.addView(eta, lp(104.dp, WRAP))
@@ -246,16 +246,11 @@ class GuidanceBanner(ctx: Context, val compact: Boolean = false) : LinearLayout(
 /**
  * The colours of guidance, one for every map and sign: the route line, the turn arrow, the car and the destination
  * on the map ([MapStyle.routeBase]) and the sign over it, so what the sign says and what the map shows are one thing.
- * They follow the owner's accent where it can mean "the way": blue, cyan and violet. The others would change their
- * meaning or sink into the map: green is the parks' colour, amber the motorways' and a warning, red the End button's
- * and the cameras', graphite the roads' and reads as switched off; those guide in the default blue.
+ * The one accent, the logo's blue.
  */
 object Guide {
-    // (the swatches themselves, as Settings offers them: blue, cyan, violet)
-    private val FOR_GUIDING = setOf(Palette.accents[0], Palette.accents[1], Palette.accents[5])
-
     /** The route's colour (a fill: the line, the turn arrow, the car, the sign's base). */
-    fun color(): Int = Palette.accent.takeIf { it in FOR_GUIDING } ?: Palette.DEFAULT_ACCENT
+    fun color(): Int = Palette.accent
 
     /**
      * The sign's fill: [color], deepened just enough for white words on it to read at 4.5:1 (on the cyan accent

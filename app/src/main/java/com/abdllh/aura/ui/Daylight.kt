@@ -12,18 +12,17 @@ import kotlin.math.tan
 
 /**
  * Day or night under the "auto" theme, from the real sun: its height at the car's last fix, at this moment (NOAA's solar
- * position formulas, good to a small part of a degree: under a minute or two of time at these latitudes). The screen
- * goes dark at civil dusk, the sun 6 degrees under the horizon (about 23 minutes after sunset here; the sky is still
- * light before that), and light again at civil dawn. The date-only estimate this replaces was one for the whole Gulf:
- * up to 33 minutes off in the Eastern Province.
+ * position formulas, good to a small part of a degree: under a minute or two of time at these latitudes). Night is the sun
+ * under the horizon as an almanac counts it, so day ends at Maghrib and begins at sunrise (SPEC.md section 8). The date-only
+ * estimate this replaces was one for the whole Gulf: up to 33 minutes off in the Eastern Province.
  */
 object Daylight {
-    /** Civil dusk and dawn. */
-    const val NIGHT_BELOW_DEG = -6.0
+    /** The sun's upper edge with refraction: sunset and sunrise, the moments prayer times use. */
+    const val NIGHT_BELOW_DEG = -0.833
 
-    /** Before the first fix this unit ever had: the owner's part of the Gulf. */
-    private const val HOME_LAT = 26.9
-    private const val HOME_LON = 49.6
+    /** Before the first fix this unit ever had: Dammam. */
+    private const val HOME_LAT = 26.43
+    private const val HOME_LON = 50.10
 
     /** Night now, where the car is (or last was). */
     fun isNightNow(): Boolean {

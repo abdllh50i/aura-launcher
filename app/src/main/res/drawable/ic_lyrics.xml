@@ -1,27 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- lyrics: lines of text beside a note -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
     <path
-        android:pathData="M3,6L13,6M3,11L13,11M3,16L9,16"
-        android:fillColor="#00000000"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="1.7"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"/>
-    <path
-        android:pathData="M19,17.5L19,6.5L22,5.5"
-        android:fillColor="#00000000"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="1.7"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"/>
-    <path
-        android:pathData="M16.5,17.5m-2.5,0a2.5,2.5 0,1 1,5 0a2.5,2.5 0,1 1,-5 0"
-        android:fillColor="#00000000"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="1.7"/>
+        android:pathData="M4.8 3.5h14.4A2.3 2.3 0 0 1 21.5 5.8v9.4a2.3 2.3 0 0 1-2.3 2.3h-6.7l-4.3 3.3c-.7.5-1.7 0-1.7-.9v-2.4H4.8a2.3 2.3 0 0 1-2.3-2.3V5.8a2.3 2.3 0 0 1 2.3-2.3Zm2.7 4.5a1 1 0 0 0 0 2h9a1 1 0 0 0 0-2Zm0 3.7a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2Z"
+        android:fillColor="#FFFFFFFF"/>
 </vector>

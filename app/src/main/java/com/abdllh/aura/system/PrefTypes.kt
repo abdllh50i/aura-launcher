@@ -25,7 +25,7 @@ object PrefTypes {
             "b" to "adbBridge amriOn amriSpeak askedLocation auraRing betaLeftoversGone btCoverOnline btDelayHinted builtInMaps callCard " +
                 "circlesOff1 clock24 dockLabels fullOffOnAccOff handbrakeFake hideAndroidNotices hideStatusBar lyricsListen lyricsWords " +
                 "markCameraButton musicKeysAura musicLyrics musicLyricsFull navVoice removedRequested1 replaceStockMusic safeModeNotice " +
-                "screenAnimations setupBannerDismissed setupDone showMessageText showPhoneMessages stockMusicWasDisabled updateAuto " +
+                "pressTick screenAnimations setupBannerDismissed setupDone showMessageText showPhoneMessages stockMusicWasDisabled updateAuto " +
                 "updateBeta volumeHud wifiKeeper wifiOnStart zlinkGuard zlinkWifiWasOn",
             "i" to "accOffModeSent accent amriMic amriSens bootAnimCheckedFor btDelayMs circlesOffTries handbrakeSeen removedRequestedTries " +
                 "zlinkOrigStyle",

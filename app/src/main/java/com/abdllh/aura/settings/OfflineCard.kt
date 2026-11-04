@@ -11,6 +11,7 @@ import com.abdllh.aura.ui.AText
 import com.abdllh.aura.ui.Confirm
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Palette
+import com.abdllh.aura.ui.ProgressBar
 import com.abdllh.aura.ui.Space
 import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.WRAP

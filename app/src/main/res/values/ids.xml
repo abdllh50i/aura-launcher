@@ -10,4 +10,10 @@
     <item name="aura_move_elevation" type="id" />
     <!-- the message an activity shows (ui/Snack.kt), on its content view -->
     <item name="aura_snack" type="id" />
+    <!-- what a view does at a theme change (ui/Look.kt) -->
+    <item name="aura_look" type="id" />
+    <!-- a hidden panel that has not taken the new theme yet (ui/Look.kt) -->
+    <item name="aura_look_stale" type="id" />
+    <!-- a view's PressGesture when pressScale made it (ui/PressGesture.kt) -->
+    <item name="aura_press_gesture" type="id" />
 </resources>

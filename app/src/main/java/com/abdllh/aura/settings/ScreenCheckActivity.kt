@@ -23,7 +23,9 @@ import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Radius
 import com.abdllh.aura.ui.Shapes
 import com.abdllh.aura.ui.Snack
+import com.abdllh.aura.ui.ProgressBar
 import com.abdllh.aura.ui.Space
+import com.abdllh.aura.ui.Spinner
 import com.abdllh.aura.ui.Theme
 import com.abdllh.aura.ui.Touch
 import com.abdllh.aura.ui.Type
@@ -337,7 +339,6 @@ internal class ReportSection(val title: String) {
             row.addView(c.label(Type.FOOTNOTE, Palette.text, lines = if (long) 6 else 1).apply {
                 text = value
                 textDirection = View.TEXT_DIRECTION_FIRST_STRONG_LTR
-                fontFeatureSettings = "tnum"
             }, if (long) lp(MATCH, WRAP) else lp(WRAP, WRAP).apply { marginStart = Space.M.dp })
             addView(row, lp(MATCH, WRAP).apply { topMargin = Space.S.dp })
         }

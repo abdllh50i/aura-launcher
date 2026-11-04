@@ -22,6 +22,7 @@ import com.abdllh.aura.system.VolumeHud
 import com.abdllh.aura.music.BtMusic
 import com.abdllh.aura.music.Player
 import com.abdllh.aura.ui.Fonts
+import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Theme
 import com.abdllh.aura.update.UpdateManager
 import com.abdllh.aura.util.Dp
@@ -54,6 +55,7 @@ class AuraApp : Application() {
         if (BuildConfig.DEBUG) com.abdllh.aura.system.PrefTypes.check(this)
         Theme.refresh()
         Fonts.init(this)
+        if (BuildConfig.DEBUG) Palette.contrastFaults().forEach { android.util.Log.e("AuraPalette", it) }
         // the map's own tile server and the offline map (before any map style is built)
         com.abdllh.aura.nav.offline.OfflineMaps.init(this)
         com.abdllh.aura.nav.MapExtras.init(this) // what the owner added to the map (cameras, bumps, signals, limits)

@@ -11,7 +11,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import com.abdllh.aura.util.dp
 
-/** Small view-building helpers shared by the home screen and the settings pages. */
+/** Small view-building helpers shared by every screen. */
 
 const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
 const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
@@ -44,24 +44,30 @@ fun Context.label(
 }
 
 /**
- * A label in one of the [Type] roles (the preferred way since 1.12). Text that may wrap ([lines] other than 1) gets
- * 1.15 line spacing: Arabic's marks above and below the letters touch the next line at 1.0.
+ * A label in one of the [Type] roles, built as SPEC.md section 3 says: one line, 1.5 em tall, or for text that wraps
+ * ([lines] other than 1) the role's line box with no multiplier. Its colour here is fixed; `.ink { Palette.ink2 }` makes it
+ * follow the theme.
  */
 fun Context.label(
     role: Type.Role,
     color: Int = Palette.text,
     lines: Int = 1,
     gravity: Int = Gravity.NO_GRAVITY
-): AText = label(role.sp, color, role.weight, lines, gravity).apply {
-    if (role.tabular) fontFeatureSettings = "tnum"
-    if (lines != 1) setLineSpacing(0f, 1.15f)
+): AText = AText(this).apply {
+    setTextColor(color)
+    if (lines == 1) oneLine(role) else wrapping(role, lines)
+    alignStart = true
+    if (gravity != Gravity.NO_GRAVITY) this.gravity = gravity
 }
 
-/** Gives an existing label a [Type] role (size, weight, figures). */
+/** A label of a role whose colour is a token, in this theme and the next. */
+fun Context.label(role: Type.Role, token: () -> Int, lines: Int = 1, gravity: Int = Gravity.NO_GRAVITY): AText =
+    label(role, token(), lines, gravity).ink(token)
+
+/** Gives an existing label a [Type] role (size and weight). */
 fun AText.textRole(role: Type.Role) {
     textSize = role.sp
     weight = role.weight
-    fontFeatureSettings = if (role.tabular) "tnum" else null
 }
 
 fun Context.iconView(res: Int, sizeDp: Int, tint: Int = Palette.text): ImageView = ImageView(this).apply {
@@ -71,56 +77,17 @@ fun Context.iconView(res: Int, sizeDp: Int, tint: Int = Palette.text): ImageView
     layoutParams = LinearLayout.LayoutParams(sizeDp.dp, sizeDp.dp)
 }
 
+/** A glyph whose colour is a token, in this theme and the next. */
+fun Context.iconView(res: Int, sizeDp: Int, token: () -> Int): ImageView = iconView(res, sizeDp, token()).glyph(token)
+
 fun Context.spacer(wDp: Int = 0, hDp: Int = 0, weight: Float = 0f): View = View(this).apply {
     layoutParams = LinearLayout.LayoutParams(if (weight > 0f && wDp == 0) 0 else wDp.dp, if (weight > 0f && hDp == 0) 0 else hDp.dp, weight)
 }
 
 /**
- * Round icon button (quick toggles). [active] tints the icon with the accent colour (its foreground form,
- * [Palette.accentFg]). [flat]: no surface of its own (it sits in a strip that has one); active, a soft accent circle
- * shows.
- */
-class RoundBtn(context: Context, private val res: Int, private val sizeDp: Int = Touch.MIN, private val flat: Boolean = false) : FrameLayout(context) {
-    private val img = ImageView(context)
-    var active = false
-        set(v) { field = v; restyle() }
-
-    init {
-        isClickable = true
-        isFocusable = true
-        layoutParams = LinearLayout.LayoutParams(sizeDp.dp, sizeDp.dp)
-        img.setImageResource(res)
-        img.scaleType = ImageView.ScaleType.FIT_CENTER
-        val pad = (sizeDp * 0.27f).toInt().dp
-        addView(img, flp(MATCH, MATCH).also { it.setMargins(pad, pad, pad, pad) })
-        restyle()
-        pressScale(Motion.PRESS_ICON)
-    }
-
-    fun setIcon(r: Int) { img.setImageResource(r) }
-
-    private fun restyle() {
-        if (flat) {
-            background = Shapes.pressable(Shapes.oval(if (active) Palette.accentSoft() else 0), Shapes.oval(Palette.press))
-            img.setColorFilter(if (active) Palette.accentFg else Palette.text)
-            return
-        }
-        // light theme: white buttons lifted by a soft shadow; dark theme: flat tonal buttons
-        background = Shapes.pressable(
-            if (active) Shapes.oval(Palette.mix(if (Palette.dark) Palette.card2 else Palette.card, Palette.accent, if (Palette.dark) 0.18f else 0.12f))
-            else Shapes.oval(if (Palette.dark) Palette.card2 else Palette.card),
-            Shapes.oval(Palette.card3)
-        )
-        lift(Elev.REST)
-        img.setColorFilter(if (active) Palette.accentFg else Palette.text)
-    }
-
-    fun refreshTheme() = restyle()
-}
-
-/**
  * Rounded corners of [radiusDp] as seen: a view that is shown scaled ([LayoutMove]) keeps its roundness when its
  * outline is asked for again on the way (invalidateOutline), instead of corners that swell and shrink with it.
+ * Old screens only: a new surface is baked (SPEC.md section 4).
  */
 fun View.roundedClip(radiusDp: Float) {
     clipToOutline = true

@@ -1,0 +1,692 @@
+{
+ "home": {
+  "group": "dock",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "nav": {
+  "group": "dock",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "music": {
+  "group": "dock",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "phone": {
+  "group": "dock",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "apps": {
+  "group": "dock",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "gear": {
+  "group": "dock",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "mic": {
+  "group": "control",
+  "mirrorInRtl": false,
+  "form": "mixed"
+ },
+ "mic-off": {
+  "group": "control",
+  "mirrorInRtl": false,
+  "form": "mixed"
+ },
+ "vol-mute": {
+  "group": "control",
+  "mirrorInRtl": false,
+  "form": "mixed"
+ },
+ "vol-low": {
+  "group": "control",
+  "mirrorInRtl": false,
+  "form": "mixed"
+ },
+ "vol": {
+  "group": "control",
+  "mirrorInRtl": false,
+  "form": "mixed"
+ },
+ "minus": {
+  "group": "control",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "plus": {
+  "group": "control",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "play": {
+  "group": "media",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "pause": {
+  "group": "media",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "next": {
+  "group": "media",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "prev": {
+  "group": "media",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "shuffle": {
+  "group": "media",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "repeat": {
+  "group": "media",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "repeat-one": {
+  "group": "media",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "queue": {
+  "group": "media",
+  "mirrorInRtl": false,
+  "form": "mixed"
+ },
+ "lyrics": {
+  "group": "media",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "expand": {
+  "group": "media",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "collapse": {
+  "group": "media",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "gps": {
+  "group": "status",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "gps-off": {
+  "group": "status",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "wifi": {
+  "group": "status",
+  "mirrorInRtl": false,
+  "form": "mixed"
+ },
+ "wifi-off": {
+  "group": "status",
+  "mirrorInRtl": false,
+  "form": "mixed"
+ },
+ "iphone": {
+  "group": "status",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "iphone-off": {
+  "group": "status",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "bluetooth": {
+  "group": "status",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "hotspot": {
+  "group": "status",
+  "mirrorInRtl": false,
+  "form": "mixed"
+ },
+ "usb": {
+  "group": "status",
+  "mirrorInRtl": false,
+  "form": "mixed"
+ },
+ "search": {
+  "group": "place",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "close": {
+  "group": "control",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "clear": {
+  "group": "control",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "chev-left": {
+  "group": "control",
+  "mirrorInRtl": true,
+  "form": "stroke"
+ },
+ "chev-right": {
+  "group": "control",
+  "mirrorInRtl": true,
+  "form": "stroke"
+ },
+ "chev-up": {
+  "group": "control",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "chev-down": {
+  "group": "control",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "back": {
+  "group": "control",
+  "mirrorInRtl": true,
+  "form": "stroke"
+ },
+ "pin": {
+  "group": "place",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "star": {
+  "group": "place",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "star-on": {
+  "group": "place",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "share": {
+  "group": "place",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "send": {
+  "group": "place",
+  "mirrorInRtl": true,
+  "form": "filled"
+ },
+ "work": {
+  "group": "place",
+  "mirrorInRtl": false,
+  "form": "mixed"
+ },
+ "bag": {
+  "group": "place",
+  "mirrorInRtl": false,
+  "form": "mixed"
+ },
+ "food": {
+  "group": "place",
+  "mirrorInRtl": false,
+  "form": "mixed"
+ },
+ "cafe": {
+  "group": "place",
+  "mirrorInRtl": false,
+  "form": "mixed"
+ },
+ "fuel": {
+  "group": "place",
+  "mirrorInRtl": false,
+  "form": "mixed"
+ },
+ "health": {
+  "group": "place",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "worship": {
+  "group": "place",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "parking": {
+  "group": "place",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "lodging": {
+  "group": "place",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "bank": {
+  "group": "place",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "school": {
+  "group": "place",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "park": {
+  "group": "place",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "sight": {
+  "group": "place",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "public": {
+  "group": "place",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "cam": {
+  "group": "road",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "cam-add": {
+  "group": "road",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "signal": {
+  "group": "road",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "bump": {
+  "group": "road",
+  "mirrorInRtl": false,
+  "form": "mixed"
+ },
+ "flag": {
+  "group": "road",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "route": {
+  "group": "road",
+  "mirrorInRtl": false,
+  "form": "mixed"
+ },
+ "reroute": {
+  "group": "road",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "locate": {
+  "group": "road",
+  "mirrorInRtl": false,
+  "form": "mixed"
+ },
+ "compass": {
+  "group": "road",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "overview": {
+  "group": "road",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "go-straight": {
+  "group": "turn",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "turn-right": {
+  "group": "turn",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "turn-left": {
+  "group": "turn",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "slight-right": {
+  "group": "turn",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "slight-left": {
+  "group": "turn",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "sharp-right": {
+  "group": "turn",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "sharp-left": {
+  "group": "turn",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "uturn-right": {
+  "group": "turn",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "uturn-left": {
+  "group": "turn",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "merge-right": {
+  "group": "turn",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "merge-left": {
+  "group": "turn",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "fork-right": {
+  "group": "turn",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "fork-left": {
+  "group": "turn",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "ramp-right": {
+  "group": "turn",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "ramp-left": {
+  "group": "turn",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "arrive": {
+  "group": "turn",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "round-right": {
+  "group": "turn",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "round-straight": {
+  "group": "turn",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "round-left": {
+  "group": "turn",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "round-uturn": {
+  "group": "turn",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "lane-straight": {
+  "group": "lane",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "lane-right": {
+  "group": "lane",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "lane-left": {
+  "group": "lane",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "lane-slight-right": {
+  "group": "lane",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "lane-slight-left": {
+  "group": "lane",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "lane-uturn": {
+  "group": "lane",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "hang": {
+  "group": "call",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "person": {
+  "group": "call",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "keypad": {
+  "group": "call",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "message": {
+  "group": "call",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "sun": {
+  "group": "theme",
+  "mirrorInRtl": false,
+  "form": "mixed"
+ },
+ "sun-dim": {
+  "group": "theme",
+  "mirrorInRtl": false,
+  "form": "mixed"
+ },
+ "moon": {
+  "group": "theme",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "auto": {
+  "group": "theme",
+  "mirrorInRtl": false,
+  "form": "mixed"
+ },
+ "sunset": {
+  "group": "theme",
+  "mirrorInRtl": false,
+  "form": "mixed"
+ },
+ "sunrise": {
+  "group": "theme",
+  "mirrorInRtl": false,
+  "form": "mixed"
+ },
+ "clock": {
+  "group": "theme",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "screen": {
+  "group": "settings",
+  "mirrorInRtl": false,
+  "form": "mixed"
+ },
+ "map": {
+  "group": "settings",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "car": {
+  "group": "settings",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "info": {
+  "group": "settings",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "language": {
+  "group": "settings",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "lock": {
+  "group": "settings",
+  "mirrorInRtl": false,
+  "form": "mixed"
+ },
+ "power": {
+  "group": "settings",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "update": {
+  "group": "settings",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "check": {
+  "group": "settings",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "check-round": {
+  "group": "settings",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "warn": {
+  "group": "settings",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "refresh": {
+  "group": "settings",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "trash": {
+  "group": "settings",
+  "mirrorInRtl": false,
+  "form": "mixed"
+ },
+ "edit": {
+  "group": "settings",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "qr": {
+  "group": "settings",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "link": {
+  "group": "settings",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "brightness": {
+  "group": "settings",
+  "mirrorInRtl": false,
+  "form": "mixed"
+ },
+ "eq": {
+  "group": "settings",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "bell": {
+  "group": "settings",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "bell-off": {
+  "group": "settings",
+  "mirrorInRtl": false,
+  "form": "mixed"
+ },
+ "radio": {
+  "group": "apps",
+  "mirrorInRtl": false,
+  "form": "mixed"
+ },
+ "video": {
+  "group": "apps",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "cam360": {
+  "group": "apps",
+  "mirrorInRtl": false,
+  "form": "mixed"
+ },
+ "files": {
+  "group": "apps",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "steering": {
+  "group": "apps",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "tools": {
+  "group": "apps",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "globe": {
+  "group": "apps",
+  "mirrorInRtl": false,
+  "form": "stroke"
+ },
+ "gallery": {
+  "group": "apps",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "android": {
+  "group": "apps",
+  "mirrorInRtl": false,
+  "form": "mixed"
+ },
+ "camera-app": {
+  "group": "apps",
+  "mirrorInRtl": false,
+  "form": "filled"
+ },
+ "yt": {
+  "group": "apps",
+  "mirrorInRtl": false,
+  "form": "filled"
+ }
+}

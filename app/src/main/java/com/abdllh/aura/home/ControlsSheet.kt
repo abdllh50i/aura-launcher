@@ -40,8 +40,8 @@ import com.abdllh.aura.util.dp
 class ControlsSheet(ctx: Context, private val host: HomeHost) : Sheet(ctx, false) {
     private val brightness = AuraSlider(ctx).apply { max = 100; setIcon(R.drawable.ic_sun) }
     private val volume = AuraSlider(ctx).apply { setIcon(R.drawable.ic_volume) }
-    private val brightValue: AText = ctx.label(Type.BODY, Palette.text2).apply { fontFeatureSettings = "tnum" }
-    private val volValue: AText = ctx.label(Type.BODY, Palette.text2).apply { fontFeatureSettings = "tnum" }
+    private val brightValue: AText = ctx.label(Type.BODY, Palette.text2)
+    private val volValue: AText = ctx.label(Type.BODY, Palette.text2)
     private val updatePill: LinearLayout
     private val updateText: AText = ctx.label(Type.BUTTON, Palette.accentFg)
 
@@ -78,13 +78,9 @@ class ControlsSheet(ctx: Context, private val host: HomeHost) : Sheet(ctx, false
             addView(updateText, lp(WRAP, WRAP).apply { marginStart = Space.S.dp })
         }
         head.addView(updatePill, lp(WRAP, Touch.MIN.dp).apply { marginEnd = Space.M.dp })
-        val closeBtn = FrameLayout(ctx).apply {
-            background = Shapes.tonalOval()
-            isClickable = true
+        val closeBtn = com.abdllh.aura.ui.IconButton(ctx, R.drawable.ic_close, 28, Touch.MIN, Touch.MIN, token = { Palette.ink2 }).apply {
             contentDescription = ctx.getString(R.string.btn_cancel)
-            pressScale(Motion.PRESS_ICON)
             setOnClickListener { close() }
-            addView(ctx.iconView(R.drawable.ic_close, 24, Palette.text).apply { layoutParams = flp(24.dp, 24.dp, Gravity.CENTER) })
         }
         head.addView(closeBtn, lp(Touch.MIN.dp, Touch.MIN.dp))
         content.addView(head, lp(MATCH, WRAP))

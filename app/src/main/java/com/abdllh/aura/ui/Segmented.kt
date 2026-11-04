@@ -2,72 +2,92 @@ package com.abdllh.aura.ui
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.RectF
+import android.graphics.drawable.Drawable
 import android.view.Gravity
+import android.view.MotionEvent
+import android.widget.FrameLayout
 import android.widget.LinearLayout
-import com.abdllh.aura.util.dp
+import com.abdllh.aura.R
 import kotlin.math.max
 import kotlin.math.min
 
 /**
- * Choices side by side in a pill; the chosen one sits on a filled indicator that slides to a new choice (its two edges
- * on springs of their own, so it stretches a little on the way, like a drop of liquid). [equal]: all choices as wide
- * (tabs); otherwise each as wide as its label. Give it at least [Touch.MIN] of height.
- * A label takes the colour of the indicator's text as the indicator comes over it, by how much of it is covered:
- * recoloured at the tap, the new label showed white on the light track (unreadable) until the indicator arrived.
+ * Choices side by side on a track (`plate-18` in `fill`); the chosen one sits on the thumb (`seg-on-52`), which slides to a new
+ * choice with its two edges on springs of their own, so it stretches a little on the way, like a drop of liquid. [equal]: all
+ * choices as wide (tabs); otherwise each as wide as its label. Height 60, at most [maxW] wide (SPEC.md section 5).
+ *
+ * The chosen label is medium, the others regular, and a label is drawn in the thumb's text colour by how much of it the thumb
+ * covers. Both faces of a label are there at rest and only their alpha moves: no layout and no text drawn again while the thumb
+ * slides, and no jump of weight.
  */
 class Segmented(
     ctx: Context,
     labels: List<String>,
     private val equal: Boolean,
-    textSp: Float = 16f,
+    @Suppress("UNUSED_PARAMETER") textSp: Float = 0f,
+    private val maxW: Int = 440,
+    private val fixedH: Int = 60,
     private val onSelect: (Int) -> Unit
-) : LinearLayout(ctx) {
-    private val items: List<AText>
-    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val r = RectF()
-    // the indicator's edges (View's own left/right are its position in the parent)
+) : LinearLayout(ctx), Recolours {
+    private inner class Item(ctx: Context, i: Int, s: String) : FrameLayout(ctx) {
+        val off = ctx.label(Type.segment, Palette.ink, gravity = Gravity.CENTER)
+        val on = ctx.label(Type.segment, Palette.onAccent, gravity = Gravity.CENTER)
+        private val gesture = PressGesture(this, PressGesture.CONTROL)
+
+        init {
+            off.text = s
+            on.text = s
+            on.typeface = Fonts.get(500)
+            on.alpha = 0f
+            isClickable = true
+            setPadding(10, 0, 10, 0)
+            addView(off, flp(MATCH, MATCH))
+            addView(on, flp(MATCH, MATCH))
+            setOnClickListener { if (i != selected) { select(i); onSelect(i) } }
+        }
+
+        override fun dispatchTouchEvent(e: MotionEvent): Boolean {
+            gesture.onTouch(e)
+            return super.dispatchTouchEvent(e)
+        }
+    }
+
+    private val items: List<Item>
+    private val track = Tint(ctx, R.drawable.plate_18) { Palette.fill }
+    private val thumb: Drawable = ctx.getDrawable(R.drawable.seg_on_52)!!
+    // the thumb's edges (View's own left/right are its position in the parent)
     private var edgeL = 0f
     private var edgeR = 0f
     private var placed = false
-    private val leftSpring = Spring(0f, 520f, 0.82f, 0.5f) { edgeL = it; moved() }
-    private val rightSpring = Spring(0f, 520f, 0.82f, 0.5f) { edgeR = it; moved() }
+    private val leftSpring = Spring(0f, Tokens2.SPRING_segment[0], Tokens2.SPRING_segment[1], 0.5f) { edgeL = it; moved() }
+    private val rightSpring = Spring(0f, Tokens2.SPRING_segment[0], Tokens2.SPRING_segment[1], 0.5f) { edgeR = it; moved() }
     var selected = 0
         private set
-    var indicator = Palette.accent
-        set(v) { if (v != field) { field = v; tint(); invalidate() } }
-    /** Text on the indicator ([Palette.onColor] of it when 0). */
+
+    /** Old screens set the thumb's colour here. The thumb is one bitmap in 2.0, the logo's blue. */
+    var indicator = 0
     var onIndicator = 0
-        set(v) { field = v; tint() }
     var trackColor = 0
-        set(v) { field = v; invalidate() }
-    private val pad = Space.XS.dp
 
     init {
         orientation = HORIZONTAL
         setWillNotDraw(false)
-        setPadding(pad, pad, pad, pad)
-        items = labels.mapIndexed { i, s ->
-            ctx.label(textSp, Palette.text2, Fonts.MEDIUM, gravity = Gravity.CENTER).apply {
-                text = s
-                isClickable = true
-                setPadding(18.dp, 0, 18.dp, 0)
-                pressScale(Motion.PRESS_CONTROL)
-                setOnClickListener { if (i != selected) { select(i); onSelect(i) } }
-            }
+        background = track.drawable
+        setPadding(PAD, PAD, PAD, PAD)
+        items = labels.mapIndexed { i, s -> Item(ctx, i, s) }
+        for ((i, v) in items.withIndex()) {
+            addView(v, (if (equal) lp(0, MATCH, 1f) else lp(WRAP, MATCH)).apply { if (i > 0) marginStart = GAP })
         }
-        for (v in items) addView(v, if (equal) lp(0, MATCH, 1f) else lp(WRAP, MATCH))
         tint()
     }
 
-    /** The label of choice [i] (to give one its own typeface, as the language picker's "العربية"). */
-    fun item(i: Int): AText = items[i]
+    /** The label of choice [i], in its plain face. */
+    fun item(i: Int): AText = items[i].off
 
     fun select(i: Int, animate: Boolean = true) {
         selected = i.coerceIn(0, items.size - 1)
         val v = items[selected]
-        if (v.width == 0) { placed = false; tint(); requestLayout(); return } // placed when laid out
+        if (v.width == 0) { placed = false; tint(); return } // placed when laid out
         val l = v.left.toFloat()
         val rt = v.right.toFloat()
         if (!animate || !placed || !isShown) {
@@ -81,9 +101,15 @@ class Segmented(
         }
     }
 
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        var w = widthMeasureSpec
+        if (MeasureSpec.getMode(w) != MeasureSpec.UNSPECIFIED && MeasureSpec.getSize(w) > maxW) w = MeasureSpec.makeMeasureSpec(maxW, MeasureSpec.getMode(w))
+        super.onMeasure(w, MeasureSpec.makeMeasureSpec(fixedH, MeasureSpec.EXACTLY))
+    }
+
     override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
         super.onLayout(changed, l, t, r, b)
-        // (the indicator is in this view's own coordinates: moving the whole control changes nothing for it)
+        // (the thumb is in this view's own coordinates: moving the whole control changes nothing for it)
         val v = items[selected]
         val nl = v.left.toFloat()
         val nr = v.right.toFloat()
@@ -100,29 +126,38 @@ class Segmented(
         invalidate()
     }
 
-    /** Each label in the indicator's text colour by the share of it the indicator covers (before placing: the chosen one). */
+    /** Each label's two faces by the share of it the thumb covers (before placing: the chosen one). */
     private fun tint() {
-        val on = if (onIndicator != 0) onIndicator else Palette.onColor(indicator)
         for ((i, v) in items.withIndex()) {
             val cover = if (!placed || v.width == 0) (if (i == selected) 1f else 0f)
             else ((min(edgeR, v.right.toFloat()) - max(edgeL, v.left.toFloat())).coerceAtLeast(0f) / v.width)
-            v.setTextColor(Palette.mix(Palette.text2, on, cover))
+            v.on.alpha = cover
+            v.off.alpha = 1f - cover
         }
     }
 
+    override fun onLook() {
+        track.recolour()
+        for (v in items) { v.off.setTextColor(Palette.ink); v.on.setTextColor(Palette.onAccent) }
+        invalidate()
+    }
+
     override fun dispatchDraw(c: Canvas) {
-        val h = height.toFloat()
-        if (trackColor != 0) {
-            p.color = trackColor
-            r.set(0f, 0f, width.toFloat(), h)
-            c.drawRoundRect(r, h / 2, h / 2, p)
-        }
         if (placed && edgeR > edgeL) {
-            p.color = indicator
-            r.set(edgeL, pad.toFloat(), edgeR, h - pad)
-            val rr = (h - 2 * pad) / 2
-            c.drawRoundRect(r, rr, rr, p)
+            thumb.setBounds(edgeL.toInt(), PAD, edgeR.toInt(), height - PAD)
+            thumb.draw(c)
         }
         super.dispatchDraw(c)
+    }
+
+    override fun onDetachedFromWindow() {
+        leftSpring.snapTo(leftSpring.target)
+        rightSpring.snapTo(rightSpring.target)
+        super.onDetachedFromWindow()
+    }
+
+    private companion object {
+        const val PAD = 4
+        const val GAP = 4
     }
 }

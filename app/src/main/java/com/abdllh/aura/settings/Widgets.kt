@@ -1,10 +1,6 @@
 package com.abdllh.aura.settings
 
-import android.animation.ValueAnimator
 import android.content.Context
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.RectF
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.LayerDrawable
@@ -12,7 +8,6 @@ import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
-import android.view.animation.LinearInterpolator
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -27,7 +22,6 @@ import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Radius
 import com.abdllh.aura.ui.Shapes
 import com.abdllh.aura.ui.Space
-import com.abdllh.aura.ui.Spring
 import com.abdllh.aura.ui.Touch
 import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.WRAP
@@ -90,113 +84,6 @@ class Swatches(ctx: Context, private val colors: IntArray, selected: Int, privat
         if (!on) { t.animate().cancel(); t.visibility = View.INVISIBLE }
         else if (animate) t.enter(scaleFrom = 0.5f)
         else { t.alpha = 1f; t.visibility = View.VISIBLE }
-    }
-}
-
-/**
- * Indeterminate spinner: a rotating accent arc. It turns only while it can be seen: an animator does not stop for a
- * stopped activity on Android 10, so a check left running behind Maps went on waking the main thread 60 times a second.
- */
-class Spinner(ctx: Context, private val sizeDp: Int = 28) : View(ctx) {
-    private val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
-    private val r = RectF()
-    private var a = 0f
-    private var anim: ValueAnimator? = null
-
-    override fun onMeasure(w: Int, h: Int) = setMeasuredDimension(sizeDp.dp, sizeDp.dp)
-
-    override fun onVisibilityAggregated(isVisible: Boolean) {
-        super.onVisibilityAggregated(isVisible)
-        if (!isVisible) { anim?.cancel(); anim = null; return }
-        if (anim != null) return
-        anim = ValueAnimator.ofFloat(0f, 360f).apply {
-            duration = 900; repeatCount = ValueAnimator.INFINITE; interpolator = LinearInterpolator()
-            addUpdateListener { a = it.animatedValue as Float; invalidate() }
-            start()
-        }
-    }
-
-    override fun onDraw(c: Canvas) {
-        val s = 3.dp.toFloat()
-        p.strokeWidth = s
-        r.set(s, s, width - s, height - s)
-        p.color = Palette.track
-        c.drawArc(r, 0f, 360f, false, p)
-        p.color = Palette.accent
-        c.drawArc(r, a, 100f, false, p)
-    }
-}
-
-/**
- * Determinate/indeterminate progress bar, filled from the start side (the right in Arabic). A new value glides there
- * on a spring, which keeps its speed when the next value comes before it arrived (a download reports every 400 ms);
- * a bar made for a value starts at it, not at empty. Nothing runs at rest: the spring stops where it arrives, and the
- * indeterminate sweep turns only while it is to be seen.
- */
-class ProgressBar(ctx: Context) : View(ctx) {
-    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val r = RectF()
-    private var indeterminate = false
-    private var seen = false
-    private var phase = 0f
-    private var sweep: ValueAnimator? = null
-    private val glide = Spring(0f, 120f, 1f, 0.0005f) { invalidate() }
-
-    fun set(fraction: Float) {
-        indeterminate = false
-        sweeping()
-        val f = fraction.coerceIn(0f, 1f)
-        if (seen && isAttachedToWindow) glide.animateTo(f) else glide.snapTo(f)
-        invalidate()
-    }
-
-    fun setIndeterminate() {
-        indeterminate = true
-        sweeping()
-        invalidate()
-    }
-
-    override fun onVisibilityAggregated(isVisible: Boolean) {
-        super.onVisibilityAggregated(isVisible)
-        seen = isVisible
-        if (!isVisible) glide.snapTo(glide.target)
-        sweeping()
-    }
-
-    private fun sweeping() {
-        val want = indeterminate && seen
-        if (!want) { sweep?.cancel(); sweep = null; return }
-        if (sweep != null) return
-        sweep = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 1300; repeatCount = ValueAnimator.INFINITE; interpolator = LinearInterpolator()
-            addUpdateListener { phase = it.animatedValue as Float; invalidate() }
-            start()
-        }
-    }
-
-    override fun onMeasure(w: Int, h: Int) = setMeasuredDimension(getDefaultSize(0, w), Space.S.dp)
-
-    override fun onDraw(c: Canvas) {
-        val w = width.toFloat(); val h = height.toFloat()
-        val rtl = layoutDirection == LAYOUT_DIRECTION_RTL
-        r.set(0f, 0f, w, h)
-        p.color = Palette.track
-        c.drawRoundRect(r, h / 2, h / 2, p)
-        p.color = Palette.accent
-        if (indeterminate) {
-            val bw = w * 0.32f
-            val x = -bw + (w + bw) * phase
-            val from = maxOf(0f, x)
-            val to = minOf(w, x + bw)
-            if (to <= from) return
-            if (rtl) r.set(w - to, 0f, w - from, h) else r.set(from, 0f, to, h)
-        } else {
-            val shown = glide.value
-            if (shown <= 0f) return
-            val len = maxOf(h, w * shown)
-            if (rtl) r.set(w - len, 0f, w, h) else r.set(0f, 0f, len, h)
-        }
-        c.drawRoundRect(r, h / 2, h / 2, p)
     }
 }
 

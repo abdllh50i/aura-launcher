@@ -317,7 +317,6 @@ object VolumeHud {
             iconBg.addView(icon, flp(26.dp, 26.dp, Gravity.CENTER))
             card.addView(iconBg, lp(48.dp, 48.dp))
             card.addView(bar, lp(0, 12.dp, 1f).apply { marginStart = Space.L.dp + 2.dp; marginEnd = Space.L.dp })
-            value.fontFeatureSettings = "tnum" // (a number that changes as the button is held does not jiggle)
             card.addView(value, lp(56.dp, LayoutParams.WRAP_CONTENT))
             addView(card, flp(470.dp, 74.dp).apply { setMargins(Space.L.dp, TOP_DP.dp, Space.L.dp, 18.dp) })
         }

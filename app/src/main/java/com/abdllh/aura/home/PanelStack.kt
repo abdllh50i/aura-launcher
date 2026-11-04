@@ -163,8 +163,8 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
 
     /** Debug builds: a panel from src/debug for trying this class out (am start ... --es panel probe). */
     private fun debugPanel(name: String): Panel? {
-        if (name != "probe") return null
-        return Class.forName("com.abdllh.aura.debug.ProbePanel").getConstructor(HomeActivity::class.java).newInstance(shell) as Panel
+        val cls = when (name) { "probe" -> "ProbePanel"; "gallery" -> "GalleryPanel"; else -> return null }
+        return Class.forName("com.abdllh.aura.debug.$cls").getConstructor(HomeActivity::class.java).newInstance(shell) as Panel
     }
 
     private fun attach(p: Panel) {
@@ -177,6 +177,7 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
 
     private fun place(p: Panel) {
         val f = p.frame
+        com.abdllh.aura.ui.Look.catchUp(f)
         f.visibility = View.VISIBLE
         f.live = true
         val layer = root.panelLayer
@@ -278,6 +279,7 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
 
     fun tick() {
         val p = top
+        com.abdllh.aura.ui.ThemeSwap.tick(shell)
         call(p, "onTick") { p.onTick() }
         call(p, "onLook") { p.onLook() }
     }

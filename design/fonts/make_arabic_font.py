@@ -3,7 +3,8 @@
   python -I make_arabic_font.py "ReadexPro[HEXP,wght].ttf"     (needs fontTools)
 
 Source: https://github.com/google/fonts/tree/main/ofl/readexpro  (git blob 563b89d182a98521152f7d5fc904bd646b058880,
-version 1.205). Writes app/src/main/assets/fonts/ReadexPro-VF.ttf.
+version 1.205). Writes design/fonts/ReadexPro-VF.ttf. Since 2.0 the UI is IBM Plex Sans Arabic and this file is not in the app: it stays
+here for what still builds from it, the offline map pack's glyphs (tools/mapbuild on the map branch), under its own OFL text beside it.
 
 The only change is the vertical metrics. Upstream declares ascent 1000 / descent 250 (hhea and OS/2 typo), Latin-sized,
 while its Arabic goes from about -550 (the dots of ي, the tails of ج ح ع) to 1150 (stacked marks) over the weights.
@@ -16,7 +17,7 @@ from fontTools.ttLib import TTFont
 
 UPSTREAM_SHA = "563b89d182a98521152f7d5fc904bd646b058880"
 HERE = os.path.dirname(os.path.abspath(__file__))
-OUT = os.path.join(HERE, "..", "..", "app", "src", "main", "assets", "fonts", "ReadexPro-VF.ttf")
+OUT = os.path.join(HERE, "ReadexPro-VF.ttf")
 ASCENT, DESCENT = 1150, -560
 
 
