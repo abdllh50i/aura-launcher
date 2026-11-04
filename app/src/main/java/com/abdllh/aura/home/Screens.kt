@@ -87,6 +87,7 @@ object Screens {
      */
     fun homeBuilt(i: Intent?, others: Int) {
         val from = i?.getStringExtra(EXTRA_FROM) ?: "the system"
+        i?.removeExtra(EXTRA_FROM) // (once: a recreate brings the same intent back)
         Log.i(TAG, "home activity built, from $from, others alive: $others")
         when {
             others > 0 -> {
@@ -147,7 +148,7 @@ object Screens {
 
     private fun open(c: Context, panel: String, args: Bundle? = null): Boolean = try {
         c.startActivity(intentOf(c, panel, args))
-        Log.i(TAG, "$panel ${args?.keySet().orEmpty()}") // (the names only: a search is the owner's own business)
+        Log.i(TAG, "$panel ${args?.keySet()?.joinToString().orEmpty()}") // (the names only: a search is the owner's own)
         true
     } catch (t: Throwable) {
         Log.w(TAG, "$panel: $t")
