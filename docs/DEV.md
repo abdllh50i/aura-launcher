@@ -1725,6 +1725,48 @@ sign, a trip resumed or not and why) is the first real measurement.
 * **Prefs:** gone: `setupDone`, `setupBannerDismissed`, `adbBridge`, `hiddenApps` (no version ever wrote them). Kept, read-only:
   `homeAddress`, `workAddress`: their writer went in 1.3, but a unit where one was typed still drives there from it.
 
+## Place search over places.db (2.0, `nav/places/`)
+The app side of `tools/mapbuild/SEARCH_SPEC.md`: `search_ref.py` ported to the letter, with no screen depending on it. `MapsActivity` still searches as in 1.19 unless the
+preference below is on. Nothing here has run on the unit: every number is from the emulator (x86_64, Android 10, SQLite 3.22.0) unless it says otherwise.
+
+* **Files:** `Norm.kt` (norm, base, skeleton, query words), `QueryPlan.kt` (table syn, the plan, the MATCH strings, other readings), `Score.kt` (the score, one place once), `PlacesDb.kt`
+  (the file: checks, reads), `PlaceEngine.kt` (the stages, reverse, what guidance asks), `RoadAhead.kt` (a route's line against spots, gates and zones: plain geometry), `PlaceSearch.kt`
+  (the way in: one background thread, answers on the main thread), `PlacesDebug.kt` (debug builds). Only the last four touch Android.
+* **Why "to the letter":** the index in places.db was made with these functions, and the scores decide which of 12 rows show. What had to be copied from the code and not from the
+  text: lower case runs before NFKD, so `´` has become a space and a mark and `℃` stays a capital C; ties in the sort go by the score after `round(s, 3)`, which needs Python's rounding
+  (the exact binary value, half to even: `Score.pyRound`); `{k:.6f}` in the SQL rounds the exact value too, where `String.format` rounds the shortest decimal; `Math.toRadians` was not always
+  `x * (pi / 180)`. Stage 9 reads the best-ranked rows, which the spec's text says it never does. A length counts UTF-16 units, not code points, which only a word with a letter outside
+  the BMP can tell (one row in the file). Python's Unicode 14 and Android 10's differ on 178 characters of the BMP, all assigned since; no name in the file holds one.
+* **The file:** `SQLiteDatabase.openDatabase`, read only, `NO_LOCALIZED_COLLATORS`, no helper, nothing written, `PRAGMA cache_size=128` (512 KB), 4 kept statements (the SQL holds the car's
+  position, so they are hardly ever seen twice). Never the default `DatabaseErrorHandler`: on any report of corruption it deletes the file, and a pack is the pack manager's. Before SQLite sees the
+  file its first 100 bytes are checked against its length, so a download cut short is told at once and not by the first search that reaches the missing pages. `meta.norm_version` must be
+  `Norm.VERSION` (3) and `meta.schema` `PlacesDb.SCHEMA` (2), or it is refused, with the two numbers in `PlacesStatus.why`. A file that cannot be used is a status and an empty answer; `PlacesStatus.message` is the
+  driver's line (`strings_search.xml`). It is looked at again only when its path, length or time changes. Where: `PlaceSearch.locate`, asked at every use, which the pack manager's `PackPaths.placesDb` is to fill (a new pack is a new path, so it is opened again by itself; `worked` is for `PackPaths.noteWorked`). Until it is set, `files/maps2/places.db`.
+* **Threads:** one single-thread executor, as `Places`. A newer query increments `generation` and cancels the last `CancellationSignal`, which stops SQLite itself at its next steps, not only the
+  stages between. `typing()` adds the spec's 250 ms; `search()` does not (`MapsActivity` has its own 350 ms). After 2 minutes unused the file is closed and table syn goes with it.
+* **Guidance, spec first:** `spotsAlong` gives each camera and bump once, and a signal once **per junction per pass** (`spot.j`: "الإشارة الثانية" counts these, `RouteSpots.signalNumberAt`).
+  On a signal or a bump `roadKmh` is the road's limit; only a camera has `cameraKmh`. How near counts: camera 30 m (it stands beside its road, found within 25 m at build), signal 15 m, bump 10 m;
+  a camera or bump must go the way of its `dir` within 60 degrees, null is either way; a signal's node counts unless it is for the traffic coming against (over 135 degrees), since a node on the
+  crossing road is the same junction. A camera on a main road also fires for a frontage road beside it going the same way: 85 % of such pairs are under 40 m apart, and nothing in the file tells
+  them apart. Gates within 15 m; `warn` for sub 2 or 3 on a road of class 2 or more (gate-camp's checkpoint is on a secondary road, Jubail-Dammam's on a motorway).
+* **Where it differs from the spec, on purpose:** the spec warns about a military or private zone when a route ends inside "or leaves the motorway and trunk roads inside", and names Jubail-Dammam as the
+  public highway that must not. That road is OSM's primary for 9 km in the naval base's ring, so those words warn on it; over the 54 kept test trips with road classes (`scripts/search_compare.py zones`) they warn 11 times, once for a guarded place
+  (gate-air). `ZoneHit.warn` goes by a tertiary road or less (50 m or more): 3 times (gate-air; ithra and j1, which end inside). `offMainMetres` keeps the spec's measure. The rings are coarse, which is
+  the larger problem and is not solved here: zone 519 (the air base) holds 1,289 POIs of Khobar and Dhahran, 397 (the naval base) 269 of Jubail, so "ends inside" warns on a hospital in Khobar.
+  Road classes come from `trace_attributes` (`roadClassNumber`); without them only "ends inside" is known. The Haram warns any route that comes in (`haramRing` gives the ring for `exclude_polygons`).
+* **The swap:** preference `placesEngine`, default off, no setting for it: `Places.search` then asks this engine, gives `Place`s, and goes the old way when the file cannot be used; `Places.cancelSearch` stops it.
+  Photon is not asked on that road, so it is a test of this engine and no more. `am broadcast -a com.abdllh.aura.debug.PLACES --ez swap true`; `--es db <file>` for another file. The other extras are at the top of `PlacesDebug.kt`.
+* **Tests:** `src/test/.../places` (run as above): the 76 vectors of `tools/mapbuild/tests/norm_vectors.json`, and `src/test/resources/places`, written by Python itself (`scripts/search_compare.py fixture`): every character of the
+  Arabic blocks, 200 names, the tester's 200 query plans, 480 scores. Rebuild that fixture with a new `places.db`. `scripts/search-compare.ps1 -Serial emulator-5578` runs the rest on the emulator's real SQLite through the
+  broadcast: each query's ids in order, scores, distances, shown names, details, approx, every MATCH string and the candidates' count against the reference's. `-Failures` tries the files it must refuse.
+  Emulator only, on the file built 2026-11-04T15:22Z: the 200-query set, the 193 of `search-golden.json`, 715 prefixes of a hundred of them, 786 finished with a space or with no position, 554 random rows by their
+  own names: **0 mismatches** of any of those kinds; 627 reverses 0; 10,018 names through every text function 0. Search, warm: median 7.7 ms, p90 13.6, worst 41 (over all sets the worst was 82, a long name that went through the loose stages).
+  By stage, median / worst ms: plan 0.09 / 0.7, first stages 3.4 / 35, other readings 0.01 / 12, place 0.01 / 2, single edit 0 / 9, loose 0 / 6, areas 1.0 / 8, score 1.4 / 14, one place once 0.05 / 0.8. With the kernel's file cache dropped and the file opened again, 30 queries: median 59 ms, worst
+  210, the open itself (checks, cat, syn) 12.5 and 23. The emulator's disk sits on the PC's own cache and SSD, so that says nothing of the unit's eMMC. Reverse median 0.8 ms, worst 9. A route: spots up to 18 ms, warnings up to 28 ms (414 km), the nearest fuel or mosque up to 10 ms.
+  PSS of the home process, 200 searches, twice: file open +0.1 MB of Java (syn); before a collection +3.5 MB of Java; after one, native moved by -0.9 and +2.3 MB in two runs, the size of the process's own noise; 128 pages of cache are at most 0.5 MB of that. On x86_64, so ARM32's pointers would make it less, not measured.
+  Typing, 30 queries, 279 letters through the real entry: at 40 ms a letter 5 searches were stopped in the middle (67 on a busier run); at no pause 248 never began; the last answer was the whole query's own 30 of 30 at every speed, median about 9 ms after the last letter, worst 185 on the busy run.
+  Bad files (`-Failures`), 9 kinds, the same process throughout: search empty with the reason, the search box on its old road, every file still there, the one with holes (it opens, a read meets the damage) too. On this AVD that old road has no offline store and the network was off, so it was seen answering "no internet", not rows.
+
 ## Facts about the firmware (from the dump)
 * No `avb` flag in the vendor fstab → no dm-verity on system/vendor/product; vbmeta uses the public AOSP test keys.
 * `persist.nwd.launcher.default=<pkg>` makes the patched PackageManager return that package as HOME.
