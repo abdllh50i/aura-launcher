@@ -5,7 +5,7 @@ import SwiftUI
 /// The bottom sheet: search and what to do with it. One thing at a time: a send under way, a place's card, the search's
 /// results, or the start (Home, Work, favourites, the trip, the music).
 struct Panel: View {
-    static let peekHeight: CGFloat = 190
+    static let peekHeight: CGFloat = 210
     static let peek = PresentationDetent.height(peekHeight)
 
     @Binding var detent: PresentationDetent
@@ -14,7 +14,10 @@ struct Panel: View {
     @EnvironmentObject private var router: Router
 
     var body: some View {
-        Group {
+        VStack(spacing: 0) {
+            CarRow()
+                .padding(.horizontal, Theme.Space.l)
+                .padding(.top, Theme.Space.l)
             if let flow = link.flow {
                 SendPanel(model: flow)
             } else if let place = search.selected {
@@ -62,7 +65,7 @@ private struct BrowsePanel: View {
         VStack(spacing: 0) {
             SearchField(typing: $typing)
                 .padding(.horizontal, Theme.Space.l)
-                .padding(.top, Theme.Space.l)
+                .padding(.top, Theme.Space.s)
             ChipRow()
                 .padding(.top, Theme.Space.s)
             ScrollView {
@@ -393,6 +396,13 @@ struct LocalNetworkCard: View {
                 .font(Theme.Fonts.note)
                 .foregroundStyle(Theme.ink2)
                 .fixedSize(horizontal: false, vertical: true)
+            Button {
+                if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+            } label: {
+                Text("افتح الإعدادات")
+            }
+            .buttonStyle(SecondKeyStyle())
+            .accessibilityIdentifier("openSettings")
         }
         .cardSurface()
         .accessibilityIdentifier("localNetworkCard")
@@ -786,12 +796,27 @@ private struct SendPanel: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Space.l) {
-                if let place = model.stage.place {
-                    Text(verbatim: place.name)
+                HStack(alignment: .top, spacing: Theme.Space.s) {
+                    Text(verbatim: model.stage.place?.name ?? "")
                         .font(Theme.Fonts.title)
                         .foregroundStyle(Theme.ink)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("sendPlaceName")
+                    Spacer(minLength: 0)
+                    // Back to the search: the unit keeps what it was already given.
+                    Button {
+                        link.closeFlow()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(Theme.ink2)
+                            .frame(width: 44, height: 44)
+                            .background(Theme.sunken, in: Circle())
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Text("إغلاق"))
+                    .accessibilityIdentifier("sendClose")
                 }
                 SendStageView(model: model) {
                     link.closeFlow()

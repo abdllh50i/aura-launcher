@@ -34,10 +34,12 @@ struct MapScreen: View {
                 MapCompass()
             }
             .safeAreaInset(edge: .top, spacing: 0) {
-                TopBar()
-                    .padding(.horizontal, Theme.Space.m)
-                    .padding(.top, Theme.Space.xs)
-                    .padding(.bottom, Theme.Space.s)
+                if let days = link.signingDaysToWarn {
+                    ExpiryBanner(days: days)
+                        .padding(.horizontal, Theme.Space.m)
+                        .padding(.top, Theme.Space.xs)
+                        .padding(.bottom, Theme.Space.s)
+                }
             }
             .safeAreaPadding(.bottom, mapInset(height: geometry.size.height))
             .accessibilityIdentifier("map")
@@ -49,6 +51,13 @@ struct MapScreen: View {
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
                 .presentationDragIndicator(.visible)
                 .interactiveDismissDisabled()
+        }
+        .onChange(of: link.flow != nil) { _, sending in
+            if sending {
+                detent = .medium
+            } else if search.selected == nil, !search.isActive {
+                detent = link.trip?.kind.isUnderWay == true ? .medium : Panel.peek
+            }
         }
         .onChange(of: pick) { _, new in
             if let new { search.selected = new }
@@ -86,44 +95,39 @@ struct MapScreen: View {
     }
 }
 
-/// The car's status and the way to its screen, floating on the map.
-private struct TopBar: View {
+/// The top of the panel: the car's status and the way to its screen, in reach in every position of the sheet.
+struct CarRow: View {
     @EnvironmentObject private var link: CarLink
     @EnvironmentObject private var router: Router
 
     var body: some View {
-        VStack(spacing: Theme.Space.s) {
-            HStack(spacing: Theme.Space.s) {
-                Button {
-                    switch link.presence {
-                    case .unpaired:
-                        router.route = .pair(nil)
-                    default:
-                        router.route = .car
-                    }
-                } label: {
-                    StatusPill()
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("statusPill")
-                Spacer(minLength: 0)
-                Button {
+        HStack(spacing: Theme.Space.s) {
+            Button {
+                switch link.presence {
+                case .unpaired:
+                    router.route = .pair(nil)
+                default:
                     router.route = .car
-                } label: {
-                    Image(systemName: "car.fill")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(Theme.ink)
-                        .frame(width: 46, height: 46)
-                        .floatingSurface(in: Circle())
-                        .contentShape(Circle())
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Text("السيارة"))
-                .accessibilityIdentifier("carButton")
+            } label: {
+                StatusPill()
             }
-            if let profile = link.profile, profile.needsRefresh() {
-                ExpiryBanner(days: profile.daysLeft() ?? 0)
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("statusPill")
+            Spacer(minLength: 0)
+            Button {
+                router.route = .car
+            } label: {
+                Image(systemName: "car.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                    .frame(width: 44, height: 44)
+                    .background(Theme.sunken, in: Circle())
+                    .contentShape(Circle())
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text("السيارة"))
+            .accessibilityIdentifier("carButton")
         }
     }
 }
@@ -152,8 +156,8 @@ struct StatusPill: View {
                 .minimumScaleFactor(0.8)
         }
         .padding(.horizontal, Theme.Space.m)
-        .frame(minHeight: 46)
-        .floatingSurface(in: Capsule())
+        .frame(minHeight: 44)
+        .background(Theme.sunken, in: Capsule())
         .contentShape(Capsule())
         .accessibilityElement(children: .combine)
     }

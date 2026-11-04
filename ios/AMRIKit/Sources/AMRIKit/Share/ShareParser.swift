@@ -5,7 +5,8 @@ public enum ShareStep: Equatable, Sendable {
     case place(PhonePlace)
     /// A short link: one request with no redirect, then read `Location`.
     case followRedirect(URL, hops: Int, src: String)
-    case placeID(String, name: String?, src: String)
+    /// `fallback`: words to search for if Apple's lookup finds nothing.
+    case placeID(String, name: String?, fallback: String?, src: String)
     /// A search whose result must be picked by hand.
     case search(String, src: String)
     case notMaps
@@ -77,8 +78,9 @@ public enum ShareParser {
     public static func nameAndDetail(for payload: SharePayload) -> (name: String?, detail: String?) {
         for text in payload.texts {
             let (_, remainder) = extractURLs(from: normalize(text))
+            // "موقعي: https://..." leaves the colon behind.
             let lines = remainder.split(whereSeparator: \.isNewline)
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .map { $0.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ":-–—"))) }
                 .filter { !$0.isEmpty && coordinates(in: $0) == nil }
             if let first = lines.first {
                 return (first, lines.count > 1 ? lines[1] : nil)
@@ -175,6 +177,13 @@ public enum ShareParser {
                 return (lat, lon, matched, true)
             }
         }
+        // 26.29N, 50.18E
+        if let match = firstGroups(#"(?i)(?<![\d.])(\d{1,2}\.\d{2,})\s*°?\s*([NS])\b\s*[,;\s]?\s*(\d{1,3}\.\d{2,})\s*°?\s*([EW])\b"#, in: text),
+           let a = Double(match[1]), let b = Double(match[3]) {
+            let lat = match[2].uppercased() == "S" ? -a : a
+            let lon = match[4].uppercased() == "W" ? -b : b
+            if isValid(lat, lon) { return (lat, lon, match[0], true) }
+        }
         // N26.29 E50.18
         if let match = firstGroups(#"(?i)\b([NS])\s*(\d{1,2}\.\d{2,})\s*[,;\s]?\s*([EW])\s*(\d{1,3}\.\d{2,})\b"#, in: text),
            let a = Double(match[2]), let b = Double(match[4]) {
@@ -233,6 +242,15 @@ public enum ShareParser {
         }
         if isGoogleMaps(host: host, path: path) { return parseGoogleMaps(url) }
         if host == "waze.com" || host.hasSuffix(".waze.com") { return parseWaze(url, path: path, host: host) }
+        // WhatsApp's own send link can hold a location's link in its text. Nothing else in it is a place.
+        if host == "wa.me" || host == "api.whatsapp.com", let text = query(of: url)["text"] {
+            for inner in extractURLs(from: text).urls {
+                if let innerURL = URL(string: inner) {
+                    let step = parseURL(innerURL)
+                    if step != .notMaps { return step }
+                }
+            }
+        }
         return .notMaps
     }
 
@@ -278,7 +296,7 @@ public enum ShareParser {
                                          confidence: .exact, src: "share.apple", placeID: items["place-id"]))
             }
         }
-        if let id = items["place-id"], !id.isEmpty { return .placeID(id, name: name, src: "share.apple") }
+        if let id = items["place-id"], !id.isEmpty { return .placeID(id, name: name, fallback: address, src: "share.apple") }
         for key in ["address", "destination", "daddr", "q"] {
             if let text = items[key], !text.isEmpty { return .search(text, src: "share.apple") }
         }
@@ -302,35 +320,36 @@ public enum ShareParser {
 
     private static func parseGoogleMaps(_ url: URL) -> ShareStep {
         let absolute = normalize(url.absoluteString)
-        let name = googlePlaceName(url)
+        let fullName = googlePlaceName(url)
+        let (name, detail) = splitName(fullName)
         let items = query(of: url)
 
         // 1. The last !3d!4d pair is the place itself.
         let pairs = matches(#"!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)"#, in: absolute)
         if let last = pairs.last, let group = groups(of: last, in: absolute),
            let lat = Double(group[1]), let lon = Double(group[2]), isValid(lat, lon) {
-            return .place(PhonePlace(name: name, lat: lat, lon: lon, confidence: .exact, src: "share.google"))
+            return .place(PhonePlace(name: name, detail: detail, lat: lat, lon: lon, confidence: .exact, src: "share.google"))
         }
         // 2. Parameters that hold lat,lon.
         for key in ["q", "query", "ll", "destination", "daddr"] {
             if let text = items[key], let pair = latLon(text) {
-                return .place(PhonePlace(name: pair.name ?? name, lat: pair.lat, lon: pair.lon, confidence: .exact, src: "share.google"))
+                return .place(PhonePlace(name: pair.name ?? name, detail: detail, lat: pair.lat, lon: pair.lon, confidence: .exact, src: "share.google"))
             }
         }
-        // 3. A /lat,lon path segment (not the /@ viewport).
-        for segment in url.path.split(separator: "/").map(String.init) where !segment.hasPrefix("@") {
+        // 3. A /lat,lon path segment (not the /@ viewport). The last one: on a /dir/ link it is the destination.
+        for segment in url.path.split(separator: "/").map(String.init).reversed() where !segment.hasPrefix("@") {
             let spaced = segment.replacingOccurrences(of: "+", with: " ")
             if let pair = latLon(spaced) {
-                return .place(PhonePlace(name: name, lat: pair.lat, lon: pair.lon, confidence: .exact, src: "share.google"))
+                return .place(PhonePlace(name: name, detail: detail, lat: pair.lat, lon: pair.lon, confidence: .exact, src: "share.google"))
             }
         }
         // 4. /@lat,lon is only where the map was looking: the weakest, so it is shown and asked about.
         if let match = firstGroups(#"/@(-?\d+\.\d+),(-?\d+\.\d+)"#, in: absolute),
            let lat = Double(match[1]), let lon = Double(match[2]), isValid(lat, lon) {
-            return .place(PhonePlace(name: name, lat: lat, lon: lon, confidence: .guess, src: "share.google"))
+            return .place(PhonePlace(name: name, detail: detail, lat: lat, lon: lon, confidence: .guess, src: "share.google"))
         }
         // 5. A name to search.
-        if let name { return .search(name, src: "share.google") }
+        if let fullName { return .search(fullName, src: "share.google") }
         for key in ["q", "query", "destination", "daddr"] {
             if let text = items[key], !text.isEmpty { return .search(text, src: "share.google") }
         }
@@ -344,6 +363,14 @@ public enum ShareParser {
         let text = normalize(raw.removingPercentEncoding ?? raw).trimmingCharacters(in: .whitespaces)
         if text.isEmpty || text.hasPrefix("@") || latLon(text) != nil { return nil }
         return text
+    }
+
+    /// "Al Rashid Mall, King Khalid St, Al Khobar": the name, then where it is.
+    private static func splitName(_ text: String?) -> (name: String?, detail: String?) {
+        guard let text, let comma = text.firstIndex(where: { $0 == "," }) else { return (text, nil) }
+        let name = text[..<comma].trimmingCharacters(in: .whitespaces)
+        let detail = text[text.index(after: comma)...].trimmingCharacters(in: .whitespaces)
+        return (name.isEmpty ? text : name, detail.isEmpty ? nil : detail)
     }
 
     private static func parseWaze(_ url: URL, path: String, host: String) -> ShareStep {
@@ -380,7 +407,8 @@ public enum ShareParser {
             return .place(PhonePlace(name: pair.name, lat: pair.lat, lon: pair.lon, confidence: .exact, src: "share.geo"))
         }
         if let pair = latLon(head) {
-            return .place(PhonePlace(name: q, lat: pair.lat, lon: pair.lon, confidence: .exact, src: "share.geo"))
+            // A name near a point says where to look, not which place: a guess, shown and asked about.
+            return .place(PhonePlace(name: q, lat: pair.lat, lon: pair.lon, confidence: q == nil ? .exact : .guess, src: "share.geo"))
         }
         if let q, !q.isEmpty { return .search(q, src: "share.geo") }
         return .notMaps

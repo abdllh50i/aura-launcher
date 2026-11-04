@@ -88,7 +88,7 @@ final class CarLink: ObservableObject {
                 presence = .notFound(denied: outcome.localNetworkDenied)
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
                 // A home network's sweep is not free: look less often while nothing answers.
-                delay = min(delay * 2, 30)
+                delay = min(delay * 2, 15)
                 continue
             }
             delay = 3
@@ -218,6 +218,15 @@ final class CarLink: ObservableObject {
     private var client: LinkClient? {
         guard case .online(let address) = presence, let token = pairing?.token else { return nil }
         return LinkClient(address: address, token: token)
+    }
+
+    /// Three days or fewer left on the signature.
+    var signingDaysToWarn: Int? {
+        #if DEBUG
+        if AppLaunch.screen == "expiry" { return 2 }
+        #endif
+        guard let profile, profile.needsRefresh() else { return nil }
+        return profile.daysLeft()
     }
 
     var isOnline: Bool {

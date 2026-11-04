@@ -1,0 +1,293 @@
+{
+  "version": 1,
+  "about": "What a phone shares, and the one thing it means. For link/ShareParser.kt now (scripts/phone-server-test.py runs them through the unit's real parser) and the phone's Swift parser later: the same input must give the same answer. input.text is everything shared, the link included. redirects stands in for the network: the short link's answer, by URL, as {code, location} (location is what the Location header said, null for none), or \"error\" for no answer at all; a URL not listed must never be asked for. expect.kind is place (lat, lon within 0.000001 unless tolerance says otherwise, name, detail, src, confidence), search (q, src), unresolved (reason, q when text came with the link) or nothing (reason). Marked measured: seen live from the PC (companion.md 2.5). The rest are the formats the report lists, written by hand: replace them with real captures from the phone as they come.",
+  "cases": [
+    {
+      "name": "Apple Maps short link: the first Location is read, the page behind it never",
+      "measured": true,
+      "input": {"text": "https://maps.apple/p/7E-Brjrk_THN14"},
+      "redirects": {"https://maps.apple/p/7E-Brjrk_THN14": {"code": 301, "location": "https://maps.apple.com/place?address=Sonnenallee%20223,%2012059%20Berlin,%20Germany&coordinate=52.4737758%2C13.4373898&name=Marked%20Location"}},
+      "expect": {"kind": "place", "lat": 52.4737758, "lon": 13.4373898, "name": "Marked Location", "detail": "Sonnenallee 223, 12059 Berlin, Germany", "src": "share.apple", "confidence": "exact"}
+    },
+    {
+      "name": "Apple Maps: ll and q, with an Arabic name",
+      "input": {"text": "https://maps.apple.com/?ll=26.290457,50.184555&q=%D8%A7%D9%84%D8%B1%D8%A7%D8%B4%D8%AF%20%D9%85%D9%88%D9%84"},
+      "expect": {"kind": "place", "lat": 26.290457, "lon": 50.184555, "name": "الراشد مول", "detail": "", "src": "share.apple", "confidence": "exact"}
+    },
+    {
+      "name": "Apple Maps: coordinate in the new form, the name in the shared text",
+      "input": {"text": "الراشد مول\nhttps://maps.apple.com/place?coordinate=26.290457,50.184555"},
+      "expect": {"kind": "place", "lat": 26.290457, "lon": 50.184555, "name": "الراشد مول", "detail": "", "src": "share.apple", "confidence": "exact"}
+    },
+    {
+      "name": "Apple Maps: directions to coordinates",
+      "input": {"text": "https://maps.apple.com/?daddr=26.290457,50.184555&dirflg=d"},
+      "expect": {"kind": "place", "lat": 26.290457, "lon": 50.184555, "name": "", "detail": "", "src": "share.apple", "confidence": "exact"}
+    },
+    {
+      "name": "Apple Maps: a Place ID with an address and no coordinate: a search, on the unit (the phone has Apple's lookup)",
+      "measured": true,
+      "input": {"text": "https://maps.apple.com/place?place-id=I3B04EDEB21D5F86&address=King%20Khalid%20St%2C%20Al%20Khobar&_provider=9902"},
+      "expect": {"kind": "search", "q": "King Khalid St, Al Khobar", "src": "share.apple"}
+    },
+    {
+      "name": "Apple Maps: a Place ID alone: says so, guesses nothing",
+      "measured": true,
+      "input": {"text": "https://maps.apple.com/place?place-id=I3B04EDEB21D5F86&_provider=9902"},
+      "expect": {"kind": "unresolved", "reason": "no_place"}
+    },
+    {
+      "name": "Google short link, as an app's user agent sees it: the place's pin",
+      "measured": true,
+      "input": {"text": "https://maps.app.goo.gl/Q6ZugPBVWvuiVb8e8"},
+      "redirects": {"https://maps.app.goo.gl/Q6ZugPBVWvuiVb8e8": {"code": 302, "location": "https://www.google.com/maps/place/42.578496,1.895566/data=!4m6!3m5!1s0!7e2!8m2!3d42.5784957!4d1.8955661?utm_source=mstt_1&entry=gps"}},
+      "expect": {"kind": "place", "lat": 42.5784957, "lon": 1.8955661, "name": "", "detail": "", "src": "share.google", "confidence": "exact"}
+    },
+    {
+      "name": "Google short link with the name in the shared text (the app's share sheet)",
+      "input": {"text": "Al Rashid Mall\n\nhttps://maps.app.goo.gl/abc123def?g_st=ic"},
+      "redirects": {"https://maps.app.goo.gl/abc123def?g_st=ic": {"code": 302, "location": "https://www.google.com/maps/place/Al+Rashid+Mall/data=!4m6!3m5!1s0x3e49e9:0x1!8m2!3d26.290457!4d50.184555"}},
+      "expect": {"kind": "place", "lat": 26.290457, "lon": 50.184555, "name": "Al Rashid Mall", "detail": "", "src": "share.google", "confidence": "exact"}
+    },
+    {
+      "name": "Google short link that is dead: says so, keeps the text to search, guesses no place",
+      "measured": true,
+      "input": {"text": "Al Rashid Mall https://maps.app.goo.gl/jVuuNEZ_-FQ3UGhX7"},
+      "redirects": {"https://maps.app.goo.gl/jVuuNEZ_-FQ3UGhX7": {"code": 404, "location": null}},
+      "expect": {"kind": "unresolved", "reason": "dead_link", "q": "Al Rashid Mall"}
+    },
+    {
+      "name": "Google short link with the internet down",
+      "input": {"text": "https://maps.app.goo.gl/nointernet"},
+      "redirects": {"https://maps.app.goo.gl/nointernet": "error"},
+      "expect": {"kind": "unresolved", "reason": "network"}
+    },
+    {
+      "name": "Google short link answering 200 (no redirect): the page's body is never read",
+      "input": {"text": "https://maps.app.goo.gl/page"},
+      "redirects": {"https://maps.app.goo.gl/page": {"code": 200, "location": null}},
+      "expect": {"kind": "unresolved", "reason": "no_redirect"}
+    },
+    {
+      "name": "Google's preview page (what a browser's user agent is sent to): not a place",
+      "measured": true,
+      "input": {"text": "https://maps.app.goo.gl/preview"},
+      "redirects": {"https://maps.app.goo.gl/preview": {"code": 302, "location": "https://preview.app.goo.gl/maps.app.goo.gl/preview"}},
+      "expect": {"kind": "unresolved", "reason": "not_a_map"}
+    },
+    {
+      "name": "Two hops: an old goo.gl link to a short one to the place",
+      "input": {"text": "https://goo.gl/maps/oldlink"},
+      "redirects": {
+        "https://goo.gl/maps/oldlink": {"code": 301, "location": "https://maps.app.goo.gl/second"},
+        "https://maps.app.goo.gl/second": {"code": 302, "location": "https://www.google.com/maps/place/x/data=!3d26.1!4d50.1"}
+      },
+      "expect": {"kind": "place", "lat": 26.1, "lon": 50.1, "name": "x", "detail": "", "src": "share.google", "confidence": "exact"}
+    },
+    {
+      "name": "Three hops: refused, no endless chain",
+      "input": {"text": "https://maps.app.goo.gl/a"},
+      "redirects": {
+        "https://maps.app.goo.gl/a": {"code": 302, "location": "https://maps.app.goo.gl/b"},
+        "https://maps.app.goo.gl/b": {"code": 302, "location": "https://maps.app.goo.gl/c"},
+        "https://maps.app.goo.gl/c": {"code": 302, "location": "https://www.google.com/maps/place/x/data=!3d26.1!4d50.1"}
+      },
+      "expect": {"kind": "unresolved", "reason": "no_redirect"}
+    },
+    {
+      "name": "A short link's link parameter",
+      "input": {"text": "https://maps.app.goo.gl/?link=https%3A%2F%2Fwww.google.com%2Fmaps%2Fplace%2F26.29%2C50.18%2Fdata%3D!3d26.290457!4d50.184555"},
+      "expect": {"kind": "place", "lat": 26.290457, "lon": 50.184555, "name": "", "detail": "", "src": "share.google", "confidence": "exact"}
+    },
+    {
+      "name": "Google's consent page in the way: what it continues to",
+      "input": {"text": "https://consent.google.com/m?continue=https%3A%2F%2Fwww.google.com%2Fmaps%2Fplace%2FRashid%2Fdata%3D!3d26.290457!4d50.184555&gl=SA"},
+      "expect": {"kind": "place", "lat": 26.290457, "lon": 50.184555, "name": "Rashid", "detail": "", "src": "share.google", "confidence": "exact"}
+    },
+    {
+      "name": "Google long link: the last pin is the place, the viewport is not",
+      "input": {"text": "https://www.google.com/maps/place/Al+Rashid+Mall,+King+Khalid+St,+Al+Khobar/@26.2910000,50.1800000,17z/data=!3m1!4b1!4m6!3m5!1s0x1:0x2!8m2!3d26.290457!4d50.184555"},
+      "expect": {"kind": "place", "lat": 26.290457, "lon": 50.184555, "name": "Al Rashid Mall", "detail": "King Khalid St, Al Khobar", "src": "share.google", "confidence": "exact"}
+    },
+    {
+      "name": "Google, another country's domain, an Arabic name percent-encoded",
+      "input": {"text": "https://www.google.com.sa/maps/place/%D8%A7%D9%84%D8%B1%D8%A7%D8%B4%D8%AF+%D9%85%D9%88%D9%84/data=!3d26.290457!4d50.184555"},
+      "expect": {"kind": "place", "lat": 26.290457, "lon": 50.184555, "name": "الراشد مول", "detail": "", "src": "share.google", "confidence": "exact"}
+    },
+    {
+      "name": "Google: q as lat,lon (a WhatsApp location, sent as a link)",
+      "input": {"text": "https://maps.google.com/maps?q=26.290457%2C50.184555&z=17&hl=en"},
+      "expect": {"kind": "place", "lat": 26.290457, "lon": 50.184555, "name": "", "detail": "", "src": "share.google", "confidence": "exact"}
+    },
+    {
+      "name": "WhatsApp location, the shorter form with a name beside it",
+      "input": {"text": "موقعي: https://maps.google.com/?q=26.290457,50.184555"},
+      "expect": {"kind": "place", "lat": 26.290457, "lon": 50.184555, "name": "موقعي", "detail": "", "src": "share.google", "confidence": "exact"}
+    },
+    {
+      "name": "WhatsApp's own send link holding a location",
+      "input": {"text": "https://wa.me/?text=https%3A%2F%2Fmaps.google.com%2F%3Fq%3D26.290457%2C50.184555"},
+      "expect": {"kind": "place", "lat": 26.290457, "lon": 50.184555, "name": "", "detail": "", "src": "share.google", "confidence": "exact"}
+    },
+    {
+      "name": "WhatsApp's send link with no location in it",
+      "input": {"text": "https://wa.me/966500000000"},
+      "expect": {"kind": "unresolved", "reason": "not_a_map"}
+    },
+    {
+      "name": "Google maps/search with query",
+      "input": {"text": "https://www.google.com/maps/search/?api=1&query=26.290457%2C50.184555"},
+      "expect": {"kind": "place", "lat": 26.290457, "lon": 50.184555, "name": "", "detail": "", "src": "share.google", "confidence": "exact"}
+    },
+    {
+      "name": "Google directions: destination",
+      "input": {"text": "https://www.google.com/maps/dir/?api=1&destination=26.290457,50.184555"},
+      "expect": {"kind": "place", "lat": 26.290457, "lon": 50.184555, "name": "", "detail": "", "src": "share.google", "confidence": "exact"}
+    },
+    {
+      "name": "Google directions in the path: the last stop",
+      "input": {"text": "https://www.google.com/maps/dir/26.4,50.09/26.290457,50.184555/"},
+      "expect": {"kind": "place", "lat": 26.290457, "lon": 50.184555, "name": "", "detail": "", "src": "share.google", "confidence": "exact"}
+    },
+    {
+      "name": "Google: only the viewport: a guess, which asks",
+      "input": {"text": "https://www.google.com/maps/@26.290457,50.184555,15z"},
+      "expect": {"kind": "place", "lat": 26.290457, "lon": 50.184555, "name": "", "detail": "", "src": "share.google", "confidence": "guess"}
+    },
+    {
+      "name": "Google: a name and a viewport, no pin: a guess",
+      "input": {"text": "https://www.google.com/maps/place/Some+Cafe/@26.29,50.18,15z"},
+      "expect": {"kind": "place", "lat": 26.29, "lon": 50.18, "name": "Some Cafe", "detail": "", "src": "share.google", "confidence": "guess"}
+    },
+    {
+      "name": "Google: only a name: a search",
+      "input": {"text": "https://www.google.com/maps/place/Some+Cafe/"},
+      "expect": {"kind": "search", "q": "Some Cafe", "src": "share.google"}
+    },
+    {
+      "name": "Google: q as a name",
+      "input": {"text": "https://maps.google.com/?q=%D8%B5%D9%8A%D8%AF%D9%84%D9%8A%D8%A9+%D8%A7%D9%84%D8%AF%D9%88%D8%A7%D8%A1"},
+      "expect": {"kind": "search", "q": "صيدلية الدواء", "src": "share.google"}
+    },
+    {
+      "name": "Google's home page: not a map",
+      "input": {"text": "https://www.google.com/search?q=26.1,50.1"},
+      "expect": {"kind": "unresolved", "reason": "not_a_map"}
+    },
+    {
+      "name": "Waze: ll",
+      "input": {"text": "https://waze.com/ul?ll=26.290457%2C50.184555&navigate=yes"},
+      "expect": {"kind": "place", "lat": 26.290457, "lon": 50.184555, "name": "", "detail": "", "src": "share.waze", "confidence": "exact"}
+    },
+    {
+      "name": "Waze: geohash, decoded here (the middle of its cell)",
+      "input": {"text": "https://waze.com/ul/hthettfp30"},
+      "expect": {"kind": "place", "lat": 26.290476, "lon": 50.184538, "tolerance": 0.00003, "name": "", "detail": "", "src": "share.waze", "confidence": "exact"}
+    },
+    {
+      "name": "geo: plain",
+      "input": {"text": "geo:26.290457,50.184555"},
+      "expect": {"kind": "place", "lat": 26.290457, "lon": 50.184555, "name": "", "detail": "", "src": "share.geo", "confidence": "exact"}
+    },
+    {
+      "name": "geo: with uncertainty",
+      "input": {"text": "geo:26.290457,50.184555;u=35"},
+      "expect": {"kind": "place", "lat": 26.290457, "lon": 50.184555, "name": "", "detail": "", "src": "share.geo", "confidence": "exact"}
+    },
+    {
+      "name": "geo: the place and its label in q",
+      "input": {"text": "geo:0,0?q=26.290457,50.184555(%D8%A7%D9%84%D8%B1%D8%A7%D8%B4%D8%AF%20%D9%85%D9%88%D9%84)"},
+      "expect": {"kind": "place", "lat": 26.290457, "lon": 50.184555, "name": "الراشد مول", "detail": "", "src": "share.geo", "confidence": "exact"}
+    },
+    {
+      "name": "geo: only a name",
+      "input": {"text": "geo:0,0?q=Al+Rashid+Mall"},
+      "expect": {"kind": "search", "q": "Al Rashid Mall", "src": "share.geo"}
+    },
+    {
+      "name": "geo: a name near a point: a guess",
+      "input": {"text": "geo:26.29,50.18?q=Pharmacy"},
+      "expect": {"kind": "place", "lat": 26.29, "lon": 50.18, "name": "Pharmacy", "detail": "", "src": "share.geo", "confidence": "guess"}
+    },
+    {
+      "name": "Plain lat,lon",
+      "input": {"text": "26.290457, 50.184555"},
+      "expect": {"kind": "place", "lat": 26.290457, "lon": 50.184555, "name": "", "detail": "", "src": "share.text", "confidence": "exact"}
+    },
+    {
+      "name": "Plain lat,lon in Arabic digits, with the Arabic comma and decimal mark",
+      "input": {"text": "٢٦٫٢٩٠٤٥٧، ٥٠٫١٨٤٥٥٥"},
+      "expect": {"kind": "place", "lat": 26.290457, "lon": 50.184555, "name": "", "detail": "", "src": "share.text", "confidence": "exact"}
+    },
+    {
+      "name": "Plain lat,lon with direction marks a copy from an Arabic app leaves",
+      "input": {"text": "‏26.290457,‎ 50.184555‏"},
+      "expect": {"kind": "place", "lat": 26.290457, "lon": 50.184555, "name": "", "detail": "", "src": "share.text", "confidence": "exact"}
+    },
+    {
+      "name": "Coordinates with a name",
+      "input": {"text": "الراشد مول 26.290457 50.184555"},
+      "expect": {"kind": "place", "lat": 26.290457, "lon": 50.184555, "name": "الراشد مول", "detail": "", "src": "share.text", "confidence": "exact"}
+    },
+    {
+      "name": "Degrees, minutes, seconds",
+      "input": {"text": "26°17'25.6\"N 50°11'04.4\"E"},
+      "expect": {"kind": "place", "lat": 26.290444, "lon": 50.184556, "tolerance": 0.00001, "name": "", "detail": "", "src": "share.text", "confidence": "exact"}
+    },
+    {
+      "name": "Hemisphere letters after the numbers",
+      "input": {"text": "26.2904N, 50.1845E"},
+      "expect": {"kind": "place", "lat": 26.2904, "lon": 50.1845, "name": "", "detail": "", "src": "share.text", "confidence": "exact"}
+    },
+    {
+      "name": "Hemisphere letters first",
+      "input": {"text": "N 26.2904 E 50.1845"},
+      "expect": {"kind": "place", "lat": 26.2904, "lon": 50.1845, "name": "", "detail": "", "src": "share.text", "confidence": "exact"}
+    },
+    {
+      "name": "A link to something else, with coordinates in the text: the coordinates",
+      "input": {"text": "https://example.com/x 26.290457,50.184555"},
+      "expect": {"kind": "place", "lat": 26.290457, "lon": 50.184555, "name": "", "detail": "", "src": "share.text", "confidence": "exact"}
+    },
+    {
+      "name": "Out of range: not coordinates",
+      "input": {"text": "95.1234, 50.1234"},
+      "expect": {"kind": "search", "q": "95.1234, 50.1234", "src": "share.text"}
+    },
+    {
+      "name": "Nothing at zero, zero",
+      "input": {"text": "0.0000, 0.0000"},
+      "expect": {"kind": "search", "q": "0.0000, 0.0000", "src": "share.text"}
+    },
+    {
+      "name": "Numbers that are no coordinates (an address)",
+      "input": {"text": "شارع 12, 34"},
+      "expect": {"kind": "search", "q": "شارع 12, 34", "src": "share.text"}
+    },
+    {
+      "name": "A Saudi short address: a search",
+      "input": {"text": "EDMA2510"},
+      "expect": {"kind": "search", "q": "EDMA2510", "src": "share.text"}
+    },
+    {
+      "name": "A place's name",
+      "input": {"text": "الراشد مول"},
+      "expect": {"kind": "search", "q": "الراشد مول", "src": "share.text"}
+    },
+    {
+      "name": "A link to something else: says so, and is never fetched",
+      "input": {"text": "https://example.com/somewhere"},
+      "expect": {"kind": "unresolved", "reason": "not_a_map"}
+    },
+    {
+      "name": "An address on this network: never fetched",
+      "input": {"text": "http://192.168.1.1/admin"},
+      "expect": {"kind": "unresolved", "reason": "not_a_map"}
+    },
+    {
+      "name": "Nothing",
+      "input": {"text": "   "},
+      "expect": {"kind": "nothing", "reason": "empty"}
+    }
+  ]
+}

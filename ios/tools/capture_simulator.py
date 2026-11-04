@@ -14,7 +14,7 @@ BUNDLE = "com.abdllh.amri"
 OUT = Path("evidence/screens")
 
 ARABIC = [
-    "first", "unpaired", "denied", "home", "typing", "results", "empty", "place", "place-long",
+    "first", "unpaired", "denied", "home", "expiry", "typing", "results", "empty", "place", "place-long",
     "locating", "sending", "waiting", "asking", "started", "trip", "failed", "card", "unreachable", "noword", "pending",
     "car", "car-idle", "car-notfound", "pair", "check", "repair",
     "share-reading", "share-confirm", "share-pick", "share-nothing", "share-sending", "share-waiting", "share-card",
@@ -24,8 +24,8 @@ ENGLISH = ["home", "results", "place", "started", "car", "pair", "repair", "shar
 DARK = ["home", "place", "started", "car", "share-started"]
 
 
-def run(*args):
-    return subprocess.check_output(args, text=True).strip()
+def run(*args, timeout=180):
+    return subprocess.check_output(args, text=True, timeout=timeout).strip()
 
 
 def pick_device():
@@ -38,7 +38,7 @@ def pick_device():
 def launch(udid, screen, language):
     locale = "ar_SA" if language == "ar" else "en_US"
     run("xcrun", "simctl", "launch", "--terminate-running-process", udid, BUNDLE,
-        "-AppleLanguages", f"({language})", "-AppleLocale", locale, "-screen", screen, "-demoSearch", "-skipLocation")
+        "-AppleLanguages", f"({language})", "-AppleLocale", locale, "-screen", screen, "-demoSearch")
 
 
 def shoot(udid, screen, language, suffix=""):
@@ -57,7 +57,7 @@ def main():
     Path("evidence/simulator.txt").write_text(json.dumps(device, indent=2))
     if device["state"] != "Booted":
         run("xcrun", "simctl", "boot", udid)
-    run("xcrun", "simctl", "bootstatus", udid, "-b")
+    run("xcrun", "simctl", "bootstatus", udid, "-b", timeout=420)
     run("xcrun", "simctl", "status_bar", udid, "override", "--time", "9:41", "--batteryState", "charged",
         "--batteryLevel", "100", "--wifiBars", "3", "--cellularBars", "4")
     run("xcrun", "simctl", "location", udid, "set", "26.2894,50.1975")

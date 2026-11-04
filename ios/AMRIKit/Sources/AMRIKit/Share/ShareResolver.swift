@@ -72,7 +72,7 @@ public struct ShareResolver: Sendable {
                     return ShareOutcome(resolution: .place(named(place)), trail: trail)
                 }
                 if guess == nil { guess = named(place) }
-            case .placeID(let id, let name, let src):
+            case .placeID(let id, let name, let fallback, let src):
                 if let found = await lookupPlaceID(id) {
                     trail.append("Place ID \(id): ok")
                     var place = found
@@ -83,6 +83,7 @@ public struct ShareResolver: Sendable {
                     return ShareOutcome(resolution: .place(named(place)), trail: trail)
                 }
                 trail.append("Place ID \(id): no answer")
+                if let fallback, !searches.contains(fallback) { searches.append(fallback) }
             case .search(let query, _):
                 if !searches.contains(query) { searches.append(query) }
             case .followRedirect, .notMaps:

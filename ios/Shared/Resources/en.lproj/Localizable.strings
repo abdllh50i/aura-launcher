@@ -66,7 +66,7 @@
 "وصلت" = "Arrived";
 "وصّل الجوال بالكمبيوتر، افتح Sideloadly، واختر ملف عمري ووقّعه من جديد." = "Connect the phone to the PC, open Sideloadly, choose Amri's file and sign it again.";
 "امسح الرمز اللي على شاشة السيارة" = "Scan the code on the car's screen";
-"على الشاشة: الإعدادات ← الجوال ← اربط جوال." = "On the screen: Settings → Phone → Pair a phone.";
+"على الشاشة: الإعدادات ← السيارة والنظام ← ربط الجوال، شغّله واضغط «اعرض رمز الربط»." = "On the screen: Settings → Vehicle and system → Phone link, turn it on and press Show pairing code.";
 "الكاميرا مقفلة على عمري. فعّلها من الإعدادات، أو اكتب الرمز تحت." = "The camera is off for Amri. Turn it on in Settings, or type the code below.";
 "الكاميرا مو متاحة هنا. اكتب الرمز تحت." = "No camera here. Type the code below.";
 "أو اكتب الرمز، ستة أرقام" = "Or type the code, six digits";
@@ -100,6 +100,7 @@
 "امسح الرمز اللي على الشاشة، مرة وحدة بس." = "Scan the code on the screen, just once.";
 "بدونها ما يوصل الجوال للشاشة. الإعدادات ← الخصوصية والأمان ← الشبكة المحلية، وفعّل عمري." = "Without it the phone cannot reach the screen. Settings → Privacy & Security → Local Network, and turn on Amri.";
 "أوقف الاتجاهات" = "Stop directions";
+"افتح الإعدادات" = "Open Settings";
 "الشاشة تحسب الطريق" = "The screen is finding the route";
 "الشاشة تنتظر إشارة الموقع" = "The screen is waiting for GPS";
 "في الطريق" = "On the way";

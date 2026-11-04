@@ -48,7 +48,7 @@ struct PairScreen: View {
                 .font(Theme.Fonts.title)
                 .foregroundStyle(Theme.ink)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("على الشاشة: الإعدادات ← الجوال ← اربط جوال.")
+            Text("على الشاشة: الإعدادات ← السيارة والنظام ← ربط الجوال، شغّله واضغط «اعرض رمز الربط».")
                 .font(Theme.Fonts.note)
                 .foregroundStyle(Theme.ink2)
                 .fixedSize(horizontal: false, vertical: true)

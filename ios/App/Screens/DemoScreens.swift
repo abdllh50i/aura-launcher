@@ -36,7 +36,7 @@ enum DemoScreens {
             link.setDemo(presence: .unpaired(FoundUnit(address: address, ping: ping)))
         case "denied":
             link.setDemo(presence: .notFound(denied: true))
-        case "home":
+        case "home", "expiry":
             connected()
         case "typing":
             connected()

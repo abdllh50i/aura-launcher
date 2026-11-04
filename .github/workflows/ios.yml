@@ -88,6 +88,12 @@ jobs:
           grep -q 'SUCCEEDED' evidence/simulator-build.txt
       - name: Capture every screen
         run: python3 tools/capture_simulator.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Amri-screens
+          path: ios/evidence/screens/
+          retention-days: 14
       - name: Start the fake unit
         run: |
           node tools/fake_unit.mjs --port 47101 --adb 15555:K2501 --adb "15556:Pixel 7" --route-delay 1500 --progress-ms 3000 --eta 9:41 > evidence/fake-unit.txt 2>&1 &
@@ -140,7 +146,6 @@ jobs:
         with:
           name: Amri-evidence
           path: |
-            ios/evidence/screens/
             ios/evidence/flow/
             ios/evidence/*.txt
           retention-days: 14

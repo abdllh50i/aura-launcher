@@ -3,6 +3,7 @@
     python3 tools/export_attachments.py evidence/ui-attachments evidence/flow
 """
 import json
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -20,7 +21,7 @@ for test in json.loads(manifest.read_text()):
     for item in test.get("attachments", []):
         exported = source / item["exportedFileName"]
         readable = item.get("suggestedHumanReadableName") or exported.name
-        name = f"{test_name}--{readable}".replace("/", "-").replace(" ", "_")
+        name = re.sub(r'[/\\"\s:<>|*?`]+', "_", f"{test_name}--{readable}")
         if exported.exists():
             shutil.copy(exported, target / name)
             count += 1
