@@ -1,0 +1,52 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>tile load time, glyph coverage</title>
+<style>html,body,#m{margin:0;width:100%;height:100%;background:#000}</style>
+<div id="m"></div>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script>
+// Times VectorTileSource.loadTile with the app's real style, in GL JS's worker: request, inflate, parse, buckets, reply. Then reads the glyph ranges the app stores
+// (OfflineMaps.GLYPH_RANGES) for the two font stacks and lists the code points they hold. window.__job: { style, tiles, glyphs, spots:[{name,lon,lat}], runs }
+const J = window.__job;
+maplibregl.setRTLTextPlugin('https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.2.3/mapbox-gl-rtl-text.min.js', false);
+const styleJson = JSON.stringify(J.style).replaceAll('TILES_URL', J.tiles).replaceAll('GLYPHS_URL', J.glyphs);
+function one(spot) {
+  return new Promise(resolve => {
+    const map = new maplibregl.Map({ container: 'm', style: JSON.parse(styleJson), center: [spot.lon, spot.lat], zoom: spot.z || 14, attributionControl: false, fadeDuration: 0, pixelRatio: 1, interactive: false });
+    const times = [];
+    const r = 6, size = 28, data = new Uint8Array(size * size * 4).fill(255);
+    map.on('style.load', () => {
+      if (!map.hasImage('poi-dot')) map.addImage('poi-dot', { width: size, height: size, data }, { sdf: true });
+      const src = map.getSource('omt');
+      const orig = src.loadTile.bind(src);
+      src.loadTile = async tile => { const t0 = performance.now(); const res = await orig(tile); times.push({ tile: tile.tileID.canonical.toString(), ms: +(performance.now() - t0).toFixed(1) }); return res; };
+    });
+    map.once('idle', () => { const out = times.slice(); map.remove(); resolve(out); });
+  });
+}
+function varint(b, st) { let v = 0, s = 1, c; do { c = b[st.p++]; v += (c & 127) * s; s *= 128; } while (c > 127); return v; }
+function glyphIds(buf) {
+  const b = new Uint8Array(buf), st = { p: 0 }, ids = [];
+  const walk = (end, depth) => { while (st.p < end) { const k = varint(b, st), f = k >> 3, w = k & 7;
+    if (w === 0) { const v = varint(b, st); if (depth === 2 && f === 1) ids.push(v); }
+    else if (w === 2) { const n = varint(b, st), e = st.p + n; if ((depth === 0 && f === 1) || (depth === 1 && f === 3)) { walk(e, depth + 1); } st.p = e; }
+    else if (w === 5) st.p += 4; else if (w === 1) st.p += 8; else throw new Error('wire ' + w); } };
+  walk(b.length, 0); return ids;
+}
+(async () => {
+  const res = { times: {}, glyphs: {} };
+  for (const s of J.spots) {
+    res.times[s.name] = [];
+    for (let i = 0; i < J.runs; i++) res.times[s.name].push(await one(s));
+  }
+  for (const stack of ['Noto Sans Regular', 'Noto Sans Bold']) {
+    const ids = [];
+    for (const r of [0, 256, 512, 768, 1536, 1792, 8192, 8448, 64256, 64512, 64768, 65024, 65280]) {
+      const u = J.glyphs + '/' + encodeURIComponent(stack) + '/' + r + '-' + (r + 255) + '.pbf';
+      const a = await fetch(u); if (a.ok) ids.push(...glyphIds(await a.arrayBuffer()));
+    }
+    res.glyphs[stack] = ids;
+  }
+  window.__info = res; window.__ready = true;
+})().catch(e => { window.__info = { error: String(e && e.stack || e) }; window.__ready = true; });
+</script>
