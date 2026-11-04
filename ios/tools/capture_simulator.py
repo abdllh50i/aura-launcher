@@ -13,6 +13,8 @@ from pathlib import Path
 APP = "DerivedData/Build/Products/Debug-iphonesimulator/Amri.app"
 BUNDLE = "com.abdllh.amri"
 OUT = Path("evidence/screens")
+# A launch screen came to 77 KB and a half-drawn launch to 104 KB, and the plainest real screen to 124 KB.
+LAUNCH_SCREEN_BYTES = 115_000
 
 ARABIC = [
     "first", "unpaired", "denied", "home", "expiry", "typing", "results", "empty", "place", "place-long",
@@ -44,10 +46,21 @@ def launch(udid, screen, language):
 
 def shoot(udid, screen, language, suffix=""):
     launch(udid, screen, language)
-    # The map's tiles take a moment; the screens over the panel take a little longer to come up.
-    time.sleep(4 if not screen.startswith("share-") else 2)
-    name = f"{language}{suffix}-{screen}.png"
-    run("xcrun", "simctl", "io", udid, "screenshot", "--type=png", str(OUT / name))
+    path = OUT / f"{language}{suffix}-{screen}.png"
+
+    def take():
+        run("xcrun", "simctl", "io", udid, "screenshot", "--type=png", str(path))
+
+    # Machines differ by a factor of three, so this looks rather than guesses. The launch screen is one colour, and so a small
+    # file. After it, the screen's state, the sheets and the map's tiles get their time.
+    time.sleep(3)
+    for _ in range(15):
+        take()
+        if path.stat().st_size > LAUNCH_SCREEN_BYTES:
+            break
+        time.sleep(2)
+    time.sleep(3 if screen.startswith("share-") else 8)
+    take()
 
 
 def arabic_before_boot(udid):

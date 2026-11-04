@@ -111,14 +111,11 @@ struct SecondKeyStyle: ButtonStyle {
 }
 
 extension View {
-    /// The floating pieces over the map: glass on iOS 26, a material before it.
-    @ViewBuilder
+    /// What floats over the map: solid, as the panel is, because over a map's colours glass is hard to read in a car.
     func floatingSurface<S: Shape>(in shape: S) -> some View {
-        if #available(iOS 26.0, *) {
-            self.glassEffect(.regular, in: shape)
-        } else {
-            self.background(.regularMaterial, in: shape)
-        }
+        self
+            .background(Theme.raised, in: shape)
+            .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
     }
 
     /// A card inside a panel.

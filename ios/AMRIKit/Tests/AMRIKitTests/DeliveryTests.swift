@@ -244,9 +244,40 @@ final class LinkAgainstFakeUnitTests: XCTestCase {
             try? await Task.sleep(nanoseconds: 800_000_000)
             _ = try? await unit.control("card", ["expire": true])
         }
-        let outcome = await client.waitForStart(id: "NEXT", place: other, timeout: 0.3, patient: true) { nav in heard.with { $0.append(nav) } }
+        let outcome = await client.waitForStart(id: "NEXT", place: other, timeout: 0.3, patient: true, update: { nav in heard.with { $0.append(nav) } })
         XCTAssertEqual(outcome, .expired, "this came after the first 0.3 s")
         XCTAssertEqual(heard.current.first { $0.kind == .card }?.cardKind, "replace")
+    }
+
+    /// A route that fails at once: its event went by before the stream opened, and the stream alone can never know.
+    func testAnEndThatWentByIsFoundOutByAskingAgain() async throws {
+        let unit = try await FakeUnit(routeDelay: 20)
+        defer { unit.stop() }
+        let reply = try await paired(unit)
+        let client = LinkClient(address: unit.address, token: reply.token)
+        _ = try await unit.control("config", ["failRoute": "no_route"])
+        let request = GoRequest(id: "QUICK", place: place)
+        _ = try await client.go(request, timeout: 2)
+        try await Task.sleep(nanoseconds: 400_000_000)
+
+        let alone = await client.waitForStart(id: "QUICK", place: place, timeout: 0.3)
+        XCTAssertEqual(alone, .noWord(routingSeen: false))
+
+        let asked = await client.waitForStart(id: "QUICK", place: place, timeout: 10, recheck: { await client.askAgain(request) })
+        XCTAssertEqual(asked, .failed(nil), "the unit's duplicate says what became of it")
+        let starts = try await unit.starts()
+        XCTAssertEqual(starts.count, 1, "asking twice started nothing")
+    }
+
+    func testAskingAgainWhileItRoutesSaysNothing() async throws {
+        let unit = try await FakeUnit(routeDelay: 5_000)
+        defer { unit.stop() }
+        let reply = try await paired(unit)
+        let client = LinkClient(address: unit.address, token: reply.token)
+        let request = GoRequest(id: "SLOW", place: place)
+        _ = try await client.go(request, timeout: 2)
+        let word = await client.askAgain(request)
+        XCTAssertNil(word)
     }
 
     func testWhatAWordBuys() {

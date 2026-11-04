@@ -202,9 +202,11 @@ final class ShareFlowModel: ObservableObject {
             }
             stage = .waiting(place)
             let client = LinkClient(address: address, token: token)
-            let word = await client.waitForStart(id: ack.id ?? go.id, place: go.place, timeout: 45, patient: true) { [weak self] event in
-                Task { @MainActor in self?.hear(event) }
-            }
+            let word = await client.waitForStart(id: ack.id ?? go.id, place: go.place, timeout: 45, patient: true,
+                                                 recheck: { await client.askAgain(go, saved: which) },
+                                                 update: { [weak self] event in
+                                                     Task { @MainActor in self?.hear(event) }
+                                                 })
             if Task.isCancelled { return }
             show(word, place: place)
         case .conflict(let reason):

@@ -211,6 +211,19 @@ public final class LinkClient: @unchecked Sendable {
         }
     }
 
+    /// What became of this send, asked by sending it again: the unit remembers the id, so this starts nothing and answers
+    /// `duplicate` and `last`. Nil while the unit is still on it, or when nothing answered.
+    public func askAgain(_ request: GoRequest, saved which: String? = nil) async -> StartOutcome? {
+        let ack: GoAck?
+        if let which {
+            ack = try? await saved(which: which, id: request.id, timeout: 3)
+        } else {
+            ack = try? await go(request, timeout: 3)
+        }
+        guard let ack, ack.isDuplicate else { return nil }
+        return LinkClient.outcome(ofLast: ack.last)
+    }
+
     /// How much longer a word from the unit is worth waiting for: a route gets 60 s there, the first fix up to 10 minutes, and a
     /// card or a call as long as they last (`Trips`, `PlaceInbox`). Nil when this word buys no time.
     static func patience(after kind: NavEvent.Kind) -> TimeInterval? {
@@ -225,7 +238,11 @@ public final class LinkClient: @unchecked Sendable {
     /// `update` hears every step on the way (routing, a card on the screen, waiting for GPS), as the unit says them.
     /// `place` is what was sent: the unit's snapshot names its trip by place and not by id.
     /// `patient`: as long as the unit says it is still on this send, keep listening past `timeout`.
-    public func waitForStart(id: String?, place: LinkPlace? = nil, timeout: TimeInterval, patient: Bool = false, update: (@Sendable (NavEvent) -> Void)? = nil) async -> StartOutcome {
+    /// `recheck`: another way to the same answer (`askAgain`). The stream opens after the ack, so an end that came quickly has
+    /// gone by, and a stream can only say what comes after it opens.
+    public func waitForStart(id: String?, place: LinkPlace? = nil, timeout: TimeInterval, patient: Bool = false,
+                             recheck: (@Sendable () async -> StartOutcome?)? = nil,
+                             update: (@Sendable (NavEvent) -> Void)? = nil) async -> StartOutcome {
         let routing = Locked(false)
         let deadline = Locked(Date().addingTimeInterval(timeout))
         /// What one `nav` word means for this send: its end, or nil and the wait goes on.
@@ -268,6 +285,18 @@ public final class LinkClient: @unchecked Sendable {
                     try? await Task.sleep(nanoseconds: UInt64(min(left, 0.5) * 1_000_000_000))
                 }
                 return nil
+            }
+            if let recheck {
+                group.addTask {
+                    var wait: UInt64 = 2_000_000_000
+                    while !Task.isCancelled {
+                        try? await Task.sleep(nanoseconds: wait)
+                        if Task.isCancelled { return nil }
+                        if let outcome = await recheck() { return outcome }
+                        wait = 8_000_000_000
+                    }
+                    return nil
+                }
             }
             let first = await group.next() ?? nil
             group.cancelAll()

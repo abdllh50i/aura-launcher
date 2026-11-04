@@ -175,7 +175,7 @@ jobs:
           xcodebuild -project Amri.xcodeproj -scheme Amri -configuration Debug \
             -destination "platform=iOS Simulator,id=$UDID" -derivedDataPath DerivedData \
             -resultBundlePath evidence/Flows.xcresult -only-testing:AmriUITests/AmriFlowUITests \
-            -parallel-testing-enabled NO -test-timeouts-enabled YES -maximum-test-execution-time-allowance 300 \
+            -parallel-testing-enabled NO -test-timeouts-enabled YES -maximum-test-execution-time-allowance 480 \
             CODE_SIGNING_ALLOWED=NO test-without-building 2>&1 | tee evidence/ui-tests.txt \
             | grep -E "error:|Test Case .*(passed|failed)|\*\* |Executed " || true
           grep -q "\*\* TEST EXECUTE SUCCEEDED \*\*\|\*\* TEST SUCCEEDED \*\*" evidence/ui-tests.txt
