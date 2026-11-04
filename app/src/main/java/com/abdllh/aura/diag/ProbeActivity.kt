@@ -10,6 +10,7 @@ import android.os.HandlerThread
 import android.os.Looper
 import android.os.Process
 import android.os.SystemClock
+import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
 import android.view.View
@@ -88,6 +89,14 @@ class ProbeActivity : Activity() {
     @Suppress("DEPRECATION")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Android may start a top activity again by itself when its process dies, and only ScreenCheck starts tests (it
+        // is the one watching): with no plan on the disk, or the marker of a test that died, there is nothing to do here
+        if (!DiagFiles.plan(this).isFile || DiagFiles.marker(this).exists()) {
+            finish()
+            overridePendingTransition(0, 0)
+            main.postDelayed({ Process.killProcess(Process.myPid()) }, 500L)
+            return
+        }
         Fonts.refreshLocale(this)
         Theme.refresh()
         Animations.ensureAnimators() // (the firmware's animator scale is 0: the motion tests would end before they start)
@@ -111,7 +120,8 @@ class ProbeActivity : Activity() {
             addView(line, lp(0, WRAP, 1f))
             addView(cancel, lp(WRAP, WRAP).apply { marginStart = Space.M.dp })
         }
-        root.addView(strip, flp(500.dp, WRAP, Gravity.BOTTOM or Gravity.START).apply { setMargins(Space.L.dp, 0, 0, Space.L.dp) })
+        // (above where a navigation bar would come back: Cancel must stay reachable on anything)
+        root.addView(strip, flp(500.dp, WRAP, Gravity.BOTTOM or Gravity.START).apply { setMargins(Space.L.dp, 0, 0, 56.dp) })
         setContentView(root)
         budgetMs = 1000.0 / (windowManager.defaultDisplay.refreshRate.takeIf { it > 1f } ?: 60f)
         log = FrameLog(budgetMs)
@@ -121,11 +131,17 @@ class ProbeActivity : Activity() {
         root.post { Thread({ tests() }, "aura-diag-tests").apply { isDaemon = true; start() } }
     }
 
+    /**
+     * The whole screen, as 2.0 will have it. Sticky only where Android will not ask first: its "Viewing full screen" card
+     * stood over the first test and dimmed everything being measured. (AMRI's status-bar switch preconfirms it on the unit;
+     * without that a first touch brings the bars back, and Cancel takes a second one.)
+     */
     @Suppress("DEPRECATION")
     private fun immersive() {
+        val asked = try { Settings.Global.getString(contentResolver, "policy_control").orEmpty().contains("immersive.preconfirms") } catch (_: Throwable) { false }
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
             View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_FULLSCREEN or
-            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            (if (asked) View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY else 0)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -169,6 +185,7 @@ class ProbeActivity : Activity() {
                 val name = names.getString(i)
                 if (stop != null) break
                 val t = Checks.of(name) ?: continue
+                if (DiagFiles.result(c, name).isFile) continue // (this run has it already)
                 val leftSec = (i until names.length()).sumOf { Checks.of(names.getString(it))?.seconds ?: 0 } + plan.optInt("afterSec")
                 val words = getString(R.string.diag_progress, getString(t.label), Checks.time(leftSec))
                 ui { line.text = words }

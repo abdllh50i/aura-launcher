@@ -367,6 +367,7 @@ internal object Collect {
         val set = JSONObject()
         for (k in SETTINGS) all[k]?.let { set.put(k, it) } // (not in the list: still at its default)
         o.put("set", set)
+        o.put("systemLanguage", android.content.res.Resources.getSystem().configuration.locales[0].toLanguageTag())
         // that they are there, and no more
         o.put("homeSet", all.containsKey("placeHome")).put("workSet", all.containsKey("placeWork"))
         o.put("lyricsServerSet", LyricsServer.base() != null).put("lyricsKeySet", LyricsServer.key.isNotBlank())
@@ -673,6 +674,8 @@ internal fun surfaceFlinger(): JSONObject {
             layers.put(JSONObject().put("name", name.take(90)).put("type", type))
             if (name.contains("SurfaceView") && ourLayer == null) ourLayer = name
         }
+        // (as the compositor wrote it: this parsing has only met the emulator's)
+        o.put("raw", Num.cut(lines.subList(start, minOf(start + 40, lines.size)).joinToString("\n"), 3500))
     }
     o.put("layers", layers).put("client", client).put("hwc", hwc)
     lines.firstOrNull { it.startsWith("GLES:") }?.let { o.put("gles", it.removePrefix("GLES:").trim().take(200)) }

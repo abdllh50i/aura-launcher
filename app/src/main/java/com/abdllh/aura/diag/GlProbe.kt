@@ -44,14 +44,18 @@ internal object GlInfo {
         if (dpy == EGL14.EGL_NO_DISPLAY || !EGL14.eglInitialize(dpy, v, 0, v, 1)) { why.put("why", "eglInitialize"); return null }
         val configs = arrayOfNulls<android.opengl.EGLConfig>(1)
         val count = IntArray(1)
-        val attrs = intArrayOf(
-            EGL14.EGL_RENDERABLE_TYPE, if (version >= 3) EGL_OPENGL_ES3_BIT else EGL14.EGL_OPENGL_ES2_BIT,
+        fun choose(bit: Int) = EGL14.eglChooseConfig(dpy, intArrayOf(
+            EGL14.EGL_RENDERABLE_TYPE, bit,
             EGL14.EGL_SURFACE_TYPE, EGL14.EGL_PBUFFER_BIT,
             EGL14.EGL_RED_SIZE, 8, EGL14.EGL_GREEN_SIZE, 8, EGL14.EGL_BLUE_SIZE, 8, EGL14.EGL_ALPHA_SIZE, 8,
-            EGL14.EGL_NONE)
-        if (!EGL14.eglChooseConfig(dpy, attrs, 0, configs, 0, 1, count, 0) || count[0] == 0) {
-            why.put("why", "no EGL config for ES $version").put("eglError", EGL14.eglGetError())
-            return null
+            EGL14.EGL_NONE), 0, configs, 0, 1, count, 0) && count[0] > 0
+        if (!choose(if (version >= 3) EGL_OPENGL_ES3_BIT else EGL14.EGL_OPENGL_ES2_BIT)) {
+            // no config admits to ES 3; a driver may still make the context on an ES 2 one, and that is what is asked
+            if (version >= 3) why.put("es3Config", false)
+            if (version < 3 || !choose(EGL14.EGL_OPENGL_ES2_BIT)) {
+                why.put("why", "no EGL config for ES $version").put("eglError", EGL14.eglGetError())
+                return null
+            }
         }
         val cfg = configs[0]
         val context = EGL14.eglCreateContext(dpy, cfg, EGL14.EGL_NO_CONTEXT, intArrayOf(EGL14.EGL_CONTEXT_CLIENT_VERSION, version, EGL14.EGL_NONE), 0)

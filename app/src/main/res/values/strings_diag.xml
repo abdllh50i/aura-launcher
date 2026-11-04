@@ -51,6 +51,8 @@
     <string name="diag_stopped_cancel">you cancelled it</string>
     <string name="diag_stopped_moving">the car moved</string>
     <string name="diag_stopped_left">the page was left, or a screen came over it</string>
+    <string name="diag_stopped_main">AMRI itself died during the check</string>
+    <string name="diag_stopped_unit">the unit went off or restarted during the check</string>
     <string name="diag_send_title">Sending to your server</string>
     <string name="diag_sending">Sending…</string>
     <string name="diag_not_sent">Not sent. It stays here until you press.</string>
@@ -65,7 +67,6 @@
     <string name="diag_none">not available</string>
     <string name="diag_yes">yes</string>
     <string name="diag_no">no</string>
-    <string name="diag_free">free</string>
     <string name="diag_warning">Note</string>
     <string name="diag_error">Error</string>
     <string name="diag_needs_root">needs the root shell, which did not work</string>
@@ -96,7 +97,7 @@
     <string name="diag_sec_trip">Trip recorder</string>
     <string name="diag_sec_tests">The tests</string>
 
-    <string name="diag_ram">Memory (RAM)</string>
+    <string name="diag_ram">Memory: total · available</string>
     <string name="diag_gpu">GPU</string>
     <string name="diag_es3">OpenGL ES 3</string>
     <string name="diag_fill_4">4 translucent layers</string>
@@ -196,4 +197,24 @@
     <string name="diag_tests_ok">Completed</string>
     <string name="diag_took">Took</string>
     <string name="diag_previous_died">The check before this died in</string>
+    <!-- Words instead of the report's own English values -->
+    <string name="diag_tiles_offline">The offline map, the internet for the rest</string>
+    <string name="diag_tiles_server">The internet, through the unit\'s tile server</string>
+    <string name="diag_tiles_direct">The internet, directly</string>
+    <string name="diag_port_open">open</string>
+    <string name="diag_port_linked">open (Naghm is linked now)</string>
+    <string name="diag_port_closed">closed</string>
+    <string name="diag_hb_never">never reported</string>
+    <string name="diag_hb_pulled">pulled</string>
+    <string name="diag_hb_released">released</string>
+    <string name="diag_gear_guess">a guess</string>
+    <string name="diag_gear_held">last value</string>
+    <string name="diag_gear_motion">from motion</string>
+    <string name="diag_gear_handbrake">from the handbrake</string>
+    <string name="diag_gear_reverse">from the reverse wire</string>
+    <string name="diag_dexopt">Compile state (dexopt)</string>
+    <string name="diag_hwui_textures">HWUI textures</string>
+    <string name="diag_bt_on">Bluetooth</string>
+    <string name="diag_sec_settings">Settings on this unit</string>
+    <string name="diag_system_language">System language</string>
 </resources>

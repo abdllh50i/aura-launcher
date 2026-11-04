@@ -57,6 +57,8 @@
     <string name="diag_stopped_cancel">أنت ألغيته</string>
     <string name="diag_stopped_moving">السيارة تحركت</string>
     <string name="diag_stopped_left">طلعت من الصفحة أو جات شاشة فوقها</string>
+    <string name="diag_stopped_main">مات برنامج عمري نفسه وقت الفحص</string>
+    <string name="diag_stopped_unit">الجهاز طفى أو اشتغل من جديد وقت الفحص</string>
     <string name="diag_send_title">الإرسال لخادمك</string>
     <string name="diag_sending">جاري الإرسال…</string>
     <string name="diag_not_sent">ما انرسل. يبقى هنا لين تضغط.</string>
@@ -71,7 +73,6 @@
     <string name="diag_none">ما توفر</string>
     <string name="diag_yes">إي</string>
     <string name="diag_no">لا</string>
-    <string name="diag_free">المتاح</string>
     <string name="diag_warning">انتبه</string>
     <string name="diag_error">خطأ</string>
     <string name="diag_needs_root">يبيله الروت، وما اشتغل</string>
@@ -102,7 +103,7 @@
     <string name="diag_sec_trip">مسجّل المشوار</string>
     <string name="diag_sec_tests">الاختبارات</string>
 
-    <string name="diag_ram">الذاكرة (RAM)</string>
+    <string name="diag_ram">الذاكرة: الكل · المتاح</string>
     <string name="diag_gpu">كرت الرسم</string>
     <string name="diag_es3">OpenGL ES 3</string>
     <string name="diag_fill_4">٤ طبقات شفافة</string>
@@ -202,4 +203,24 @@
     <string name="diag_tests_ok">تمت</string>
     <string name="diag_took">أخذ</string>
     <string name="diag_previous_died">الفحص اللي قبله مات في</string>
+    <!-- كلمات بدل قيم التقرير الإنجليزية -->
+    <string name="diag_tiles_offline">الخريطة الأوفلاين، والباقي من النت</string>
+    <string name="diag_tiles_server">من النت عن طريق خادم الجهاز</string>
+    <string name="diag_tiles_direct">من النت مباشرة</string>
+    <string name="diag_port_open">مفتوح</string>
+    <string name="diag_port_linked">مفتوح (نغم متصل الحين)</string>
+    <string name="diag_port_closed">مقفل</string>
+    <string name="diag_hb_never">ما وصل عنه شي</string>
+    <string name="diag_hb_pulled">مشدود</string>
+    <string name="diag_hb_released">منزّل</string>
+    <string name="diag_gear_guess">تخمين</string>
+    <string name="diag_gear_held">آخر قيمة</string>
+    <string name="diag_gear_motion">من الحركة</string>
+    <string name="diag_gear_handbrake">من الهاندبريك</string>
+    <string name="diag_gear_reverse">من سلك الريوس</string>
+    <string name="diag_dexopt">حالة ترجمة الكود (dexopt)</string>
+    <string name="diag_hwui_textures">صور HWUI</string>
+    <string name="diag_bt_on">البلوتوث</string>
+    <string name="diag_sec_settings">الإعدادات على هالجهاز</string>
+    <string name="diag_system_language">لغة النظام</string>
 </resources>

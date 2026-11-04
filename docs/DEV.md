@@ -1665,6 +1665,59 @@ The owner asked for two things: none of Android's notifications on the screen, a
   debug.aura.msgpkg com.android.shell` so a debug build takes the shell's notifications as messages. Android 10's
   `-S messaging` style fails to post from the shell.
 
+## Screen check and the trip recorder (`diag/`, 1.19.1)
+Until now no number had come from the unit: no RAM, no GPU memory, no frame time; the plans for 2.0 rest on guesses.
+Settings › About › Screen check (`settings/ScreenCheckActivity.kt`, a page of its own: seven fill the sidebar) has one
+button; about two minutes later there is a report he can photograph, and his server has it. Nothing runs or is sent
+unless it is pressed; with its switch off the trip recorder is one preference read at the start.
+* **Two processes.** Everything that loads GL or native code runs in `ProbeActivity`, `android:process=":diag"`
+  (`AuraApp.onCreate` returns at once there, as for `:boot`); the rest (`Collect.kt`: reading files, the root shell, the
+  network) runs on one thread of the main process. They only talk through files in `files/diag/`: `plan.json` (what :diag
+  is to run), `marker.json` (on the disk with fsync before each test, deleted after it), `r-<test>.json` (one result),
+  `plan-done.json`, `run.json` (a run is under way), `report.json`, `report-sent.json`, `skip.json`. No binder, so
+  nothing that dies or hangs in :diag can leave Home waiting. Each group of `Checks.GROUPS` gets a fresh process, so the
+  memory read after a map test is that test's.
+* **A crash is a result.** A marker found with the process gone: that test is "crashed", its evidence is the logcat
+  lines of the death, the rest goes on in a new process, and later runs skip it (`skip.json`, until the app's version
+  changes or he presses "try again"; the motion tests go with the map, they need it). Past its `budgetMs` a test is
+  killed from outside and is "hung", the same way. A marker from another boot (`boot_id`): "the unit restarted during
+  it". Android may start a dead process's top activity again by itself, and only `ScreenCheck` starts tests: `ProbeActivity`
+  gives up at once when there is no plan or a marker is there. Tried on the emulator with `setprop
+  debug.aura.diagtrouble <test>` (SIGSEGV, debug builds) and `<test>:hang`: Home's pid stays the same.
+* **Stops at once, keeps what it has:** the car moving (`Gear`), reverse, Cancel, Back, Home, anything over the test
+  (`onStop`). Then nothing is sent; the page offers to. The main process dying is found by the next opening of the page
+  (`run.json`), which makes a report of what was left and says so. The step that asks for the wheel's keys is the one
+  exception: a key may open its firmware screen, the music keys are held quiet (`MusicKeys.quietUntil`) and the page is
+  brought back when the step ends (needs background starts: the unit has them, the emulator needs `appops set
+  com.abdllh.aura SYSTEM_ALERT_WINDOW allow`).
+* **Every shell call has an end** (`Sh`): `LocalAdb`'s timeout is per read, so a command that keeps talking would never
+  end by it; and once the shell failed, later calls answer at once, so a unit without root does not spend seconds on each.
+  What needs root says so in the report instead of being silently empty.
+* **Measured as the car would show it.** `MapRig` is the app's own `AuraMap`, style and tiles, full-bleed, with two static
+  translucent panels above it, fed one fix a second along a stored Dammam road at 60 km/h in the navigating camera; first
+  capped at 60 (it falls to 30 by itself when it cannot keep up: `perSecond` shows it), then at 30; then the same as
+  TextureView in a fresh process. The main process serves the tiles (`TileServer.attach`), offline ones when it has them;
+  the report says which, and says so when the map never got its tiles (the numbers are then for bare land colour).
+  ES 3 is asked of EGL itself (a config, then a context on an ES 2 config if none admits to it), and ETC2 and ASTC are
+  drawn and read back: the driver naming them, and the firmware's `ro.opengles.version` of 2.0, say nothing either way.
+* **Immersive.** Sticky only when `policy_control` has `immersive.preconfirms`: Android's "Viewing full screen" card stood
+  over the first test and dimmed everything being measured. Without it the first touch brings the bars back, so Cancel
+  can take two touches (the unit has no navigation bar, and AMRI's status-bar switch preconfirms).
+* **What goes out:** an allow list (`Collect.SETTINGS`), never all preferences: no lyrics key (also taken out of every line
+  before the file is written, `ScreenCheck.clean`), no Home or Work place (only that they are set), no contacts, no song
+  names, no message text, no coordinates. `POST /api/report` (`tools/lyrics-server/server.py`, same key check as its other
+  routes): up to 2 MB of JSON, kept as `<cache>/reports/<utc-time>.json`, the newest 200. A 404 there means the PC's server
+  is older than this: the report stays and "Send again" is offered.
+* **Trip recorder** (`diag/TripRecorder.kt`, off by default): a parked check cannot show the load of a moving car. One line
+  a minute in `files/diag/trip.jsonl` (front screen, FrameMetrics histogram, map fps, CPU %, `Debug.getPss`, GPS rate,
+  speed, temperature, memory free, route and reroute times), on one background-priority thread; each line says what the
+  thread cost (`selfPct`). The count of lines is kept in the preferences because the unit starts cold at every drive: the
+  switch outlives a power-off, and 120 lines (two hours) turn it off. It goes with the next report and is deleted once
+  that arrived.
+* **Numbers from the emulator mean nothing about the unit**; the page says so on any build that is not on the unit
+  (`Device.isNwd`). Parsing of `dumpsys SurfaceFlinger` and the Mali paths have only met the emulator: the raw text goes
+  in the JSON for that reason (`surfaceFlinger.raw`, `d_memory.mali`).
+
 ## Facts about the firmware (from the dump)
 * No `avb` flag in the vendor fstab → no dm-verity on system/vendor/product; vbmeta uses the public AOSP test keys.
 * `persist.nwd.launcher.default=<pkg>` makes the patched PackageManager return that package as HOME.

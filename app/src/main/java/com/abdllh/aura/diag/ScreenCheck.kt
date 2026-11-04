@@ -44,6 +44,8 @@ import java.util.TimeZone
 object ScreenCheck {
     private const val TAG = "AuraDiag"
     private const val WHEEL_SECONDS = 10
+    const val DIED_MAIN = "the main process died during the check"
+    const val DIED_UNIT = "the unit restarted during the check"
 
     /** What the page shows while it runs. */
     class Status(val running: Boolean, val line: String = "", val frac: Float = 0f, val wheelLeft: Int = 0, val keys: String = "", val sending: Boolean = false)
@@ -223,6 +225,7 @@ object ScreenCheck {
 
     // ---- the step where keys are pressed, with the two things that take the same 10 s anyway: the GPS and the network
     private fun wheelStep(app: Context, texts: Context, r: JSONObject) {
+        if (!pageResumed) return cancel("left") // (he left before it asked for anything)
         var keyLine = ""
         var secondsLeft = WHEEL_SECONDS
         val keys = Collect.KeyWatch(app) {
@@ -254,6 +257,8 @@ object ScreenCheck {
         secondsLeft = 0
         MusicKeys.quietUntil = 0L
         keyWatch = null
+        // a key he was asked to press may have opened its screen (the firmware's own, for most): the page comes back
+        if (!pageResumed && cancelWhy == null) main.post { bringBack(app) }
         rawThread.join(5000L)
         netThread.join(9000L)
         r.put("h_network", net ?: JSONObject().put("error", "no answer in time"))
@@ -317,6 +322,16 @@ object ScreenCheck {
         return false
     }
 
+    private fun bringBack(app: Context) {
+        val a = page ?: return
+        try {
+            // (the same page in its task, not a second one on top: REORDER_TO_FRONT does not do that from outside an activity)
+            app.startActivity(Intent(app, a.javaClass).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+        } catch (t: Throwable) {
+            Log.w(TAG, "page: $t")
+        }
+    }
+
     private fun startProbe() {
         val a = page ?: return cancel("left")
         try {
@@ -334,7 +349,9 @@ object ScreenCheck {
         null
     }
 
+    /** The plan goes first: the system may start the killed process's top activity again, and that must find nothing to do. */
     private fun killDiag(app: Context) {
+        DiagFiles.plan(app).delete()
         diagPid(app)?.let { Process.killProcess(it) }
     }
 
@@ -371,13 +388,14 @@ object ScreenCheck {
             if (seen || now - startedAt > 20_000L) {
                 Thread.sleep(400L) // (its last file may just be on its way)
                 if (DiagFiles.planDone(app).isFile) continue
+                DiagFiles.plan(app).delete()
                 return Ended.DIED to DiagFiles.read(DiagFiles.marker(app))?.optString("test")
             }
         }
     }
 
     /** What the system logged about the death, for the report. */
-    private fun evidence(): JSONArray = Num.lines(Sh.text("logcat -d -t 500 | grep -E 'aura:diag|>>> |F libc|F DEBUG|am_crash|lowmemorykiller' | tail -n 24 | cut -c1-200", 6000))
+    private fun evidence(): JSONArray = Num.lines(Sh.text("logcat -d -t 1500 | grep -E 'aura:diag|>>> |F libc|Abort message|signal [0-9]+|F DEBUG   : +#0[0-9] |am_crash|lowmemorykiller|lmkd' | tail -n 30 | cut -c1-200", 6000))
 
     // ---- tests that are not run again
     private fun addSkip(app: Context, test: String, why: String) {
@@ -468,12 +486,8 @@ object ScreenCheck {
     private fun endDeadRun(app: Context) {
         val run = DiagFiles.read(DiagFiles.run(app))
         val startedAt = run?.optLong("at") ?: System.currentTimeMillis()
-        val pid = diagPid(app)
-        if (pid != null) {
-            // still at it: not its fault. Its marker is not a crash then.
-            Marker.clear(app)
-            Process.killProcess(pid)
-        }
+        if (diagPid(app) != null) Marker.clear(app) // (still at it: not its fault, and its marker is not a crash then)
+        killDiag(app)
         val m = DiagFiles.read(DiagFiles.marker(app))
         if (m != null) {
             val why = if (m.optString("boot") == Marker.bootId()) "crashed" else "the unit restarted during it"
@@ -483,7 +497,7 @@ object ScreenCheck {
         }
         val r = JSONObject()
         r.put("a_identity", part { Collect.identity(app) })
-        finishReport(app, r, startedAt, 0L, if (run?.optString("boot") == Marker.bootId()) "the main process died during the check" else "the unit restarted during the check")
+        finishReport(app, r, startedAt, 0L, if (run?.optString("boot") == Marker.bootId()) DIED_MAIN else DIED_UNIT)
         DiagFiles.run(app).delete()
     }
 

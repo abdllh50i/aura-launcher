@@ -140,6 +140,7 @@
             android:name=".diag.ProbeActivity"
             android:configChanges="orientation|keyboard|keyboardHidden|screenSize|smallestScreenSize|screenLayout|uiMode|density|fontScale"
             android:exported="false"
+            android:launchMode="singleTop"
             android:process=":diag"
             android:screenOrientation="landscape"
             android:theme="@style/Theme.Aura.Boot" />

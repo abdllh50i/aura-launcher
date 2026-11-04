@@ -107,6 +107,7 @@ object TripRecorder {
         fails = 0
         (c as? Application)?.registerActivityLifecycleCallbacks(screens)
         CarLocation.addListener(onFix)
+        CarLocation.acquire(c, "trip") // (the rate and the speed, also while another app is in front)
         h.post {
             lastAt = SystemClock.elapsedRealtime()
             lastCpuMs = Process.getElapsedCpuTime()
@@ -121,6 +122,7 @@ object TripRecorder {
         if (app == null) return
         (app as? Application)?.unregisterActivityLifecycleCallbacks(screens)
         CarLocation.removeListener(onFix)
+        CarLocation.release("trip")
         unwatch()
         for ((v, l) in maps) try { v.removeOnDidFinishRenderingFrameListener(l) } catch (_: Throwable) { }
         maps.clear()

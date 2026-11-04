@@ -264,6 +264,8 @@ class ScreenCheckActivity : Activity() {
                 "cancel" -> getString(R.string.diag_stopped_cancel)
                 "moving" -> getString(R.string.diag_stopped_moving)
                 "left" -> getString(R.string.diag_stopped_left)
+                ScreenCheck.DIED_MAIN -> getString(R.string.diag_stopped_main)
+                ScreenCheck.DIED_UNIT -> getString(R.string.diag_stopped_unit)
                 else -> why
             }))
         }
@@ -395,11 +397,11 @@ internal class ReportText(private val c: Context, private val r: JSONObject) {
     }
 
     fun sections(): List<ReportSection> = listOf(summary(), device(), capacity(), gpu(), fill(), memory(), map("surface", R.string.diag_sec_map_surface), map("texture", R.string.diag_sec_map_texture),
-        motion(), voice(), network(), gps(), car(), trip(), tests())
+        motion(), voice(), network(), gps(), car(), settings(), trip(), tests())
 
     private fun summary() = ReportSection(s(R.string.diag_sec_summary)).apply {
         val total = r.at("b_capacity", "androidTotalMb")
-        if (total != null) row(R.string.diag_ram, "${num(total)} MB · ${s(R.string.diag_free)} ${num(r.at("b_capacity", "androidAvailMb"))} MB")
+        if (total != null) row(R.string.diag_ram, "${num(total)} MB · ${num(r.at("b_capacity", "androidAvailMb"))} MB")
         row(R.string.diag_gpu, text("c_gpu", "es2", "renderer"))
         val es3 = r.at("c_gpu", "es3", "ok") as? Boolean
         if (es3 != null) row(R.string.diag_es3, if (es3) text("c_gpu", "es3", "version") ?: yes(true) else yes(false))
@@ -501,6 +503,14 @@ internal class ReportText(private val c: Context, private val r: JSONObject) {
         row(R.string.diag_native, r.at("d_memory", "first", "NativeHeap")?.let { mb(it) })
         row(R.string.diag_java, r.at("d_memory", "first", "JavaHeap")?.let { mb(it) })
         row(R.string.diag_hwui_gpu, text("d_memory", "hwuiGpuMemory"))
+        (r.at("d_memory", "hwuiTextureLines") as? JSONArray)?.let { t ->
+            if (t.length() > 0) row(R.string.diag_hwui_textures, (0 until t.length()).joinToString(" · ") { t.optString(it).trim() })
+        }
+        // (where memtrack reads 0 the Graphics row says nothing: the driver's own first lines, when root can read them)
+        text("d_memory", "mali")?.let { m -> row("Mali", m.lineSequence().filter { it.isNotBlank() && !it.startsWith("#") }.take(2).joinToString(" · ").take(120)) }
+        row(R.string.diag_dexopt, text("a_identity", "dexopt")?.let { d ->
+            Regex("status=([^\\]]+)").findAll(d).joinToString(" · ") { it.groupValues[1] }.ifEmpty { none }
+        })
         row(R.string.diag_threads, r.at("d_memory", "threads")?.let { num(it) })
         (r.at("d_logs", "displayed") as? JSONArray)?.let { d ->
             if (d.length() > 0) row(R.string.diag_displayed, d.optString(d.length() - 1).substringAfter("Displayed ", d.optString(d.length() - 1)).takeLast(70))
@@ -512,7 +522,9 @@ internal class ReportText(private val c: Context, private val r: JSONObject) {
     private fun map(which: String, title: Int) = ReportSection(s(title)).apply {
         status("map.$which")
         val m = r.at("e_map", which) as? JSONObject ?: return@apply
-        row(R.string.diag_tiles, m.optString("tiles").takeIf { it.isNotEmpty() })
+        row(R.string.diag_tiles, m.optString("tiles").takeIf { it.isNotEmpty() }?.let {
+            s(when { it.startsWith("offline") -> R.string.diag_tiles_offline; it.endsWith("directly") -> R.string.diag_tiles_direct; else -> R.string.diag_tiles_server })
+        })
         if (m.has("tilesCame") && !m.optBoolean("tilesCame") || m.optInt("features", 1) == 0) row(R.string.diag_warning, s(R.string.diag_map_empty))
         else row(R.string.diag_tiles_ms, m.opt("tilesMs")?.let { "${num(it)} ms" })
         row(R.string.diag_style_ms, m.opt("styleMs")?.let { "${num(it)} ms" })
@@ -564,7 +576,14 @@ internal class ReportText(private val c: Context, private val r: JSONObject) {
         row(R.string.diag_ip, text("h_network", "ip"))
         row(R.string.diag_gateway, text("h_network", "gateway"))
         row(R.string.diag_rtt, r.at("h_network", "gatewayPing", "avgMs")?.let { "${num(it)} ms" } ?: r.at("h_network", "gatewayPing")?.let { s(R.string.diag_no_answer) })
-        row(R.string.diag_port, text("h_network", "port47100"))
+        row(R.string.diag_port, text("h_network", "port47100")?.let {
+            when {
+                it == "closed" -> s(R.string.diag_port_closed)
+                it == "no answer" -> s(R.string.diag_no_answer)
+                it.contains("linked") -> s(R.string.diag_port_linked)
+                else -> s(R.string.diag_port_open)
+            }
+        })
         row(R.string.diag_naghm, text("h_network", "naghmNews") ?: none)
         (r.at("h_network", "hosts") as? JSONObject)?.let { hosts ->
             for (h in hosts.keys()) {
@@ -588,8 +607,22 @@ internal class ReportText(private val c: Context, private val r: JSONObject) {
 
     private fun car() = ReportSection(s(R.string.diag_sec_car)).apply {
         if (r.at("j_car") == null) return@apply
-        row(R.string.diag_gear, "${text("j_car", "gear") ?: none} · ${text("j_car", "gearSource").orEmpty()}")
-        row(R.string.diag_handbrake, text("j_car", "handbrake"))
+        row(R.string.diag_gear, (text("j_car", "gear") ?: none) + when (text("j_car", "gearSource")) {
+            "GUESS" -> " · " + s(R.string.diag_gear_guess)
+            "HELD" -> " · " + s(R.string.diag_gear_held)
+            "MOTION" -> " · " + s(R.string.diag_gear_motion)
+            "HANDBRAKE" -> " · " + s(R.string.diag_gear_handbrake)
+            "REVERSE" -> " · " + s(R.string.diag_gear_reverse)
+            "CAN" -> " · CAN"
+            else -> ""
+        })
+        row(R.string.diag_handbrake, when (text("j_car", "handbrake")) {
+            "pulled" -> s(R.string.diag_hb_pulled)
+            "released" -> s(R.string.diag_hb_released)
+            null -> null
+            else -> s(R.string.diag_hb_never)
+        })
+        row(R.string.diag_bt_on, text("j_car", "bluetoothOn")?.let { yes(it == "1") } ?: none)
         row(R.string.diag_bt_state, text("j_car", "firmwareSettings", "key_bt_a2dp_state") ?: none)
         val keys = r.at("j_car", "wheel", "keys") as? JSONArray
         row(R.string.diag_keys, if (keys == null || keys.length() == 0) s(R.string.diag_keys_none) else (0 until keys.length()).joinToString(" · ") {
@@ -597,6 +630,16 @@ internal class ReportText(private val c: Context, private val r: JSONObject) {
             "${k?.optInt("code")} ${k?.optString("name").orEmpty()}".trim()
         })
         (r.at("j_car", "wheel", "rawInput") as? JSONArray)?.let { if (it.length() > 0) row(R.string.diag_keys_raw, it.length().toString()) }
+    }
+
+    /** K: by their names in the code; a switch never touched is at its default and is not here. */
+    private fun settings() = ReportSection(s(R.string.diag_sec_settings)).apply {
+        row(R.string.diag_system_language, text("k_settings", "systemLanguage"))
+        val set = r.at("k_settings", "set") as? JSONObject ?: return@apply
+        for (k in set.keys().asSequence().sorted()) row(k, set.opt(k)?.toString()?.take(60))
+        (r.at("k_settings", "system") as? JSONObject)?.let { g ->
+            for (k in g.keys().asSequence().sorted()) if (!g.isNull(k)) row(k, g.opt(k)?.toString()?.take(60))
+        }
     }
 
     private fun trip() = ReportSection(s(R.string.diag_sec_trip)).apply {
