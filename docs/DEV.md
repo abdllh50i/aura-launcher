@@ -671,7 +671,7 @@ the middle of the map inside the outline or no internet), `© OpenStreetMap · O
 **Looking at it** (`debug/MapLookActivity`, `scripts/map-look.ps1`): the real map alone on the screen at any camera, 37 cameras, offline, the pack's read
 times per shot and anything MapLibre complains of. `tools/mapbuild/adversary/dump_style.ps1` still writes the style as JSON for the GL JS plates.
 Seen on the x86_64 emulator with MapLibre Native 10.3.7, day and night, Arabic and English, against `final2/assets/plates`; not an ARM GPU, nothing on the unit.
-Reads there: 1 to 23 ms a tile as a rule, worst 91 ms, on a disk shared with other emulators (the PC itself: 0.04 ms).
+Reads there, the emulator's disk image on a spinning disk shared with other emulators: mean 1 to 23 ms a tile per camera, worst 91 ms; one run while the disk was busy, mean 42 ms, worst 420 ms (the PC itself: 0.04 ms). The unit's eMMC is unmeasured.
 What differs from the plates, on purpose or not: the words are Readex Pro AMRI, the plates' Noto Sans; the places are the pack's, not OpenFreeMap's, so other names and more
 Latin on an Arabic screen; edges of fills have no multisampling; the labels' fade exists on the unit and not on a plate.
 The rectangle's south edge, 16.2 N, shows as a straight line across the Red Sea below Jazan at z7 to z9 (a tile that touches the outline comes from the pack even online): rare here, a rebuild with a lower edge cures it.
