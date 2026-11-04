@@ -179,7 +179,8 @@ class ProbeActivity : Activity() {
         val c = applicationContext
         val done = JSONObject()
         try {
-            val plan = DiagFiles.read(DiagFiles.plan(c)) ?: throw IllegalStateException("no plan")
+            // (gone since onCreate: the main process has given up on this start, and says nothing more is wanted)
+            val plan = DiagFiles.read(DiagFiles.plan(c)) ?: return leave()
             val names = plan.optJSONArray("tests") ?: JSONArray()
             for (i in 0 until names.length()) {
                 val name = names.getString(i)
@@ -209,8 +210,12 @@ class ProbeActivity : Activity() {
             done.put("error", t.toString())
             Marker.clear(c)
         }
-        allDone = true
         try { DiagFiles.write(DiagFiles.planDone(c), done) } catch (t: Throwable) { Log.w(TAG, "done: $t") }
+        leave()
+    }
+
+    private fun leave() {
+        allDone = true
         main.post {
             if (!isFinishing) { finish(); overridePendingTransition(0, 0) }
             // (nothing of this process is wanted any more; ScreenCheck ends it too, should this not come)

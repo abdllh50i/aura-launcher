@@ -1676,7 +1676,10 @@ unless it is pressed; with its switch off the trip recorder is one preference re
   is to run), `marker.json` (on the disk with fsync before each test, deleted after it), `r-<test>.json` (one result),
   `plan-done.json`, `run.json` (a run is under way), `report.json`, `report-sent.json`, `skip.json`. No binder, so
   nothing that dies or hangs in :diag can leave Home waiting. Each group of `Checks.GROUPS` gets a fresh process, so the
-  memory read after a map test is that test's.
+  memory read after a map test is that test's. The next one starts only once the last is gone from
+  `runningAppProcesses`: the system lists a dying process for a moment, and its going looked like the new one dying (on
+  the emulator one run in five, the last test "not run"). `dumpsys meminfo` and `gfxinfo` go by pid: by name Android
+  sometimes answers with the whole system's list and no app summary, with one process of that name running.
 * **A crash is a result.** A marker found with the process gone: that test is "crashed", its evidence is the logcat
   lines of the death, the rest goes on in a new process, and later runs skip it (`skip.json`, until the app's version
   changes or he presses "try again"; the motion tests go with the map, they need it). Past its `budgetMs` a test is

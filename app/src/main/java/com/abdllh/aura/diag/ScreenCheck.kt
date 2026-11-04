@@ -298,6 +298,7 @@ object ScreenCheck {
         while (left.isNotEmpty() && cancelWhy == null) {
             // the page first: a screen that came over it (a key that opened something) has its moment to go
             if (!waitForPage()) { cancel("left"); return }
+            waitGone(app)
             val after = laterSeconds(tests)
             DiagFiles.planDone(app).delete()
             Marker.clear(app)
@@ -379,6 +380,16 @@ object ScreenCheck {
         diagPid(app)?.let { Process.killProcess(it) }
     }
 
+    /**
+     * Until the last process is really gone. The system lists a dying process for a moment: taken for the next group's, its
+     * going looked like that one dying before it had started (on the emulator, one run in five, with the last test "not run").
+     */
+    private fun waitGone(app: Context) {
+        val until = SystemClock.elapsedRealtime() + 5000L
+        while (diagPid(app) != null && SystemClock.elapsedRealtime() < until) Thread.sleep(50L)
+        diagPid(app)?.let { Process.killProcess(it); Thread.sleep(300L) }
+    }
+
     /** Until :diag has ended its plan or something ended it. Which test it was in, when that is known. */
     private fun watch(app: Context, tests: List<String>): Pair<Ended, String?> {
         val startedAt = SystemClock.elapsedRealtime()
@@ -398,7 +409,8 @@ object ScreenCheck {
             DiagFiles.read(DiagFiles.planDone(app))?.let { d ->
                 d.optString("interrupted").takeIf { it.isNotEmpty() }?.let { cancel(it) }
                 if (d.has("error")) Log.w(TAG, "the tests: ${d.optString("error")}")
-                killDiag(app)
+                DiagFiles.plan(app).delete()
+                waitGone(app) // (it finishes its window and ends by itself; killed in the middle, the system might start it again)
                 return Ended.DONE to null
             }
             val marker = DiagFiles.read(DiagFiles.marker(app))
@@ -412,7 +424,7 @@ object ScreenCheck {
             // not there: on its way up, or gone. Gone, a marker says which test it was in.
             if (seen || now - startedAt > 20_000L) {
                 Thread.sleep(400L) // (its last file may just be on its way)
-                if (DiagFiles.planDone(app).isFile) continue
+                if (DiagFiles.planDone(app).isFile || diagPid(app) != null) continue
                 DiagFiles.plan(app).delete()
                 return Ended.DIED to DiagFiles.read(DiagFiles.marker(app))?.optString("test")
             }
