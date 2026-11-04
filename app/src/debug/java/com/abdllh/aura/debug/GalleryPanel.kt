@@ -412,7 +412,7 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
             fun put(v: View, w: Int, h: Int, label: String, scale: Float) {
                 s.addView(v, at(x, y, w, h))
                 when (row) { 1 -> pressed(v, scale); 2 -> v.isEnabled = false }
-                s.caption(x, y + h, "$label $state", 150)
+                s.caption(x, y + h, if (row == 0) label else state, 150)
                 x += w + 14
             }
             put(IconButton(ctx, R.drawable.ic_gear, 38, 72, 84, centerDy = -2, pressPlate = true), 72, 84, "dock cell", PressGesture.ICON)
