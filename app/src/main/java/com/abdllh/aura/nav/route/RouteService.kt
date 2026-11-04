@@ -68,6 +68,8 @@ class RouteService : Service() {
     }
 
     override fun onDestroy() {
+        // (no client left, a home process that died for one: this end is no crash, whatever the worker was at)
+        RouteGuard.notWorking(applicationContext)
         RouteProcess.leave()
         super.onDestroy()
     }

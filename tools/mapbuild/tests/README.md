@@ -18,6 +18,8 @@ python -I $T\route_eta.py $O $W\out\places.db var-default                       
 python -I $T\wording\run_wording.py app\src\main\java\com\abdllh\aura\nav $O $O\wording valhalla var-default   # compiles the app's real Instructions.kt and runs it on the answers
 ```
 
+The same trips through the app's real service on an emulator, the tar on the device (`docs/DEV.md`, Valhalla in its own process): `python -I $T\app_route_check.py <adb> <serial> $W\out\ref-routes <out.json> [--rounds 5]`.
+
 Plates: `python -I serve_tiles.py --port 8799 --root plate base=$W\out\base.mbtiles`, then `tests\make_plates.py` or `tests\plate_sites.py` for the jobs and `plate\plate_routes.mjs` to render them
 (needs the design kit's headless Chrome; it loads MapLibre from unpkg.com and glyphs from tiles.openfreemap.org). Valhalla is blue, OSRM red dashes.
 
