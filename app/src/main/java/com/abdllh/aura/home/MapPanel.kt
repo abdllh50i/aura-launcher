@@ -149,14 +149,14 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
         refresh()
     }
 
-    // ------------------------------------------------------------------------------------------ lifecycle (from HomeActivity)
+    // ------------------------------------------------------------------------------------------ lifecycle (from HomePanel)
     fun onCreate(b: Bundle?) {
         savedState = b
         created = true
     }
 
     /**
-     * Builds the live map and brings it to where the activity is (HomeActivity calls it after the entrance). Only
+     * Builds the live map and brings it to where the activity is (HomePanel calls it after the entrance). Only
      * while the panel is started: building it writes MapGuard's "starting" mark, which only a drawn frame or the map's
      * onStop clears. Built under another app that covered the home screen at boot, and the process then killed in the
      * background, the mark stayed and counted as a crash; two such drives turned the home map off for good.

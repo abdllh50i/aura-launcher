@@ -204,6 +204,7 @@ class HomePanel(shell: HomeActivity, savedInstanceState: Bundle?) : Panel(shell,
 
     override fun onTick() {
         if (::carPanel.isInitialized) carPanel.refresh()
+        UpdateManager.autoCheckIfDue() // (also with no other screen ever opened: a drive spent on this one)
     }
 
     /**

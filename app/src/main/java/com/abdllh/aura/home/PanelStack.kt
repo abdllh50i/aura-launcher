@@ -16,6 +16,7 @@ import com.abdllh.aura.system.IdleGc
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Snack
 import com.abdllh.aura.ui.afterNextDraw
+import com.abdllh.aura.util.Prefs
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -27,7 +28,7 @@ import java.util.Locale
  * when it starts; [firstArgs]).
  *
  * Nothing here may take the home screen down or leave it stuck. A panel that cannot be built or throws from a callback is
- * dropped, the panel under it comes back and Settings → About says so ([note]); only the home panel's own failures go
+ * dropped, the panel under it comes back and Settings → About says so ([failedNote]); only the home panel's own failures go
  * through, since that is a crash the crash guard counts and answers. A move that does not end is ended ([MOVE_LIMIT_MS]),
  * and everything at rest is reached from one place ([settle]), wherever a move stopped.
  */
@@ -321,7 +322,9 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
 
     // ------------------------------------------------------------------------------------------ moves
     private fun move(run: (() -> Unit) -> Unit) {
-        if (!shell.resumedNow) { settle(); return } // (nobody to see it: a panel chosen while the window is stopped is just there)
+        // (nobody to see it: a panel chosen while the window is stopped is just there. The owner's switch, Settings →
+        // Display & sound, was about the window animation of activities: screens change in a cut, as the firmware has them)
+        if (!shell.resumedNow || !Prefs.screenAnimations) { settle(); return }
         val id = ++lastMove
         main.removeCallbacks(overdue)
         main.postDelayed(overdue, MOVE_LIMIT_MS)

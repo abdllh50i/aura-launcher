@@ -109,7 +109,7 @@ class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
 
     /** Asked for again while it is up: the page asked for (a start from outside, which may also have set the theme). */
     override fun onArgs(args: Bundle) {
-        if (Palette.dark != builtDark || Palette.accent != builtAccent) { buildAgain(); }
+        if (Palette.dark != builtDark || Palette.accent != builtAccent) buildAgain()
         if (args.containsKey(SettingsActivity.EXTRA_PAGE)) show(args.getInt(SettingsActivity.EXTRA_PAGE).coerceIn(0, pages.size - 1), shell.resumedNow)
     }
 

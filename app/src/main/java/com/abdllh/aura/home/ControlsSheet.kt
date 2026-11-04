@@ -34,8 +34,8 @@ import com.abdllh.aura.util.dp
 
 /**
  * "Controls" sheet: brightness and volume, appearance, mute, screen off and shortcuts to Wi-Fi, Bluetooth, car and
- * settings. A shortcut that opens another screen leaves the sheet open under it: it goes when the home screen stops
- * (HomeActivity), so its closing does not compete with the other screen's opening.
+ * settings. A shortcut that opens another app leaves the sheet open under it: it goes when the window stops
+ * (HomeActivity), so its closing does not compete with the app's opening. A panel closes it at once ([PanelStack.show]).
  */
 class ControlsSheet(ctx: Context, private val host: HomeHost) : Sheet(ctx, false) {
     private val brightness = AuraSlider(ctx).apply { max = 100; setIcon(R.drawable.ic_sun) }

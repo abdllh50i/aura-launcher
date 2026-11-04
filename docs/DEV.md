@@ -69,11 +69,11 @@ Emulator: AVD "CarUnit" (Android 10 x86_64, 1024×600, 160 dpi) created with `AN
 `/data/local/tmp/ws/system.img` once.
 
 ## Home screen design
-`home/HomeActivity.kt` lays out `CarPanel` (clock, the car, quick buttons), `MapPanel` (live map, "Where to?", Home/Work,
+`home/HomePanel.kt` lays out `CarPanel` (clock, the car, quick buttons), `MapPanel` (live map, "Where to?", Home/Work,
 the `MediaCard`, the Maps screen's guidance sign in its compact form while navigating), the `Dock` and two bottom sheets (`ControlsSheet`, `AppDrawer`,
 both on `ui/Sheet.kt`). Colours are theme tokens in `ui/Palette.kt`; `ui/Theme.kt` resolves dark / light / auto (light between
 an estimated sunrise and sunset) and a theme or accent change rebuilds the views in place behind a `PixelCopy` snapshot that
-fades out. HomeActivity forwards its lifecycle to the embedded map; the map is capped at 30 fps and only draws when it changes.
+fades out. HomePanel forwards its lifecycle to the embedded map; the map is capped at 30 fps and only draws when it changes.
 
 Motion (1.6): `ui/Motion.kt` has the curves (emphasized in / exit / standard), a `Spring` (Choreographer frames, keeps its
 speed when the target changes: presses, sheets, sliding indicators) and `pressScale` on it. `ui/Segmented.kt` (sliding
@@ -118,9 +118,9 @@ It follows "Design system (1.12)" throughout: type roles, `Radius` / `Space` / `
   grey that read as disabled.
 * **Shadows.** None on the dark theme (`lift()`), where they could not be seen and were redrawn with every map frame.
   On the light theme: the map panel `Elev.REST` plus a `stroke` hairline, the row's pills `REST`, the player `FLOAT`.
-  The dock has a 1 dp `divider` on its top edge instead of a full-width shadow; its app tiles are flat. The window
-  background is the only full-screen fill (`ui/BackdropView`, a second fill of the same colour, is gone from home
-  and Settings, and deleted).
+  The dock has a 1 dp `divider` on its top edge instead of a full-width shadow; its app tiles are flat. There is one
+  full-screen fill: the top panel's own room, since 2.0's step 2, when the window lost its background (`ui/BackdropView`,
+  a second fill of the same colour, is gone from home and Settings, and deleted).
 * **Entrance.** Everything but the car settles in about half a second (it was ~1 s): header at 0 ms, the map row's
   three parts at 80/110/140, the player at 140, the quick buttons at 160, each `View.enter`. The map panel only moves
   (16 dp, `LONG`): it holds the live map's surface, which a fade would draw through a layer on every frame. The dock
@@ -147,9 +147,9 @@ It follows "Design system (1.12)" throughout: type roles, `Radius` / `Space` / `
   manager about every pin and laid the dock out in the frames of the window animation. A pinned app installed or
   removed anywhere reaches `Dock.rebuild()` through a package receiver registered for the activity's whole life
   (updates, `EXTRA_REPLACING`, are ignored).
-* **Sheets.** An app opened from the drawer, or a screen opened from a Controls tile, opens over the sheet; the sheet
-  closes in `HomeActivity.onStop` (closing it at the same time made the sheet, the window animation and the app's start
-  compete). A drawer under a translucent window closes after 1 s once the window lost focus; the Controls sheet stays
+* **Sheets.** An app opened from the drawer, or from a Controls tile, opens over the sheet; the sheet closes in
+  `HomeActivity.onStop` (closing it at the same time made the sheet, the window animation and the app's start compete); a
+  panel, which would open under it, closes it at once. A drawer under a translucent window closes after 1 s once the window lost focus; the Controls sheet stays
   open under a translucent panel (the Wi-Fi panel), which brings the driver back to it. The drawer is INVISIBLE when
   closed, not GONE (it overrides `setVisibility`), so its laid-out grid is kept; icons load at the size shown (68 dp);
   on open the grid rises once as one layer (12 dp, 60 ms after the sheet), and an unchanged list is not bound again.
@@ -221,10 +221,10 @@ there. What changes is the trap above: its sequences, `dev-install`, `HomeGuard`
 no Home alive and `BootHome`'s fallback ended in 2 instances and now in 1. Right after a by-name start the finished
 record can still be listed for a moment beside the new one (no window, gone by the next look).
 
-`Front.panel`, `setPanel` and `ownIs(name, withinMs)` are the same idea for "which screen is in front". Today `panel` is
-set when an activity resumes (`Screens.panelOf`); the shell will call `setPanel` at every switch. `ownIs(Class)` stays
-next to it, deprecated with the reason: a screen that is a panel never resumes as its class, so that overload would still
-compile and never be true. `MusicKeys` asks by name.
+`Front.panel`, `setPanel` and `ownIs(name, withinMs)` are the same idea for "which screen is in front". `panel` is set when
+an activity resumes (`Screens.panelOf`: for the shell, its top panel) and by the shell at every switch. There is no
+`ownIs(Class)` any more: a screen that is a panel never resumes as its class, so it would have compiled and never been
+true. `MusicKeys` asks by name.
 
 Checking it on the emulator (Android's own rules, not the firmware's: `persist.nwd.launcher.default` does not exist there):
 * `cmd package set-home-activity com.abdllh.aura/.home.HomeActivity` once, or the Home key goes to Launcher3.
@@ -242,6 +242,106 @@ Checking it on the emulator (Android's own rules, not the firmware's: `persist.n
 * After the debug assertion the Home key shows the chooser: stock Android clears the chosen home when a non-system home
   process crashes. `set-home-activity` again. The note written just before the throw is lost with the process in a debug
   build (`apply()`); a release build does not throw.
+
+### One window (2.0 step 2: `home/HomeActivity.kt`, `Panel.kt`, `PanelStack.kt`, `PanelMotion.kt`, `ShellRoot.kt`, `Entry.kt`)
+`HomeActivity` is the shell: one window, and nothing of any screen in it. `ShellRoot` is its content, in layers: `mapHost`
+(the map's slot, empty until step 3: always attached, always visible, never follows the keyboard), `panelLayer`, `chrome`
+(empty until the new design), `sheets` (Controls and the drawer, the same classes). `setContentView` runs once: a new theme
+rebuilds what is in the layers. The home screen moved unchanged to `HomePanel`, the bottom of the stack; Settings to
+`SettingsPanel`, the first panel above it, built on open, dropped on close. Maps and Music are still activities. Nothing
+looks different; a screen that is a panel opens in the window, with no activity start.
+
+**A panel** (`Panel`) is a `ContextWrapper` of the activity, so code moved from an activity keeps working on `this`, and its
+callbacks are the activity's under the same meaning: `onShow(args)` / `onHide` were onStart / onStop, `onResume` / `onPause`
+the same, `onArgs` was onNewIntent, `onBack`, `onPermission`, `onTick` (the shell's one `TIME_TICK` receiver), `onLook`,
+`onTrimMemory`, `onDestroy`. `PanelStack` keeps them in pairs. Under another panel a panel has had `onHide`, and is INVISIBLE
+once the move over it has ended (laid out still, so coming back runs no layout; a covered tree is drawn on every frame
+otherwise). `isGone`: dropped or window gone, the guard for a late answer. `isTop`: still in front. `finish()`,
+`requestPermissions(perms, code)` (the answer goes to whoever asked, and not once it is gone), `runOnUiThread`, `window` have
+the activity's names. What needs the real activity takes `shell`: `EnrollDialog`, and the home screen's views, built on
+`shell` itself (`CarGlView` asks its context for the window).
+To add one: a line in `PanelStack.make`, its name in `Screens.PANELS`, its old class becomes `class X : Entry(name)` with
+`Theme.NoDisplay`, `noHistory`, `excludeFromRecents`, `taskAffinity=""` in the manifest. `ProbePanel` (src/debug) is the
+smallest there is.
+
+**How it opens.** `Screens.open`: with the shell resumed and on the main thread, `panels.show(name, args)` in place.
+Otherwise a home intent limited to the package with the panel's name and the args as extras, which brings the shell forward
+and clears what is above it, as the Home key does. `resumedNow`, not `startedNow` as `home-shell.md` 6.7 proposed: a shell
+started and only paused has something over it (an Entry, always; a translucent panel of Android's), and a panel shown in
+place would open under that. `onNewIntent` with no panel named (the Home key) is Home, and pops everything. `Entry` is what is
+left of an old class name: no window, forwards through `Screens` and finishes in `onCreate` whatever happens. With no shell
+alive that is the home intent, so a by-name start makes a home-type activity and never the second instance of "One way to the
+screens"; walked with AMRI the real home: by name with none alive, then another app, then the Home key, one activity, in the
+home stack. `Screens.homeByName` carries the panel's name and args along. AMRI not the home app: the same, in an ordinary stack.
+
+**The stack never takes the home screen down.** A panel that cannot be built, or throws from a callback the stack calls, is
+dropped: the one under it comes back, a Snack says so and Settings → About keeps the last one ("Screen that last failed to
+open", prefs file `aura_shell`). The home panel's own failures go through, since that is what the crash guard counts and
+answers. A move ends by itself at `MOVE_LIMIT_MS`, and the state at rest is reached from one function (`settle`), wherever a
+move stopped; no move runs while the shell is not resumed (`paused()` settles, a panel chosen while stopped is just there),
+nor with the owner's "Animated screen changes" off. A touch on a panel that stops being on top hears `ACTION_CANCEL`
+(`PanelFrame`, as `Sheet`).
+
+**The moves** are one small object, `PanelMotion`, asked by the pair: `between(from, to)` answers a `Move` with `opening` and
+`closing`. The default rises 8 dp and fades, 200 ms in, 180 ms out, as one layer, started after the frame that holds the
+cost (a panel's first frame, with its layer already drawn at alpha 0; the frame of the one that comes back). A later call on
+the same view turns it back from where it is (`Motion.enter/exit`'s tag). The design's laws go there and nowhere else.
+
+**Dialogs and menus** are windows of their own over every panel: an activity's went with the activity, in the shell they
+would stay over what comes next, so `Modal.show` and `Menu.show` register (`Panel.own`) and the stack closes them when the top
+panel changes. That is also what ends the enrolment card on the Home key, whose `onActivityStopped` watch does not fire any
+more (the Home key no longer stops anything under a panel).
+
+**The window has no background** (`Theme.window(fill = false)`): each opaque panel draws its own room, the one full-screen
+fill at rest, as the design wants and as a map under the window will need. The car still stands on `Palette.bg`: it is the
+room's colour now. `CarStage.redraw` no longer pushes frames to the GPU while it is not shown: nothing takes them under another
+panel, and its thread would hang in the swap two frames later (an animation does not stop for that).
+
+**Soft input.** The shell is `adjustNothing`, set per panel at each switch (`Panel.softInput`). With ADJUST_RESIZE only that
+panel's frame follows the keyboard: `mapHost` and the panels under it keep the size they had without it, so nothing heavy is
+laid out again. Measured with `ProbePanel`: root 1024x230, its frame the same, the map's slot and Home 1024x528. **But that
+happens only with the status bar's policy off.** `policy_control immersive.status=*` (`SystemBars`, on by default, so on the
+unit) adds FLAG_FULLSCREEN to every window as far as the window manager is concerned (`PolicyControl.getWindowFlags`, in the
+firmware's bytecode too), and `DisplayPolicy.layoutWindowLw` gives a fullscreen window `mRestricted`, never the shrunk
+`mContent`: ADJUST_RESIZE does not resize. Only the visible frame shrinks, and the window **pans** to keep a focused field in
+sight. So a test on an emulator without `WRITE_SECURE_SETTINGS` (no `-g`, no policy) is not the unit's case: "the keyboard
+shrinks the screen to a strip" in the Maps notes is that case. And the pan is the bad one: measured with a real `SurfaceView` in
+the slot, a field lower than the keyboard's top moves the surface along with the window (298 px), and the window's views over
+it vanish (the transparent region does not follow). A field that stays above the keyboard pans nothing; with ADJUST_NOTHING
+there is no pan at all.
+
+**What moved with the activity.** Home's checks at `onResume` run at every return to the home panel, as they did (`refreshAll`,
+`autoCheckIfDue`, `ZLinkGuard`, the entrance if it has not played), and `notifyHomeForeground` at its `onShow`. `onLook` is the
+look check, asked after `onResume` and at each tick; coming out from under a leaving panel Home is rebuilt at once with no
+picture (it would be of that panel), before the panel goes. The update check is also asked at the tick now. A language change
+is `shell.languageChanged(args)`: the whole window again, the same panel on top (`reopen`, a companion field, and a system
+configuration change uses it too), Settings' picture as before. `GuardMarks.homeDrawn` belongs to the shell's first frame,
+whichever panel it holds. Home's start cover is inside its panel, so it waits under Settings when the window starts there.
+
+Debug hooks: `SettingsActivity --ei page N --es theme ... --es lang ... --es api_base ... --es repo ...` still work, in `Entry`'s
+`beforeOpen`; a language by the hook now shows at once, the window being rebuilt, where the old activity showed it from its next
+start. `am start -a android.intent.action.MAIN -c android.intent.category.HOME --es panel probe com.abdllh.aura`: the probe panel.
+`setprop debug.aura.probefail build|show|resume`, `debug.aura.probekeep 1`, `debug.aura.probesurface 1` (a real surface in the slot,
+its life in the log, `AuraProbe`). `am broadcast -a com.abdllh.aura.debug.PANELS --ei rounds 120 --es panels settings,probe`:
+opens, backs and Homes at random 0-300 ms apart on the main thread, then logs how the layer came to rest.
+
+Walked before and after on the emulator (scripted, AMRI the real home, the same steps in the same order from cleared data; 67
+screenshots compared pixel by pixel; the release build walked too, with no comparison): 7 Settings pages and their scroll, Back and the chevron, the Controls tile, the Home key from a deep page and from a
+dialog, another app and back, a call card and the volume display over Settings (touches through to it), by the old name with one alive
+and with none, debug hooks, language both ways, theme and accent (and Back right after a choice), a permission dialog denied and
+allowed, the enrolment card, the keyboard in the drawer and in Settings' dialogs, the pick from Settings, Screen check, Maps and Music
+from Home. Same pictures but the clock and other times, what a blinking cursor or a ring shows, a fling's distance, a card caught on its
+way out, Settings' new About lines, the map's tiles, and two meant differences: by name with no Home alive Back now goes to Home and not to the launcher that was behind, and a
+hook's language shows at once. Instances: always one, home stack, no crash, nothing from `AuraShell` at error level but what the probe
+was told to do. 120 rounds of the stress: one frame at rest, in place, no layer, views back to 228.
+
+Numbers, emulator, same session, interleaved (times do not carry over to the unit; GPU memory is not in them; PSS differences under
+about 5 MB mean nothing): from the tap's handler to Settings' first frame complete 104-148 ms median before (65-1023), 39 ms after
+(20-111). To rest: the old window animation ran 280 ms after that first frame, the move ends about 285 ms after the tap. PSS after a
+GC, two passes each, before and after: Home at rest 94.6, 107.9 / 100.5, 104.3 MB; Settings open 98.7, 109.7 / 105.1, 106.8; back
+102.6, 106.2 / 102.5, 104.0; after 15 more rounds 107.5, 116.8 / 104.7, 108.7 (native 69-73 / 61-66). Views 222 / 228 on Home, 317 / 320
+with Settings; window roots 2 / 1 with Settings open. On the unit that is one window's buffers instead of two while Settings is
+up, plus one screen-sized layer during a move; not measured. Not tried on the unit: all of it.
 
 ### Memory and start-up cuts (the foundations of 2.0: nothing looks different)
 Home was the heavy screen, and almost none of its weight was code: the car's CPU path, its leftovers, the map's sprites and
@@ -1704,20 +1804,20 @@ this area go in `strings_settings.xml` (both languages).
 
 **Settings is no longer recreated.** Until 1.11 `rebuild()` was `recreate()`: picking a navigation app, a microphone,
 teaching an offline command or switching Beta flashed the bare window and threw the page back to its top.
-* `SettingsActivity.rebuild()` builds the current page again in place, where it was scrolled to (posted, after the tap
+* `SettingsPanel.rebuild()` (`SettingsActivity` until 2.0) builds the current page again in place, where it was scrolled to (posted, after the tap
   that asked for it). Use it when a preference changes what the page shows.
-* `SettingsActivity.restyle()` (no arguments) is only for the theme, the accent and the language. It takes a picture of
+* `SettingsPanel.restyle()` (no arguments) is only for the theme, the accent and the language. It takes a picture of
   the screen (`PixelCopy`, 600 ms at most), stores the waiting choice, builds the whole screen again with the new
-  palette (the language: `recreate()`, the picture handed over in a companion field) and fades the picture out on top
+  palette (the language: the whole window again, the picture handed over in a companion field) and fades the picture out on top
   over `Motion.LONG`; page and scroll stay. It does nothing when nothing waits and the theme shows as it is. The accent
   needs it, since every drawable reads `Palette` when it is built.
 * A choice is kept at the tap: the theme in Prefs, the accent and the language in `pendingAccent` / `pendingLang` (not
   Prefs: the accent there would change `Palette` before the picture). The capture's answer stores them before it checks
-  that the screen is still there, `onDestroy` stores them when the screen goes first, `onRestart` restyles when they
-  still wait, and a `restyle()` during a capture leaves them to it: a pick shown as chosen is never lost. A choice waits
+  that the screen is still there, `onHide` stores them when the screen goes for good (before the home panel looks), `onShow`
+  restyles when they still wait, and a `restyle()` during a capture leaves them to it: a pick shown as chosen is never lost. A choice waits
   `Motion.MEDIUM` (`Later` in `Pages.kt`) so the indicator or tick is seen landing first; a newer one replaces it. Taps
   on what is already chosen do nothing (`ui.Segmented`, `Swatches`, a ticked navigation row, the microphone menu).
-* `onRestart` (back from Maps, Android's settings, the Play Store): a theme or accent changed elsewhere builds the
+* `onShow` again (back from Maps, Android's settings, the Play Store): a theme or accent changed elsewhere builds the
   screen again; otherwise the other pages are dropped and the current one rebuilt.
 
 **Pages are built once.** `built[]` keeps each page's `ScrollView` while the screen is up, so a page comes back at once,
@@ -1735,7 +1835,7 @@ switch: the old page leaves on `exit` (`XSHORT`, 8 dp towards the list side it w
 `enter` 40 ms later from 16 / 8 dp on the other side (a page coming back while leaving turns round). The content
 scrolls under 24 dp gradients in `Palette.bg` at its top and bottom, shown in proportion to what is beyond them
 (`edges()`), in place of a ScrollView fading edge, which drew through an offscreen layer on every scroll frame. No
-`BackdropView`: the window background is the screen's colour already.
+`BackdropView`: the panel's own room is the screen's colour already.
 
 **Rows** (`Rows.kt`): a section's rows sit in one card, `group(vararg rows: View?)`, with `Palette.stroke` hairlines from
 where the row's title starts; the card clips its corners so a pressed first or last row tints the corner, and a null
@@ -1785,7 +1885,7 @@ leaving turns it round from where it is.
 the app's language, not the unit's (`LocaleHelper.wrap`): the update page's errors (`UpdateManager`), and the ZLink,
 beta-leftover and removed-apps toasts.
 
-Test hooks: `SettingsActivity --ei page N --es theme dark|light --es lang ar|en`; `am broadcast -a
+Test hooks: `SettingsActivity --ei page N --es theme dark|light --es lang ar|en` (the old name: `home/Entry.kt`); `am broadcast -a
 com.abdllh.aura.debug.CALL --es state ring|talk|end …`; `com.abdllh.aura.debug.VOLUME_KEY --es key up|down|mute`;
 `com.abdllh.aura.debug.AMRI --es say "…"`. The overlays need the overlay permission (`appops set com.abdllh.aura
 SYSTEM_ALERT_WINDOW allow` on the emulator).
