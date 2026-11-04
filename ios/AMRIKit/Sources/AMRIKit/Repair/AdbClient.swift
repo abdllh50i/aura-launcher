@@ -107,18 +107,23 @@ public enum AdbClient {
     public static let port: UInt16 = 5555
 
     public static func hello(host: String, port: UInt16 = AdbClient.port, connectTimeout: TimeInterval = 0.6, timeout: TimeInterval = 1.5) async -> AdbHello {
-        guard let socket = NWSocket(host: host, port: port) else { return .unreachable(.closed) }
+        await helloWithNote(host: host, port: port, connectTimeout: connectTimeout, timeout: timeout).hello
+    }
+
+    /// `note`: what the system said if the connection did not open.
+    static func helloWithNote(host: String, port: UInt16 = AdbClient.port, connectTimeout: TimeInterval = 0.6, timeout: TimeInterval = 1.5) async -> (hello: AdbHello, note: String?) {
+        guard let socket = NWSocket(host: host, port: port) else { return (.unreachable(.closed), nil) }
         defer { socket.close() }
         do {
             try await socket.connect(timeout: connectTimeout)
         } catch SocketError.localNetworkDenied {
-            return .unreachable(.denied)
+            return (.unreachable(.denied), socket.note)
         } catch SocketError.timeout {
-            return .unreachable(.timeout)
+            return (.unreachable(.timeout), socket.note)
         } catch {
-            return .unreachable(.closed)
+            return (.unreachable(.closed), socket.note)
         }
-        return await handshake(socket, timeout: timeout)
+        return (await handshake(socket, timeout: timeout), nil)
     }
 
     private static func handshake(_ socket: NWSocket, timeout: TimeInterval) async -> AdbHello {

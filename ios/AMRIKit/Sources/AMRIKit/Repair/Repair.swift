@@ -106,6 +106,8 @@ public enum Repair {
         public var hosts: [Host] = []
         public var openWithoutAdb: [String] = []
         public var deniedSeen = false
+        /// What the system said about the hosts that did not open, and how many times.
+        public var notes: [String: Int] = [:]
 
         public init() {}
 
@@ -117,14 +119,18 @@ public enum Repair {
         let startedAt = Date()
         var scan = Scan()
         scan.targetCount = targets.count
-        await withTaskGroup(of: (SweepTarget, AdbHello).self) { group in
+        await withTaskGroup(of: (SweepTarget, AdbHello, String?).self) { group in
             var next = 0
             while next < targets.count, next < concurrency {
                 let target = targets[next]
                 next += 1
-                group.addTask { (target, await AdbClient.hello(host: target.host, port: target.port)) }
+                group.addTask {
+                    let said = await AdbClient.helloWithNote(host: target.host, port: target.port)
+                    return (target, said.hello, said.note)
+                }
             }
-            while let (target, hello) = await group.next() {
+            while let (target, hello, note) = await group.next() {
+                if let note { scan.notes[note, default: 0] += 1 }
                 switch hello {
                 case .banner(let banner):
                     scan.hosts.append(Host(host: target.host, port: target.port, kind: banner.isK2501 ? .k2501 : .other, banner: banner))
@@ -138,7 +144,10 @@ public enum Repair {
                 if next < targets.count {
                     let target = targets[next]
                     next += 1
-                    group.addTask { (target, await AdbClient.hello(host: target.host, port: target.port)) }
+                    group.addTask {
+                        let said = await AdbClient.helloWithNote(host: target.host, port: target.port)
+                        return (target, said.hello, said.note)
+                    }
                 }
             }
         }

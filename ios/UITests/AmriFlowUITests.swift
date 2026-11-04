@@ -64,6 +64,12 @@ final class AmriFlowUITests: XCTestCase {
         XCTAssertTrue(element(app, "pairDone").waitForExistence(timeout: 15), app.debugDescription)
         shot("pair-done")
         tap(app, "pairFinish")
+        // On a loaded CI machine a tap on a button in a scroll view is lost now and then (one run in about fifteen): as a person
+        // would, tap again rather than fail the whole flow over it.
+        let finish = element(app, "pairFinish")
+        if !wait(6, { !finish.exists }), finish.exists {
+            finish.tap()
+        }
         waitForLabel(app, "statusPill", contains: "السيارة متصلة")
     }
 

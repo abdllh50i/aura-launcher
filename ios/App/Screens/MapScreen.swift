@@ -86,9 +86,10 @@ struct MapScreen: View {
     /// So what the camera centres on, and Apple's legal line, sit above the panel and not behind it.
     private func mapInset(_ geometry: GeometryProxy) -> CGFloat {
         if detent == Panel.peek { return Panel.peekHeight }
-        // A medium sheet is half of the whole screen, safe areas and all; the map's own bottom safe area counts part of that.
+        // A medium sheet is half of the whole screen, safe areas and all, and a little more on iOS 26; the map's own bottom safe
+        // area counts part of that.
         let whole = geometry.size.height + geometry.safeAreaInsets.top + geometry.safeAreaInsets.bottom
-        return whole / 2 - geometry.safeAreaInsets.bottom + Theme.Space.s
+        return whole / 2 - geometry.safeAreaInsets.bottom + Theme.Space.xl
     }
 
     private static func region(fitting places: [PhonePlace]) -> MKCoordinateRegion? {

@@ -14,6 +14,16 @@ enum SocketError: Error, Equatable {
 final class NWSocket: @unchecked Sendable {
     private let connection: NWConnection
     private let queue = DispatchQueue(label: "amri.socket")
+    private let said = Locked<String?>(nil)
+
+    /// The last thing the system said while connecting. For the report: "no route to host" and "refused" are very different
+    /// news about the hotspot, and nobody has tried this on his phone yet.
+    var note: String? { said.current }
+
+    private static func describe(_ error: NWError) -> String {
+        if case .posix(let code) = error { return String(cString: strerror(code.rawValue)) }
+        return error.debugDescription
+    }
 
     init?(host: String, port: UInt16) {
         guard let nwPort = NWEndpoint.Port(rawValue: port) else { return nil }
@@ -23,6 +33,7 @@ final class NWSocket: @unchecked Sendable {
     func connect(timeout: TimeInterval) async throws {
         let connection = self.connection
         let queue = self.queue
+        let said = self.said
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                 let once = OneShot<Result<Void, Error>> { continuation.resume(with: $0) }
@@ -31,6 +42,7 @@ final class NWSocket: @unchecked Sendable {
                     case .ready:
                         once.fire(.success(()))
                     case .waiting(let error):
+                        said.with { $0 = NWSocket.describe(error) }
                         // Waiting is how the system says "not now": refused by the port, or by the permission. Anything
                         // else may still come good (the alert is up), so the timer decides.
                         if connection.currentPath?.unsatisfiedReason == .localNetworkDenied {
@@ -39,6 +51,7 @@ final class NWSocket: @unchecked Sendable {
                             once.fire(.failure(SocketError.refused))
                         }
                     case .failed(let error):
+                        said.with { $0 = NWSocket.describe(error) }
                         if case .posix(let code) = error, code == .ECONNREFUSED {
                             once.fire(.failure(SocketError.refused))
                         } else {

@@ -29,6 +29,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.abdllh.amri
         PRODUCT_NAME: Amri
+        TARGETED_DEVICE_FAMILY: "1"
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: Support/App-Info.plist
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
@@ -46,6 +47,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.abdllh.amri.share
         PRODUCT_NAME: AmriShare
+        TARGETED_DEVICE_FAMILY: "1"
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: Support/Share-Info.plist
         CODE_SIGN_STYLE: Automatic
@@ -58,4 +60,5 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.abdllh.amri.uitests
+        TARGETED_DEVICE_FAMILY: "1"
         GENERATE_INFOPLIST_FILE: YES

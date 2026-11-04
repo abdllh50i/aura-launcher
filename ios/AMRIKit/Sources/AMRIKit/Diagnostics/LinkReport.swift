@@ -116,6 +116,7 @@ public enum LinkReport {
             if let sweep = located.sweep {
                 lines.append("منفذ 47101: فحصت \(sweep.targetCount) عنوان في \(seconds(sweep.duration)) ث، مفتوح \(sweep.openHosts.count)، مغلق \(sweep.closedCount)، بدون رد \(sweep.timedOutCount)" + (sweep.deniedSeen ? "، ورفض iOS الاتصال" : ""))
                 if !sweep.openHosts.isEmpty { lines.append("مفتوح عند: \(sweep.openHosts.joined(separator: ", "))") }
+                if let said = notes(sweep.notes) { lines.append("قال النظام: \(said)") }
             }
             if let found = located.found {
                 let via = located.via?.rawValue ?? "?"
@@ -132,6 +133,7 @@ public enum LinkReport {
         if let adb = facts.adb {
             lines.append("منفذ 5555 (ADB، مصافحة فقط، بدون فتح أي شيء): فحصت \(adb.targetCount) عنوان في \(seconds(adb.duration)) ث" + (adb.deniedSeen ? "، ورفض iOS الاتصال" : ""))
             if adb.hosts.isEmpty, adb.openWithoutAdb.isEmpty { lines.append("ما رد أحد") }
+            if let said = notes(adb.notes) { lines.append("قال النظام: \(said)") }
             for host in adb.hosts {
                 switch host.kind {
                 case .k2501: lines.append("\(host.host): K2501 (\(host.banner?.summary ?? ""))")
@@ -189,6 +191,12 @@ public enum LinkReport {
         lines.append("الاتجاهات MKDirections: \(facts.directions ?? "ما انفحصت")")
 
         return lines.joined(separator: "\n")
+    }
+
+    /// "Connection refused × 12", most said first.
+    private static func notes(_ notes: [String: Int]) -> String? {
+        guard !notes.isEmpty else { return nil }
+        return notes.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }.map { "\($0.key) × \($0.value)" }.joined(separator: "، ")
     }
 
     private static func describe(_ row: MapProbeRow) -> String {

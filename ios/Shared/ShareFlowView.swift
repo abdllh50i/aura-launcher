@@ -157,7 +157,8 @@ struct SendStageView: View {
             closeKey
         case .started(_, let nav):
             result(symbol: "checkmark.circle.fill", color: Theme.good, title: "بدأت الاتجاهات")
-            let line = Formats.dotted([nav.durationS.map { Formats.duration(seconds: $0) }, nav.etaLocal.map { Formats.arrival($0) }, nav.distanceM.map { Formats.distance(meters: $0) }])
+            // The route's numbers, or, when the stream opened after they went by, the trip's numbers from the snapshot.
+            let line = Formats.dotted([(nav.durationS ?? nav.timeLeftS).map { Formats.duration(seconds: $0) }, nav.etaLocal.map { Formats.arrival($0) }, (nav.distanceM ?? nav.remainingM).map { Formats.distance(meters: $0) }])
             if !line.isEmpty {
                 Text(verbatim: line)
                     .font(Theme.Fonts.headline)

@@ -442,7 +442,12 @@ struct TripCard: View {
                     .foregroundStyle(Theme.ink)
                     .accessibilityIdentifier("tripNumbers")
             }
-            if let next = trip.nextText {
+            if trip.rerouting == true {
+                Text("الشاشة تعيد حساب الطريق")
+                    .font(Theme.Fonts.note)
+                    .foregroundStyle(Theme.warn)
+                    .accessibilityIdentifier("tripRerouting")
+            } else if let next = trip.nextText {
                 Text(verbatim: next)
                     .font(Theme.Fonts.note)
                     .foregroundStyle(Theme.ink2)

@@ -106,6 +106,17 @@ final class SweepTests: XCTestCase {
         XCTAssertEqual(report.units.count, 1, "the last target, behind the limit")
         XCTAssertEqual(report.closedCount + report.timedOutCount + report.openHosts.count, 21)
     }
+
+    func testTheReportSaysWhatTheSystemSaid() async {
+        let closed = (0..<3).map { _ in SweepTarget(host: "127.0.0.1", port: freePort()) }
+        let report = await Sweep.run(targets: closed)
+        XCTAssertEqual(report.closedCount, 3)
+        XCTAssertEqual(report.notes.values.reduce(0, +), 3, "\(report.notes)")
+        XCTAssertTrue(report.notes.keys.contains { $0.localizedCaseInsensitiveContains("refused") }, "\(report.notes)")
+        var facts = LinkFacts()
+        facts.located = LocateOutcome(sweep: report)
+        XCTAssertTrue(LinkReport.render(facts).contains("× 3"))
+    }
 }
 
 final class LocatorTests: XCTestCase {

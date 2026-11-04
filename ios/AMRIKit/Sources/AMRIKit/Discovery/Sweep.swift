@@ -15,19 +15,19 @@ public enum TCPReach: String, Sendable {
 }
 
 public enum TCPProbe {
-    /// Can a TCP connection be opened? The connection is closed again at once.
-    public static func check(host: String, port: UInt16, timeout: TimeInterval) async -> TCPReach {
-        guard let socket = NWSocket(host: host, port: port) else { return .closed }
+    /// Can a TCP connection be opened? The connection is closed again at once. `note`: what the system said if not.
+    public static func check(host: String, port: UInt16, timeout: TimeInterval) async -> (reach: TCPReach, note: String?) {
+        guard let socket = NWSocket(host: host, port: port) else { return (.closed, nil) }
         defer { socket.close() }
         do {
             try await socket.connect(timeout: timeout)
-            return .open
+            return (.open, nil)
         } catch SocketError.localNetworkDenied {
-            return .denied
+            return (.denied, socket.note)
         } catch SocketError.timeout {
-            return .timeout
+            return (.timeout, socket.note)
         } catch {
-            return .closed
+            return (.closed, socket.note)
         }
     }
 }
@@ -53,6 +53,8 @@ public struct SweepReport: Equatable, Sendable {
     public var timedOutCount = 0
     /// iOS itself refused at least one connection: Local Network is off.
     public var deniedSeen = false
+    /// What the system said about the hosts that did not open, and how many times.
+    public var notes: [String: Int] = [:]
 
     public init() {}
 }
@@ -62,6 +64,7 @@ public enum Sweep {
     private struct Hit: Sendable {
         var target: SweepTarget
         var reach: TCPReach
+        var note: String?
         var ping: UnitPing?
     }
 
@@ -91,6 +94,7 @@ public enum Sweep {
                 case .timeout: report.timedOutCount += 1
                 case .denied: report.deniedSeen = true
                 }
+                if let note = hit.note { report.notes[note, default: 0] += 1 }
                 if let ping = hit.ping {
                     report.units.append(FoundUnit(address: UnitAddress(host: hit.target.host, port: hit.target.port), ping: ping))
                     if let stopWhen, stopWhen(ping) {
@@ -112,10 +116,10 @@ public enum Sweep {
     }
 
     private static func probe(_ target: SweepTarget, connectTimeout: TimeInterval, pingTimeout: TimeInterval) async -> Hit {
-        let reach = await TCPProbe.check(host: target.host, port: target.port, timeout: connectTimeout)
-        guard reach == .open else { return Hit(target: target, reach: reach, ping: nil) }
+        let tried = await TCPProbe.check(host: target.host, port: target.port, timeout: connectTimeout)
+        guard tried.reach == .open else { return Hit(target: target, reach: tried.reach, note: tried.note, ping: nil) }
         let client = LinkClient(address: UnitAddress(host: target.host, port: target.port))
         let ping = try? await client.ping(timeout: pingTimeout)
-        return Hit(target: target, reach: .open, ping: ping?.isAMRI == true ? ping : nil)
+        return Hit(target: target, reach: .open, note: nil, ping: ping?.isAMRI == true ? ping : nil)
     }
 }
