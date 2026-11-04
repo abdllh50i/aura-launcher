@@ -47,14 +47,16 @@ EDGES = [
 def request(a, b, alternates=2):
     """The request the app will send (maps.md section 7.4).
 
-    top_speed 140 is Valhalla's own default here; do not lower it to bring the times closer to the road: at 130 and below
-    Dammam to Riyadh leaves highway 40 for a road 40-60 km longer and 75-110 minutes slower (api_checks.py). A correction of the
-    time belongs on the answer's durations.
+    top_speed 160, not Valhalla's default 140: highway 40 is mapped at exactly 140 km/h, and at top_speed 140 the search left the motorway at about 24 interchanges
+    between Dammam and Riyadh (false "take the exit" prompts) and made a 2.8 km U-turn loop near Khurais: 414.8 km, 200.3 min, 39 prompts. At 160 and at 252: 411.3 km, 191.8 min, 15 prompts.
+    Nothing in the tiles is faster than 140, so 160 changes no driving speed. Never below 140: at 130 and below it leaves highway 40 altogether (api_checks.py).
+    use_distance 0.5: without it the search takes longer and often slower routes because of its own turn penalties (see tests/route_sweep.py). A correction of the time belongs on
+    the answer's durations (tests/route_eta.py), not in these options. Answers kept in out/ref-routes and out/route-tests/valhalla were asked with the old top_speed 140 and no use_distance.
     """
     return {
         "locations": [{"lat": a[0], "lon": a[1], "type": "break"}, {"lat": b[0], "lon": b[1], "type": "break"}],
         "costing": "auto",
-        "costing_options": {"auto": {"top_speed": 140, "use_tolls": 0.5, "use_tracks": 0.0}},
+        "costing_options": {"auto": {"top_speed": 160, "use_distance": 0.5, "use_tolls": 0.5, "use_tracks": 0.0}},
         "format": "osrm",
         "shape_format": "geojson",
         "alternates": alternates,
