@@ -17,6 +17,10 @@ import java.net.URLDecoder
  * not the place (companion.md, measured). A browser's User-Agent gets Google's preview page instead of the redirect: an
  * app's is sent ([USER_AGENT]). Only the hosts in [isShort] are ever asked, over https.
  *
+ * Text comes from outside, and a thread in a regular expression cannot be stopped: the server's watchdog only closes
+ * its socket. So nothing here may backtrack on a run of anything: [coordinates] looks at a bounded text with its
+ * whitespace squeezed, and the expressions read each separator in one way only.
+ *
  * No Android here: only java.net and strings.
  */
 internal object ShareParser {
@@ -43,6 +47,8 @@ internal object ShareParser {
     const val USER_AGENT = "AMRI (car head unit)"
     private const val MAX_HOPS = 2
     private const val MAX_TEXT = 4096
+    /** What [coordinates] looks at. A place's text is a few lines; a long message's first lines are the ones that count. */
+    private const val MAX_COORD_TEXT = 512
     private const val MAX_NAME = 120
 
     /** The real thing: a GET, no redirect followed, nothing read. A short link answers in well under a second. */
@@ -116,13 +122,34 @@ internal object ShareParser {
     private fun nameIn(rest: String): String =
         rest.lineSequence().map { it.trim(' ', ',', ':', '-', '–', '(', ')') }.firstOrNull { it.any(Char::isLetter) }.orEmpty().take(MAX_NAME)
 
-    private val DECIMAL = Regex("""(?<![\d.])([-+]?\d{1,2}\.\d{2,})\s*[,;\s/]\s*([-+]?\d{1,3}\.\d{2,})(?![\d.])""")
-    private val HEMI = Regex("""(?i)(?<![\d.])(\d{1,2}\.\d{2,})\s*°?\s*([NS])\s*[,\s]\s*(\d{1,3}\.\d{2,})\s*°?\s*([EW])\b""")
-    private val HEMI_FIRST = Regex("""(?i)\b([NS])\s*(\d{1,2}\.\d{2,})\s*°?\s*[,\s]\s*([EW])\s*(\d{1,3}\.\d{2,})""")
-    private val DMS = Regex("""(?i)(\d{1,2})\s*[°\s]\s*(\d{1,2})\s*['′ʼ\s]\s*(\d{1,2}(?:\.\d+)?)\s*(?:["″]|'')?\s*([NSشج])[^\s,\d]*\s*[,\s]\s*(\d{1,3})\s*[°\s]\s*(\d{1,2})\s*['′ʼ\s]\s*(\d{1,2}(?:\.\d+)?)\s*(?:["″]|'')?\s*([EWشغ])""")
+    // Between two tokens: a mark with spaces around it, or only spaces. One way to read a run of spaces, always (\s*+ and
+    // \s++ give nothing back): "\s*[°\s]\s*" had as many ways as the run has places, and seven of those in a row cost about
+    // k^7 on runs of k spaces (120 characters kept a thread busy for good).
+    private const val SEP_LIST = """(?:\s*+,\s*+|\s++)"""
+    private const val SEP_DEG = """(?:\s*+°\s*+|\s++)"""
+    private const val SEP_MIN = """(?:\s*+['′ʼ]\s*+|\s++)"""
+
+    private val DECIMAL = Regex("""(?<![\d.])([-+]?\d{1,2}\.\d{2,})(?:\s*+[,;/]\s*+|\s++)([-+]?\d{1,3}\.\d{2,})(?![\d.])""")
+    private val HEMI = Regex("""(?i)(?<![\d.])(\d{1,2}\.\d{2,})\s*+°?+\s*+([NS])$SEP_LIST(\d{1,3}\.\d{2,})\s*+°?+\s*+([EW])\b""")
+    private val HEMI_FIRST = Regex("""(?i)\b([NS])\s*+(\d{1,2}\.\d{2,})(?:\s*+°$SEP_LIST|$SEP_LIST)([EW])\s*+(\d{1,3}\.\d{2,})""")
+    private val DMS = Regex("""(?i)(\d{1,2})$SEP_DEG(\d{1,2})$SEP_MIN(\d{1,2}(?:\.\d+)?)\s*+(?:["″]|'')?+\s*+([NSشج])[^\s,\d]*+$SEP_LIST(\d{1,3})$SEP_DEG(\d{1,2})$SEP_MIN(\d{1,2}(?:\.\d+)?)\s*+(?:["″]|'')?+\s*+([EWشغ])[^\s,\d]*+""")
+
+    /** The start of [s], every run of whitespace one character: a newline when the run held one (what stays of the text is read by lines). */
+    private fun squeeze(s: String): String {
+        val b = StringBuilder(minOf(s.length, MAX_COORD_TEXT))
+        var i = 0
+        while (i < s.length && b.length < MAX_COORD_TEXT) {
+            if (!s[i].isWhitespace()) { b.append(s[i++]); continue }
+            var line = false
+            while (i < s.length && s[i].isWhitespace()) { if (s[i] == '\n') line = true; i++ }
+            b.append(if (line) '\n' else ' ')
+        }
+        return b.toString()
+    }
 
     /** Coordinates stated in free text, and the text without them. */
-    private fun coordinates(s: String): Triple<Double, Double, String>? {
+    private fun coordinates(text: String): Triple<Double, Double, String>? {
+        val s = squeeze(text)
         DMS.find(s)?.let { m ->
             val g = m.groupValues
             val lat = dms(g[1], g[2], g[3]) * (if (g[4].uppercase() == "S" || g[4] == "ج") -1 else 1)
@@ -153,7 +180,7 @@ internal object ShareParser {
 
     private fun valid(lat: Double, lon: Double) = lat in -90.0..90.0 && lon in -180.0..180.0 && !(lat == 0.0 && lon == 0.0)
 
-    private val PAIR = Regex("""^\s*(?:loc:)?\s*([-+]?\d{1,2}(?:\.\d+)?)\s*,\s*([-+]?\d{1,3}(?:\.\d+)?)\s*(?:\((.*)\))?\s*$""")
+    private val PAIR = Regex("""^\s*+(?:loc:)?+\s*+([-+]?\d{1,2}(?:\.\d+)?)\s*+,\s*+([-+]?\d{1,3}(?:\.\d+)?)\s*+(?:\((.*)\))?+\s*+$""")
 
     /** "lat,lon", "loc:lat,lon" or "lat,lon(Label)" as a link's value: the whole value, not a part of it. */
     private fun pair(v: String?): Triple<Double, Double, String>? {
