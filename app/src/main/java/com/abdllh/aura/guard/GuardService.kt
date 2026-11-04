@@ -39,7 +39,7 @@ class GuardReceiver : BroadcastReceiver() {
  * process deaths, and a heartbeat that stopped. What it does about them is staged by one constant, [ACTS_FROM_CODE]: in
  * the 1.x versions it only writes down what it would have done (files/guard-log.txt, shown in Settings → About); from 2.0
  * on, while a version is on trial, it may go back to the saved version or, with none, to the stock launcher; after the
- * trial it only offers (AMRI Rescue). It also runs the Wi-Fi step the main process runs
+ * trial it only offers (AMRI Rescue), and never in a call or in reverse. It also runs the Wi-Fi step the main process runs
  * at a cold boot when the main process did not get there, so the rescue paths (a phone, a PC) have a network, and sees that
  * AMRI is on the firmware's list of what it leaves alone ([BackgroundList]): without that, this process is force-stopped
  * as soon as the stock launcher comes up.
@@ -138,6 +138,9 @@ internal class GuardWatch(private val c: Context, private val h: Handler) {
     private var listDone = false
     private var listTries = 0
     private var listAt = 0L
+    @Volatile private var rescueWaits = false
+    @Volatile private var rescuePid = 0
+    @Volatile private var rescueBeat = 0L
 
     fun start(why: String) {
         GuardLog.add(c, "guard up ($why) boot $boot, ${BuildConfig.VERSION_NAME}: " + when {
@@ -185,6 +188,7 @@ internal class GuardWatch(private val c: Context, private val h: Handler) {
             beatSince = now
             noDrawSince = now
         }
+        rescueLater()
         // (also the one save after it passed: the main process reads the file to know whether this version has earned its place)
         if (!savedPassed && now - lastSave >= SAVE_MS) {
             lastSave = now
@@ -323,9 +327,30 @@ internal class GuardWatch(private val c: Context, private val h: Handler) {
         cur.frozen = true
         when {
             !mayAct -> GuardLog.add(c, "$what: would end that process (only watching in 1.x)")
-            trial.passed -> { GuardLog.add(c, "$what: trial over, offering Rescue"); RescueActivity.open(c) }
+            trial.passed -> { GuardLog.add(c, "$what: trial over, offering Rescue"); offerRescue(cur.pid) }
             else -> { GuardLog.add(c, "$what: ending that process"); killPid = cur.pid }
         }
+    }
+
+    /** Rescue comes over whatever is in front: never over a call or the reverse camera. Then at the first look after them. */
+    private fun offerRescue(frozenPid: Int = 0) {
+        if (!busy()) { RescueActivity.open(c); return }
+        GuardLog.add(c, "Rescue waits for the end of a call or of reverse")
+        rescuePid = frozenPid
+        rescueBeat = beatSeq
+        rescueWaits = true
+    }
+
+    private fun rescueLater() {
+        if (!rescueWaits || busy()) return
+        rescueWaits = false
+        // (offered for a frozen main thread that has moved on since, or gone: there is nothing to offer any more)
+        val pid = rescuePid
+        if (pid != 0 && (!alive(pid) || beatPid != pid || beatSeq != rescueBeat)) {
+            GuardLog.add(c, "Rescue not offered after all: that main thread is no longer stuck")
+            return
+        }
+        RescueActivity.open(c)
     }
 
     private fun kill() {
@@ -363,7 +388,7 @@ internal class GuardWatch(private val c: Context, private val h: Handler) {
             !crashed && !Device.isDefaultHome(c) -> GuardLog.add(c, "$why: AMRI is not the home screen, nothing to do")
             trial.passed -> {
                 GuardLog.add(c, "$why: trial over, offering Rescue")
-                RescueActivity.open(c)
+                offerRescue()
             }
             crashed && !usable -> GuardLog.add(c, "$why: CrashGuard has already taken the stock launcher, and there is no version to go back to")
             else -> {
@@ -388,7 +413,7 @@ internal class GuardWatch(private val c: Context, private val h: Handler) {
                     if (Rollback.failed(r) || r == null) {
                         GuardLog.add(c, "going back failed: ${Rollback.failureText(r)}")
                         crashDisabled()
-                        RescueActivity.open(c)
+                        offerRescue()
                     }
                 } else {
                     crashDisabled()
