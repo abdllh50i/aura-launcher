@@ -12,3 +12,6 @@
 # which the engine creates by name; the engine is kept whole (it is small)
 -keep class btools.** { *; }
 -dontwarn btools.**
+
+# Valhalla's library: its symbols name this class and these methods (nav/route)
+-keep class com.valhalla.valhalla.ValhallaKotlin { *; }
