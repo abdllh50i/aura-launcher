@@ -174,7 +174,7 @@ It follows "Design system (1.12)" throughout: type roles, `Radius` / `Space` / `
   tapping next, for the song change.
 
 ### One way to the screens (2.0 step 0: `home/Screens.kt`, `system/Front.kt`)
-`Screens` is the only code that starts AMRI's own screens: `home`, `maps` / `mapsSearch` / `mapsGo` / `mapsPick`, `music`
+`Screens` is the only code that starts AMRI's own screens: `home`, `maps` / `mapsSearch` / `mapsGo` / `mapsPick` / `mapsPlace`, `music`
 / `musicOn`, `settings`, and `pending` for the two notifications. A caller says which screen and with what, not how it
 is reached. Today `open` starts the activity with the flags each caller used to set (Settings from an activity stays
 that activity's next step in its task); when a screen becomes a panel of the one window of 2.0, only `open` changes.
@@ -2094,7 +2094,7 @@ phone does. The redesign may rename the Maps internals: this file changes then, 
 **`link/PlaceInbox.kt`: what the unit does with a place** (`TripCard` is its one overlay, in the look of the call and
 message cards, narrower and on the other side during a trip, because the top of the driver's side belongs to the next
 turn; 2.0 reskins it):
-* Idle, paired: Maps comes forward (the existing `MapsActivity.open`), the route starts, "بدأت الاتجاهات إلى X" is said
+* Idle, paired: Maps comes forward (`Screens.maps`), the route starts, "بدأت الاتجاهات إلى X" is said
   and shown, 5 s with a Cancel. The phone hears `routing`, then `started` with the route's numbers. Started means started:
   it is told from `Trips`' STARTED, never from having accepted the request. A retry after a lost answer says the same.
 * No fix: the phone's `from` if under 60 s old and under 100 m, else `waiting_fix` with the place on the map and a Cancel.
