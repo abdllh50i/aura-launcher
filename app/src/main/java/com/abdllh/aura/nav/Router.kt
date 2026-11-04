@@ -45,6 +45,8 @@ class Route(val line: Polyline, val steps: List<Step>, val distance: Double, val
      * longer than BRouter's head start. Whoever shows this route takes it over when it fits ([NavSession]). Main thread.
      */
     var better: Route? = null
+    /** Its words and what lies along it ([com.abdllh.aura.nav.guide.Guidance]), once a route from the pack is taken; null: the old wording ([Instructions]). */
+    var guide: com.abdllh.aura.nav.guide.Guidance? = null
 
     /** Time left from a distance along the route, scaled by the steps' own speeds. */
     fun timeLeft(along: Double): Double {
