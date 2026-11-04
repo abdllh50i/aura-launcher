@@ -86,7 +86,12 @@ internal object WaybackCard {
             Rollback.goBack(ctx, test) { why, fellBack ->
                 // (the script has fallen back to the stock launcher: everything stays in step with that)
                 if (fellBack) try { CrashGuard.setAuraEnabled(ctx, false, "rollback") } catch (_: Throwable) { }
-                Snack.show(ctx, ctx.getString(R.string.wayback_failed, why), long = true, outlives = true)
+                val text = when (why) {
+                    "no-root" -> ctx.getString(R.string.rescue_no_root)
+                    "no-copy" -> ctx.getString(R.string.rescue_no_copy)
+                    else -> ctx.getString(R.string.wayback_failed, why)
+                }
+                Snack.show(ctx, text, long = true, outlives = true)
                 if (!act.isDestroyed) act.rebuild()
             }
         }

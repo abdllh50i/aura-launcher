@@ -1699,8 +1699,9 @@ redesign needs better, and nothing can be tried on the unit before a release, so
   behind is offered as an update a moment later. Not for a test, which is meant to be followed by that update.
 * Settings → About shows it from a small file (`files/rollback-state`), so the page needs no root shell to open: the
   version it would go to or why there is none, "Try the way back" while the copy is 1.19.0 on a 1.x (both ends known-good
-  code, so it proves the way on the real unit before 2.0 needs it), and how the last use ended: `files/rollback-pending`,
-  written just before a test, still being there afterwards is what "the data stayed" means.
+  code, so it proves the way on the real unit before 2.0 needs it), and how the last use ended, whoever pulled it. "The data
+  stayed" is seen, not assumed: every start leaves a small mark in the app's data (`files/rollback-data-mark`), and the first
+  start after a way back looks for it before it writes it again.
 
 ### The guard (`guard/`, process `:guard`)
 CrashGuard dies with what it guards: a native crash, a throw in `AuraApp`, a frozen main thread or a home screen that
@@ -1715,7 +1716,10 @@ quietly, with no "keeps stopping" over the car's screen.
   wall clock, which head units set late. The beat is compared in `uptimeMillis`, which stands still while the unit sleeps.
 * What counts: starts of **this version in this boot** with no `O`, dead by now or frozen, newest first. An update is not
   a failure (the old version's starts are another versionCode), a power cut is not (another boot id), the start still
-  running is not, a process that lived on with no home to show is not. Limit 3 in a row, or 3 freezes.
+  running is not, a process that lived on with no home to show is not. Limit 3 in a row, or 3 freezes since the last
+  verdict. A verdict is once, until a healthy start: a new failure after that is a new story. `rollback.sh` leaves a reset
+  mark (`R`) in the file: a version that comes back in the same boot starts its count anew, since the older one between
+  leaves no marks.
 * The slow first start: while a version has never reached `O` (`GuardTrial.neverOk`) the limit is 4, and a stale beat or
   an undrawn home takes 5 minutes instead of 90 s and 2 minutes: the first start after an install runs on code still being
   compiled (3 minutes and more on the unit).
@@ -1735,6 +1739,12 @@ quietly, with no "keeps stopping" over the car's screen.
 * `CrashGuard.isCrashLoop` now also runs right after `install` in `AuraApp`: before, a throw in `AuraApp.onCreate` was
   counted but the check lived in `HomeActivity`, which never ran. `bailOutAtStart`: nothing of the start-up runs (one of its
   steps is what crashes), the give-backs get their 8 s, the process leaves, and the next start finds the kill switch on.
+* That move alone was not enough, as the emulator showed: from the second crash in a row Android 10 puts "AMRI keeps
+  stopping" over the screen and the crashed process waits for the answer, 5 minutes if nobody gives one, so the start
+  that would find the loop never comes. From the second crash on (and always with the kill switch on, behind the stock
+  launcher) CrashGuard's handler now leaves by itself, with the stack in the log and in `last_crash.txt`: a throw in
+  `AuraApp` went from 5 minutes under a dialog to kill switch on in under a second. A native crash cannot be helped that
+  way: the dialog still comes over the home screen, but the process is dead by then and home restarts under it.
 
 ### The data rule of a way back
 1.19.0 must start on whatever a newer version left in `/data/data/com.abdllh.aura`. `Prefs.init` reads `accent` with

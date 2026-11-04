@@ -36,6 +36,7 @@ class AuraApp : Application() {
         if (process.endsWith(":boot")) return
         // the guard's process: it must stand when everything below is what fails, so none of it runs there
         if (process.endsWith(":guard")) {
+            com.abdllh.aura.guard.GuardLog.quietCrashes(this)
             if (BuildConfig.DEBUG) testShell()
             return
         }

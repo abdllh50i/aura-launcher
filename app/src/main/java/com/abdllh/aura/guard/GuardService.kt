@@ -52,11 +52,6 @@ class GuardService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        // a fault in here stays in here, without a "keeps stopping" window over the car's screen
-        Thread.setDefaultUncaughtExceptionHandler { _, e ->
-            try { GuardLog.add(applicationContext, "the guard itself crashed: $e") } catch (_: Throwable) { }
-            Process.killProcess(Process.myPid())
-        }
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CHANNEL, getString(R.string.guard_channel), NotificationManager.IMPORTANCE_MIN))
         startForeground(ID, Notification.Builder(this, CHANNEL)

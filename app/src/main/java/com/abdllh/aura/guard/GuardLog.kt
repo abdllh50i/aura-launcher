@@ -1,6 +1,7 @@
 package com.abdllh.aura.guard
 
 import android.content.Context
+import android.os.Process
 import android.os.SystemClock
 import android.util.Log
 import java.io.File
@@ -35,6 +36,14 @@ object GuardLog {
             FileOutputStream(f, true).use { it.write("$at +${SystemClock.elapsedRealtime() / 1000}s  $text\n".toByteArray()) }
         } catch (t: Throwable) {
             Log.w(TAG, "log: $t")
+        }
+    }
+
+    /** A fault in the guard's process (the receiver, the service, Rescue) stays there: a line here, and no "keeps stopping" window over the car's screen. */
+    fun quietCrashes(c: Context) {
+        Thread.setDefaultUncaughtExceptionHandler { _, e ->
+            try { add(c, "the guard itself crashed: $e") } catch (_: Throwable) { }
+            Process.killProcess(Process.myPid())
         }
     }
 

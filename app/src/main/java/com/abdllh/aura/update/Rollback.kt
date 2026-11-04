@@ -325,7 +325,10 @@ object Rollback {
                 val p = payload()
                 if (!usable(p)) "no-copy"
                 else {
-                    if (!test) com.abdllh.aura.util.Prefs.raw.edit().putBoolean("updateBeta", false).putString("availableTag", "").putString("releaseCache", "").commit()
+                    val prefs = com.abdllh.aura.util.Prefs.raw.edit()
+                    // (a test is followed by that update, in one tap: the version it goes to looks for it as soon as home opens)
+                    if (test) prefs.putLong("lastUpdateCheck", 0L).putLong("lastUpdateAttempt", 0L).commit()
+                    else prefs.putBoolean("updateBeta", false).putString("availableTag", "").putString("releaseCache", "").commit()
                     if (!runScript(c, test)) "no-root"
                     else {
                         ran = true
