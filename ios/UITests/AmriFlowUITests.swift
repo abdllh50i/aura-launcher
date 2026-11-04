@@ -30,8 +30,9 @@ final class AmriFlowUITests: XCTestCase {
         app.descendants(matching: .any)[id].firstMatch
     }
 
+    /// Generous, because on a loaded CI machine one look at the screen with a map on it can take 20 s. A failure only costs the wait.
     @discardableResult
-    private func tap(_ app: XCUIApplication, _ id: String, timeout: TimeInterval = 15, file: StaticString = #filePath, line: UInt = #line) -> XCUIElement {
+    private func tap(_ app: XCUIApplication, _ id: String, timeout: TimeInterval = 40, file: StaticString = #filePath, line: UInt = #line) -> XCUIElement {
         let target = element(app, id)
         if !target.waitForExistence(timeout: timeout) {
             shot("missing-\(id)")
@@ -41,7 +42,7 @@ final class AmriFlowUITests: XCTestCase {
         return target
     }
 
-    private func waitForLabel(_ app: XCUIApplication, _ id: String, contains text: String, timeout: TimeInterval = 20, file: StaticString = #filePath, line: UInt = #line) {
+    private func waitForLabel(_ app: XCUIApplication, _ id: String, contains text: String, timeout: TimeInterval = 45, file: StaticString = #filePath, line: UInt = #line) {
         let target = element(app, id)
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
@@ -56,12 +57,12 @@ final class AmriFlowUITests: XCTestCase {
         waitForLabel(app, "statusPill", contains: "اربطها")
         tap(app, "statusPill")
         let field = element(app, "pairCode")
-        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        XCTAssertTrue(field.waitForExistence(timeout: 30))
         shot("pair-screen")
         field.tap()
         field.typeText("246810")
         tap(app, "pairGo")
-        XCTAssertTrue(element(app, "pairDone").waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertTrue(element(app, "pairDone").waitForExistence(timeout: 40), app.debugDescription)
         shot("pair-done")
         tap(app, "pairFinish")
         // On a loaded CI machine a tap on a button in a scroll view is lost now and then (one run in about fifteen): as a person
@@ -75,13 +76,13 @@ final class AmriFlowUITests: XCTestCase {
 
     private func searchForMall(_ app: XCUIApplication) {
         let field = element(app, "searchField")
-        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        XCTAssertTrue(field.waitForExistence(timeout: 30))
         field.tap()
         field.typeText("الراشد")
-        XCTAssertTrue(element(app, "suggestion-0").waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(element(app, "suggestion-0").waitForExistence(timeout: 30), app.debugDescription)
         shot("typing")
         tap(app, "suggestion-0")
-        XCTAssertTrue(element(app, "placeName").waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(element(app, "placeName").waitForExistence(timeout: 30), app.debugDescription)
     }
 
     // MARK: The owner's sentence
@@ -115,14 +116,14 @@ final class AmriFlowUITests: XCTestCase {
         XCTAssertEqual(log.starts.count, 1)
 
         tap(app, "shareDone")
-        XCTAssertTrue(element(app, "tripCard").waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(element(app, "tripCard").waitForExistence(timeout: 30), app.debugDescription)
         waitForLabel(app, "tripName", contains: "الراشد مول")
         shot("trip-card")
 
         tap(app, "stopTrip")
         let gone = NSPredicate(format: "exists == false")
         expectation(for: gone, evaluatedWith: element(app, "tripCard"))
-        waitForExpectations(timeout: 15)
+        waitForExpectations(timeout: 40)
         XCTAssertEqual(fake.state().nav["state"] as? String, "idle")
         shot("stopped")
     }
@@ -132,12 +133,12 @@ final class AmriFlowUITests: XCTestCase {
         let app = launch()
         XCTAssertTrue(element(app, "chip-pharmacy").waitForExistence(timeout: 20))
         tap(app, "chip-pharmacy")
-        XCTAssertTrue(element(app, "result-0").waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(element(app, "result-0").waitForExistence(timeout: 30), app.debugDescription)
         shot("chip-results")
         tap(app, "result-0")
-        XCTAssertTrue(element(app, "sendKey").waitForExistence(timeout: 10))
+        XCTAssertTrue(element(app, "sendKey").waitForExistence(timeout: 30))
         tap(app, "placeBack")
-        XCTAssertTrue(element(app, "result-0").waitForExistence(timeout: 10))
+        XCTAssertTrue(element(app, "result-0").waitForExistence(timeout: 30))
         tap(app, "searchClear")
     }
 
@@ -226,7 +227,7 @@ final class AmriFlowUITests: XCTestCase {
         fake.call("places", ["home": ["name": "حي الراكة", "lat": 26.33, "lon": 50.19], "favourites": [["name": "ورشة أبو سعد", "lat": 26.42, "lon": 50.09]]])
         let app = launch()
         pair(app)
-        XCTAssertTrue(element(app, "favourite-0").waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(element(app, "favourite-0").waitForExistence(timeout: 30), app.debugDescription)
         shot("home-with-places")
         tap(app, "quick-home")
         waitForLabel(app, "shareStatus", contains: "بدأت الاتجاهات", timeout: 25)
@@ -289,7 +290,7 @@ final class AmriFlowUITests: XCTestCase {
         pair(app)
         tap(app, "carButton")
         tap(app, "toolRepair")
-        XCTAssertTrue(element(app, "repairCommand").waitForExistence(timeout: 10))
+        XCTAssertTrue(element(app, "repairCommand").waitForExistence(timeout: 30))
         shot("repair-intro")
         tap(app, "repairScan")
         tap(app, "repairUnit-15555", timeout: 20)
@@ -297,7 +298,7 @@ final class AmriFlowUITests: XCTestCase {
         XCTAssertEqual(fake.log().adbOpens.count, 0, "a scan never opens anything")
         tap(app, "repairUnderstood")
         let go = element(app, "repairGo")
-        XCTAssertTrue(go.waitForExistence(timeout: 10))
+        XCTAssertTrue(go.waitForExistence(timeout: 30))
         XCTAssertFalse(go.isEnabled, "not without the word")
         let word = element(app, "repairWord")
         word.tap()
@@ -308,7 +309,7 @@ final class AmriFlowUITests: XCTestCase {
         // rollback.sh answers at once and works on by itself: only its result file says how it went.
         waitForLabel(app, "repairOutput", contains: "MODE=back")
         shot("repair-watching")
-        XCTAssertTrue(element(app, "repairDone").waitForExistence(timeout: 20), app.debugDescription)
+        XCTAssertTrue(element(app, "repairDone").waitForExistence(timeout: 40), app.debugDescription)
         waitForLabel(app, "repairOutput", contains: "EXIT=0")
         waitForLabel(app, "repairVersion", contains: "1.19.0")
         waitForLabel(app, "repairTitle", contains: "رجعت الشاشة")
@@ -342,7 +343,7 @@ final class AmriFlowUITests: XCTestCase {
         XCTAssertFalse(element(app, "shareTripLine").exists)
     }
 
-    private func wait(_ timeout: TimeInterval = 10, _ condition: () -> Bool) -> Bool {
+    private func wait(_ timeout: TimeInterval = 30, _ condition: () -> Bool) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if condition() { return true }
