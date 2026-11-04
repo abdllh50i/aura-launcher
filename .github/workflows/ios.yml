@@ -1,5 +1,7 @@
 # The iPhone app عمري, in ios/. No tags and no releases from here: the car's updater reads this repo's releases. The IPA
 # is an artifact of the run. Four jobs side by side, so the slow pictures hold up nothing else.
+# macos-15-intel with its newest Xcode 26, for now: on 2026-11-04 GitHub stopped handing out macos-26 and macos-15 (arm64) runners,
+# and dropped the jobs after 15 minutes in the queue. The build is the same arm64 IPA. Go back to macos-26 when it has capacity.
 name: Amri iPhone
 on:
   push:
@@ -14,7 +16,7 @@ concurrency:
 jobs:
   kit:
     name: AMRIKit and the fake unit
-    runs-on: macos-26
+    runs-on: macos-15-intel
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
@@ -22,6 +24,10 @@ jobs:
           sparse-checkout: ios
           filter: blob:none
           fetch-depth: 1
+      - name: Xcode 26
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)"
+          xcodebuild -version
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -42,7 +48,7 @@ jobs:
 
   ipa:
     name: The IPA
-    runs-on: macos-26
+    runs-on: macos-15-intel
     timeout-minutes: 30
     defaults:
       run:
@@ -53,6 +59,10 @@ jobs:
           sparse-checkout: ios
           filter: blob:none
           fetch-depth: 1
+      - name: Xcode 26
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)"
+          xcodebuild -version
       - name: Every Arabic string has its English
         run: python3 tools/check_strings.py
       - name: Generate project
@@ -80,7 +90,7 @@ jobs:
 
   screens:
     name: Every screen, Arabic first
-    runs-on: macos-26
+    runs-on: macos-15-intel
     timeout-minutes: 45
     defaults:
       run:
@@ -91,6 +101,10 @@ jobs:
           sparse-checkout: ios
           filter: blob:none
           fetch-depth: 1
+      - name: Xcode 26
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)"
+          xcodebuild -version
       - name: Generate project
         run: |
           brew install xcodegen
@@ -114,7 +128,7 @@ jobs:
 
   flows:
     name: UI tests against the fake unit, in Arabic
-    runs-on: macos-26
+    runs-on: macos-15-intel
     timeout-minutes: 45
     defaults:
       run:
@@ -125,6 +139,10 @@ jobs:
           sparse-checkout: ios
           filter: blob:none
           fetch-depth: 1
+      - name: Xcode 26
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)"
+          xcodebuild -version
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
