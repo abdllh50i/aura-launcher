@@ -1994,6 +1994,14 @@ emulator). What was asked still happens when the main thread comes free, so the 
 only a plain read (`/v1/state`, 3 s) says 503 `busy`. The main thread never waits for anybody here. The live feed listens only while a
 phone does. The redesign may rename the Maps internals: this file changes then, the server does not.
 
+A place never costs the main thread more than one waiting Runnable: `NavBridge.offer` keeps the newest and one posted drain, and
+the one it replaces hears `replaced`, as it would on the screen. And a peer may send a place at most every 2 s with no token, 3 a
+second (5 at once) with one, or it hears 429 `too_fast` with `Retry-After: 2` and its id is not taken, so the same id may come again;
+a retry of an id already taken costs nothing and hears `duplicate`. Measured (`phone-server-test.py --only flood`): three loops of
+places with no token, 92 a second for a minute: 31 reached the app, `/v1/state` answered every time in under a second, the guard
+saw nothing. Before: 324 a second held the main thread at 100 % past the flood's end, and the guard read that as a frozen home screen,
+which from 2.0 on means an app with no token could send AMRI back a version.
+
 **`link/PlaceInbox.kt`: what the unit does with a place** (`TripCard` is its one overlay, in the look of the call and
 message cards, narrower and on the other side during a trip, because the top of the driver's side belongs to the next
 turn; 2.0 reskins it):
@@ -2027,10 +2035,16 @@ nearest of its kind ("ودني مستشفى الموسى"), "جامعة" is no l
 **`link/ShareParser.kt`.** Coordinates the link or text states are `exact`; `/@lat,lon` is where the map was looked at:
 `guess`, which always asks; a name alone is a search; a link that gives nothing says why (`dead_link`, `no_redirect`,
 `network`, `not_a_map`, `no_place`) and never guesses. The only network step is a short link's redirect, at most 2 hops of 3 s
-+ 3 s, https, only the hosts in `isShort`: the Location header is read and the page never (its `center=` holds the
-requester's region, measured). An app's User-Agent, because a browser's gets a preview page instead of the redirect.
-`tools/link-fixtures/share.json` has 53 cases in a form the phone's Swift parser can use; 6 are marked as measured live,
-the others are the listed formats written by hand, to be replaced by real captures.
++ 3 s for a link and 3 requests for a whole text, https, only the hosts in `SHORT_HOSTS`: the Location header is read and the page never
+(its `center=` holds the requester's region, measured). An app's User-Agent, because a browser's gets a preview page instead of the
+redirect. A link whose authority holds `@` or `\` is never asked for (`https://other\@maps.app.goo.gl/x` and
+`https://x@maps.app.goo.gl:y@other/x` name another host to `java.net.URL`, seen connecting on API 29), the request goes to the checked host
+rebuilt with the path as written, never to the link's text, and `network` checks the address once more. Text comes from any app on the
+hotspot, and a thread in a regular expression cannot be stopped (the watchdog only closes the socket): `coordinates` looks at the first 512
+characters with whitespace squeezed, and each separator has one way to be read, or 120 characters of runs of spaces keep a thread busy until
+the process dies (four of them: every slot and every core).
+`tools/link-fixtures/share.json` has 71 cases in a form the phone's Swift parser can use (`withinMs`: how long an answer may take); 6 are
+marked as measured live, the others are the listed formats written by hand, to be replaced by real captures.
 
 **`link/Qr.kt`.** Written here: byte mode, level M, versions 1 to 10 (213 bytes; the address is about 35). Always dark on a white
 square with its quiet zone, whatever the theme: a phone's camera reads that. `PhoneLinkCard` shows it at 232 dp.
