@@ -33,15 +33,20 @@ internal object TripMemory {
     const val MAX_TRIES = 2
 
     // ------------------------------------------------------------------------------------------ on disk
-    /** [at]: when, by the fix's clock where there is one (GPS's is true from the first fix on, the unit's may not be yet). */
-    private class Kept(val dest: Place, val boot: String, val at: Long, val elapsed: Long, val pos: LatLon?, val tries: Int)
+    /**
+     * [at]: when, by the fix's clock where there is one (GPS's is true from the first fix on, the unit's may not be yet).
+     * [remember]: the place may go to the recent places (no for Apple's: it is kept here only as long as its trip runs).
+     */
+    private class Kept(val dest: Place, val boot: String, val at: Long, val elapsed: Long, val pos: LatLon?, val tries: Int, val remember: Boolean)
 
     private var beatAt = 0L
+    private var remember = true
 
     /** A trip started (NavSession): the tries go on counting when it is the resumed one, until it has run for a while. */
-    fun started(dest: Place, fix: Location?) {
+    fun started(dest: Place, fix: Location?, mayRemember: Boolean) {
         val tries = if (handingOver) read()?.tries ?: 0 else 0
         if (!handingOver) cancelResume()
+        remember = mayRemember
         write(now(dest, fix, tries))
         beatAt = SystemClock.elapsedRealtime()
     }
@@ -61,11 +66,11 @@ internal object TripMemory {
     }
 
     private fun now(dest: Place, fix: Location?, tries: Int) = Kept(dest, bootId(), fix?.time ?: System.currentTimeMillis(),
-        SystemClock.elapsedRealtime(), fix?.let { LatLon(it.latitude, it.longitude) }, tries)
+        SystemClock.elapsedRealtime(), fix?.let { LatLon(it.latitude, it.longitude) }, tries, remember)
 
     private fun write(k: Kept, commit: Boolean = false) {
         try {
-            val o = JSONObject().put("dest", k.dest.toJson()).put("boot", k.boot).put("at", k.at).put("elapsed", k.elapsed).put("tries", k.tries)
+            val o = JSONObject().put("dest", k.dest.toJson()).put("boot", k.boot).put("at", k.at).put("elapsed", k.elapsed).put("tries", k.tries).put("remember", k.remember)
             if (k.pos != null) o.put("lat", k.pos.lat).put("lon", k.pos.lon)
             val e = Prefs.raw.edit().putString(KEY, o.toString())
             if (commit) e.commit() else e.apply()
@@ -79,7 +84,7 @@ internal object TripMemory {
             val o = JSONObject(s)
             val dest = Place.fromJson(o.optJSONObject("dest")) ?: return@let null
             val pos = if (o.has("lat") && o.has("lon")) LatLon(o.getDouble("lat"), o.getDouble("lon")) else null
-            Kept(dest, o.optString("boot"), o.optLong("at"), o.optLong("elapsed"), pos, o.optInt("tries"))
+            Kept(dest, o.optString("boot"), o.optLong("at"), o.optLong("elapsed"), pos, o.optInt("tries"), o.optBoolean("remember", true))
         }
     } catch (t: Throwable) {
         Log.w(TAG, "unreadable: $t")
@@ -106,12 +111,13 @@ internal object TripMemory {
                 forget()
                 return
             }
-            if (NavSession.state != NavSession.State.IDLE) return // (a trip of the driver's own, begun in these first seconds)
+            // (a trip of the driver's own, begun or asked for in these first seconds: what it starts takes this one's place)
+            if (NavSession.state != NavSession.State.IDLE || Trips.attempt != null) return
             if (!CarLocation.hasPermission(c)) { giveUp("no location permission"); return }
             val boot = bootId()
             val sameBoot = boot.isNotEmpty() && boot == k.boot
             // before anything else can go wrong (commit: a crash right after must count)
-            write(Kept(k.dest, k.boot, k.at, k.elapsed, k.pos, k.tries + 1), commit = true)
+            write(Kept(k.dest, k.boot, k.at, k.elapsed, k.pos, k.tries + 1, k.remember), commit = true)
             Log.i(TAG, "a trip was kept (${if (sameBoot) "same boot" else "another boot"}): waiting for a fix")
             resuming = true
             CarLocation.acquire(c, HOLDER)
@@ -148,10 +154,10 @@ internal object TripMemory {
         Router.route(here, k.dest.pos, heading) { r, err ->
             when {
                 !resuming -> {} // (the driver ended it, or another trip began)
-                NavSession.state != NavSession.State.IDLE -> finish()
+                NavSession.state != NavSession.State.IDLE || Trips.attempt != null -> finish()
                 r != null -> try {
                     handingOver = true
-                    NavSession.start(c, k.dest, r)
+                    Trips.start(c, k.dest, r, Trips.RESUMED, k.remember)
                     NavNote.add("trip to ${k.dest.name} resumed (${if (sameBoot) "same boot" else "after a power-off"})")
                     finish()
                 } catch (t: Throwable) {

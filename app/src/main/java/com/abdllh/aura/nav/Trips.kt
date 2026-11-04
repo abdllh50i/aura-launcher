@@ -23,6 +23,8 @@ object Trips {
     const val SCREEN = "maps"
     const val VOICE = "voice"
     const val PHONE = "phone"
+    /** Brought back by [TripMemory] after the process went. */
+    const val RESUMED = "resumed"
     /** How long a place waits for the unit's first fix before it is left on the map for the driver. */
     private const val FIX_WAIT_MS = 10 * 60_000L
     /** A router that never answers must not keep a place waiting for ever (BRouter's own limit is well under this). */

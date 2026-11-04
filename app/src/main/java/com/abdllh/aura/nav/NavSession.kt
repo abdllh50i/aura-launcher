@@ -117,7 +117,7 @@ object NavSession {
         nextRerouteAt = 0L
         forgetPrompts()
         if (remember) Places.addRecent(dest)
-        TripMemory.started(dest, CarLocation.last)
+        TripMemory.started(dest, CarLocation.last, remember)
         CarLocation.acquire(c, "nav")
         CarLocation.removeListener(onFix)
         CarLocation.addListener(onFix)
