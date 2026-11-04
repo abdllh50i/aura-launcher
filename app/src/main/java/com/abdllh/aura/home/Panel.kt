@@ -29,11 +29,11 @@ abstract class Panel(val shell: HomeActivity, val name: String) : ContextWrapper
     /** It covers the whole screen with its own room: nothing under it can be seen, and the map may sleep (step 3). */
     open val opaque: Boolean get() = false
 
-    /** It takes a new theme in place ([com.abdllh.aura.ui.ThemeSwap]). False: it restyles itself in [onLook], as old screens do. */
-    open val recolours: Boolean get() = false
-
     /** Off the stack it stays built and hidden, for the next time. False: dropped, [onDestroy], its views let go of. */
     open val keep: Boolean get() = false
+
+    /** It takes a new theme in place ([com.abdllh.aura.ui.ThemeSwap]). False: it restyles itself in [onLook], as old screens do. */
+    open val recolours: Boolean get() = false
 
     /**
      * WindowManager.LayoutParams.SOFT_INPUT_* for the window while it is on top. With ADJUST_RESIZE only this panel

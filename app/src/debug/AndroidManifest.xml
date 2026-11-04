@@ -2,6 +2,10 @@
 <!-- Debug builds only: the tool that renders the 3D car into the turntable frames shipped with the app (tools/car3d). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
+        <!-- Every component of the design system at real size: am broadcast -n com.abdllh.aura/.debug.GalleryReceiver (GalleryPanel.kt) -->
+        <receiver
+            android:name=".debug.GalleryReceiver"
+            android:exported="true" />
         <activity
             android:name=".debug.CarBakerActivity"
             android:exported="true"
@@ -14,9 +18,5 @@
                 <action android:name="com.abdllh.aura.debug.PANELS" />
             </intent-filter>
         </receiver>
-        <!-- Every component of the design system at real size: am broadcast -n com.abdllh.aura/.debug.GalleryReceiver (GalleryPanel.kt) -->
-        <receiver
-            android:name=".debug.GalleryReceiver"
-            android:exported="true" />
     </application>
 </manifest>
