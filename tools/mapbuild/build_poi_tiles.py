@@ -8,7 +8,7 @@ best places by rank: at most so many per cell of a grid over the tile, so a dens
 everything, and a limit for the whole tile. What is dropped stays searchable: the tile is for the eye. Rows on a geocoder's default point (p.src bit 4) never reach a tile.
 
 Tile fields:
-  name      p.name, the Arabic name when there is one. Absent when it has 3 letters or less (SPEC section 11: "Me" is not a place): the dot stays, with no word; search still finds the row in places.db
+  name      p.name, the Arabic name when there is one. Absent for a Latin name of 3 letters or less that is no known brand (SPEC section 11: "Me" is not a place): the dot stays, with no word; search still finds the row in places.db
   name:en   p.alt when name is Arabic and alt is Latin (absent otherwise), for the English map; absent under the same rule
   kind      cat.icon: the colour group, an index the style can name (cat.id is not stable across builds)
   cat       cat.id (see table cat)
@@ -29,6 +29,7 @@ ZOOMS = {12: (42, 8, 2, 90), 13: (30, 8, 4, 180), 14: (14, 8, 10, 420)}
 EXTENT = 4096
 GROUP_SKIP = {"parking", "road", "roundabout", "bridge", "tunnel", "city", "neighbourhood", "region", "military"}
 SHORT_NAME = 3
+KNOWN_SHORT = {"stc", "kfc", "bmw", "dhl", "ups", "snb", "anb", "sab", "bsf", "sib", "ncb", "ikea", "h&m", "hp", "lg", "mg", "kia", "gmc", "fj", "jbl"}
 
 
 def varint(v):
@@ -103,8 +104,10 @@ class Layer:
 
 
 def worth_a_label(name):
-    """More than SHORT_NAME letters of any script; digits and marks do not count."""
-    return sum(c.isalpha() for c in name) > SHORT_NAME
+    """An Arabic name stays at any length (شل, زين, نفط). A Latin one of SHORT_NAME letters or less says nothing ("Me") unless it is a brand people know. Digits and marks do not count."""
+    if any("\u0600" <= c <= "\u06ff" or "\ufb50" <= c <= "\ufeff" for c in name):
+        return True
+    return sum(c.isalpha() for c in name) > SHORT_NAME or name.strip().lower() in KNOWN_SHORT
 
 
 def tile_of(lat, lon, z):

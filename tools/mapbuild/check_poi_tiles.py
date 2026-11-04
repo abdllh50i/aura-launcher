@@ -19,6 +19,15 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import mvt  # noqa: E402
 
 
+KNOWN_SHORT = {"stc", "kfc", "bmw", "dhl", "ups", "snb", "anb", "sab", "bsf", "sib", "ncb", "ikea", "h&m", "hp", "lg", "mg", "kia", "gmc", "fj", "jbl"}
+
+
+def label_rule(name):
+    if any("\u0600" <= c <= "\u06ff" or "\ufb50" <= c <= "\ufeff" for c in name):
+        return True
+    return sum(c.isalpha() for c in name) > 3 or name.strip().lower() in KNOWN_SHORT
+
+
 def merc_y(lat):
     s = math.sin(math.radians(lat))
     return 0.5 - math.log((1 + s) / (1 - s)) / (4 * math.pi)
@@ -74,7 +83,7 @@ def main():
                 continue
             r = rows[rid]
             seen_ids[z].add(rid)
-            if tags.get("name") != (r[1] if sum(c.isalpha() for c in r[1]) > 3 else None):  # (3 letters or less: a dot with no word, build_poi_tiles.py)
+            if tags.get("name") != (r[1] if label_rule(r[1]) else None):  # (a Latin name of 3 letters or less that is no brand: a dot with no word, build_poi_tiles.py)
                 problems["name differs"] += 1
                 examples.setdefault("name differs", (tags.get("name"), r[1]))
             if tags.get("cat") != r[3]:
