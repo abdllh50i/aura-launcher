@@ -400,6 +400,19 @@ internal class ReportText(private val c: Context, private val r: JSONObject) {
     fun sections(): List<ReportSection> = listOf(summary(), device(), capacity(), gpu(), fill(), memory(), map("surface", R.string.diag_sec_map_surface), map("texture", R.string.diag_sec_map_texture),
         motion(), voice(), network(), gps(), car(), settings(), trip(), tests())
 
+    /** The map engine's probe, in a line: the whole of it goes to the server. */
+    private fun routeLine(): String? {
+        val p = r.optJSONObject("n_route") ?: return null
+        val trips = p.optJSONObject("trips")
+        val all = trips?.keys()?.asSequence()?.mapNotNull { trips.optJSONObject(it) }?.toList().orEmpty()
+        val good = all.filter { it.optBoolean("ok") }
+        if (good.isNotEmpty()) return c.getString(R.string.diag_route_ok, good.size, all.size, num(good.maxOf { it.optDouble("ms") }))
+        val why = p.optJSONObject("load")?.takeIf { !it.optBoolean("ok") }?.optString("error")
+            ?: p.optJSONObject("actor")?.takeIf { !it.optBoolean("ok") }?.optString("error")
+            ?: p.optString("gaveUp").ifEmpty { if (p.optBoolean("finished")) "no trip" else "not finished" }
+        return c.getString(R.string.diag_route_bad, why.take(80))
+    }
+
     private fun summary() = ReportSection(s(R.string.diag_sec_summary)).apply {
         val total = r.at("b_capacity", "androidTotalMb")
         if (total != null) row(R.string.diag_ram, "${num(total)} MB · ${num(r.at("b_capacity", "androidAvailMb"))} MB")
@@ -422,6 +435,7 @@ internal class ReportText(private val c: Context, private val r: JSONObject) {
         row(R.string.diag_amri_memory, r.at("d_memory", "first", "TOTAL")?.let { "${mb(it)} · ${s(R.string.diag_graphics)} ${mb(r.at("d_memory", "first", "Graphics"))}" })
         row(R.string.diag_write_speed, r.at("b_capacity", "write", "mbPerSecond")?.let { "${num(it)} MB/s" })
         row(R.string.diag_root, (r.at("a_identity", "rootShell") as? Boolean)?.let { yes(it) })
+        row(R.string.diag_route, routeLine())
         val bad = (r.optJSONObject("tests")?.let { t -> t.keys().asSequence().count { t.optJSONObject(it)?.optString("status") != "ok" } }) ?: 0
         row(R.string.diag_tests_bad, bad.toString())
     }
