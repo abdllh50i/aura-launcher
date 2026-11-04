@@ -21,6 +21,13 @@ BRouter 1.7.10 routing engine (brouter/: the util, codec, expressions, mapaccess
   car-vario profile and lookups.dat (app/src/main/assets/offline/profiles2/)
   Copyright (c) 2019 BRouter contributors — MIT License — https://github.com/abrensch/brouter (licence: brouter/LICENSE)
 
+Valhalla 3.9.1 routing engine, through valhalla-mobile 0.6.4 (app/src/main/jniLibs/*/libvalhalla-wrapper.so, from the Maven AAR
+  io.github.rallista:valhalla-mobile, unmodified)
+  Copyright (c) Valhalla contributors — MIT License — https://github.com/valhalla/valhalla ; https://github.com/Rallista/valhalla-mobile (MIT License)
+  Statically linked into that library, each under its own licence: Protocol Buffers (BSD 3-Clause), Boost (Boost Software License 1.0),
+  LZ4 (BSD 2-Clause), Abseil (Apache License 2.0), robin-hood-hashing (MIT), RapidJSON (MIT), unordered_dense (MIT), date and tz data (MIT, public domain).
+  The route probe's tiles (app/src/main/assets/probe/route-probe.tgz) are built from OpenStreetMap data (ODbL), scripts in tools/mapbuild/.
+
 Map data © OpenStreetMap contributors, available under the Open Database License (ODbL) — https://www.openstreetmap.org/copyright
   Vector tiles and fonts: OpenFreeMap (https://openfreemap.org). Place search: Photon by komoot (https://photon.komoot.io).
   Routing: OSRM (https://project-osrm.org). The map shows the OpenStreetMap / OpenFreeMap attribution.
