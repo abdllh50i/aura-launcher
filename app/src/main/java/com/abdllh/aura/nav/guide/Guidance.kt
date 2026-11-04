@@ -222,6 +222,7 @@ class Guidance internal constructor(
 
     /** "كمّل على طريق الجبيل لمسافة 12 كيلومترًا": just past a manoeuvre, with a long way to the next one. [roadOf]: the told step the car has just done. */
     fun keepOn(roadOf: Int, metres: Double): List<Part> {
+        if (told.getOrNull(roadOf)?.step?.onFerry == true) return emptyList() // (nobody drives a ferry on)
         val road = told.getOrNull(roadOf)?.road?.spoken
         val out = ArrayList<Part>(4)
         out.add(Part.Clip("keep.on"))

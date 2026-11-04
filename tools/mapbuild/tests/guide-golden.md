@@ -2380,7 +2380,6 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    far:  بعد 500 متر، انزل من العبّارة وكمّل
    near: بعد 150 مترًا، انزل من العبّارة وكمّل
    en:   Leave the ferry and drive on | In 500 metres, leave the ferry and drive on | In 150 metres, leave the ferry and drive on
-   on:   كمّل على طريق جيزان لمسافة 46 كيلومترًا | Continue on Jazan - Farasan for 46 kilometres
 12. km 49.7  [turn | right]
    sign: لف يمين
    near: بعد 150 مترًا، لف يمين

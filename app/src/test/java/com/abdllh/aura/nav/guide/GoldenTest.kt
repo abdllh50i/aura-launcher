@@ -116,7 +116,7 @@ class GoldenTest {
             val near = s.at - minOf(150.0, leg.coerceAtLeast(0.0))
             out.append("   near: ${Speech.text(ar.spoken(i, near), true)}\n")
             out.append("   en:   ${be.action}${if (be.road.isNotEmpty()) " / ${be.road}" else ""} | $line${Speech.text(en.spoken(i, near), false)}\n")
-            if (leg > 3000 && i > 0) out.append("   on:   ${Speech.text(ar.keepOn(i - 1, leg - 200), true)} | ${Speech.text(en.keepOn(i - 1, leg - 200), false)}\n")
+            if (leg > 3000 && i > 0 && ar.keepOn(i - 1, leg - 200).isNotEmpty()) out.append("   on:   ${Speech.text(ar.keepOn(i - 1, leg - 200), true)} | ${Speech.text(en.keepOn(i - 1, leg - 200), false)}\n")
         }
         out.append("```\n")
     }

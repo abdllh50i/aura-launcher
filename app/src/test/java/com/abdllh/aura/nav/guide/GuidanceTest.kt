@@ -243,6 +243,7 @@ class GuidanceTest {
         assertEquals("جيزان - فرسان", g.banner(1, 2000.0).road)
         assertEquals("انزل من العبّارة وكمّل", g.banner(2, 4000.0).action)
         assertTrue(g.route.hasFerry)
+        assertTrue("nobody drives a ferry on", g.keepOn(1, 20_000.0).isEmpty())
     }
 
     @Test fun theRealFerry() {

@@ -1732,7 +1732,7 @@ interface the search part implements over `places.db`. Everything fails towards 
 (`Guidance.build`), an answer of an unknown shape is null, and `Guidance.safely` is null on anything else, so the old
 `Instructions` remain. All of it was measured on reference answers on the PC; nobody has heard or driven a word of it.
 
-* **Tests:** `app/src/test/.../nav/guide`, 154 tests on JVM. Fixtures: the 30 reference trips cut from real answers and the pack's
+* **Tests:** `app/src/test/.../nav/guide`, 155 tests on JVM. Fixtures: the 30 reference trips cut from real answers and the pack's
   own `places.db` by `tools/mapbuild/tests/guide_fixtures.py`, 1.4 MB, 3 answers byte for byte beside them. `GoldenTest` writes all
   their words to `tools/mapbuild/tests/guide-golden.md` for a person to read, and fails when the words change and that file did not:
   run it with `GUIDE_GOLDEN_UPDATE=1`, read the diff. A wording change is a diff in that file. When a new `places.db` comes, run
@@ -1787,6 +1787,7 @@ interface the search part implements over `places.db`. Everything fails towards 
 * **Stops** (`nextFuel`): on a motorway only the driver's own side within 300 m, else either side within 200 m, trips of 30 km and more; 13 stations
   in 359 km to Al Batha and a gap of 224 km are what the data has, not a measure of the road. **Arrival:** the answer's side (48 of 66 routes have one),
   else from the line; parking within 400 m.
+* **Cost:** the largest reference answer (890 KB, Dammam-Jeddah) parses in 15 ms and `Guidance.build` over a list of rows takes 7 ms, warm on this PC. `build` belongs on a worker all the same: on an A53, with SQLite answering about 680 boxes for that trip, nobody has measured it.
 * **Fast loop:** kotlin-compiler-embeddable from Gradle's cache over `nav/guide`, `Geo.kt`, `Instructions.kt`, `RouteLimits.kt`, `Daylight.kt` and a stub of
   `Router.kt`'s classes, then `JUnitCore`: 20 s against a Gradle build's minutes while reading the words. `tests/wording/run_wording.py` shows how.
 

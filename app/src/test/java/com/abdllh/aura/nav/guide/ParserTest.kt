@@ -120,6 +120,20 @@ class ParserTest {
         assertNull(RoadFacts.parse("nonsense", line))
     }
 
+    /** What it costs here, for the docs: the largest reference answer. Not the unit: an A53 is many times slower. */
+    @Test fun howLongOnThisPc() {
+        val f = java.io.File("D:\\k2501-work\\mapbuild\\out\\ref-routes\\dammam-jeddah.json")
+        org.junit.Assume.assumeTrue(f.exists())
+        val text = f.readText()
+        repeat(5) { GuideAnswer.parse(text) } // (warm up)
+        val t0 = System.nanoTime()
+        val a = GuideAnswer.parse(text)!!
+        val t1 = System.nanoTime()
+        val g = Guidance.build(a.routes[0], true, Fixtures.trip("dammam-jeddah").world)
+        val t2 = System.nanoTime()
+        println("dammam-jeddah ${text.length} chars: parse ${(t1 - t0) / 1_000_000} ms, build ${(t2 - t1) / 1_000_000} ms, ${g.told.size} told, ${g.spots.size} spots")
+    }
+
     @Test fun zonesContain() {
         val z = ZoneRow(1, ZoneRow.MILITARY, null, null, GeoBox(0.0, 0.0, 1.0, 1.0), listOf(com.abdllh.aura.nav.LatLon(0.0, 0.0), com.abdllh.aura.nav.LatLon(0.0, 1.0), com.abdllh.aura.nav.LatLon(1.0, 1.0), com.abdllh.aura.nav.LatLon(1.0, 0.0)))
         assertTrue(z.contains(com.abdllh.aura.nav.LatLon(0.5, 0.5)))
