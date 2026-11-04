@@ -5,6 +5,11 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class NamesTest {
+    @Test fun aRingRoadIsNoStreet() {
+        assertEquals("الطريق الدائري الشمالي", Names.pick("الدائري الشمالي", "", true, 80.0) { null }.spoken)
+        assertEquals("الطريق الدائري الرابع", Names.pick("الدائري الرابع", "", true, 5000.0) { null }.spoken)
+    }
+
     @Test fun byScriptForTheLanguage() {
         val joined = "طريق الملك فهد; King Fahd Road"
         assertEquals("طريق الملك فهد", Names.pick(joined, "", true).shown)

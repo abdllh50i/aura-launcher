@@ -35,4 +35,4 @@ Only to look at results, with the design kit's headless Chrome (a folder given w
 
 ## Checks
 
-`tests\README.md` for routes, `tests\` for search and data, `adversary\README.md` for the pack as a whole. `make_pack.py` refuses a pack without notices, glyphs or the sea's rows, with a tar that does not start with its index, or with a file that fails SQLite's check.
+`patch_syn.py` writes table syn of a built `places.db` alone. `tests\README.md` for routes, `tests\` for search and data, `adversary\README.md` for the pack as a whole. `make_pack.py` refuses a pack without notices, glyphs or the sea's rows, with a tar that does not start with its index, or with a file that fails SQLite's check.

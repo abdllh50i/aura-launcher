@@ -2027,8 +2027,8 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    en:   Bear left / King Fahd Road | In 150 metres, bear left onto King Fahd Road
 4. km 5.7  [off ramp | slight right]
    sign: خذ المخرج على اليمين / الدائري الشمالي
-   far:  بعد كيلومتر ونصف، خذ المخرج على اليمين باتجاه شارع الدائري الشمالي
-   near: بعد 150 مترًا، خذ المخرج على اليمين باتجاه شارع الدائري الشمالي
+   far:  بعد كيلومتر ونصف، خذ المخرج على اليمين باتجاه الطريق الدائري الشمالي
+   near: بعد 150 مترًا، خذ المخرج على اليمين باتجاه الطريق الدائري الشمالي
    en:   Take the exit on the right / Northern Ring Rd | In 1.5 kilometres, take the exit on the right toward Northern Ring Rd | In 150 metres, take the exit on the right toward Northern Ring Rd
    on:   كمّل على طريق الملك فهد لمسافة 5 كيلومترات | Continue on King Fahd Road for 5 kilometres
 5. km 6.0  [fork | slight right]
@@ -2639,8 +2639,8 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    on:   كمّل على طريق الليث لمسافة 10 كيلومترات | Continue on Al Laith Road for 10 kilometres
 15. km 79.4  [on ramp | slight right]
    sign: خذ المدخل على اليمين / الدائري الرابع
-   far:  بعد كيلومتر ونصف، خذ المدخل على اليمين باتجاه طريق الدائري الرابع
-   near: بعد 150 مترًا، خذ المدخل على اليمين باتجاه طريق الدائري الرابع
+   far:  بعد كيلومتر ونصف، خذ المدخل على اليمين باتجاه الطريق الدائري الرابع
+   near: بعد 150 مترًا، خذ المدخل على اليمين باتجاه الطريق الدائري الرابع
    en:   Take the ramp on the right / 4th Ring Road | In 1.5 kilometres, take the ramp on the right toward 4th Ring Road | In 150 metres, take the ramp on the right toward 4th Ring Road
    on:   كمّل على طريق الليث لمسافة 5 كيلومترات | Continue on Al Laith Road for 5 kilometres
 16. km 88.3  [fork | slight right]
@@ -2648,7 +2648,7 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    far:  بعد كيلومتر ونصف، الزم اليمين
    near: بعد 150 مترًا، الزم اليمين
    en:   Keep right | In 1.5 kilometres, keep right | In 150 metres, keep right
-   on:   كمّل على طريق الدائري الرابع لمسافة 9 كيلومترات | Continue on 4th Ring Road for 9 kilometres
+   on:   كمّل على الطريق الدائري الرابع لمسافة 9 كيلومترات | Continue on 4th Ring Road for 9 kilometres
 17. km 90.4  [fork | slight right]
    sign: الزم اليمين / شارع جبل ثور
    far:  بعد 500 متر، الزم اليمين باتجاه شارع جبل ثور

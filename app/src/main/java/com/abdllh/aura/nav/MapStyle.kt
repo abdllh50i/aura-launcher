@@ -52,7 +52,7 @@ object MapStyle {
     private const val SRC_PLACES = "places"
 
     /** The layers a tap looks in for a place ([AuraMap.onPoiTap]): the pack's, then those of the online tiles. */
-    val POI_LAYERS = arrayOf("poi-a", "poi-b", "poi-c", "poi-d", "omt-poi-a", "omt-poi-b", "omt-poi-c", "omt-poi-d")
+    val POI_LAYERS = arrayOf("poi-holy", "poi-a", "poi-b", "poi-c", "poi-d", "omt-poi-a", "omt-poi-b", "omt-poi-c", "omt-poi-d")
 
     /** The route's line layers (faded while a new route is being found). */
     val ROUTE_LAYERS = arrayOf("route-casing", "route-near-casing", "route", "route-near")
@@ -292,6 +292,11 @@ object MapStyle {
             )
         } else emptyList()
         val pois = omtPois + packPois
+        // The Two Holy Mosques by their names, placed before the words around them: by rank the Grand Mosque is under band a (52 and 50) and a dot and its name are one symbol, so
+        // al-Masjid an-Nabawi lost its place to the district's name at every zoom while the hotels around it showed. (Only these rows hold these names, at rank 50 or more: tools/mapbuild tests.)
+        val holy = if (local && PackTiles.hasPlaces) poi("poi-holy", """"source":"$SRC_PLACES","source-layer":"places"""", Poi.matchKind(c.dots), Poi.matchKind(c.texts),
+            if (arabic) """["get","name"]""" else """["coalesce",["get","name:en"],["get","name"]]""", 13.0,
+            all("""["match",["get","name"],["المسجد الحرام","المسجد النبوي"],true,false]""", """[">=",["get","rank"],50]""")) else null
 
         // Buildings: flat footprints at every zoom from 13 (cheap, and under the 3D ones when those show), 3D only
         // from zoom 17 — closer in than guidance drives (15.2 to 17), so a tilted map while driving never pays for
@@ -442,7 +447,8 @@ object MapStyle {
             // (the country's own name only where the Kingdom is small)
             """{"id":"place-country","type":"symbol","source":"omt","source-layer":"place","maxzoom":5,"filter":${cls("country")},
                "layout":{"text-field":$name,"text-font":$bold,"text-size":${size(2 to 12.0, 5 to 16.0)},"text-max-width":7},
-               "paint":{"text-color":"${c.minorPlace}","text-halo-color":"${c.placeHalo}","text-halo-width":1.6}}""",
+               "paint":{"text-color":"${c.minorPlace}","text-halo-color":"${c.placeHalo}","text-halo-width":1.6}}"""
+        ) + listOfNotNull(holy) + listOf(
             // The arrow of the next turn over every label: a name never collides with a line, and a place's name
             // sitting on the turn hid its head (the one thing on the map the driver must see).
             """{"id":"turn-casing","type":"line","source":"$SRC_TURN","filter":["==","${'$'}type","LineString"],

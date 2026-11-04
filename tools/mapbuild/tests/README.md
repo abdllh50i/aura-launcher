@@ -41,5 +41,10 @@ python -I $T\glyph_plate.py $W\out\glyphs.db <out.png>                          
 ```
 
 Guidance: `python -I $T\guide_fixtures.py $W\out app\src\test\resources\guide` cuts the 30 reference trips and their place rows for `nav/guide`'s tests (`docs/DEV.md`); `guide-golden.md` here holds all their words, written by `GoldenTest`.
+Its trips keep edges only when they match the fixture's line from ref-routes (6 of 30), so the golden file says little about road classes: `python -I $T\guide_zone_fixture.py $W\out app\src\test\resources\guide\zones-real.json` cuts real lines with their real `trace_attributes` for `ZonesOnRealRoadsTest`.
+
+Table syn alone (a new alias, role or word of speech, no word of the index): `python -I ..\patch_syn.py $W\out\places.db`, then the pack again and `scripts/search_compare.py fixture`. The search's tests above still hold: 193 of 193, and 199 of 200 with the one the set always failed (`لو لو`).
+
+Tiles: `nav/offline/TileCheck.kt` looks through every tile the app serves from the pack. To try it over a whole pack, dump all rows to a flat file and run the test with `TILECHECK_ALL=<file>` (`TileCheckTest.everyRowOfThePack`: z, x, y, length as 4 big-endian ints, then the bytes).
 
 Pack: `python -I $T\test_pack.py $W\out ..\lock.json $W\out\pack` tries make_pack.py's refusals and a damaged chunk.

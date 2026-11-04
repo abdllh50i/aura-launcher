@@ -81,6 +81,8 @@ object Names {
         if (!arabic) return n.takeIf { it.length <= SPOKEN_MAX + 8 }
         val first = n.substringBefore(' ')
         val said = if (first in ROAD_WORDS || first.startsWith("شارع") || first.startsWith("طريق")) n
+            // ("الدائري الشمالي" is الطريق الدائري, whatever length the step it is met on: not a street, and no "طريق الدائري")
+            else if (first == "الدائري") "الطريق $n"
             else if (stepMetres >= ROAD_NOT_STREET_M) "طريق $n" else "شارع $n"
         return said.takeIf { it.length <= SPOKEN_MAX }
     }
