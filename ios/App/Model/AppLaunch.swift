@@ -30,6 +30,9 @@ enum AppLaunch {
     static var mapProbe: Bool { arguments.contains("-mapProbe") }
     static var skipMapKitCheck: Bool { arguments.contains("-skipMapKitCheck") }
     static var skipLocation: Bool { arguments.contains("-skipLocation") }
+    /// A flat colour in place of the map, for the UI tests that are about the link and not the map: on a loaded CI machine a software
+    /// rendered map makes each look at the screen take up to a minute. The tests that are about the map keep it.
+    static var plainMap: Bool { arguments.contains("-plainMap") }
     #else
     static let fakeUnit: SweepTarget? = nil
     static let fakeAdb: [SweepTarget] = []
@@ -39,6 +42,7 @@ enum AppLaunch {
     static let mapProbe = false
     static let skipMapKitCheck = false
     static let skipLocation = false
+    static let plainMap = false
     #endif
 
     static var version: String {

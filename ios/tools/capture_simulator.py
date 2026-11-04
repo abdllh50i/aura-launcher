@@ -15,6 +15,7 @@ BUNDLE = "com.abdllh.amri"
 OUT = Path("evidence/screens")
 # A launch screen came to 77 KB and a half-drawn launch to 104 KB, and the plainest real screen to 124 KB.
 LAUNCH_SCREEN_BYTES = 115_000
+MISSING = []
 
 ARABIC = [
     "first", "unpaired", "denied", "home", "expiry", "typing", "results", "empty", "place", "place-long",
@@ -39,26 +40,38 @@ def pick_device():
 
 
 def launch(udid, screen, language):
+    """True when it started. A loaded machine can sit on this for minutes, and one screen is not worth the whole run."""
     locale = "ar_SA" if language == "ar" else "en_US"
-    run("xcrun", "simctl", "launch", "--terminate-running-process", udid, BUNDLE,
-        "-AppleLanguages", f"({language})", "-AppleLocale", locale, "-screen", screen, "-demoSearch")
+    for _ in range(2):
+        try:
+            run("xcrun", "simctl", "launch", "--terminate-running-process", udid, BUNDLE,
+                "-AppleLanguages", f"({language})", "-AppleLocale", locale, "-screen", screen, "-demoSearch", timeout=240)
+            return True
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as error:
+            print("launch failed:", screen, error, flush=True)
+            time.sleep(10)
+    return False
 
 
 def shoot(udid, screen, language, suffix=""):
-    launch(udid, screen, language)
     path = OUT / f"{language}{suffix}-{screen}.png"
+    if not launch(udid, screen, language):
+        MISSING.append(path.name)
+        return
 
     def take():
-        run("xcrun", "simctl", "io", udid, "screenshot", "--type=png", str(path))
+        run("xcrun", "simctl", "io", udid, "screenshot", "--type=png", str(path), timeout=120)
 
-    # Machines differ by a factor of three, so this looks rather than guesses. The launch screen is one colour, and so a small
-    # file. After it, the screen's state, the sheets and the map's tiles get their time.
+    # Machines differ by a factor of three and more, so this looks rather than guesses. The launch screen is one colour, and so a
+    # small file. After it, the screen's state, the sheets and the map's tiles get their time.
     time.sleep(3)
-    for _ in range(15):
+    for _ in range(40):
         take()
         if path.stat().st_size > LAUNCH_SCREEN_BYTES:
             break
         time.sleep(2)
+    else:
+        MISSING.append(path.name)
     time.sleep(3 if screen.startswith("share-") else 8)
     take()
 
@@ -100,9 +113,10 @@ def main():
     if "--boot-only" in sys.argv:
         print("Booted", device["name"], udid)
         return
-    # The first start is slow while the system prepares the app, and the map's tiles load.
-    launch(udid, "home", "ar")
-    time.sleep(12)
+    # The first start is slow while the system prepares the app, and the map's tiles load. This picture is not kept.
+    shoot(udid, "home", "ar", "-warm")
+    (OUT / "ar-warm-home.png").unlink(missing_ok=True)
+    MISSING.clear()
 
     only = [item for item in sys.argv[1:] if not item.startswith("--")]
     for screen in ARABIC:
@@ -116,6 +130,10 @@ def main():
             shoot(udid, screen, "ar", "-dark")
         run("xcrun", "simctl", "ui", udid, "appearance", "light")
     print("Captured", len(list(OUT.glob("*.png"))), "screens on", device["name"], "at", os.getcwd())
+    if MISSING:
+        print("Not captured:", MISSING, flush=True)
+    if len(MISSING) > 3:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -10,11 +10,11 @@ final class AmriFlowUITests: XCTestCase {
         fake.call("reset")
     }
 
-    private func launch(_ extra: [String] = [], reset: Bool = true) -> XCUIApplication {
+    private func launch(_ extra: [String] = [], reset: Bool = true, realMap: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(ar)", "-AppleLocale", "ar_SA", "-fakeUnit", "127.0.0.1:47101",
                                "-fakeAdb", "127.0.0.1:15555,127.0.0.1:15556", "-demoSearch", "-skipMapKitCheck"]
-            + (reset ? ["-reset"] : []) + extra
+            + (reset ? ["-reset"] : []) + (realMap ? [] : ["-plainMap"]) + extra
         app.launch()
         return app
     }
@@ -57,7 +57,7 @@ final class AmriFlowUITests: XCTestCase {
         waitForLabel(app, "statusPill", contains: "اربطها")
         tap(app, "statusPill")
         let field = element(app, "pairCode")
-        XCTAssertTrue(field.waitForExistence(timeout: 30))
+        XCTAssertTrue(field.waitForExistence(timeout: 60), app.debugDescription)
         shot("pair-screen")
         field.tap()
         field.typeText("246810")
@@ -89,7 +89,7 @@ final class AmriFlowUITests: XCTestCase {
 
     @MainActor
     func testSearchSendStatusInArabic() {
-        let app = launch()
+        let app = launch(realMap: true)
         XCTAssertTrue(element(app, "searchField").waitForExistence(timeout: 20))
         shot("first-launch")
         pair(app)
@@ -131,7 +131,7 @@ final class AmriFlowUITests: XCTestCase {
 
     @MainActor
     func testChipsShowResultsOnTheMap() {
-        let app = launch()
+        let app = launch(realMap: true)
         XCTAssertTrue(element(app, "chip-pharmacy").waitForExistence(timeout: 20))
         tap(app, "chip-pharmacy")
         XCTAssertTrue(element(app, "result-0").waitForExistence(timeout: 30), app.debugDescription)
@@ -191,7 +191,7 @@ final class AmriFlowUITests: XCTestCase {
     func testNoAnswerFromTheUnitIsSaid() {
         let app = XCUIApplication()
         // A port nothing listens on: no unit at all.
-        app.launchArguments = ["-AppleLanguages", "(ar)", "-AppleLocale", "ar_SA", "-fakeUnit", "127.0.0.1:47199", "-demoSearch", "-reset"]
+        app.launchArguments = ["-AppleLanguages", "(ar)", "-AppleLocale", "ar_SA", "-fakeUnit", "127.0.0.1:47199", "-demoSearch", "-plainMap", "-reset"]
         app.launch()
         waitForLabel(app, "statusPill", contains: "ما لقيت السيارة")
         shot("not-found")
@@ -275,7 +275,7 @@ final class AmriFlowUITests: XCTestCase {
     @MainActor
     func testLinkCheckWorksWithNoUnit() {
         let app = XCUIApplication()
-        app.launchArguments = ["-AppleLanguages", "(ar)", "-AppleLocale", "ar_SA", "-fakeUnit", "127.0.0.1:47199", "-demoSearch", "-skipMapKitCheck", "-reset"]
+        app.launchArguments = ["-AppleLanguages", "(ar)", "-AppleLocale", "ar_SA", "-fakeUnit", "127.0.0.1:47199", "-demoSearch", "-skipMapKitCheck", "-plainMap", "-reset"]
         app.launch()
         waitForLabel(app, "statusPill", contains: "ما لقيت السيارة")
         tap(app, "carButton")

@@ -76,7 +76,9 @@ struct MapScreen: View {
     /// From iOS 18 any place on Apple's map can be tapped too. Before it, only the results' own pins.
     @ViewBuilder
     private var mapView: some View {
-        if #available(iOS 18.0, *) {
+        if AppLaunch.plainMap {
+            Theme.sunken.ignoresSafeArea()
+        } else if #available(iOS 18.0, *) {
             TappableMap(camera: $camera)
         } else {
             PinsMap(camera: $camera)
