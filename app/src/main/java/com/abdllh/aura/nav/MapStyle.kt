@@ -111,7 +111,8 @@ object MapStyle {
      */
     fun routeBase(): Int = Guide.color()
 
-    // the default accent draws in the design's blue and its casing; only an accent the owner picked is worked out from it
+    // the default accent draws in the design's blue and its casing (the sign takes the design's tokens with the shell); only an
+    // accent the owner picked is worked out from it, line and sign in one colour as before
     private fun ownAccent() = routeBase() != Palette.DEFAULT_ACCENT
 
     /** The route as drawn: at night a lighter blue, so it is the brightest line among the dark roads. */

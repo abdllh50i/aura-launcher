@@ -605,8 +605,9 @@ Sans and OpenMapTiles' places.
 **Palette.** `scripts/gen_map_palette.py` turns the design's `map-day.json` and `map-night.json` into `nav/MapPalette.kt` (and
 `polygon/ksa.poly` into `offline/KsaOutlineData.kt`): one command after a polish, and it stops on a missing key or a colour that is
 not `#RRGGBB`. Kotlin rather than an asset: nothing to read at run time, nothing that can fail while the home screen starts. The
-default accent draws in the palette's own route and casing; an accent the owner picked (blue, cyan, violet) is still worked out
-from it as before, so the sign and the line stay one colour. Cameras, signals and bumps keep their colours in code, as they were.
+default accent draws in the palette's own route and casing (`#1F6BFF` by day, the sign is still the accent's `#3E6AE1` until the design's
+tokens come with the shell); an accent the owner picked (blue, cyan, violet) is worked out as before, line and sign in one colour.
+Cameras, signals and bumps keep their colours in code, as they were.
 `Palette.mapLand` is the same value as `land`, as `tokens.json` says.
 
 **What changed in the layers, and why** (each found on real tiles):
