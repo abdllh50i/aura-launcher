@@ -317,6 +317,36 @@ final class ModelTests: XCTestCase {
         XCTAssertTrue(text.contains("مطعم: 3 نتيجة"), text)
     }
 
+    func testTheConclusionTellsTheRouteFromTheServer() {
+        var facts = LinkFacts()
+        facts.located = LocateOutcome(sweep: { var s = SweepReport(); s.targetCount = 13; return s }())
+        var adb = Repair.Scan()
+        adb.targetCount = 13
+        facts.adb = adb
+        XCTAssertTrue(LinkReport.conclusion(facts).joined().contains("ما شاف الشاشة"), "nothing answered on either port")
+
+        adb.hosts = [Repair.Host(host: "172.20.10.3", port: 5555, kind: .k2501, banner: nil)]
+        facts.adb = adb
+        let serverOff = LinkReport.conclusion(facts).joined()
+        XCTAssertTrue(serverOff.contains("172.20.10.3"), serverOff)
+        XCTAssertTrue(serverOff.contains("ربط الجوال"), "the route works, the server is what is off")
+
+        facts.ping = FoundUnit(address: UnitAddress(host: "172.20.10.3"), ping: UnitPing(app: "AMRI"))
+        let reached = LinkReport.conclusion(facts).joined()
+        XCTAssertTrue(reached.contains("172.20.10.3:47101"), reached)
+        XCTAssertTrue(reached.contains("باقي تربطها"), reached)
+        XCTAssertTrue(reached.contains("App Group"), reached)
+
+        facts.localNetwork = .denied
+        XCTAssertTrue(LinkReport.conclusion(facts).joined().contains("مرفوضة"), "first things first")
+
+        var empty = LinkFacts()
+        empty.located = LocateOutcome(sweep: SweepReport())
+        empty.adb = Repair.Scan()
+        XCTAssertTrue(LinkReport.conclusion(empty).joined().contains("شغّل الهوتسبوت"))
+        XCTAssertTrue(LinkReport.render(empty).contains("[الخلاصة]"))
+    }
+
     func testTheReportShowsTheSharedPayloadRaw() {
         var facts = LinkFacts()
         facts.lastShare = StoredShare(payload: SharePayload(typeIdentifiers: [["public.url", "public.plain-text"]], urls: ["https://maps.apple/p/x"], texts: ["الراشد مول"]),

@@ -59,6 +59,10 @@ public enum LinkReport {
         lines.append("فحص الربط · عمري \(facts.appVersion) · iOS \(facts.systemVersion) · \(when)")
 
         lines.append("")
+        lines.append("[الخلاصة]")
+        lines.append(contentsOf: conclusion(facts))
+
+        lines.append("")
         lines.append("[التوقيع]")
         if let signing = facts.signing {
             lines.append("معرّف التطبيق بعد التوقيع: \(signing.appBundleID ?? "غير معروف")")
@@ -191,6 +195,35 @@ public enum LinkReport {
         lines.append("الاتجاهات MKDirections: \(facts.directions ?? "ما انفحصت")")
 
         return lines.joined(separator: "\n")
+    }
+
+    /// What all of it comes to, in a sentence or two. The biggest unknown of the whole plan is whether this phone can reach a client
+    /// of its own hotspot at all, and the two ports tell that apart from a server that is just not on.
+    public static func conclusion(_ facts: LinkFacts) -> [String] {
+        var lines: [String] = []
+        if let signing = facts.signing, !signing.shareExtensionPresent {
+            lines.append("أداة التوقيع شالت «إرسال للسيارة» من التطبيق: وقّعه من جديد وخل Remove Extensions مطفية.")
+        }
+        if facts.localNetwork == .denied {
+            lines.append("الشبكة المحلية مرفوضة لعمري: هذا أول شيء لازم يتصلح، من الإعدادات ← الخصوصية والأمان ← الشبكة المحلية.")
+            return lines
+        }
+        let k2501 = facts.adb?.units.first
+        if let found = facts.ping {
+            lines.append("الجوال يوصل للشاشة على \(found.address.text): الطريق بينهم شغال.")
+            if facts.paired == nil { lines.append("باقي تربطها: امسح الرمز اللي على الشاشة.") }
+            if !facts.storeIsShared { lines.append("ما فيه App Group: «إرسال للسيارة» يروح بدون رمز، والشاشة تطلب تأكيدك.") }
+        } else if let k2501 {
+            lines.append("الجوال يوصل للشاشة (ردت K2501 على \(k2501.host) منفذ ADB)، بس خادم الجوال 47101 ما رد.")
+            lines.append("يعني الطريق شغال، والباقي على الشاشة: لازم نسختها فيها الخادم، وتشغّل «ربط الجوال» من إعداداتها.")
+        } else if facts.located?.sweep?.targetCount == 0, facts.adb?.targetCount ?? 0 == 0 {
+            lines.append("الجوال ما عنده شبكة محلية يدور فيها: شغّل الهوتسبوت، وخل الشاشة تشبك عليه، وأعد الفحص.")
+        } else {
+            let count = facts.located?.sweep?.targetCount ?? facts.adb?.targetCount ?? 0
+            lines.append("الجوال ما شاف الشاشة على أي منفذ في \(count) عنوان.")
+            lines.append("لو الشاشة شابكة على هوتسبوت هذا الجوال الحين، فالجوال ما يقدر يوصل لأجهزة الهوتسبوت، وهذا أكبر سؤال عندنا. أرسل هذا التقرير.")
+        }
+        return lines
     }
 
     /// "Connection refused × 12", most said first.

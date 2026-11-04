@@ -32,6 +32,7 @@ struct ShareFlowView: View {
                 }
             }
         }
+        .tint(Theme.signal)
     }
 
     /// The raw payload, right here, because without an App Group the app cannot read it.
