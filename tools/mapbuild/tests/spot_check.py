@@ -252,7 +252,7 @@ def main():
         if r[0] != 1 or r[3] is None or not 26.3e6 <= r[1] <= 27.1e6 or not 49.5e6 <= r[2] <= 50.2e6:
             continue
         la, lo = r[1] / 1e6, r[2] / 1e6
-        if min(seg_dist_m(la, lo, (u[0], u[1], v[0], v[1])) for u, v in zip(pts, pts[1:]) if abs(u[0] - la) < 0.02 or abs(v[0] - la) < 0.02) > 40:
+        if min((seg_dist_m(la, lo, (u[0], u[1], v[0], v[1])) for u, v in zip(pts, pts[1:]) if abs(u[0] - la) < 0.02 or abs(v[0] - la) < 0.02), default=1e9) > 40:
             continue
         nd, ns = 1e9, None
         for s in main_segs:
