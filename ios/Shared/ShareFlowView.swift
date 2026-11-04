@@ -156,7 +156,7 @@ struct SendStageView: View {
             small("الجوال ما عنده رمز ربط هنا، فالشاشة تطلب تأكيدك. وما أقدر أشوف من هنا إذا بدأت الاتجاهات.")
             closeKey
         case .started(_, let nav):
-            result(symbol: "checkmark.circle.fill", color: Theme.signal, title: "بدأت الاتجاهات")
+            result(symbol: "checkmark.circle.fill", color: Theme.good, title: "بدأت الاتجاهات")
             let line = Formats.dotted([nav.durationS.map { Formats.duration(seconds: $0) }, nav.etaLocal.map { Formats.arrival($0) }, nav.distanceM.map { Formats.distance(meters: $0) }])
             if !line.isEmpty {
                 Text(verbatim: line)
@@ -172,12 +172,18 @@ struct SendStageView: View {
         case .ignored:
             result(symbol: "arrow.uturn.backward.circle.fill", color: Theme.warn, title: "الشاشة كملت الرحلة اللي كانت فيها")
             closeKey
+        case .expired(let place):
+            result(symbol: "clock.badge.xmark.fill", color: Theme.warn, title: "ما أحد رد على الشاشة، فما بدأت الاتجاهات")
+            sendKey(place, title: "أرسله مرة ثانية")
         case .cancelled(let place):
             result(symbol: "xmark.circle.fill", color: Theme.warn, title: "انلغى على الشاشة")
             sendKey(place, title: "أرسله مرة ثانية")
-        case .routeFailed(let place, let reason):
+        case .routeFailed(let place, let reason, let kept):
             result(symbol: "exclamationmark.triangle.fill", color: Theme.bad, title: "الشاشة ما قدرت تحسب الطريق")
             reasonText(reason)
+            if kept {
+                small("الرحلة اللي كنت فيها مستمرة.")
+            }
             sendKey(place, title: "حاول مرة ثانية")
         case .refused(let place, let reason):
             result(symbol: "xmark.octagon.fill", color: Theme.bad, title: "الشاشة ما قبلت")
@@ -213,7 +219,14 @@ struct SendStageView: View {
     private var waitingRow: some View {
         switch model.unitWord?.kind {
         case .card?:
-            progressRow("الشاشة تسألك: تبدّل الرحلة الحالية؟ جاوب على الشاشة.")
+            switch model.unitWord?.cardKind {
+            case "replace"?:
+                progressRow("الشاشة تسألك: تبدّل الرحلة الحالية؟ جاوب على الشاشة.")
+            case "map"?:
+                progressRow("المكان على خريطة الشاشة. اضغط «انطلق» هناك.")
+            default:
+                progressRow("الشاشة تسألك: تبدأ الاتجاهات؟ جاوب على الشاشة.")
+            }
         case .held?:
             progressRow("الشاشة ماسكة المكان لين تخلص المكالمة أو الرجوع للخلف.")
         case .waitingFix?:

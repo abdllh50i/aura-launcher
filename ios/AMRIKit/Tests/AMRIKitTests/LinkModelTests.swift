@@ -136,6 +136,44 @@ final class LinkEventTests: XCTestCase {
         XCTAssertEqual(LinkClient.outcome(of: NavEvent(kind: .stopped, id: "A"), forID: "A", routing: routing), .cancelled)
         XCTAssertNil(LinkClient.outcome(of: NavEvent(kind: .stopped, id: "B"), forID: "A", routing: routing))
         XCTAssertNil(LinkClient.outcome(of: NavEvent(kind: .card, id: "A"), forID: "A", routing: routing), "the screen asks: not an end")
+        XCTAssertEqual(LinkClient.outcome(of: NavEvent(kind: .expired, id: "A"), forID: "A", routing: routing), .expired, "nobody answered the card")
+        XCTAssertNil(LinkClient.outcome(of: NavEvent(kind: .expired, id: "B"), forID: "A", routing: routing))
+    }
+
+    /// The events of link/PlaceInbox.kt that say more than their state.
+    func testWhatAStepSaysBesidesItsState() {
+        guard case .nav(let card) = LinkEvent(message: SSEMessage(event: "nav", data: #"{"id":"A","state":"card","kind":"replace"}"#)) else { return XCTFail() }
+        XCTAssertEqual(card.kind, .card, "its state, not its kind, is what it is")
+        XCTAssertEqual(card.cardKind, "replace")
+        guard case .nav(let failed) = LinkEvent(message: SSEMessage(event: "nav", data: #"{"id":"A","state":"failed","reason":"no_route","kept":true}"#)) else { return XCTFail() }
+        XCTAssertEqual(failed.kept, true)
+        let routing = Locked(true)
+        XCTAssertEqual(LinkClient.outcome(of: failed, forID: "A", routing: routing), .failedKept("no_route"), "the trip he is on goes on")
+        guard case .nav(let moving) = LinkEvent(message: SSEMessage(event: "nav", data: #"{"state":"navigating","rerouting":true}"#)) else { return XCTFail() }
+        XCTAssertEqual(moving.rerouting, true)
+    }
+
+    func testARetryIsToldWhatBecameOfItsFirstTry() {
+        XCTAssertEqual(LinkClient.outcome(ofLast: "started"), .started(NavEvent(kind: .started)))
+        XCTAssertEqual(LinkClient.outcome(ofLast: "failed"), .failed(nil))
+        XCTAssertEqual(LinkClient.outcome(ofLast: "handed"), .handed)
+        XCTAssertEqual(LinkClient.outcome(ofLast: "ignored"), .ignored)
+        XCTAssertEqual(LinkClient.outcome(ofLast: "expired"), .expired)
+        XCTAssertEqual(LinkClient.outcome(ofLast: "replaced"), .cancelled)
+        XCTAssertEqual(LinkClient.outcome(ofLast: "cancelled"), .cancelled)
+        for going in ["accepted", "routing", "waiting_fix", "card", "held", "", nil] as [String?] {
+            XCTAssertNil(LinkClient.outcome(ofLast: going), "still on it: the events will tell. \(going ?? "nil")")
+        }
+    }
+
+    func testACarEventWithNoFixMeansNone() {
+        guard case .car(let none) = LinkEvent(message: SSEMessage(event: "car", data: #"{"gear":null,"gearSure":false,"reversing":false,"inCall":false}"#)) else { return XCTFail() }
+        XCTAssertEqual(none.gpsFix, false, "the unit leaves the fix out when it has none")
+        guard case .car(let old) = LinkEvent(message: SSEMessage(event: "car", data: #"{"reversing":false,"fix":{"lat":1,"lon":2,"ageS":600,"kmh":0}}"#)) else { return XCTFail() }
+        XCTAssertEqual(old.gpsFix, true)
+        XCTAssertEqual(old.fixAgeS, 600)
+        guard case .car(let other) = LinkEvent(message: SSEMessage(event: "car", data: #"{"volumeStep":3}"#)) else { return XCTFail() }
+        XCTAssertNil(other.gpsFix, "an event about something else says nothing about it")
     }
 }
 

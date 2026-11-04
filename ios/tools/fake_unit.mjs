@@ -75,6 +75,8 @@ export function createFakeUnit(options = {}) {
       failRoute: null, // the route fails, with this reason
       conflict: null, // 409 with this reason
       rejectTokens: false, // the unit forgot its tokens
+      noRollbackScript: false, // a version with no way back prepared
+      rollbackFails: false, // pm install fails
     };
     state = {
       code: base.code,
@@ -130,9 +132,11 @@ export function createFakeUnit(options = {}) {
   /** The trip as it is now: the shape of /v1/state's "nav" and of the snapshot on connect. It names no id, like the unit's. */
   function navJson() {
     const trip = state.trip;
-    if (!trip) return state.nav.state === 'arrived' ? { state: 'arrived', place: state.nav.place } : { state: 'idle' };
-    if (!trip.running) return { state: 'routing', place: trip.place };
-    return { state: 'navigating', place: trip.place, by: 'phone', remainingM: trip.leftM, timeLeftS: trip.leftS, etaLocal: etaLocal(trip.leftS), speedKmh: 0, rerouting: false, nextText: 'بعد ٨٠٠ متر انعطف يمين' };
+    const card = state.card;
+    const pending = card ? { pending: { id: card.id, stage: card.reason === 'navigating' ? 'replacing' : 'asking', place: card.place } } : {};
+    if (!trip) return state.nav.state === 'arrived' ? { state: 'arrived', place: state.nav.place, ...pending } : { state: 'idle', ...pending };
+    if (!trip.running) return { state: 'routing', place: trip.place, ...pending };
+    return { state: 'navigating', place: trip.place, by: 'phone', remainingM: trip.leftM, timeLeftS: trip.leftS, etaLocal: etaLocal(trip.leftS), speedKmh: 0, rerouting: false, nextText: 'بعد ٨٠٠ متر انعطف يمين', ...pending };
   }
   function setMusic(patch) {
     state.music = { ...state.music, ...patch };
@@ -337,7 +341,10 @@ export function createFakeUnit(options = {}) {
         const card = state.card;
         if (!card) return send(res, 409, { reason: 'no card' });
         state.card = null;
-        if (body?.accept === false) {
+        if (body?.expire) {
+          broadcast('nav', { id: card.id, state: 'expired' });
+          state.lastState[card.id] = 'expired';
+        } else if (body?.accept === false) {
           broadcast('nav', { id: card.id, state: 'ignored', kept: true });
         } else {
           startTrip(card.id, card.place);
@@ -489,6 +496,23 @@ export function createFakeUnit(options = {}) {
 
   const adbServers = [];
 
+  /** As assets/rollback.sh answers: it says "started" at once and works on by itself; its result file tells how that goes. */
+  function adbAnswer(service) {
+    if (service === 'shell:sh /data/local/tmp/amri-rollback/rollback.sh') {
+      if (config.noRollbackScript) return "sh: can't open '/data/local/tmp/amri-rollback/rollback.sh': No such file or directory\r\n";
+      state.rollbackReads = 0;
+      return 'started\r\n';
+    }
+    if (service === 'shell:cat /data/local/tmp/amri-rollback/result') {
+      state.rollbackReads = (state.rollbackReads ?? 0) + 1;
+      const head = 'MODE=back\r\nFROM= versionCode=200 versionName=2.0.0 \r\nTO=1.19.0\r\n';
+      if (state.rollbackReads < 2) return head;
+      if (config.rollbackFails) return `${head}Failure [INSTALL_FAILED]\r\nEXIT=1\r\nHOME=com.android.launcher DISABLED=1\r\nDONE\r\n`;
+      return `${head}Success\r\nEXIT=0\r\nNOW= versionCode=119 versionName=1.19.0 \r\nDONE\r\n`;
+    }
+    return 'not a stand-in command\r\n';
+  }
+
   function startAdb({ port, model }) {
     const banner = `device::ro.product.name=fake;ro.product.model=${model};ro.product.device=fake-device;features=shell_v2,cmd\0`;
     const srv = net.createServer((socket) => {
@@ -512,7 +536,7 @@ export function createFakeUnit(options = {}) {
             state.adbOpens.push({ port, model, service });
             const mine = 1000 + state.adbOpens.length;
             socket.write(adbPacket(ADB.OKAY, mine, arg0));
-            socket.write(adbPacket(ADB.WRTE, mine, arg0, Buffer.from('rollback: started (test stand-in)\r\nEXIT=0\r\n')));
+            socket.write(adbPacket(ADB.WRTE, mine, arg0, Buffer.from(adbAnswer(service))));
             socket.write(adbPacket(ADB.CLSE, mine, arg0));
           }
         }

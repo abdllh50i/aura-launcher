@@ -202,9 +202,21 @@ public enum PlaceQueries {
         return try await start(request, near: near)
     }
 
-    /// What the search box does: a word that means a category is that category; otherwise places first, then addresses
-    /// (a short address, a district), each kept only if it is not one of the places already.
+    /// True when all that was typed is a Saudi short address (`EDMA2510`), in any kind of digits.
+    public static func isShortAddress(_ text: String) -> Bool {
+        let plain = ShareParser.normalize(text).trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        return ShareParser.shortAddress(in: plain) == plain
+    }
+
+    /// What the search box does: a short address is one exact point, so what Apple's address search says about it comes alone
+    /// (asked for places too, "EDMA2510" brought a flower shop and a salon before the address, in the CI's probe). A word that
+    /// means a category is that category. Otherwise places first, then addresses (a district), each kept only if it is not one
+    /// of the places already.
     public static func best(_ text: String, near: CLLocationCoordinate2D?) async throws -> [PhonePlace] {
+        if isShortAddress(text) {
+            let exact = try await PlaceQueries.text(ShareParser.normalize(text).trimmingCharacters(in: .whitespacesAndNewlines).uppercased(), near: near)
+            if !exact.isEmpty { return exact }
+        }
         if let category = PlaceCategory.meant(by: text) {
             let found = try await PlaceQueries.category(category, near: near)
             if !found.isEmpty { return found }

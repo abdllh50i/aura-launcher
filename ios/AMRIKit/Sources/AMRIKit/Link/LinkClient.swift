@@ -6,10 +6,14 @@ public enum StartOutcome: Equatable, Sendable {
     case started(NavEvent)
     /// The unit's own `failed` event.
     case failed(String?)
+    /// The route for this place failed, and the trip that was running goes on.
+    case failedKept(String?)
     /// Given to another navigation app, which says nothing back: not "started".
     case handed
     /// The screen kept the trip it had.
     case ignored
+    /// The screen's card went unanswered.
+    case expired
     /// Cancelled on the screen, or another place took its turn.
     case cancelled
     /// No word in time. The phone must not claim anything.
@@ -204,25 +208,48 @@ public final class LinkClient: @unchecked Sendable {
         }
     }
 
+    /// How much longer a word from the unit is worth waiting for: a route gets 60 s there, the first fix up to 10 minutes, and a
+    /// card or a call as long as they last (`Trips`, `PlaceInbox`). Nil when this word buys no time.
+    static func patience(after kind: NavEvent.Kind) -> TimeInterval? {
+        switch kind {
+        case .routing: return 75
+        case .waitingFix, .held, .card: return 600
+        default: return nil
+        }
+    }
+
     /// Watches the unit's events until this send's real outcome, for the time given. Reconnects when the hotspot blinks.
     /// `update` hears every step on the way (routing, a card on the screen, waiting for GPS), as the unit says them.
     /// `place` is what was sent: the unit's snapshot names its trip by place and not by id.
-    public func waitForStart(id: String?, place: LinkPlace? = nil, timeout: TimeInterval, update: (@Sendable (NavEvent) -> Void)? = nil) async -> StartOutcome {
+    /// `patient`: as long as the unit says it is still on this send, keep listening past `timeout`.
+    public func waitForStart(id: String?, place: LinkPlace? = nil, timeout: TimeInterval, patient: Bool = false, update: (@Sendable (NavEvent) -> Void)? = nil) async -> StartOutcome {
         let routing = Locked(false)
+        let deadline = Locked(Date().addingTimeInterval(timeout))
+        /// What one `nav` word means for this send: its end, or nil and the wait goes on.
+        @Sendable func take(_ nav: NavEvent) -> StartOutcome? {
+            if let outcome = LinkClient.outcome(of: nav, forID: id, place: place, routing: routing) { return outcome }
+            // The stream opens after the ack, so a step's own event may have gone by: then only the snapshot on connect tells, and
+            // it names no id. Its `pending` and its place still say whose word it is. Only a word for this send buys time.
+            let word = nav.pendingWord(for: id) ?? nav
+            if patient, word.isAbout(id: id, place: place), let more = LinkClient.patience(after: word.kind) {
+                deadline.with { $0 = max($0, Date().addingTimeInterval(more)) }
+            }
+            if word.id == nil || word.id == id { update?(word) }
+            return nil
+        }
         let result: StartOutcome = await withTaskGroup(of: StartOutcome?.self) { group in
             group.addTask { [self] in
                 while !Task.isCancelled {
                     do {
                         for try await event in events() {
-                            guard case .nav(let nav) = event else {
-                                if case .snapshot(let snapshot) = event, let nav = snapshot.nav {
-                                    if let outcome = LinkClient.outcome(of: nav, forID: id, place: place, routing: routing) { return outcome }
-                                    if nav.id == id { update?(nav) }
-                                }
-                                continue
+                            switch event {
+                            case .nav(let nav):
+                                if let outcome = take(nav) { return outcome }
+                            case .snapshot(let snapshot):
+                                if let nav = snapshot.nav, let outcome = take(nav) { return outcome }
+                            default:
+                                break
                             }
-                            if let outcome = LinkClient.outcome(of: nav, forID: id, place: place, routing: routing) { return outcome }
-                            if nav.id == nil || nav.id == id { update?(nav) }
                         }
                     } catch {
                         if let link = error as? LinkError, case .unauthorized = link { return nil }
@@ -232,7 +259,11 @@ public final class LinkClient: @unchecked Sendable {
                 return nil
             }
             group.addTask {
-                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                while !Task.isCancelled {
+                    let left = deadline.current.timeIntervalSinceNow
+                    if left <= 0 { return nil }
+                    try? await Task.sleep(nanoseconds: UInt64(min(left, 0.5) * 1_000_000_000))
+                }
                 return nil
             }
             let first = await group.next() ?? nil
@@ -240,6 +271,21 @@ public final class LinkClient: @unchecked Sendable {
             return first ?? .noWord(routingSeen: routing.current)
         }
         return result
+    }
+
+    /// A retry whose first try got through hears `duplicate` and `last`: what became of it, in the words of the events, which
+    /// have gone by. Nil while that says the unit is still on it: then the events will tell.
+    public static func outcome(ofLast last: String?) -> StartOutcome? {
+        guard let last else { return nil }
+        switch NavEvent.Kind(raw: last) {
+        case .started, .progress: return .started(NavEvent(kind: .started))
+        case .failed: return .failed(nil)
+        case .handed: return .handed
+        case .ignored: return .ignored
+        case .expired: return .expired
+        case .replaced, .stopped: return .cancelled
+        default: return nil
+        }
     }
 
     /// The rule for "started": only the unit's word, and for this send when the unit names one.
@@ -262,11 +308,14 @@ public final class LinkClient: @unchecked Sendable {
             }
             return nil
         case .failed:
-            return nav.id == nil && id != nil && !routing.current ? nil : .failed(nav.reason)
+            if nav.id == nil, id != nil, !routing.current { return nil }
+            return nav.kept == true ? .failedKept(nav.reason) : .failed(nav.reason)
         case .handed:
             return nav.id == id ? .handed : nil
         case .ignored:
             return nav.id == id ? .ignored : nil
+        case .expired:
+            return nav.id == id ? .expired : nil
         case .replaced:
             return nav.id == id ? .cancelled : nil
         case .stopped:

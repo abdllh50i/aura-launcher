@@ -6,6 +6,8 @@ import UIKit
 /// ask about the Local Network: an extension in the background would be refused silently (TN3179).
 struct PairScreen: View {
     let target: PairingTarget?
+    /// Pushed from the car's screen it has its back button, and needs no second way out.
+    var showsClose = true
     @EnvironmentObject private var link: CarLink
     @Environment(\.dismiss) private var dismiss
     @StateObject private var model = PairModel()
@@ -31,9 +33,11 @@ struct PairScreen: View {
         .navigationTitle("اربط السيارة")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("إغلاق") { dismiss() }
-                    .accessibilityIdentifier("pairClose")
+            if showsClose {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("إغلاق") { dismiss() }
+                        .accessibilityIdentifier("pairClose")
+                }
             }
         }
         .task {

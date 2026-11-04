@@ -299,12 +299,41 @@ final class AmriFlowUITests: XCTestCase {
         shot("repair-second-confirm")
         XCTAssertTrue(wait { go.isEnabled })
         go.tap()
+        // rollback.sh answers at once and works on by itself: only its result file says how it went.
+        waitForLabel(app, "repairOutput", contains: "MODE=back")
+        shot("repair-watching")
+        XCTAssertTrue(element(app, "repairDone").waitForExistence(timeout: 20), app.debugDescription)
         waitForLabel(app, "repairOutput", contains: "EXIT=0")
+        waitForLabel(app, "repairVersion", contains: "1.19.0")
+        waitForLabel(app, "repairTitle", contains: "رجعت الشاشة")
         shot("repair-result")
         let opens = fake.log().adbOpens
-        XCTAssertEqual(opens.count, 1)
-        XCTAssertEqual(opens.first?["model"] as? String, "K2501")
+        XCTAssertGreaterThanOrEqual(opens.count, 2)
+        XCTAssertEqual(Set(opens.compactMap { $0["model"] as? String }), ["K2501"], "nothing else is touched")
         XCTAssertEqual(opens.first?["service"] as? String, "shell:sh /data/local/tmp/amri-rollback/rollback.sh")
+        XCTAssertEqual(Set(opens.dropFirst().compactMap { $0["service"] as? String }), ["shell:cat /data/local/tmp/amri-rollback/result"])
+    }
+
+    /// On a trip a second place makes the screen ask. Nobody answers: the phone says so, and the trip he is on is the only one.
+    @MainActor
+    func testAnUnansweredCardIsSaid() {
+        let app = launch()
+        pair(app)
+        searchForMall(app)
+        tap(app, "sendKey")
+        waitForLabel(app, "shareStatus", contains: "بدأت الاتجاهات", timeout: 25)
+        tap(app, "shareDone")
+        tap(app, "chip-coffee")
+        tap(app, "result-0")
+        tap(app, "sendKey")
+        waitForLabel(app, "shareStatus", contains: "تبدّل الرحلة")
+        shot("card-replace")
+        XCTAssertNotNil(fake.state().card)
+        fake.call("card", ["expire": true])
+        waitForLabel(app, "shareStatus", contains: "ما أحد رد")
+        shot("card-expired")
+        XCTAssertEqual(fake.log().starts.count, 1)
+        XCTAssertFalse(element(app, "shareTripLine").exists)
     }
 
     private func wait(_ timeout: TimeInterval = 10, _ condition: () -> Bool) -> Bool {

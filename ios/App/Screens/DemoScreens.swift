@@ -29,6 +29,15 @@ enum DemoScreens {
             ShareFlowModel(previewStage: stage, unitWord: word)
         }
 
+        /// After the map has found the phone: until then its camera follows the phone, whatever is asked of it.
+        func searched(query: String = "", results: [PhonePlace] = [], suggestions: [PlaceSuggestion] = [], phase: SearchModel.Phase, category: PlaceCategory? = nil, selected: PhonePlace? = nil) {
+            connected()
+            Task {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                search.setDemo(query: query, results: results, suggestions: suggestions, phase: phase, category: category, selected: selected)
+            }
+        }
+
         switch screen {
         case "first":
             link.setDemo(presence: .notFound(denied: false))
@@ -39,20 +48,15 @@ enum DemoScreens {
         case "home", "expiry":
             connected()
         case "typing":
-            connected()
-            search.setDemo(query: "الراشد", suggestions: [PlaceSuggestion(title: "الراشد مول", subtitle: "طريق الملك فهد، الخبر"), PlaceSuggestion(title: "الراشد مول، الدمام", subtitle: "الدمام")], phase: .typing)
+            searched(query: "الراشد", suggestions: [PlaceSuggestion(title: "الراشد مول", subtitle: "طريق الملك فهد، الخبر"), PlaceSuggestion(title: "الراشد مول، الدمام", subtitle: "الدمام")], phase: .typing)
         case "results":
-            connected()
-            search.setDemo(results: [DemoSearch.pharmacy, DemoSearch.cafe, DemoSearch.long, mall], phase: .results, category: .pharmacy)
+            searched(results: [DemoSearch.pharmacy, DemoSearch.cafe, DemoSearch.long, mall], phase: .results, category: .pharmacy)
         case "empty":
-            connected()
-            search.setDemo(query: "قهوة", phase: .empty)
+            searched(query: "قهوة", phase: .empty)
         case "place":
-            connected()
-            search.setDemo(results: [mall], phase: .results, selected: mall)
+            searched(results: [mall], phase: .results, selected: mall)
         case "place-long":
-            connected()
-            search.setDemo(results: [DemoSearch.long], phase: .results, selected: DemoSearch.long)
+            searched(results: [DemoSearch.long], phase: .results, selected: DemoSearch.long)
         case "locating":
             connected(flow: flow(.locating(mall)))
         case "sending":
@@ -66,7 +70,9 @@ enum DemoScreens {
         case "trip":
             connected(trip: progress, name: mall.name)
         case "failed":
-            connected(flow: flow(.routeFailed(mall, "no_route")))
+            connected(flow: flow(.routeFailed(mall, "no_route", kept: false)))
+        case "expired":
+            connected(flow: flow(.expired(mall)))
         case "card":
             link.setDemo(presence: .unpaired(FoundUnit(address: address, ping: ping)), flow: flow(.card(mall)))
         case "unreachable":
@@ -153,7 +159,7 @@ struct ShareDemoView: View {
         case "share-waiting": return ShareFlowModel(previewStage: .waiting(mall), payload: payload)
         case "share-card": return ShareFlowModel(previewStage: .card(mall), payload: payload)
         case "share-started": return ShareFlowModel(previewStage: .started(mall, DemoScreens.started), payload: payload)
-        case "share-failed": return ShareFlowModel(previewStage: .routeFailed(mall, "no_route"), payload: payload)
+        case "share-failed": return ShareFlowModel(previewStage: .routeFailed(mall, "no_route", kept: true), payload: payload)
         case "share-unreachable": return ShareFlowModel(previewStage: .unreachable(mall, denied: false, saved: false), payload: payload)
         case "share-denied": return ShareFlowModel(previewStage: .unreachable(mall, denied: true, saved: false), payload: payload)
         case "share-notpaired": return ShareFlowModel(previewStage: .notPaired(mall), payload: payload)

@@ -11,6 +11,7 @@ struct AmriApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                .tint(Theme.signal)
                 .environmentObject(link)
                 .environmentObject(search)
                 .environmentObject(location)

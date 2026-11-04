@@ -143,6 +143,14 @@ final class ShareParserTests: XCTestCase {
         XCTAssertNil(PlaceCategory.meant(by: "الراشد مول"))
     }
 
+    func testAShortAddressAlone() {
+        XCTAssertTrue(PlaceQueries.isShortAddress("EDMA2510"))
+        XCTAssertTrue(PlaceQueries.isShortAddress(" edma٢٥١٠ "), "as a phone may type it")
+        XCTAssertFalse(PlaceQueries.isShortAddress("عنوان EDMA2510 بالدمام"), "with other words it stays a search")
+        XCTAssertFalse(PlaceQueries.isShortAddress("EDMA251"))
+        XCTAssertFalse(PlaceQueries.isShortAddress("قهوة"))
+    }
+
     func testGeohash() throws {
         let point = try XCTUnwrap(Geohash.decode("thettfp30b"))
         XCTAssertEqual(point.lat, 26.290457, accuracy: 0.00001)

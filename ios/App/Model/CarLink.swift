@@ -148,10 +148,21 @@ final class CarLink: ObservableObject {
 
     private func apply(nav: NavEvent) {
         switch nav.kind {
-        case .idle, .stopped:
+        case .idle:
             trip = NavEvent(kind: .idle)
             tripName = nil
-        case .routing, .waitingFix, .arrived:
+        case .stopped:
+            // A send's own end names its id, and may leave another trip running. The trip's own end says `idle`, which follows.
+            if nav.id == nil {
+                trip = NavEvent(kind: .idle)
+                tripName = nil
+            }
+        case .routing, .waitingFix:
+            // A new place's route is being found while the trip goes on: that trip is still what the car is doing.
+            if nav.id != nil, trip?.kind.isUnderWay == true { return }
+            trip = nav
+            if let name = nav.name { tripName = name }
+        case .arrived:
             trip = nav
             if let name = nav.name { tripName = name }
         case .started, .progress:
@@ -162,7 +173,7 @@ final class CarLink: ObservableObject {
                 trip = NavEvent(kind: .idle)
                 tripName = nil
             }
-        case .card, .held, .handed, .ignored, .replaced, .other:
+        case .card, .held, .handed, .ignored, .expired, .replaced, .other:
             // About one send, not about the trip.
             break
         }
@@ -259,6 +270,7 @@ final class CarLink: ObservableObject {
         Task {
             do {
                 let reply = try await client.remote(command)
+                if reply.isPending { say(String(localized: "الشاشة مشغولة، وتسويها لما تفضى")) }
                 // What the unit really did, before its event arrives.
                 if let volume = reply.volume { music?.volume = volume }
                 if let muted = reply.muted { music?.muted = muted }
@@ -363,14 +375,22 @@ final class CarLink: ObservableObject {
                     doc.favourites.append(wire)
                 }
                 try await client.putPlaces(doc)
-                places = try await client.places()
+                let now = try await client.places()
+                places = now
+                // The unit may be held up, and do it when it comes free: only what it now lists is saved.
+                let there: Bool
+                switch slot {
+                case .home: there = now.home?.lat == wire.lat && now.home?.lon == wire.lon
+                case .work: there = now.work?.lat == wire.lat && now.work?.lon == wire.lon
+                case .favourite: there = now.favourites.contains { $0.lat == wire.lat && $0.lon == wire.lon }
+                }
                 if slot != .favourite {
                     var list = store.phoneSaved
                     list.removeAll { $0.slot == slot }
                     store.phoneSaved = list
                     phoneSaved = list
                 }
-                say(String(localized: "انحفظ على الشاشة"))
+                say(there ? String(localized: "انحفظ على الشاشة") : String(localized: "وصل للشاشة، وما تأكد الحفظ بعد"))
             } catch {
                 say(problem(error))
             }

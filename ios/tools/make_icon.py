@@ -1,5 +1,5 @@
-"""Draws عمري's app icon: a navigation arrow in the signal colour, on ink. The look may change with AMRI 2.0's design; this
-only needs PIL, and writes the one 1024 px file the asset catalog asks for.
+"""Draws عمري's app icon: a white navigation arrow on the accent blue of AMRI 2.0's design (final2/tokens.json, accentTile). Needs
+only PIL, and writes the one 1024 px file the asset catalog asks for.
 
     python tools/make_icon.py
 """
@@ -9,32 +9,27 @@ from PIL import Image, ImageDraw
 
 SIZE = 1024
 SS = 4
-INK = (14, 14, 12)
-RING = (38, 37, 35)
-SIGNAL = (255, 77, 20)
-PAPER = (246, 242, 233)
+TOP = (79, 128, 255)
+BOTTOM = (37, 82, 221)
 
 OUT = Path(__file__).resolve().parent.parent / "App" / "Assets.xcassets" / "AppIcon.appiconset" / "icon-1024.png"
 
 big = SIZE * SS
-image = Image.new("RGB", (big, big), INK)
+image = Image.new("RGB", (big, big), BOTTOM)
 draw = ImageDraw.Draw(image)
+for y in range(big):
+    t = y / (big - 1)
+    draw.line([(0, y), (big, y)], fill=tuple(round(a + (b - a) * t) for a, b in zip(TOP, BOTTOM)))
 
 
 def scale(points):
     return [(x * SS, y * SS) for x, y in points]
 
 
-# The road: two soft rings, the way a map's range rings look.
-for radius, width in ((380, 18), (270, 18)):
-    box = [(512 - radius) * SS, (540 - radius) * SS, (512 + radius) * SS, (540 + radius) * SS]
-    draw.ellipse(box, outline=RING, width=width * SS)
-
-# The arrow, pointing up and to the right of the screen: a dart with a notch.
-arrow = [(512, 170), (770, 800), (512, 668), (254, 800)]
-draw.polygon(scale(arrow), fill=SIGNAL)
+# The arrow: a dart with a notch, as a car's navigation draws the car.
+draw.polygon(scale([(512, 170), (770, 800), (512, 668), (254, 800)]), fill=(255, 255, 255))
 # Its other side, a shade down, gives it an edge.
-draw.polygon(scale([(512, 170), (770, 800), (512, 668)]), fill=(224, 60, 0))
+draw.polygon(scale([(512, 170), (770, 800), (512, 668)]), fill=(216, 226, 255))
 
 image = image.resize((SIZE, SIZE), Image.LANCZOS)
 OUT.parent.mkdir(parents=True, exist_ok=True)

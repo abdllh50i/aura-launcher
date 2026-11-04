@@ -1,9 +1,11 @@
 import AMRIKit
 import SwiftUI
 
-/// Taking the screen back to 1.19 from the phone, with no PC. It says what it does before it does it, and asks twice: once by
-/// a button after reading, and once by typing a word, because this replaces the app on the car.
+/// Taking the screen back to its previous version from the phone, with no PC. It says what it does before it does it, and asks
+/// twice: once by a button after reading, and once by typing a word, because this replaces the app on the car.
 struct RepairScreen: View {
+    /// Pushed from the car's screen it has its back button, and needs no second way out.
+    var showsClose = true
     @EnvironmentObject private var link: CarLink
     @Environment(\.dismiss) private var dismiss
     @StateObject private var model = RepairModel()
@@ -20,10 +22,12 @@ struct RepairScreen: View {
                     confirmFirst(host)
                 case .confirmSecond(let host):
                     confirmSecond(host)
-                case .running(let host):
-                    running(host)
-                case .finished(let host, let result):
-                    finished(host, result)
+                case .running:
+                    running
+                case .watching(_, let text):
+                    watching(text)
+                case .finished(_, let result, let report):
+                    finished(result, report)
                 }
             }
             .padding(Theme.Space.l)
@@ -31,10 +35,15 @@ struct RepairScreen: View {
         .background(Theme.ground)
         .navigationTitle("إصلاح الشاشة")
         .navigationBarTitleDisplayMode(.inline)
+        // While the script runs he stays and reads how it goes.
+        .navigationBarBackButtonHidden(model.isWorking)
+        .interactiveDismissDisabled(model.isWorking)
         .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("إغلاق") { dismiss() }
-                    .accessibilityIdentifier("repairClose")
+            if showsClose, !model.isWorking {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("إغلاق") { dismiss() }
+                        .accessibilityIdentifier("repairClose")
+                }
             }
         }
     }
@@ -42,8 +51,8 @@ struct RepairScreen: View {
     private var intro: some View {
         VStack(alignment: .leading, spacing: Theme.Space.m) {
             title("وش يسوي هذا؟")
-            para("لو نسخة 2.0 تعطلت على الشاشة، هذا يرجعها لنسخة 1.19 من الجوال، بدون كمبيوتر.")
-            para("يشغّل على الشاشة أمر واحد بس: السكربت اللي جهزته نسخة 2.0 لنفسها وقت أول تشغيل. يركّب 1.19 مكانها، وتبقى إعداداتك. الشاشة بتعيد فتح الواجهة.")
+            para("لو نسخة 2.0 تعطلت على الشاشة، هذا يرجعها للنسخة اللي قبلها (1.19) من الجوال، بدون كمبيوتر.")
+            para("يشغّل على الشاشة أمر واحد بس: سكربت الرجوع اللي جهزته عمري على الشاشة لنفسها. يركّب النسخة السابقة المحفوظة مكان الحالية، وتبقى إعداداتك. الشاشة بتعيد فتح الواجهة.")
             para("الحين بس أدور على الشاشة، بدون ما ألمس شيء. لازم تكون شابكة على هوتسبوت جوالك.")
             Text(verbatim: Repair.rollbackCommand)
                 .font(Theme.Fonts.mono)
@@ -124,9 +133,10 @@ struct RepairScreen: View {
     private func confirmFirst(_ host: Repair.Host) -> some View {
         VStack(alignment: .leading, spacing: Theme.Space.m) {
             title("اقرأ قبل ما تكمل")
-            bullet("بيرجع التطبيق على الشاشة لنسخة 1.19، وتروح كل مزايا 2.0.")
+            bullet("بيرجع التطبيق على الشاشة للنسخة السابقة المحفوظة فيها (1.19)، وتروح مزايا النسخة الحالية. إعداداتك تبقى.")
             bullet("الشاشة بتقفل وتفتح الواجهة من جديد. سوّها والسيارة واقفة، مو وأنت تسوق.")
-            bullet("لو ما كان السكربت موجود على الشاشة (نسخة قبل 2.0) ما يصير شيء، وأقولك.")
+            bullet("لو فشل التركيب، الشاشة ترجع للواجهة الأصلية حقت الجهاز، وعمري يتوقف لين تصلحه من الكمبيوتر.")
+            bullet("لو ما كان السكربت موجود على الشاشة (نسخة أقدم من 1.19.1) ما يصير شيء، وأقولك.")
             Text(verbatim: "K2501 · \(host.host)")
                 .font(Theme.Fonts.headline)
                 .foregroundStyle(Theme.ink)
@@ -153,7 +163,7 @@ struct RepairScreen: View {
             Button {
                 model.runRollback(on: host)
             } label: {
-                Text("رجّع الشاشة لنسخة 1.19")
+                Text("رجّع الشاشة للنسخة السابقة")
             }
             .buttonStyle(MainKeyStyle(fill: Theme.bad, text: .white))
             .disabled(!model.wordIsRight)
@@ -165,17 +175,34 @@ struct RepairScreen: View {
         }
     }
 
-    private func running(_ host: Repair.Host) -> some View {
+    private var running: some View {
         HStack(spacing: Theme.Space.m) {
             ProgressView()
             Text("أشغّل السكربت على الشاشة…")
                 .font(Theme.Fonts.body)
                 .foregroundStyle(Theme.ink2)
         }
+        .accessibilityElement(children: .combine)
         .accessibilityIdentifier("repairRunning")
     }
 
-    private func finished(_ host: Repair.Host, _ result: AdbRunResult) -> some View {
+    /// rollback.sh answers at once and works on by itself: what it writes is all that can be said about how it goes.
+    private func watching(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Space.m) {
+            HStack(spacing: Theme.Space.m) {
+                ProgressView()
+                Text("الشاشة تركّب النسخة السابقة…")
+                    .font(Theme.Fonts.headline)
+                    .foregroundStyle(Theme.ink)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("repairRunning")
+            para("خل السيارة شغالة، وخل هذي الصفحة مفتوحة. ممكن تاخذ دقايق.")
+            outputBox(text)
+        }
+    }
+
+    private func finished(_ result: AdbRunResult, _ report: Repair.Report?) -> some View {
         VStack(alignment: .leading, spacing: Theme.Space.m) {
             if !result.ran {
                 title("ما اشتغل")
@@ -185,31 +212,56 @@ struct RepairScreen: View {
                         .font(Theme.Fonts.mono)
                         .foregroundStyle(Theme.ink2)
                 }
-            } else if Repair.scriptMissing(in: result.output) {
-                title("السكربت مو موجود على الشاشة")
-                para("هذي الشاشة ما عليها نسخة جهزت طريق الرجوع، فما صار شيء. لو تحتاج ترجع، استخدم الكمبيوتر.")
-            } else if result.connectionEnded {
-                title("بدأ السكربت، وانقطع الاتصال")
-                para("هذا طبيعي لأن التطبيق يتبدل. انتظر دقيقة وشوف الشاشة.")
+            } else if let report {
+                switch report.state {
+                case .succeeded:
+                    title("رجعت الشاشة للنسخة السابقة")
+                    if let version = report.toVersion {
+                        Text(verbatim: version)
+                            .font(Theme.Fonts.headline)
+                            .foregroundStyle(Theme.ink)
+                            .accessibilityIdentifier("repairVersion")
+                    }
+                    para("المفروض تشوف واجهة عمري على الشاشة الحين.")
+                case .failed:
+                    title("ما نجح الرجوع")
+                    para("الشاشة رجعت للواجهة الأصلية حقت الجهاز، وعمري متوقف. أرسل اللي تحت، وصلحها من الكمبيوتر.")
+                case .running:
+                    title("بدأ الرجوع، وما وصلني آخره")
+                    para("شوف الشاشة نفسها. هذا آخر شيء قدرت أقراه منها.")
+                }
             } else {
-                title("اشتغل السكربت")
-                para("هذا اللي ردت به الشاشة. انتظر دقيقة وشوف الواجهة.")
+                switch Repair.start(from: result.output) {
+                case .noScript:
+                    title("السكربت مو موجود على الشاشة")
+                    para("هذي الشاشة ما عليها نسخة جهزت طريق الرجوع، فما صار شيء. لو تحتاج ترجع، استخدم الكمبيوتر.")
+                case .refused:
+                    title("ما اشتغل")
+                    para("ما تغيّر شيء على الشاشة. هذا اللي ردت به.")
+                case .running, .unclear:
+                    title("ما أعرف وش صار")
+                    para("هذا اللي ردت به الشاشة. شوف الواجهة نفسها.")
+                }
             }
-            if !result.output.isEmpty {
-                Text(verbatim: result.output)
-                    .font(Theme.Fonts.mono)
-                    .foregroundStyle(Theme.ink)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(Theme.Space.m)
-                    .background(Theme.raised, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-                    .environment(\.layoutDirection, .leftToRight)
-                    .accessibilityIdentifier("repairOutput")
+            if !result.output.isEmpty || report != nil {
+                outputBox(report == nil ? result.output : model.lastText)
             }
             Button("تم") { dismiss() }
                 .buttonStyle(MainKeyStyle())
                 .accessibilityIdentifier("repairDone")
         }
+    }
+
+    private func outputBox(_ text: String) -> some View {
+        Text(verbatim: text.isEmpty ? "…" : text)
+            .font(Theme.Fonts.mono)
+            .foregroundStyle(Theme.ink)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(Theme.Space.m)
+            .background(Theme.raised, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+            .environment(\.layoutDirection, .leftToRight)
+            .accessibilityIdentifier("repairOutput")
     }
 
     private func title(_ text: LocalizedStringKey) -> some View {
@@ -247,11 +299,16 @@ final class RepairModel: ObservableObject {
         case confirmFirst(Repair.Host)
         case confirmSecond(Repair.Host)
         case running(Repair.Host)
-        case finished(Repair.Host, AdbRunResult)
+        /// The script runs by itself on the unit; this is what its result file says so far.
+        case watching(Repair.Host, String)
+        /// `report` is nil when it never got as far as running.
+        case finished(Repair.Host, AdbRunResult, Repair.Report?)
     }
 
     @Published var stage: Stage = .idle
     @Published var typed = ""
+    /// The result file, as last read.
+    @Published private(set) var lastText = ""
     private var lastScan: Repair.Scan?
 
     /// The word, as typed: spaces and the kind of letter do not matter, the word does.
@@ -262,6 +319,14 @@ final class RepairModel: ObservableObject {
     var isBusy: Bool {
         if case .scanning = stage { return true }
         return false
+    }
+
+    /// The script is running on the unit.
+    var isWorking: Bool {
+        switch stage {
+        case .running, .watching: return true
+        default: return false
+        }
     }
 
     /// Hello only: reads each banner and stops. Anything that is not a K2501 is left alone.
@@ -298,9 +363,24 @@ final class RepairModel: ObservableObject {
     func runRollback(on host: Repair.Host) {
         guard wordIsRight, host.kind == .k2501 else { return }
         stage = .running(host)
+        lastText = ""
         Task {
             let result = await Repair.rollback(on: host)
-            stage = .finished(host, result)
+            // The line dropping as it went means it did reach the shell, so the file is where to look.
+            guard result.ran, result.connectionEnded || Repair.start(from: result.output) == .running else {
+                stage = .finished(host, result, nil)
+                return
+            }
+            stage = .watching(host, "")
+            let watched = await Repair.watchResult(on: host) { [weak self] text in
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.lastText = text
+                    if case .watching = self.stage { self.stage = .watching(host, text) }
+                }
+            }
+            lastText = watched.text
+            stage = .finished(host, result, watched.report)
         }
     }
 }

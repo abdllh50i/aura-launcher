@@ -72,12 +72,17 @@ struct CarScreen: View {
     private var carFacts: some View {
         if let car = link.car {
             if let fix = car.gpsFix {
-                fact("إشارة الموقع", fix ? String(localized: "فيه") : String(localized: "ما فيه"))
+                if fix, let age = car.fixAgeS, age >= 30 {
+                    // A fix from a while ago is not a signal now, and its speed says nothing about now either.
+                    fact("إشارة الموقع", String(format: String(localized: "آخر إشارة قبل %@"), Formats.duration(seconds: age)))
+                } else {
+                    fact("إشارة الموقع", fix ? String(localized: "فيه") : String(localized: "ما فيه"))
+                    if fix, let speed = car.speedKmh {
+                        fact("السرعة", String(format: String(localized: "%@ كم/س"), Formats.number(Int(speed))))
+                    }
+                }
             } else {
                 fact("إشارة الموقع", String(localized: "غير معروف"))
-            }
-            if let speed = car.speedKmh {
-                fact("السرعة", String(format: String(localized: "%@ كم/س"), Formats.number(Int(speed))))
             }
             if car.reversing == true { fact("الحالة", String(localized: "ترجع للخلف")) }
             if car.inCall == true { fact("الحالة", String(localized: "في مكالمة")) }
@@ -148,7 +153,7 @@ struct CarScreen: View {
         VStack(spacing: Theme.Space.s) {
             if link.pairing == nil || link.tokenRefused {
                 NavigationLink {
-                    PairScreen(target: nil)
+                    PairScreen(target: nil, showsClose: false)
                 } label: {
                     toolRow("اربط السيارة", note: "امسح الرمز اللي على الشاشة", symbol: "qrcode.viewfinder")
                 }
@@ -156,16 +161,16 @@ struct CarScreen: View {
                 .accessibilityIdentifier("toolPair")
             }
             NavigationLink {
-                CheckScreen()
+                CheckScreen(showsClose: false)
             } label: {
                 toolRow("فحص الربط", note: "تقرير تنسخه وترسله", symbol: "stethoscope")
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("toolCheck")
             NavigationLink {
-                RepairScreen()
+                RepairScreen(showsClose: false)
             } label: {
-                toolRow("إصلاح الشاشة", note: "رجوع لنسخة 1.19 لو تعطلت 2.0", symbol: "wrench.and.screwdriver")
+                toolRow("إصلاح الشاشة", note: "رجوع للنسخة السابقة لو تعطلت 2.0", symbol: "wrench.and.screwdriver")
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("toolRepair")

@@ -5,6 +5,8 @@ import UIKit
 /// فحص الربط: one button, one text report to copy. It doubles as the probe of section 8 P0, so it must finish and say
 /// something useful even when no unit is reachable.
 struct CheckScreen: View {
+    /// Pushed from the car's screen it has its back button, and needs no second way out.
+    var showsClose = true
     @EnvironmentObject private var link: CarLink
     @EnvironmentObject private var location: LocationModel
     @Environment(\.dismiss) private var dismiss
@@ -50,8 +52,9 @@ struct CheckScreen: View {
                     }
                     .buttonStyle(SecondKeyStyle())
                     .accessibilityIdentifier("checkShare")
+                    // Mostly Arabic: a fixed-width font only spreads its letters apart.
                     Text(verbatim: report)
-                        .font(Theme.Fonts.mono)
+                        .font(Theme.Fonts.small)
                         .foregroundStyle(Theme.ink)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -66,9 +69,11 @@ struct CheckScreen: View {
         .navigationTitle("فحص الربط")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("إغلاق") { dismiss() }
-                    .accessibilityIdentifier("checkClose")
+            if showsClose {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("إغلاق") { dismiss() }
+                        .accessibilityIdentifier("checkClose")
+                }
             }
         }
     }

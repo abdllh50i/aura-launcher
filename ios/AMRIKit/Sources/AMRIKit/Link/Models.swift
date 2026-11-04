@@ -147,6 +147,9 @@ public struct RemoteReply: Codable, Equatable, Sendable {
         self.muted = muted
         self.navVoice = navVoice
     }
+
+    /// The unit's main thread is held up: it will do this when it comes free, so this is not a refusal, and not done yet either.
+    public var isPending: Bool { state == "pending" }
 }
 
 /// Ids in the same family as the protocol's example: time first, then randomness, Crockford base32.
@@ -304,6 +307,8 @@ public struct NavEvent: Equatable, Sendable {
         case handed
         /// The driver or the screen kept the current trip.
         case ignored
+        /// Nobody answered the screen's card in time, or it was held too long.
+        case expired
         /// Another place took this one's turn.
         case replaced
         case other(String)
@@ -322,6 +327,7 @@ public struct NavEvent: Equatable, Sendable {
             case "held": self = .held
             case "handed": self = .handed
             case "ignored": self = .ignored
+            case "expired": self = .expired
             case "replaced": self = .replaced
             default: self = .other(raw)
             }
@@ -344,10 +350,19 @@ public struct NavEvent: Equatable, Sendable {
     public var etaLocal: String?
     public var nextText: String?
     public var reason: String?
+    /// What the screen's card asks: "ask" (start this?), "replace" (instead of the trip you are on?), "map" (press Go on the map).
+    public var cardKind: String?
+    /// A place's route failed, and the trip that was running goes on.
+    public var kept: Bool?
+    /// The unit is finding a new route, so its numbers are about to change.
+    public var rerouting: Bool?
+    /// The place waiting for the driver, in a snapshot, whose own event may have gone by before anyone listened.
+    public var pendingID: String?
+    public var pendingStage: String?
 
     public init(kind: Kind, id: String? = nil, name: String? = nil, placeLat: Double? = nil, placeLon: Double? = nil,
                 distanceM: Double? = nil, durationS: Double? = nil, remainingM: Double? = nil, timeLeftS: Double? = nil,
-                etaLocal: String? = nil, nextText: String? = nil, reason: String? = nil) {
+                etaLocal: String? = nil, nextText: String? = nil, reason: String? = nil, cardKind: String? = nil, kept: Bool? = nil, rerouting: Bool? = nil) {
         self.kind = kind
         self.id = id
         self.name = name
@@ -360,6 +375,9 @@ public struct NavEvent: Equatable, Sendable {
         self.etaLocal = etaLocal
         self.nextText = nextText
         self.reason = reason
+        self.cardKind = cardKind
+        self.kept = kept
+        self.rerouting = rerouting
     }
 
     public init?(json: [String: Any]) {
@@ -377,6 +395,32 @@ public struct NavEvent: Equatable, Sendable {
         etaLocal = JSONField.string(json["etaLocal"])
         nextText = JSONField.string(json["nextText"])
         reason = JSONField.string(json["reason"])
+        cardKind = JSONField.string(json["kind"])
+        kept = JSONField.bool(json["kept"])
+        rerouting = JSONField.bool(json["rerouting"])
+        let pending = json["pending"] as? [String: Any]
+        pendingID = JSONField.string(pending?["id"])
+        pendingStage = JSONField.string(pending?["stage"])
+    }
+
+    /// What a snapshot's `pending` says about this send, as the step's own event would have said it (`PlaceInbox.Stage`).
+    func pendingWord(for id: String?) -> NavEvent? {
+        guard let id, pendingID == id, let stage = pendingStage else { return nil }
+        switch stage {
+        case "asking": return NavEvent(kind: .card, id: id, cardKind: "ask")
+        case "replacing": return NavEvent(kind: .card, id: id, cardKind: "replace")
+        case "on_map": return NavEvent(kind: .card, id: id, cardKind: "map")
+        case "held": return NavEvent(kind: .held, id: id)
+        case "trip": return NavEvent(kind: .routing, id: id)
+        default: return nil
+        }
+    }
+
+    /// Is this word about this send: by its id, or, when it names none, by the place it speaks of.
+    func isAbout(id: String?, place: LinkPlace?) -> Bool {
+        if let own = self.id { return own == id }
+        guard let place, let lat = placeLat, let lon = placeLon else { return false }
+        return abs(lat - place.lat) < 0.00001 && abs(lon - place.lon) < 0.00001
     }
 }
 
@@ -426,16 +470,19 @@ public struct CarStatus: Equatable, Sendable {
     public var volumeMax: Int?
     public var speedKmh: Double?
     public var gpsFix: Bool?
+    /// How old the unit's last fix is. A fix of ten minutes ago is not "has a signal".
+    public var fixAgeS: Double?
     public var reversing: Bool?
     public var inCall: Bool?
     public var gear: String?
 
-    public init(volumeStep: Int? = nil, volumeMax: Int? = nil, speedKmh: Double? = nil, gpsFix: Bool? = nil, reversing: Bool? = nil,
+    public init(volumeStep: Int? = nil, volumeMax: Int? = nil, speedKmh: Double? = nil, gpsFix: Bool? = nil, fixAgeS: Double? = nil, reversing: Bool? = nil,
                 inCall: Bool? = nil, gear: String? = nil) {
         self.volumeStep = volumeStep
         self.volumeMax = volumeMax
         self.speedKmh = speedKmh
         self.gpsFix = gpsFix
+        self.fixAgeS = fixAgeS
         self.reversing = reversing
         self.inCall = inCall
         self.gear = gear
@@ -446,7 +493,10 @@ public struct CarStatus: Equatable, Sendable {
         volumeMax = JSONField.int(JSONField.first(json, "volumeMax", "volumeSteps", "maxVolume"))
         let fix = json["fix"] as? [String: Any]
         speedKmh = JSONField.double(JSONField.first(json, "speedKmh", "speed")) ?? JSONField.double(fix?["kmh"])
-        gpsFix = JSONField.bool(JSONField.first(json, "gpsFix", "gps")) ?? (fix != nil ? true : nil)
+        fixAgeS = JSONField.double(fix?["ageS"])
+        // The unit leaves "fix" out when it has had none since it started. Only its real car event says "reversing": anything
+        // else that came without a fix says nothing about one.
+        gpsFix = JSONField.bool(JSONField.first(json, "gpsFix", "gps")) ?? (fix != nil ? true : (json["reversing"] != nil ? false : nil))
         reversing = JSONField.bool(JSONField.first(json, "reversing", "reverse"))
         inCall = JSONField.bool(json["inCall"])
         gear = JSONField.string(json["gear"])

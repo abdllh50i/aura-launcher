@@ -213,6 +213,7 @@ public enum LinkReport {
         case .held: return "ماسكة المكان لين تخلص المكالمة أو الرجوع للخلف"
         case .handed: return "راحت لتطبيق الملاحة الثاني"
         case .ignored: return "الشاشة كملت الرحلة اللي كانت فيها"
+        case .expired: return "ما أحد رد على كرت الشاشة"
         case .replaced: return "مكان ثاني أخذ دوره"
         case .other(let raw): return raw
         }

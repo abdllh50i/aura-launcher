@@ -25,9 +25,12 @@ final class ShareFlowModel: ObservableObject {
         case handed(PhonePlace)
         /// The screen kept the trip it had.
         case ignored(PhonePlace)
+        /// The screen's card went unanswered.
+        case expired(PhonePlace)
         /// Cancelled on the screen, or another place took its turn.
         case cancelled(PhonePlace)
-        case routeFailed(PhonePlace, String?)
+        /// `kept`: the trip that was running goes on.
+        case routeFailed(PhonePlace, String?, kept: Bool)
         case refused(PhonePlace, String?)
         case notPaired(PhonePlace)
         case unreachable(PhonePlace, denied: Bool, saved: Bool)
@@ -71,6 +74,7 @@ final class ShareFlowModel: ObservableObject {
         self.stage = previewStage
         self.payload = payload
         self.unitWord = unitWord
+        if let place = previewStage.place { loadSnapshot(for: place) }
     }
 
     func start(_ payload: SharePayload) {
@@ -191,36 +195,18 @@ final class ShareFlowModel: ObservableObject {
                 remember(result: "sent: card on the screen")
                 return
             }
-            // A retry whose first try got through: the unit says what became of it.
-            if ack.isDuplicate, ack.last == "started" {
-                started(place, NavEvent(kind: .started, id: go.id))
+            // A retry whose first try got through: the unit says what became of it, and those events have gone by.
+            if ack.isDuplicate, let word = LinkClient.outcome(ofLast: ack.last) {
+                show(word, place: place)
                 return
             }
             stage = .waiting(place)
             let client = LinkClient(address: address, token: token)
-            let word = await client.waitForStart(id: ack.id ?? go.id, place: go.place, timeout: 45) { [weak self] event in
+            let word = await client.waitForStart(id: ack.id ?? go.id, place: go.place, timeout: 45, patient: true) { [weak self] event in
                 Task { @MainActor in self?.hear(event) }
             }
             if Task.isCancelled { return }
-            switch word {
-            case .started(let nav):
-                started(place, nav)
-            case .failed(let reason):
-                stage = .routeFailed(place, reason)
-                remember(result: "route failed: \(reason ?? "")")
-            case .handed:
-                stage = .handed(place)
-                remember(result: "handed to the other navigation app")
-            case .ignored:
-                stage = .ignored(place)
-                remember(result: "the screen kept its trip")
-            case .cancelled:
-                stage = .cancelled(place)
-                remember(result: "cancelled on the screen")
-            case .noWord:
-                stage = .noWord(place)
-                remember(result: "accepted, no word of a start")
-            }
+            show(word, place: place)
         case .conflict(let reason):
             stage = .refused(place, reason)
             remember(result: "refused: \(reason)")
@@ -236,6 +222,35 @@ final class ShareFlowModel: ObservableObject {
             if saved { store.addPending(PendingPlace(id: go.id, place: go.place)) }
             stage = .unreachable(place, denied: denied, saved: saved)
             remember(result: denied ? "local network denied" : "unit not found")
+        }
+    }
+
+    /// How it ended, in the unit's own word.
+    private func show(_ word: StartOutcome, place: PhonePlace) {
+        switch word {
+        case .started(let nav):
+            started(place, nav)
+        case .failed(let reason):
+            stage = .routeFailed(place, reason, kept: false)
+            remember(result: "route failed: \(reason ?? "")")
+        case .failedKept(let reason):
+            stage = .routeFailed(place, reason, kept: true)
+            remember(result: "route failed, the trip goes on: \(reason ?? "")")
+        case .handed:
+            stage = .handed(place)
+            remember(result: "handed to the other navigation app")
+        case .ignored:
+            stage = .ignored(place)
+            remember(result: "the screen kept its trip")
+        case .expired:
+            stage = .expired(place)
+            remember(result: "nobody answered the screen's card")
+        case .cancelled:
+            stage = .cancelled(place)
+            remember(result: "cancelled on the screen")
+        case .noWord:
+            stage = .noWord(place)
+            remember(result: "accepted, no word of a start")
         }
     }
 
@@ -288,9 +303,9 @@ extension ShareFlowModel.Stage {
         case .reading, .pick, .nothing:
             return nil
         case .confirm(let place), .locating(let place), .waiting(let place), .card(let place), .noWord(let place), .notPaired(let place),
-             .handed(let place), .ignored(let place), .cancelled(let place):
+             .handed(let place), .ignored(let place), .expired(let place), .cancelled(let place):
             return place
-        case .sending(let place, _, _), .started(let place, _), .routeFailed(let place, _), .refused(let place, _), .unreachable(let place, _, _):
+        case .sending(let place, _, _), .started(let place, _), .routeFailed(let place, _, _), .refused(let place, _), .unreachable(let place, _, _):
             return place
         }
     }

@@ -16,7 +16,7 @@ OUT = Path("evidence/screens")
 
 ARABIC = [
     "first", "unpaired", "denied", "home", "expiry", "typing", "results", "empty", "place", "place-long",
-    "locating", "sending", "waiting", "asking", "started", "trip", "failed", "card", "unreachable", "noword", "pending",
+    "locating", "sending", "waiting", "asking", "started", "trip", "failed", "expired", "card", "unreachable", "noword", "pending",
     "car", "car-idle", "car-notfound", "pair", "check", "repair",
     "share-reading", "share-confirm", "share-pick", "share-nothing", "share-sending", "share-waiting", "share-card",
     "share-started", "share-failed", "share-unreachable", "share-denied", "share-notpaired",

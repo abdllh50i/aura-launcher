@@ -33,7 +33,7 @@ struct MapScreen: View {
                         .padding(.bottom, Theme.Space.s)
                 }
             }
-            .safeAreaPadding(.bottom, mapInset(height: geometry.size.height))
+            .safeAreaPadding(.bottom, mapInset(geometry))
             .accessibilityIdentifier("map")
         }
         .ignoresSafeArea(.keyboard)
@@ -41,6 +41,7 @@ struct MapScreen: View {
             Panel(detent: $detent)
                 .presentationDetents([Panel.peek, .medium, .large], selection: $detent)
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+                .presentationBackground(Theme.panel)
                 .presentationDragIndicator(.visible)
                 .interactiveDismissDisabled()
         }
@@ -82,9 +83,12 @@ struct MapScreen: View {
         }
     }
 
-    /// So what the camera centres on sits above the panel, not behind it.
-    private func mapInset(height: CGFloat) -> CGFloat {
-        detent == Panel.peek ? Panel.peekHeight : height * 0.5
+    /// So what the camera centres on, and Apple's legal line, sit above the panel and not behind it.
+    private func mapInset(_ geometry: GeometryProxy) -> CGFloat {
+        if detent == Panel.peek { return Panel.peekHeight }
+        // A medium sheet is half of the whole screen, safe areas and all; the map's own bottom safe area counts part of that.
+        let whole = geometry.size.height + geometry.safeAreaInsets.top + geometry.safeAreaInsets.bottom
+        return whole / 2 - geometry.safeAreaInsets.bottom + Theme.Space.s
     }
 
     private static func region(fitting places: [PhonePlace]) -> MKCoordinateRegion? {
@@ -112,7 +116,7 @@ private struct PinsMap: View {
             UserAnnotation()
             ForEach(search.pins) { place in
                 Marker(place.name, systemImage: "mappin", coordinate: place.coordinate)
-                    .tint(place == search.selected ? Theme.signal : Theme.ink)
+                    .tint(Theme.signal)
                     .tag(place)
             }
         }
@@ -137,7 +141,7 @@ private struct TappableMap: View {
             UserAnnotation()
             ForEach(search.pins) { place in
                 Marker(place.name, systemImage: "mappin", coordinate: place.coordinate)
-                    .tint(place == search.selected ? Theme.signal : Theme.ink)
+                    .tint(Theme.signal)
                     .tag(MapSelection(place))
             }
         }

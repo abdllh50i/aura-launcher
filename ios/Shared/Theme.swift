@@ -1,26 +1,29 @@
 import SwiftUI
 import UIKit
 
-/// The look, in one place. AMRI 2.0's visual language is still being chosen: these tokens follow the direction now on the
-/// table (ink on paper, one signal colour that only ever means "now"), and changing them here changes the whole app and
-/// the share sheet.
+/// The look, in one place. These are the colours of AMRI 2.0's final design (tmp/v2/design/final2/tokens.json, color.day and
+/// color.night): a familiar modern car screen, one blue accent. Changing them here changes the whole app and the share sheet.
+/// The type stays the system's: a phone needs no font of its own.
 enum Theme {
     // MARK: Colours
 
-    static let ground = dynamic(light: 0xF4F2EB, dark: 0x0B0B0A)
-    static let raised = dynamic(light: 0xFFFFFF, dark: 0x1C1C1A)
-    static let sunken = dynamic(light: 0xE8E5DB, dark: 0x262523)
-    static let ink = dynamic(light: 0x0E0E0C, dark: 0xF6F2E9)
-    static let ink2 = dynamic(light: 0x45433D, dark: 0xBDB7AB)
-    static let ink3 = dynamic(light: 0x6A6861, dark: 0x8F8A80)
-    static let rule = dynamic(light: 0xCFCCC2, dark: 0x35332E)
-    /// The one loud colour: a trip under way, the unit's own started, the place in question.
-    static let signal = dynamic(light: 0xE03C00, dark: 0xFF4D14)
-    static let key = dynamic(light: 0x0E0E0C, dark: 0xF6F2E9)
-    static let keyText = dynamic(light: 0xF4F2EB, dark: 0x000000)
-    static let good = dynamic(light: 0x0B7A4B, dark: 0x3DDC97)
-    static let warn = dynamic(light: 0x9A5200, dark: 0xFFB454)
-    static let bad = dynamic(light: 0xB3261E, dark: 0xFF7B72)
+    static let ground = dynamic(light: 0xEBEEF3, dark: 0x0B0D12)
+    /// The bottom sheet over the map. Solid: glass lets the map's colours through, and this is read in a car in the sun.
+    static let panel = dynamic(light: 0xF6F7F9, dark: 0x14171D)
+    static let raised = dynamic(light: 0xFFFFFF, dark: 0x1F232C)
+    /// A field or a quiet key, on any of the above.
+    static let sunken = dynamicAlpha(light: (0x0E141E, 0.07), dark: (0xFFFFFF, 0.1))
+    static let ink = dynamic(light: 0x0E131B, dark: 0xF4F6F9)
+    static let ink2 = dynamic(light: 0x3F4856, dark: 0xB7BFCC)
+    static let ink3 = dynamic(light: 0x596270, dark: 0x8D96A5)
+    static let rule = dynamicAlpha(light: (0x0E141E, 0.09), dark: (0xFFFFFF, 0.09))
+    /// The accent: a trip under way, the place in question, the one main key.
+    static let signal = dynamic(light: 0x2E63F9, dark: 0x5C8BFF)
+    static let key = dynamic(light: 0x2E63F9, dark: 0x2E63F9)
+    static let keyText = dynamic(light: 0xFFFFFF, dark: 0xFFFFFF)
+    static let good = dynamic(light: 0x1BA548, dark: 0x30D158)
+    static let warn = dynamic(light: 0xA85B00, dark: 0xFFB454)
+    static let bad = dynamic(light: 0xD92D20, dark: 0xFF6B61)
 
     // MARK: Measures
 
@@ -63,6 +66,13 @@ enum Theme {
     private static func dynamic(light: UInt32, dark: UInt32) -> Color {
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark ? uiColor(dark) : uiColor(light)
+        })
+    }
+
+    private static func dynamicAlpha(light: (UInt32, CGFloat), dark: (UInt32, CGFloat)) -> Color {
+        Color(uiColor: UIColor { traits in
+            let pick = traits.userInterfaceStyle == .dark ? dark : light
+            return uiColor(pick.0).withAlphaComponent(pick.1)
         })
     }
 

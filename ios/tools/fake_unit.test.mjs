@@ -309,7 +309,21 @@ test('fake adbd: the banner names the model, and each OPEN is recorded', async (
   assert.equal(unit.state.adbOpens.length, 0);
   const open = adbPacket(0x4e45504f, 1, 0, Buffer.from('shell:sh /data/local/tmp/amri-rollback/rollback.sh\0'));
   const ran = await adbExchange(adbPorts[0], [cnxn, open]);
-  assert.match(ran.toString(), /EXIT=0/);
+  assert.match(ran.toString(), /started/, 'rollback.sh answers at once, as the real one does');
   assert.equal(unit.state.adbOpens.length, 1);
   assert.equal(unit.state.adbOpens[0].model, 'K2501');
+  const read = adbPacket(0x4e45504f, 1, 0, Buffer.from('shell:cat /data/local/tmp/amri-rollback/result\0'));
+  assert.doesNotMatch((await adbExchange(adbPorts[0], [cnxn, read])).toString(), /DONE/, 'the first look finds it still working');
+  const end = (await adbExchange(adbPorts[0], [cnxn, read])).toString();
+  assert.match(end, /EXIT=0/);
+  assert.match(end, /DONE/);
+});
+
+test('an unanswered card says expired, and a retry hears it', async () => {
+  const send = (id) => post('/v1/nav/go', { id, place });
+  assert.equal((await send('NOTOKEN')).status, 202);
+  assert.equal((await post('/__fake/card', { expire: true })).status, 200);
+  const again = await (await send('NOTOKEN')).json();
+  assert.equal(again.state, 'duplicate');
+  assert.equal(again.last, 'expired');
 });

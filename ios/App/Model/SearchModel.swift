@@ -102,6 +102,8 @@ final class SearchModel: ObservableObject {
                     selected = place
                 case .choices, .nothing:
                     await runSearch { [engine, lastNear] in try await engine.search(text: self.searchWords(in: plan, or: text), near: lastNear) }
+                    // A short address that finds its one place: that is the place.
+                    if results.count == 1, let only = results.first, !Task.isCancelled { selected = only }
                 }
             }
             return
