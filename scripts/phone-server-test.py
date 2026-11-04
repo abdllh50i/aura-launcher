@@ -433,8 +433,7 @@ def t_flow(token, routes):
     print("     %s" % e)
     time.sleep(1.0)
     shot("v2-link-flow-started" if e and e["state"] == "started" else "v2-link-flow-failed")
-    front = shell("dumpsys activity activities | grep mResumedActivity")
-    check("flow: Maps came forward", "MapsActivity" in front, front)
+    check("flow: Maps came forward", "MapsActivity" in front(), front())
     s, j, _, _ = req("GET", "/v1/state", token=token)
     print("     state nav: %s" % json.dumps(j["nav"], ensure_ascii=False))
     if e and e["state"] == "started":
@@ -527,8 +526,7 @@ def t_held(token, routes):
     e = ev.wait(lambda x: x.get("id") == I("held-1") and x["state"] == "held", 4)
     check("in a call: held", e is not None and e.get("reason") == "call", ev.nav())
     time.sleep(1.5)
-    front = shell("dumpsys activity activities | grep mResumedActivity")
-    check("in a call: nothing came forward", "MapsActivity" not in front, front)
+    check("in a call: nothing came forward", "MapsActivity" not in front(), front())
     shell("am broadcast -a com.bt.ACTION_BT_END_CALL")
     e = ev.wait(lambda x: x.get("id") == I("held-1") and x["state"] == "card", 4)
     check("after the call: the card asks", e is not None and e.get("kind") == "ask", ev.nav())
@@ -573,8 +571,7 @@ def t_unpaired(token, routes):
     check("gateway, no token: a card", e is not None and e.get("kind") == "ask", ev.nav())
     time.sleep(0.5)
     shot("v2-link-ask-card")
-    front = shell("dumpsys activity activities | grep mResumedActivity")
-    check("gateway, no token: the screen under it stays", "MapsActivity" not in front, front)
+    check("gateway, no token: the screen under it stays", "MapsActivity" not in front(), front())
     s, j, _, _ = req("GET", "/v1/state", token=token)
     check("gateway, no token: nothing started", j["nav"]["state"] == "idle", j["nav"])
     tap_card(CARD_SECOND)
@@ -774,7 +771,11 @@ def t_off():
 
 
 def front():
-    return shell("dumpsys activity activities | grep mResumedActivity")
+    # (Maps is a panel of the one window: which panel is on top is in the log, and it reads as the old name here)
+    res = shell("dumpsys activity activities | grep mResumedActivity")
+    if "HomeActivity" in res and "panel: maps" in shell("logcat -d -s AuraFront:I | tail -1"):
+        res += " panel maps: MapsActivity"
+    return res
 
 
 def state(token):

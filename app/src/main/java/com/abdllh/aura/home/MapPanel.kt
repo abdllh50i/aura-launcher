@@ -65,7 +65,9 @@ class MapPanel(private val shell: HomeActivity, private val host: HomeHost) : Fr
         roundedClip(Radius.XL)
         if (!Palette.dark) {
             // on the light theme the map's land is close to the background colour: a hairline edge and a low shadow
-            lift(Elev.REST)
+            // (only on the picture that stands in for a map that cannot run: a shadow reaches inside its caster, which covers it
+            // itself, and there it would lie over the map in the hole. The design bakes the shadow into the wall)
+            if (!allowed) lift(Elev.REST)
             foreground = Shapes.rect(0, Radius.XL, Palette.stroke)
         }
         // the live map as it was last seen, while it starts and draws; it fades out once the map has drawn its streets
@@ -136,6 +138,7 @@ class MapPanel(private val shell: HomeActivity, private val host: HomeHost) : Fr
     /** The map has drawn: nothing of this card covers it any more, once the picture has faded. */
     fun mapDrawn() {
         background = null
+        elevation = 0f
         if (backdrop.visibility == View.VISIBLE) handOff()
     }
 

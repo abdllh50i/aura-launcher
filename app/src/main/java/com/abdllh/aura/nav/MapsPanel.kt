@@ -218,6 +218,7 @@ class MapsPanel(shell: HomeActivity) : Panel(shell, Screens.MAPS) {
 
     override fun onShow(args: Bundle?) {
         if (chromeDue) freshChrome()
+        takeLook() // (a kept panel can be of another hour: before anything of this visit is on it)
         map.toMaps(panelWidth() + 32.dp) // the car sits in the part of the map the panels leave free
         map.onUserMoved = { onUserMoved() }
         map.onLongPress = { p -> dropPin(p) }
@@ -312,19 +313,17 @@ class MapsPanel(shell: HomeActivity) : Panel(shell, Screens.MAPS) {
     /**
      * Builds the panel again when its look is out of date: the map's style, the panels and the car are made in the
      * theme and accent of their time (a language is the whole window's: [HomeActivity.languageChanged]). Not while the driver
-     * is choosing a place (the next minute's tick tries again), nor while the car moves on a trip with a manoeuvre coming up: the
-     * map's style is built anew, a blank map and seconds of heavy work on this SoC just when the driver may need it. It waits for a
-     * stop, the trip's end or a long stretch ahead: a highway at dusk must not stay on the day's bright map until the first red
-     * light. A trip being driven goes on: [NavSession] is the app's, not this screen's.
+     * is choosing a place (the next minute's tick tries again), nor when the map says it is no time for it
+     * ([MapController.lookMayChange]). A trip being driven goes on: [NavSession] is the app's, not this screen's.
      */
     override fun onLook() {
         if (shell.languageChanged()) return
+        takeLook()
+    }
+
+    private fun takeLook() {
         if (Theme.isDarkNow() == builtDark && Prefs.accent == builtAccent) return
-        if (resultsCard.isOn || selected != null || pickFor != null || input.hasFocus() || routing) return
-        val p = NavSession.progress
-        val moving = NavSession.state == NavSession.State.NAVIGATING && (p?.speedKmh ?: 0) >= MOVING_KMH
-        val quiet = p != null && !p.offRoute && !NavSession.rerouting && p.toNext >= QUIET_AHEAD_M
-        if (moving && !quiet) return
+        if (resultsCard.isOn || selected != null || pickFor != null || input.hasFocus() || routing || !map.lookMayChange) return
         rebuildLook()
     }
 
@@ -1281,9 +1280,5 @@ class MapsPanel(shell: HomeActivity) : Panel(shell, Screens.MAPS) {
         private const val MAP_BTN = 66
         /** A search result's height. */
         private const val ROW_DP = 74
-        /** At this speed and above the car moves on a trip: a new theme or accent waits ([onLook]). */
-        private const val MOVING_KMH = 3
-        /** Nothing to do for this far: a minute and a half at 120 km/h, for a few seconds of a screen being rebuilt. */
-        private const val QUIET_AHEAD_M = 3000.0
     }
 }

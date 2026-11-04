@@ -52,6 +52,8 @@ import com.abdllh.aura.util.dp
 class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
     private val room = FrameLayout(shell)
     private lateinit var wall: Wall
+    /** The map has drawn: the wall opens where the card is, as soon as this card has a place. */
+    private var cardOpen = false
     private lateinit var carPanel: CarPanel
     private lateinit var mapPanel: MapPanel
     private lateinit var dock: Dock
@@ -147,6 +149,7 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
     private fun buildUi() {
         wall = Wall(Palette.bg, Radius.XL.dp.toInt())
         room.background = wall
+        cardOpen = false
         shell.map.homeCard(false)
         val col = LinearLayout(shell).apply { orientation = LinearLayout.VERTICAL }
         val content = LinearLayout(shell).apply { orientation = LinearLayout.HORIZONTAL }
@@ -169,7 +172,8 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         // picture fades, and with no map ever, the wall simply stays whole, as a plain room and an opaque window)
         shell.map.whenDrawn {
             if (card === mapPanel) {
-                cardRect()?.let { wall.hole = it; shell.map.homeCard(true) }
+                cardOpen = true
+                cardPlaced()
                 card.mapDrawn()
             }
         }
@@ -194,7 +198,10 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
     private fun cardPlaced() {
         val r = cardRect() ?: return
         shell.map.setHomeRoom(r, room.width, room.height)
-        if (wall.hole != null && wall.hole != r) wall.hole = r
+        if (cardOpen && wall.hole != r) {
+            wall.hole = r
+            shell.map.homeCard(true)
+        }
     }
 
     override fun onShow(args: Bundle?) {
@@ -250,13 +257,13 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
     }
 
     /**
-     * "Auto" reached sunrise or sunset, or the theme or accent changed in Settings; not while a sheet is in use (the next
-     * minute's tick retries). Coming out from under a panel that is leaving: built again there, before it goes, and no
-     * picture to take (it would be of that panel).
+     * "Auto" reached sunrise or sunset, or the theme or accent changed in Settings; not while a sheet is in use or the map
+     * says it is no time for it (the next minute's tick retries). Coming out from under a panel that is leaving: built again
+     * there, before it goes, and no picture to take (it would be of that panel).
      */
     override fun onLook() {
         if (Theme.isDarkNow() == builtDark && Prefs.accent == builtAccent) return
-        if (drawer.isOpen || controls.isOpen) return
+        if (drawer.isOpen || controls.isOpen || !shell.map.lookMayChange) return
         if (shell.panels.leaving != null) rebuild(null) else restyle()
     }
 
@@ -320,7 +327,7 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
             // (counted from here too: from onResume, the first frame's wait brought it into the middle of the entrance)
             r.postDelayed({ if (!isGone) shell.map.startForHome() }, LIVE_MAP_AFTER_MS)
             // (Maps' panel ahead of time, with no entrance going on and the map up: its first open then has nothing to build)
-            r.postDelayed({ if (!isGone) shell.panels.prepare(Screens.MAPS) }, MAPS_PANEL_AFTER_MS)
+            if (Prefs.builtInMaps) r.postDelayed({ if (!isGone) shell.panels.prepare(Screens.MAPS) }, MAPS_PANEL_AFTER_MS)
         }
     }
 

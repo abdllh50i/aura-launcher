@@ -6,10 +6,13 @@ import android.location.Location
 import android.os.SystemClock
 import android.util.Log
 import android.view.View
+import com.abdllh.aura.BuildConfig
 import com.abdllh.aura.home.HomeActivity
+import com.abdllh.aura.system.SystemProps
 import com.abdllh.aura.ui.MapBackdropView
 import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
+import com.abdllh.aura.ui.Theme
 import com.abdllh.aura.ui.fadeTo
 import com.abdllh.aura.util.Prefs
 
@@ -44,6 +47,8 @@ class MapController(private val shell: HomeActivity) {
     private var wanted = false
     private var wantedOnRequest = false
     private var drawnNow = false
+    /** From the first until it has drawn after a start: there is no surface yet, or not yet again ([syncCover]). */
+    private var coverDue = true
     private var builtAt = 0L
     /** Whether a panel on top lets the map be seen where it may not have drawn: the home screen's card only once its hole is open. */
     private var homeOpen = false
@@ -60,7 +65,7 @@ class MapController(private val shell: HomeActivity) {
     private var turnShown: Pair<Route, Int>? = null
 
     private val fixListener: (Location) -> Unit = { onFix(it) }
-    private val navListener: () -> Unit = { sync() }
+    private val navListener: () -> Unit = { safely("trip") { sync() } }
     private val onCovered: (Boolean) -> Unit = { c ->
         map?.setFrozen(c)
         syncCover()
@@ -95,9 +100,10 @@ class MapController(private val shell: HomeActivity) {
             return
         }
         drawnNow = false
+        coverDue = true
         m.onStart()
         syncCover()
-        sync()
+        safely("start") { sync() }
     }
 
     fun resumed() {
@@ -152,6 +158,7 @@ class MapController(private val shell: HomeActivity) {
         wanted = false
         val t0 = SystemClock.uptimeMillis()
         val m = try {
+            if (BuildConfig.DEBUG && SystemProps.get("debug.aura.mapfail") == "1") throw IllegalStateException("debug.aura.mapfail")
             AuraMap(shell, interactive = true, texture = false, guarded = true)
         } catch (t: Throwable) {
             // (no map, a land colour where it would be, and everything else as it was: a map must not cost the home screen)
@@ -168,7 +175,7 @@ class MapController(private val shell: HomeActivity) {
         m.onPoiTap = onPoiTap
         m.setFrozen(host.covered)
         m.onReady = {
-            sync()
+            safely("ready") { sync() }
             CarLocation.last?.let { onFix(it) }
             onReady?.invoke()
         }
@@ -189,6 +196,7 @@ class MapController(private val shell: HomeActivity) {
             builtAt = 0L
         }
         drawnNow = true
+        coverDue = false
         syncCover()
         onDrawn?.invoke()
     }
@@ -196,7 +204,8 @@ class MapController(private val shell: HomeActivity) {
     /**
      * What covers the map from a start until it has drawn (home-shell.md 5.3): the land's colour, so a surface that is not there yet
      * never shows as black. Not where nothing shows it: under an opaque panel, or the home screen's wall with its card not open, where its
-     * own picture is ([com.abdllh.aura.home.MapPanel]).
+     * own picture is ([com.abdllh.aura.home.MapPanel]). Not for a new style either: that surface is there, with the land of the new
+     * look on it at once, and the car and the route, which a driver on a trip must go on seeing while the tiles come.
      */
     private fun syncCover() {
         val c = host.cover
@@ -205,12 +214,12 @@ class MapController(private val shell: HomeActivity) {
             Front.HOME -> homeOpen
             Front.NONE -> false
         } && !host.covered
-        if (!drawnNow && seen) {
+        if (coverDue && seen) {
             c.animate().cancel()
             c.alpha = 1f
             c.visibility = View.VISIBLE
         } else if (c.visibility == View.VISIBLE) {
-            if (drawnNow && seen) c.fadeTo(0f, Motion.SHORT) { if (drawnNow) c.visibility = View.GONE }
+            if (seen) c.fadeTo(0f, Motion.SHORT) { if (!coverDue) c.visibility = View.GONE }
             else c.visibility = View.GONE
         }
     }
@@ -226,6 +235,21 @@ class MapController(private val shell: HomeActivity) {
         homeOpen = open
         syncCover()
     }
+
+    /**
+     * Whether now is a time for a new look on the map: not while the car moves on a trip with a manoeuvre coming up, as the style is built
+     * anew, a blank map and seconds of heavy work on this SoC just when the driver may need it. It waits for a stop, the trip's end or
+     * a long stretch ahead: a highway at dusk must not stay on the day's bright map until the first red light. With the map already
+     * in that look (a panel kept from before it, another panel took it in) there is nothing to wait for.
+     */
+    val lookMayChange: Boolean
+        get() {
+            if (styleDark == Theme.isDarkNow() && styleAccent == Prefs.accent) return true
+            val p = NavSession.progress
+            val moving = NavSession.state == NavSession.State.NAVIGATING && (p?.speedKmh ?: 0) >= MOVING_KMH
+            val quiet = p != null && !p.offRoute && !NavSession.rerouting && p.toNext >= QUIET_AHEAD_M
+            return !moving || quiet
+        }
 
     /** The look may have changed (a panel took it in, when it was a good time for it): the same map, with the style of now. */
     fun lookChanged() {
@@ -249,7 +273,7 @@ class MapController(private val shell: HomeActivity) {
     /** The home screen is on top: no gestures, the car in its card, north up or on its trip. */
     fun toHome() {
         front = Front.HOME
-        map?.let { applyFront(it) }
+        safely("home") { map?.let { applyFront(it) } }
         syncCover()
     }
 
@@ -259,7 +283,7 @@ class MapController(private val shell: HomeActivity) {
         homeRoom = Rect(card)
         homeW = w
         homeH = h
-        if (front == Front.HOME) map?.let { applyFront(it) }
+        if (front == Front.HOME) safely("home room") { map?.let { applyFront(it) } }
     }
 
     /** Maps is on top: gestures, and the car in what its panels leave free at the start side, [side] wide. */
@@ -267,7 +291,7 @@ class MapController(private val shell: HomeActivity) {
         front = Front.MAPS
         mapsSide = side
         val m = map
-        if (m == null) startForMaps() else applyFront(m)
+        if (m == null) startForMaps() else safely("maps") { applyFront(m) }
         syncCover()
     }
 
@@ -296,7 +320,20 @@ class MapController(private val shell: HomeActivity) {
     private fun onFix(l: Location) {
         if (NavSession.state != NavSession.State.NAVIGATING) { // (navigation moves the car itself, on the route)
             val speed = if (l.hasSpeed()) l.speed * 3.6 else 0.0
-            map?.setCar(LatLon(l.latitude, l.longitude), if (l.hasBearing()) l.bearing.toDouble() else 0.0, speed)
+            safely("fix") { map?.setCar(LatLon(l.latitude, l.longitude), if (l.hasBearing()) l.bearing.toDouble() else 0.0, speed) }
+        }
+    }
+
+    /**
+     * What goes wrong in telling the map something stops there: a listener's throw from here would be the home screen's crash, and the
+     * crash guard's count. (A native crash cannot be caught: that is [MapGuard]'s.)
+     */
+    private inline fun safely(what: String, block: () -> Unit) {
+        try {
+            block()
+        } catch (t: Throwable) {
+            Log.w(TAG, "$what: $t")
+            note = "$what: $t"
         }
     }
 
@@ -310,9 +347,11 @@ class MapController(private val shell: HomeActivity) {
         val st = NavSession.state
         val navigating = st == NavSession.State.NAVIGATING
         val onMaps = front == Front.MAPS
-        m.setFps(if (navigating && onMaps) 60 else 30) // a turning, tilted map needs the frames; the home screen's card does not
+        if (!navigating) m.fellBehind = false
+        m.setFps(if (navigating && onMaps && !m.fellBehind) 60 else 30) // a turning, tilted map needs the frames; the home screen's card does not
         if (!navigating && turnShown != null) { turnShown = null; m.setTurn(null) }
-        if (if (onMaps) st == NavSession.State.IDLE else !navigating) {
+        val trip = if (onMaps) st != NavSession.State.IDLE else navigating
+        if (!trip) {
             if (tripShown) { // the trip has just ended (Done, End, or by itself after arriving): back to browsing
                 tripShown = false
                 m.setRoute(previewRoute)
@@ -372,6 +411,10 @@ class MapController(private val shell: HomeActivity) {
         private const val MAPS_NAV_TOP = 0.42
         /** The turn's arrow is on the map from this far before it (its size is the map's: [AuraMap.setTurn]). */
         private const val TURN_ARROW_FROM_M = 900.0
+        /** At this speed and above the car moves on a trip: a new theme or accent waits ([lookMayChange]). */
+        private const val MOVING_KMH = 3
+        /** Nothing to do for this far: a minute and a half at 120 km/h, for a few seconds of a style being rebuilt. */
+        private const val QUIET_AHEAD_M = 3000.0
 
         /** What the map did at this window's start (for Settings → About): why it is not there, or when it drew. */
         @Volatile var note = ""

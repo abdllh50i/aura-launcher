@@ -56,6 +56,15 @@ class ShellRoot(ctx: Context) : FrameLayout(ctx) {
         return false
     }
 
+    // (debug builds: setprop debug.aura.frames 1, restart: which view asks for each frame of the window, AuraShell in the log. A map that
+    // moves must ask for none)
+    private val framesLog = com.abdllh.aura.BuildConfig.DEBUG && com.abdllh.aura.system.SystemProps.get("debug.aura.frames") == "1"
+
+    override fun onDescendantInvalidated(child: View, target: View) {
+        if (framesLog) android.util.Log.i("AuraShell", "frame asked by ${target.javaClass.name} ${target.width}x${target.height}")
+        super.onDescendantInvalidated(child, target)
+    }
+
     /** True when one was open. */
     fun closeSheets(): Boolean {
         var closed = false

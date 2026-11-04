@@ -197,8 +197,11 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
     private val stale = Runnable { carView.setStale(true) }
     private val keepPicture = Runnable { takePicture() }
 
-    /** Re-armed at every start: whatever covers the map until it has drawn (the home screen's backdrop) can go then. */
-    private inner class Drawn : MapView.OnDidFinishRenderingFrameListener {
+    /**
+     * Re-armed at every start: whatever covers the map until it has drawn (the home screen's backdrop) can go then.
+     * [skip]: frames that do not count (a new style: the frame already on its way is of the one before, and fully drawn).
+     */
+    private inner class Drawn(private var skip: Int = 0) : MapView.OnDidFinishRenderingFrameListener {
         private var first = false
         private var done = false
         private val late = Runnable { finish() }
@@ -209,6 +212,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
                 if (guarded) { MapGuard.ok(app); MapGuard.live(app) }
                 view.postDelayed(late, DRAWN_LATE_MS)
             }
+            if (skip > 0) { skip--; return }
             // (before the style is there, a frame of land colour alone counts as "fully" drawn)
             if (fully && style != null) finish()
         }
@@ -317,7 +321,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         if (started) {
             firstFrame.cancel()
             mapView.removeOnDidFinishRenderingFrameListener(firstFrame)
-            firstFrame = Drawn().also { mapView.addOnDidFinishRenderingFrameListener(it) }
+            firstFrame = Drawn(1).also { mapView.addOnDidFinishRenderingFrameListener(it) }
         }
         drawn = false
         loadStyle()
@@ -407,7 +411,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
     /**
      * Frame-rate cap: 30 is plenty while browsing; navigation asks for 60 so the turning map stays fluid. A map that
      * cannot keep up with 60 (fewer than 70 % of the frames drawn over a few seconds of driving) drops to an even 30
-     * for the rest of the trip: frames alternating between one and two vsyncs look worse than a steady 30.
+     * for the rest of the trip ([fellBehind]): frames alternating between one and two vsyncs look worse than a steady 30.
      */
     fun setFps(fps: Int) {
         if (fps == fpsWanted) return
@@ -484,6 +488,9 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         followZoom = FOLLOW_ZOOM
         navZoomOffset = 0.0
     }
+
+    /** It could not keep up with 60 on this trip ([setFps]): nobody asks it again until the trip has ended ([MapController]). */
+    var fellBehind = false
 
     fun onLowMemory() = mapView.onLowMemory()
     fun onDestroy() {
@@ -868,7 +875,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         val p = carPos ?: map?.cameraPosition?.target?.let { LatLon(it.latitude, it.longitude) } ?: return null
         return when (camera) {
             Camera.FOLLOW -> Cam(p.lat, p.lon, followZoom, 0.0, 0.0, roomL, roomT, roomR, roomB)
-            Camera.NAVIGATE -> Cam(p.lat, p.lon, navZoom, navTilt, camBearing, roomL, roomT + (mapView.height - roomT - roomB) * navPad, roomR, roomB)
+            Camera.NAVIGATE -> Cam(p.lat, p.lon, navZoom, navTilt, camBearing, roomL, roomT + (mapView.height - roomT - roomB).coerceAtLeast(0.0) * navPad, roomR, roomB)
             else -> null
         }
     }
@@ -1061,6 +1068,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         val rate = renders * 1000.0 / span
         if (rate < fpsCap * 0.7) {
             Log.i(TAG, "the map drew ${"%.0f".format(Locale.ROOT, rate)} of $fpsCap fps: 30 from now on")
+            fellBehind = true
             fpsCap = 30
             mapView.setMaximumFps(30)
             mapView.removeOnDidFinishRenderingFrameListener(counter)
@@ -1445,17 +1453,23 @@ object MapGuard {
         try {
             val f = liveMark(c)
             if (!f.exists()) return
-            val p = f.readText().trim().split(' ')
+            val mark = f.readText()
             f.delete()
-            val at = p.getOrNull(1)?.toLongOrNull() ?: return
             val boot = bootId()
-            if (p[0] != boot || SystemClock.elapsedRealtime() - at > LIVE_WINDOW_MS) return
+            if (!liveMarkCounts(mark, boot, SystemClock.elapsedRealtime())) return
             val n = liveFails(c) + 1
             spLive(c).edit().putString(KEY_LIVE_BOOT, boot).putInt(KEY_LIVE_FAILS, n).commit()
             Log.w("AuraMap", "the process went down with the map up: $n in this boot")
         } catch (t: Throwable) {
             Log.w("AuraMap", "guard: $t")
         }
+    }
+
+    /** A mark left by a process that is gone ("<boot id> <elapsedRealtime at the map's first frame>"), found at [now] in [boot]: it was the map's fault, as far as can be told. */
+    fun liveMarkCounts(mark: String, boot: String, now: Long): Boolean {
+        val p = mark.trim().split(' ')
+        val at = p.getOrNull(1)?.toLongOrNull() ?: return false
+        return p[0] == boot && now - at in 0..LIVE_WINDOW_MS
     }
 
     /** How many times the process went down with the map up, in this boot. */
