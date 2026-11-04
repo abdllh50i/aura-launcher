@@ -57,7 +57,7 @@ object Snack {
             content.setTag(R.id.aura_snack, it)
             content.addView(it, flp(MATCH, MATCH))
         }
-        host.bringToFront()
+        if (content.getChildAt(content.childCount - 1) !== host) host.bringToFront()
         host.say(msg, icon, if (long) LONG_MS else SHORT_MS)
     }
 
@@ -90,7 +90,18 @@ class SnackHost(a: Context) : FrameLayout(a), Recolours {
 
     override fun dispatchTouchEvent(e: MotionEvent) = false
 
-    override fun onLook() = pill.onLook()
+    override fun onLook() = Unit
+
+    // (it lies beside the shell's root, not in it: a theme change finds it among the windows of their own)
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        Look.opened(this)
+    }
+
+    override fun onDetachedFromWindow() {
+        Look.closed(this)
+        super.onDetachedFromWindow()
+    }
 
     // (centred in the free area x 384..1012, whatever its width: fixed here, so a new message lays out only the pill)
     override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {

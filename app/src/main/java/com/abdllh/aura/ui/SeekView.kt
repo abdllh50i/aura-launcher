@@ -31,6 +31,7 @@ class SeekView(ctx: Context) : View(ctx), Recolours {
     private val tp = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         textSize = Type.musicTime.sp
         typeface = Fonts.of(Type.musicTime)
+        Fonts.tune(this)
     }
     private val r = RectF()
     /** 0 resting, 1 held. */

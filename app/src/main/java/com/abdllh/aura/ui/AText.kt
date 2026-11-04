@@ -38,13 +38,16 @@ open class AText @JvmOverloads constructor(
         }
         weight = w
         includeFontPadding = false
+        Fonts.tune(paint)
     }
 
     /**
      * A one-line label of a role (SPEC.md section 3): 1.5 em tall, placed by [Type.Role.box] so that its centre is the line
      * box's. An emoji in a title cannot move its baseline. [moving]: its weight on a moving screen, heavier at night.
+     * The line's direction is the language's: a name inside it keeps its own by BidiFormatter.unicodeWrap, where it comes from.
      */
     fun oneLine(role: Type.Role, moving: Boolean = false) {
+        textDirection = TEXT_DIRECTION_LOCALE
         setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, role.sp)
         typeface = Fonts.of(role, moving)
         maxLines = 1
@@ -54,6 +57,7 @@ open class AText @JvmOverloads constructor(
 
     /** Text that wraps (only Settings' hints, the no-phone text, parked lyric lines): the role's line box, no multiplier. */
     fun wrapping(role: Type.Role, lines: Int = 0, moving: Boolean = false) {
+        textDirection = TEXT_DIRECTION_LOCALE
         setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, role.sp)
         typeface = Fonts.of(role, moving)
         if (lines > 0) {

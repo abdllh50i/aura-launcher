@@ -22,7 +22,7 @@ class LimitSign @JvmOverloads constructor(
         set(v) { if (v != field) { field = v; invalidate() } }
 
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val t = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
+    private val t = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; Fonts.tune(this) }
 
     override fun onLook() = invalidate()
 

@@ -50,6 +50,15 @@ object Fonts {
     /** By role; [moving]: the weight it has on a moving screen, which is heavier at night only (section 3). */
     fun of(role: Type.Role, moving: Boolean = false): Typeface = get(if (moving && Palette.dark) role.night else role.weight)
 
+    /**
+     * Text as drawn: its real outlines at their real places. Hinted, on a panel of 1 dp = 1 px, stems snap to the pixel and advances to
+     * the whole pixel: letters narrow and uneven, a long line 2 px off. Every text of the UI goes through here.
+     */
+    fun tune(p: android.graphics.Paint) {
+        p.isSubpixelText = true
+        p.hinting = android.graphics.Paint.HINTING_OFF
+    }
+
     /** The family's Arabic face, whatever the UI's language. There is only the one now. */
     fun arabic(): Typeface? = regular()
 
@@ -58,17 +67,16 @@ object Fonts {
 
     fun light(): Typeface = regular()
 
-    private fun regular(): Typeface = w400 ?: load(FILE_400, Typeface.DEFAULT).also { w400 = it }
+    private fun regular(): Typeface = w400 ?: load(FILE_400)?.also { w400 = it } ?: Typeface.DEFAULT
 
-    private fun medium(): Typeface = w500 ?: load(FILE_500, Typeface.DEFAULT).also { w500 = it }
+    private fun medium(): Typeface = w500 ?: load(FILE_500)?.also { w500 = it } ?: Typeface.DEFAULT
 
-    private fun semibold(): Typeface = w600 ?: load(FILE_600, Typeface.DEFAULT_BOLD).also { w600 = it }
+    private fun semibold(): Typeface = w600 ?: load(FILE_600)?.also { w600 = it } ?: Typeface.DEFAULT_BOLD
 
-    /** (A file that cannot be read is a plain system font rather than no screen at all.) */
-    private fun load(file: String, otherwise: Typeface): Typeface = try {
-        val am = assets
-        if (am == null) otherwise else Typeface.createFromAsset(am, file)
+    /** Null before [init], or if the file cannot be read: a plain system font then, rather than no screen at all. */
+    private fun load(file: String): Typeface? = try {
+        assets?.let { Typeface.createFromAsset(it, file) }
     } catch (_: Throwable) {
-        otherwise
+        null
     }
 }

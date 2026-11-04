@@ -14,5 +14,9 @@
                 <action android:name="com.abdllh.aura.debug.PANELS" />
             </intent-filter>
         </receiver>
+        <!-- Every component of the design system at real size: am broadcast -n com.abdllh.aura/.debug.GalleryReceiver (GalleryPanel.kt) -->
+        <receiver
+            android:name=".debug.GalleryReceiver"
+            android:exported="true" />
     </application>
 </manifest>

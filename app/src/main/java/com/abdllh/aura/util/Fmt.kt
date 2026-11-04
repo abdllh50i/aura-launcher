@@ -18,6 +18,17 @@ object Fmt {
     fun ampm(d: Date): String =
         SimpleDateFormat("a", locale()).format(d)
 
+    /**
+     * A time as SPEC.md section 3 writes it, for the strip and the ETA: in Arabic an isolated left-to-right run followed by م or ص (7:38 م), in
+     * English 7:38 PM, with [is24] 19:38 and no suffix. The big clock on Home has no suffix: [time].
+     */
+    fun clock(d: Date, is24: Boolean): String {
+        val t = time(d, is24)
+        if (is24) return t
+        return if (Locale.getDefault().language == "ar") "\u2066$t\u2069 ${SimpleDateFormat("a", locale()).format(d)}"
+        else "$t ${SimpleDateFormat("a", Locale.ENGLISH).format(d)}"
+    }
+
     fun date(d: Date): String {
         val loc = locale()
         val pattern = DateFormat.getBestDateTimePattern(loc, "EEEEdMMMM")

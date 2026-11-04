@@ -8,7 +8,7 @@ import com.abdllh.aura.R
  * The owner's open answers, each in one place. Whichever way he answers, it is a change here and nothing else.
  */
 object Asked {
-    /** One cell of the dock: the panel it opens (home/Screens' names, `map` for Maps) and its glyph. */
+    /** One cell of the dock: the panel it opens (home/Screens' names) and its glyph. */
     class Cell(@JvmField val panel: String, @JvmField val icon: Int)
 
     /**
@@ -18,7 +18,7 @@ object Asked {
      */
     @JvmField val DOCK = listOf(
         Cell("home", R.drawable.ic_home),
-        Cell("map", R.drawable.ic_nav),
+        Cell("maps", R.drawable.ic_nav),
         Cell("music", R.drawable.ic_music),
         Cell("phone", R.drawable.ic_phone),
         Cell("apps", R.drawable.ic_apps),

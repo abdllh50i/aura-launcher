@@ -36,7 +36,7 @@ object Prefs {
         set(v) { sp.edit().putString("lang", v).apply() }
 
     var clock24: Boolean
-        get() = sp.getBoolean("clock24", true)
+        get() = sp.getBoolean("clock24", false)
         set(v) { sp.edit().putBoolean("clock24", v).apply() }
 
     var navPackage: String

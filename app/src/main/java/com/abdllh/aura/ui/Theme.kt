@@ -6,8 +6,8 @@ import android.view.View
 import com.abdllh.aura.util.Prefs
 
 /**
- * Dark / light / automatic appearance. "Automatic" follows the real daylight where the car is ([Daylight]): dark from
- * civil dusk to civil dawn.
+ * Dark / light / automatic appearance. "Automatic" follows the real sun where the car is ([Daylight]): night from sunset to sunrise.
+ * A change of it goes through [ThemeSwap]; [refresh] alone only assigns the tokens.
  */
 object Theme {
     const val AUTO = "auto"

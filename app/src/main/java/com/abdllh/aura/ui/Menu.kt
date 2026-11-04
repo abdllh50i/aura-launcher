@@ -24,8 +24,8 @@ object Menu {
     private const val ROW_H = 60
     private const val PAD = 8
 
-    fun show(anchor: View, items: List<Item>) {
-        if (items.isEmpty()) return
+    fun show(anchor: View, items: List<Item>): PopupWindow? {
+        if (items.isEmpty()) return null
         val ctx: Context = anchor.context
         val o = Surface.OVERLAY.outset
         val box = SurfaceColumn(ctx, Surface.OVERLAY).apply { setPadding(o + PAD, o + PAD, o + PAD, o + PAD) }
@@ -78,5 +78,6 @@ object Menu {
         popup.setOnDismissListener { Look.closed(frame) }
         com.abdllh.aura.home.Panel.own(ctx, { popup.isShowing }, { popup.dismiss() }) // (it goes when the panel under it does)
         box.enter(scaleFrom = 0.94f)
+        return popup
     }
 }

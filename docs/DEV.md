@@ -439,7 +439,56 @@ unit's:
   (25 frames in 311–373 ms against 47 in 315–336: EGL and the program are most of it). The spin's middle frames show a little
   ghosting at 4 degrees a frame; it would need a look on the panel.
 
+## Design system (2.0: `ui/`, `design/tokens`, `design/icons`, debug `GalleryPanel`)
+What 2.0's screens are made of. The design is `SPEC.md` of the design folder (`tmp/v2/design/final2`); this says what is in the code and why it
+differs where it does. The old screens still build on all of it: they look imperfect in the new tokens until they are rebuilt, and that is expected.
+
+**The one font.** IBM Plex Sans Arabic in three weights, `assets/fonts` (727 KB, `OFL.txt` beside them, `NOTICE`). `Fonts.get(400|500|600)`, `Fonts.of(role)`;
+`Fonts.LIGHT..BOLD` are the old names and fall on the three. Roboto and Readex are out of the UI. The Readex file moved to `design/fonts`: the map pack's glyph
+build reads it (`tools/mapbuild/run_build.ps1` on the map branch names the old path, and must name `design/fonts/ReadexPro-VF.ttf` when the two meet). All text goes
+through `Fonts.tune(paint)`: subpixel, no hinting. Hinted at 1 dp = 1 px, stems snap and advances round to the pixel, and a long line is off by 2 px from the design;
+unhinted the letters are the design's. A long Arabic line still comes out about 1 % narrower than in Chromium (330 px against 327), not traced. There is no `tnum` any more: Plex's digits are
+equal, and no feature was needed; the seven sites left in `MapsActivity` and `MusicActivity` do nothing and go with those screens.
+
+**A label.** `ctx.label(Type.road, { Palette.ink })` is one line, 1.5 em tall, its direction the language's; a name inside it keeps its own by `BidiFormatter.unicodeWrap` where it
+comes from. Its colour follows the theme when it is given as a token (a lambda); an Int stays what it was. Place it by its line box with `Type.road.box(x, lineTop, w)`, as the layout tables give
+them: the view is centred on the box and may overlap its neighbour. `lines = 2` or `0` wraps, with the role's line box and no multiplier; its first baseline stands where a one-line label's does, so it takes
+`box()` as well. `Role.px` is the size in the UI's language, `Role.night` the heavier weight of moving screens at night (`label.oneLine(role, moving = true)`). Digits' letter-spacing: `digitSpacing(px)`.
+
+**Tokens.** `design/tokens/tokens.json` is the one source; `node design/tokens/gen_tokens_kt.mjs` writes `ui/DesignTokens.kt`. `Palette.ink` (`ColorTokens`), `Type.dist` (`TypeRoles`), `Tokens2.R_card`,
+`Tokens2.MS_theme`, `Tokens2.SPRING_segment`. Added to the design's generator: `scrim` (`scrimRgb` at .6), each role's night weight, `TOUCH_*`, `FREE_*`, and the two base classes, so a new token needs one command. Under
+"the old names" in `Palette` and `Type` is what 1.x called things, worked out from the same tokens; the blocks go with the last old screen. `Palette.accent` is one colour now: `Prefs.accent` still stores
+what old Settings' swatches pick, and nothing reads it. `Asked.kt` holds the owner's three open answers: the dock's order (the second of `q-dock-order.png`), the lyric's word and a message's text while moving. Each is one table or one constant.
+
+**Recolouring.** `ThemeSwap` is section 8's one path: ready first on a worker (`Surfaces.prepare`, `readySteps` for the car and the wash), the window recorded into a `Picture` and held in a view with a hardware layer, then in one frame
+`Palette.applyTheme`, `Look.apply` on the shown panel, the chrome and the sheets, and `map?.invoke(night)`; the ghost fades over 700 ms `move`; the old theme's bitmaps go. Hidden panels are marked stale and catch up in `PanelStack.place`.
+`Theme.isDarkNow` follows the real sun at -0.833 degrees, at the last fix, or Dammam before any (`Daylight`). The minute's tick asks (`PanelStack.tick`), and with a turn within 300 m or a call ringing (`ThemeSwap.holdOff`) it waits up to 2 minutes.
+What a view does in the walk is its own: a component is `Recolours`; any other view says `view.look { ... }`, or `.ink { }`, `.glyph { }`; a plate is a `Tint`. A `Panel` with `recolours = false`, which is every old screen, keeps restyling itself in `onLook` as before, and that is the one thing still
+restarting a map (`HomePanel.rebuild`, `MapsActivity`'s recreate): those lines go when the screens are rebuilt. The map's own colours come through `ThemeSwap.map`, set by whoever owns the map: `MapStyle.paints` and `TransitionOptions`, never `setStyle`.
+
+**Surfaces.** `scripts/install_surfaces.py <design folder>` copies what ships: 26 9-patches and 32 small bitmaps into `res/drawable-nodpi`, masks, frames, room, dock, capsules, cover shadow and car glow into `assets/surfaces`. `SurfaceCard` and `SurfaceColumn` are the base of what has an
+outset: `Surface.CARD.at(x, y, w, h)` from the visible rect, touches in the outset fall through, a tap inside never reaches the map. Always exact sizes: a 9-patch's minimum is its bitmap. `Tint(ctx, Plates.res(18)) { Palette.fill }` is a plate with its own mutated state, whose bitmap stays shared (the spec's cache of mutated
+drawables by token would save a hundred bytes a view, and each view needs its own bounds anyway). `Surfaces.asset/themed` decode the big ones `Config.HARDWARE`, `software` for what a Canvas reads; `Surfaces.res` keeps the small bitmaps of res ordinary, against the spec's table: on Android 10 a hardware bitmap is a buffer of its own and a trip through the uploader's GL context on the calling thread, to save about 10 KB (on the emulator a second each with several running: a page of 16 held its first frame 17 s, and under that load the window once lost its surface and drew nothing until a relayout). `turn-glow` was in no row of the spec's table; it goes in `res/drawable-nodpi`. The car's walls and frames stay with the car (section 10).
+`context.scrollFade(surface, top)`: lay it over a list inset 8 from the surface's edge, its last 28 px ending 8 above the card's bottom. The mockup's fade has rounded corners; a stretched bitmap has none and would poke out of the corner if it reached the edge.
+
+**Components, what changed under the old names.** `IconButton` (one view, no children, plate and glyph drawn; `Kind.BARE|TONAL|PILL|ACTIVE`, `pressPlate` for a dock cell) replaced `RoundBtn`, `Dock.button`, `MediaCard.transport` and the two close buttons; `MapPanel.place`, `MusicActivity.ctlButton`, `MapsActivity.roundIcon`, `mapButton`, `zoomHalf`
+go with their screens. `PressGesture`: a component calls `onTouch` from `dispatchTouchEvent` and keeps its listener; `View.pressScale` stays for the rest, on the listener. `tolerant` keeps a click alive 20 % outside the view, past Android's 8 px. `ABtn`: M 60, L 84, `icon(res)`, `loading`, the plates of section 5; `Kind.ANSWER`.
+A `Segmented` label is two views, regular and medium, and the thumb's coverage is their alpha: no text drawn and no layout while it slides. `AuraSwitch` is its track grown by 10 and `AuraSlider` its track grown by 27 and 60 high, because the baked shadows must not be cut at the view's edge and no parent may stop clipping: place them by `AuraSwitch.at`, `AuraSlider.at`, or in rows by
+`switchRow`, `sliderControl`, which take that off in margins. `SeekView` draws its times itself, one view and no layout at a tick; `MusicActivity` keeps its own old `SeekView` and `ThinProgress` classes until Music is rebuilt (they should go then: `ui/` has the new ones, imported by name). `EqualizerView` is gone, `EqGlyph` is the still glyph. `Spinner` turns by the view's rotation, its ring drawn once;
+`ABtn`'s spinner is a delayed post at 30 fps, because an animator on a label asks for a frame right after each frame, and on a slow frame that kept the main thread's other messages behind the frames (a page of five stopped answering broadcasts on the emulator). `Sheet(ctx, side = true)`: `sideHead(title, tools...)`, `placeOnTrip`. `Modal.card`, `Modal.title`, `Modal.body`,
+`Modal.buttons(ctx, action, others...)` with the action on the left in both languages, `followKeyboard()`, `Modal.dismissAll()` for the car's starting to move. `Snack` shows through one `SnackHost` over the window's content; `Snack.waitFor` is the voice card. `TextField`, `LimitSign` (`SPEED`, `HOME`, `STRIP`, `dim`; `RoadHud` uses it). `Rows`: `controlRow`, `valueChevron`, `sliderControl`, `group(..., fill = 414)` with the mockup's rounding of row heights; hairlines lie over the row under them and take no height.
+Icons: `scripts/gen_icons.py` from `design/icons`; 138 and 36 old names. New names mirror by `autoMirrored`; the aliases do not, because their callers still flip by hand.
+
+**Song colour.** `Backdrop.washAsync(ctx, cover, night) { wash -> }`: `panel`, 48 x 28, `widget` and `mini` (show them at the card's rect grown by `CARD_MARGIN`), `fill`, `wordPill`. `Backdrop.round(ctx, cover, size, radius)` on the worker, `noArt`. The word pill is the song's hue at the saturation and value the sea cover gives (night .55, .96, day .89, .525), then `reach`: from the fill itself, as section 4 words it, the
+sea cover's pill came out `#56A1BF` against the design's `#6FD6F6`, duller, because a fill's value is held down so that it works as a fill.
+
+**Tones.** `design/sound/make_tones.py` writes `res/raw/tone_tick`, `tone_saher`, `tone_over`; `Tones.tick(ctx)` etc., on the guidance stream, `Prefs.pressTick`. The spec gives the tick's length and the Saher tone's character and no pitch or level; these are this file's choice, one table, not heard on the car's speakers.
+
+**The gallery.** `am broadcast -n com.abdllh.aura/.debug.GalleryReceiver --es page controls --es theme night --ez cut true` (debug builds): every component in every state at real size, a page per group; `theme` without `cut` goes through the real `ThemeSwap`. `r-*` pages put them where the mockups have them with the mockups' words, on the mockups' map plates (`scripts/gallery-shots.ps1 -Design <folder>` pushes them).
+`scripts/gallery_compare.py <design folder>` compares those pages rect by rect with `screens/_layout.json`. Text can never be equal: Chromium's gamma and Skia's differ.
+
 ## Design system (1.12)
+The tokens' numbers below are history since 2.0; their names, and how they are used, are still what old screens do.
 Everything a screen is made of comes from `ui/`: colours (`Palette.kt`), sizes (`Tokens.kt`), shapes and shadows
 (`Shapes.kt`), motion (`Motion.kt`) and the shared components. Until 1.11 only the colours and the curves were tokens;
 the app had grown 27 text sizes, 18 radii, 11 elevations, 10 press depths and ~30 animations with their own numbers,
@@ -2570,10 +2619,9 @@ sign, a trip resumed or not and why) is the first real measurement.
   from `design/logo/`, palette PNGs with 16 entries kept for the logo blue).
 
 ## Arabic font (`design/fonts/`)
-Arabic UI text is Readex Pro (OFL), a variable font: `ui/Fonts.kt` takes real weights from the one file
-(`Typeface.Builder` + `'wght'` 300 / 400 / 500 / 650); Latin text stays on the system Roboto. Upstream declares ascent
-1000 / descent 250 while the Arabic reaches about −550…1150, and the app's labels use `includeFontPadding = false`, so
-Android cut the bottom off (ي lost its dots). `design/fonts/make_arabic_font.py` writes the asset from the Google Fonts
+Until 2.0 Arabic UI text was Readex Pro (OFL), a variable font; the UI is IBM Plex Sans Arabic now ("Design system (2.0)"). The file stays in `design/fonts` for the
+offline map's glyph build, which needs a variable font with a `wght` axis. Upstream declares ascent 1000 / descent 250 while the Arabic reaches about −550…1150, and the
+app's labels use `includeFontPadding = false`, so Android cut the bottom off (ي lost its dots). `design/fonts/make_arabic_font.py` writes it from the Google Fonts
 file with ascent 1150 / descent 560 (nothing else changed; renamed "Readex Pro AMRI" as the OFL asks).
 
 ## Logo and icon (`design/logo/`)

@@ -15,8 +15,8 @@ import com.abdllh.aura.R
  *  - [Kind.TONAL]: on a plate, `fill2` unless [plateToken] says otherwise (the mini's 56 plate is `fill`).
  *  - [Kind.PILL]: on the `pill` 9-patch; the view is the hit grown by the outset, and the hit is the visible rect ([Surface.at]).
  *  - [Kind.ACTIVE]: on the solid `selected` plate with its 1 px edge, glyph `selectedInk`.
- * A plate is [plateW] x [plateH] with visual radius [plateRadius], centred in the hit; [centerDy] moves glyph and plate off the
- * hit's middle (a dock cell's hit runs to the screen's edge, its glyph sits on the row's centre). [active] turns any of them
+ * A plate is [plateW] x [plateH] with visual radius [plateRadius], centred in the hit; [centerDx] and [centerDy] move glyph and plate off
+ * the hit's middle (a dock cell's hit runs to the screen's edge, its glyph sits on the row's centre). [active] turns any of them
  * ACTIVE and back. [token] is the glyph's colour when not active: `icon` by default. Disabled: alpha 0.4, no press.
  */
 class IconButton @JvmOverloads constructor(
@@ -33,6 +33,7 @@ class IconButton @JvmOverloads constructor(
     plateToken: () -> Int = { if (kind == Kind.TONAL) Palette.fill2 else Palette.fill },
     private val centerDy: Int = 0,
     pressPlate: Boolean = false,
+    private val centerDx: Int = 0,
     private var token: () -> Int = { Palette.icon }
 ) : View(ctx), Recolours {
     enum class Kind { BARE, TONAL, PILL, ACTIVE }
@@ -127,7 +128,7 @@ class IconButton @JvmOverloads constructor(
     }
 
     override fun onDraw(c: Canvas) {
-        val cx = width / 2
+        val cx = width / 2 + centerDx
         val cy = height / 2 + centerDy
         val p = plate
         if (p != null && !active) {

@@ -53,6 +53,9 @@ internal object AmriOverlay {
     private var attached = false
     private val hideLater = Runnable { hide() }
 
+    /** Its card is up: a Snack waits ([com.abdllh.aura.ui.Snack.waitFor]). */
+    val showing: Boolean get() = attached
+
     fun show(c: Context, mode: Mode, text: String, hideAfterMs: Int = 0, sub: String? = null) {
         val app = c.applicationContext
         if (!Settings.canDrawOverlays(app)) return

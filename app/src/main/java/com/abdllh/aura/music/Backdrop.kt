@@ -281,7 +281,12 @@ internal object Backdrop {
         val mini = try {
             if (night) card(ctx, "mini", MINI_H, panel, Color.rgb(0x15, 0x18, 0x1F), .42f, .42f, true) else card(ctx, "mini", MINI_H, panel, Color.WHITE, .10f, .10f, false)
         } catch (_: Throwable) { null }
-        val pill = if (night) Palette.reach(fill, c.wordPillInk, 4.5, true) else Palette.reach(fill, c.wordPillInk, 4.5, false)
+        // (the song's hue at the saturation and value of what the sea cover gives, wordPill: from the fill itself the pill was duller than
+        // the design's, because the fill's value is held down so that it can be a fill. Then as far as it takes to read.)
+        hsv[0] = hue
+        hsv[1] = if (night) .55f else .89f
+        hsv[2] = if (night) .96f else .525f
+        val pill = Palette.reach(Color.HSVToColor(hsv), c.wordPillInk, 4.5, night)
         return Wash(night, fill, if (px == null) c.wordPill else pill, c.wordPillInk, panel, widget, mini)
     }
 

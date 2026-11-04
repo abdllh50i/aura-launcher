@@ -34,8 +34,9 @@ class TextField @JvmOverloads constructor(
     val input: EditText = EditText(ctx).apply {
         background = null
         includeFontPadding = false
-        textSize = role.sp
+        setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, role.sp)
         typeface = Fonts.of(role)
+        Fonts.tune(paint)
         isSingleLine = true
         this.hint = hint
         textDirection = View.TEXT_DIRECTION_FIRST_STRONG

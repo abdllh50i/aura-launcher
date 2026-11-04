@@ -4,7 +4,7 @@ import android.content.Context
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
-import android.widget.FrameLayout
+
 import android.widget.ImageView
 import android.widget.LinearLayout
 import com.abdllh.aura.R
@@ -88,22 +88,22 @@ fun LinearLayout.addHint(text: CharSequence) {
 /**
  * The rows of one section in one card, a hairline between two rows. A null row is left out (an option this unit does not have).
  * Its visible rect is its bounds less the outset, which [addRow] takes care of; elsewhere give it an exact rect with [Surface.at].
- * [fill]: the rows share that height evenly (a page that fills its card: 414 / 4 is 103.5, 414 / 5 is 82.8).
+ * [fill]: the rows share that height evenly, rounded as the screen rounds (a page that fills its card: 414 / 4 is 103.5, 414 / 5 is 82.8).
+ * A hairline lies over the top of the row under it and takes no height of its own.
  */
 fun Context.group(vararg rows: View?, fill: Int = 0): LinearLayout = SurfaceColumn(this, Surface.CARD).apply {
-    var first = true
-    for (r in rows) {
-        if (r == null) continue
-        if (!first) {
+    val shown = rows.filterNotNull()
+    for ((i, r) in shown.withIndex()) {
+        if (i > 0) {
             addView(View(context).apply { look { setBackgroundColor(Palette.line) } }, lp(MATCH, 1).apply {
                 leftMargin = INSET
                 rightMargin = INSET
+                bottomMargin = -1
             })
         }
-        first = false
-        addView(r, if (fill > 0) lp(MATCH, 0, 1f) else lp(MATCH, WRAP))
+        val h = if (fill > 0) Math.round(fill * (i + 1f) / shown.size) - Math.round(fill * i.toFloat() / shown.size) else WRAP
+        addView(r, lp(MATCH, h))
     }
-    if (fill > 0) minimumHeight = fill + 2 * surface.outset
 }
 
 /** A row's press: `fillPress` over it, a plate inset 8 so it never pokes out of the card's corner; it does not sink. */
@@ -124,14 +124,14 @@ fun Context.settingRow(
     title: CharSequence,
     subtitle: CharSequence? = null,
     trailing: View? = null,
-    iconTint: Int = Palette.ink2,
+    iconTint: Int = 0,
     onClick: (() -> Unit)? = null
 ): SettingRow = SettingRow(this, if (icon != null) INSET + ICON + ICON_GAP else INSET).apply {
     orientation = LinearLayout.HORIZONTAL
     gravity = Gravity.CENTER_VERTICAL
     minimumHeight = ROW_MIN
-    setPaddingRelative(INSET, Space.S, INSET, Space.S)
-    if (icon != null) addView(iconView(icon, ICON, iconTint), lp(ICON, ICON).apply { marginEnd = ICON_GAP })
+    setPaddingRelative(INSET, 0, INSET, 0)
+    if (icon != null) addView((if (iconTint != 0) iconView(icon, ICON, iconTint) else iconView(icon, ICON) { Palette.ink2 }), lp(ICON, ICON).apply { marginEnd = ICON_GAP })
     addView(titles(title, subtitle), lp(0, WRAP, 1f))
     if (trailing != null) {
         if (trailing is AText) trailing.maxWidth = 300
@@ -151,9 +151,10 @@ private fun trailingLp(v: View): LinearLayout.LayoutParams = if (v is AuraSwitch
 
 private fun Context.titles(title: CharSequence?, subtitle: CharSequence?, live: AText? = null): LinearLayout = LinearLayout(this).apply {
     orientation = LinearLayout.VERTICAL
-    if (title != null) addView(label(Type.rowLabel, { Palette.ink }, lines = 2).apply { text = title })
+    // (line boxes 32 and 26 one under the other; a label's view is 1.5 em tall, which the margins take off)
+    if (title != null) addView(label(Type.rowLabel, { Palette.ink }, lines = 2).apply { text = title }, lp(MATCH, WRAP).apply { topMargin = -2; bottomMargin = -2 })
     val sub = live ?: if (subtitle.isNullOrEmpty()) null else label(Type.rowHint, { Palette.ink2 }, lines = 3).apply { text = subtitle }
-    if (sub != null) addView(sub, lp(MATCH, WRAP))
+    if (sub != null) addView(sub, lp(MATCH, WRAP).apply { topMargin = -2; bottomMargin = -2 })
 }
 
 /**
@@ -208,6 +209,19 @@ fun Context.valueChevron(text: CharSequence?): LinearLayout = LinearLayout(this)
     addView(chevron(), lp(24, 24).apply { marginStart = Space.M })
 }
 
+/** The state at a row's far end: a dot 12, `green` when [on] and `ink3` when not, and its word in `rowValue`. */
+fun Context.stateDot(text: CharSequence, on: Boolean): LinearLayout = LinearLayout(this).apply {
+    orientation = LinearLayout.HORIZONTAL
+    gravity = Gravity.CENTER_VERTICAL
+    addView(View(context).look {
+        background = android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.OVAL
+            setColor(if (on) Palette.green else Palette.ink3)
+        }
+    }, lp(12, 12))
+    addView(label(Type.rowValue, { Palette.ink2 }).apply { this.text = text }, lp(WRAP, Type.rowValue.viewH).apply { marginStart = Space.S })
+}
+
 /**
  * A row with a switch. The whole row is the switch's target: a tap anywhere on it flips it, and the switch shows the
  * press (its thumb stretches) whether the finger is on the switch or on the row's words, since the row passes its
@@ -228,23 +242,25 @@ fun Context.switchRow(icon: Int?, title: CharSequence, subtitle: CharSequence?, 
 
 /**
  * The slider's whole control, as Settings and Controls draw it: optional views at its two ends, the slider between them with its
- * track running edge to edge of the room left. [slider]'s own bounds are wider than its track, so that goes in negative margins.
+ * track running edge to edge of the room left, [gap] from them: 12 in a row of Settings, 18 in Controls. [slider]'s own bounds are wider than
+ * its track, so that goes in negative margins.
  */
-fun Context.sliderControl(slider: AuraSlider, start: View? = null, end: View? = null): LinearLayout = LinearLayout(this).apply {
+fun Context.sliderControl(slider: AuraSlider, start: View? = null, end: View? = null, gap: Int = Space.M): LinearLayout = LinearLayout(this).apply {
     orientation = LinearLayout.HORIZONTAL
     gravity = Gravity.CENTER_VERTICAL
-    if (start != null) addView(start, lp(WRAP, WRAP))
+    if (start != null) addView(start, start.layoutParams ?: lp(WRAP, WRAP))
     addView(slider, lp(0, AuraSlider.HEIGHT, 1f).apply {
-        marginStart = -AuraSlider.INSET + if (start != null) Space.M else 0
-        marginEnd = -AuraSlider.INSET + if (end != null) Space.M else 0
+        marginStart = -AuraSlider.INSET + if (start != null) gap else 0
+        marginEnd = -AuraSlider.INSET + if (end != null) gap else 0
     })
-    if (end != null) addView(end, lp(WRAP, WRAP))
+    if (end != null) addView(end, end.layoutParams ?: lp(WRAP, WRAP))
 }
 
 /** A slider inline with its title, its value before it in the reading order (the slider's own icons, if any, by [sliderControl]). */
 fun Context.sliderRow(title: CharSequence, slider: AuraSlider, valueView: AText): SettingRow {
     valueView.gravity = Gravity.CENTER
-    return controlRow(title, sliderControl(slider, start = FrameLayout(this).apply { addView(valueView, FrameLayout.LayoutParams(VALUE_W, Type.rowValue.viewH)) }))
+    valueView.layoutParams = lp(VALUE_W, Type.rowValue.viewH)
+    return controlRow(title, sliderControl(slider, start = valueView))
 }
 
 private const val VALUE_W = 34

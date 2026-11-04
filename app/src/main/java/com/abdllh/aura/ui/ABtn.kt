@@ -1,6 +1,6 @@
 package com.abdllh.aura.ui
 
-import android.animation.ValueAnimator
+
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -10,7 +10,7 @@ import android.graphics.drawable.LayerDrawable
 import android.util.AttributeSet
 import android.view.Gravity
 import android.view.MotionEvent
-import android.view.animation.LinearInterpolator
+
 import com.abdllh.aura.R
 
 /**
@@ -28,9 +28,9 @@ class ABtn @JvmOverloads constructor(
     /**
      * PRIMARY: the action (`btn-accent`). TONAL: a second choice beside it (`plate-20` in `fill2`). GHOST: cancel, dismiss (no
      * plate, `accentInk`). DANGER: a drastic choice offered beside others (`plate-18` in `redFill` with a 2 px ring). DANGER_FILLED:
-     * the one drastic action of a screen (`btn-decline`).
+     * the one drastic action of a screen (`btn-decline`). ANSWER: the call's Answer (`btn-answer-72`, [Size.CALL]).
      */
-    enum class Kind { PRIMARY, TONAL, GHOST, DANGER, DANGER_FILLED }
+    enum class Kind { PRIMARY, TONAL, GHOST, DANGER, DANGER_FILLED, ANSWER }
 
     /** M 60, L 84; ARRIVAL 76 and CALL 72 are the two other heights there are bitmaps for. */
     enum class Size(@JvmField val height: Int) { M(60), L(84), ARRIVAL(76), CALL(72) }
@@ -55,7 +55,16 @@ class ABtn @JvmOverloads constructor(
     private var iconPx = 26
     private val gap = 10
     private var spinnerAngle = 0f
-    private var spinner: ValueAnimator? = null
+    private var spinning = false
+    // (by a delayed post, 30 turns of the wheel a second: the label is drawn again each time, and an animator asks for a frame right after
+    // each frame, which on a slow frame leaves the main thread's other messages waiting behind the frames)
+    private val spinTick = object : Runnable {
+        override fun run() {
+            spinnerAngle = (spinnerAngle + 12f) % 360f
+            invalidate()
+            if (spinning) postDelayed(this, SPIN_MS)
+        }
+    }
     private val spinPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 3f; strokeCap = Paint.Cap.ROUND }
     private val spinRect = RectF()
 
@@ -80,7 +89,7 @@ class ABtn @JvmOverloads constructor(
     }
 
     private fun applyRole() {
-        textSize = role.sp
+        setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, role.sp)
         typeface = Fonts.of(role)
         applySlot()
     }
@@ -106,12 +115,10 @@ class ABtn @JvmOverloads constructor(
     }
 
     fun restyle() {
-        val small = plateFor(kind, size)
-        val d = context.getDrawable(small)!!.mutate()
         plate = null
         ring = null
         val bg: Drawable? = when (kind) {
-            Kind.PRIMARY, Kind.DANGER_FILLED -> d
+            Kind.PRIMARY, Kind.DANGER_FILLED, Kind.ANSWER -> context.getDrawable(plateFor(kind, size))!!
             Kind.TONAL -> Tint(context, R.drawable.plate_20) { Palette.fill2 }.also { plate = it }.drawable
             Kind.GHOST -> null
             Kind.DANGER -> {
@@ -131,7 +138,7 @@ class ABtn @JvmOverloads constructor(
     }
 
     private fun textToken(): Int = when (kind) {
-        Kind.PRIMARY, Kind.DANGER_FILLED -> Palette.onAccent
+        Kind.PRIMARY, Kind.DANGER_FILLED, Kind.ANSWER -> Palette.onAccent
         Kind.TONAL -> Palette.ink
         Kind.GHOST -> Palette.accentInk
         Kind.DANGER -> Palette.redInk
@@ -152,8 +159,17 @@ class ABtn @JvmOverloads constructor(
         alpha = if (enabled) 1f else 0.4f
     }
 
+    /** End is 58 high, a plate and a ring, which stretch: no gradient to kink. */
+    fun setHeightOverride(px: Int) {
+        heightOverride = px
+        requestLayout()
+    }
+
+    private var heightOverride = 0
+
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(size.height, MeasureSpec.EXACTLY))
+        val h = if (heightOverride > 0) heightOverride else size.height
+        super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(h, MeasureSpec.EXACTLY))
     }
 
     override fun onVisibilityAggregated(isVisible: Boolean) {
@@ -162,21 +178,18 @@ class ABtn @JvmOverloads constructor(
     }
 
     override fun onDetachedFromWindow() {
-        spinner?.cancel()
-        spinner = null
+        spinning = false
+        removeCallbacks(spinTick)
         gesture.reset()
         super.onDetachedFromWindow()
     }
 
     private fun spinning() {
         val want = loading && isAttachedToWindow && isShown
-        if (!want) { spinner?.cancel(); spinner = null; return }
-        if (spinner != null) return
-        spinner = ValueAnimator.ofFloat(0f, 360f).apply {
-            duration = 900; repeatCount = ValueAnimator.INFINITE; interpolator = LinearInterpolator()
-            addUpdateListener { spinnerAngle = it.animatedValue as Float; invalidate() }
-            start()
-        }
+        if (want == spinning) return
+        spinning = want
+        removeCallbacks(spinTick)
+        if (want) postDelayed(spinTick, SPIN_MS)
     }
 
     override fun onDraw(c: Canvas) {
@@ -219,8 +232,10 @@ class ABtn @JvmOverloads constructor(
     private companion object {
         const val SIDE = 24
         const val SPIN_PX = 24
+        const val SPIN_MS = 33L
 
         fun plateFor(kind: Kind, size: Size): Int = when (kind) {
+            Kind.ANSWER -> R.drawable.btn_answer_72
             Kind.DANGER_FILLED -> when (size) {
                 Size.L -> R.drawable.btn_decline_84
                 Size.CALL -> R.drawable.btn_decline_72

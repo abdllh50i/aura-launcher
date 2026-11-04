@@ -30,6 +30,9 @@ object ThemeSwap {
     private const val TAG = "AuraTheme"
     private const val HOLD_MAX_MS = 120_000L
 
+    /** A turn nearer than this: the theme waits ([holdOff]). */
+    const val NEAR_TURN_M = 300.0
+
     /** Before a flip: `step(night, done)`; `done` is called from any thread once what that theme needs is in memory. */
     val readySteps = ArrayList<(Boolean, () -> Unit) -> Unit>()
 

@@ -49,8 +49,10 @@ object Plates {
 }
 
 /**
- * Bitmaps that are not 9-patches, decoded [Bitmap.Config.HARDWARE] where no software Canvas reads them. assets/surfaces is for
- * what must stay out of aapt2's recompression. Kept here while a screen wants them, at most one theme's in the GPU at rest.
+ * Bitmaps that are not 9-patches. The big ones of assets/surfaces (the room, the dock, the capsules; kept out of aapt2's recompression) are
+ * decoded [Bitmap.Config.HARDWARE], so they are not held twice, kept here while a screen wants them, at most one theme's at rest. The small
+ * ones of res ([res]) are ordinary bitmaps: a hardware bitmap costs a buffer of its own and a trip through a GL context of the uploader's, on the
+ * calling thread, to save 10 KB (one second each on the emulator, with several running; a page of 16 held its first frame for 17 s).
  */
 object Surfaces {
     private val kept = HashMap<String, Bitmap>()
@@ -66,14 +68,12 @@ object Surfaces {
     /** What a software Canvas must read ([com.abdllh.aura.music.Backdrop]'s masks and frames). Not kept. */
     fun software(ctx: Context, name: String): Bitmap? = decodeAsset(ctx, name, hardware = false)
 
-    /** A plain bitmap of res/drawable-nodpi (tile_music, scrim_top_night...), decoded for the GPU. */
+    /** A plain bitmap of res/drawable-nodpi (tile_music, scrim_top_night...), one per file, kept. */
     @Synchronized
     fun res(ctx: Context, id: Int): Bitmap? {
         val key = "res:$id"
         kept[key]?.let { return it }
-        val o = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.HARDWARE; inScaled = false }
-        val b = try { BitmapFactory.decodeResource(ctx.resources, id, o) } catch (_: Throwable) { null }
-            ?: try { BitmapFactory.decodeResource(ctx.resources, id, BitmapFactory.Options().apply { inScaled = false }) } catch (_: Throwable) { null }
+        val b = try { BitmapFactory.decodeResource(ctx.resources, id, BitmapFactory.Options().apply { inScaled = false }) } catch (_: Throwable) { null }
         if (b != null) kept[key] = b
         return b
     }
@@ -208,6 +208,29 @@ fun Context.surfaceImage(stem: String): ImageView = ImageView(this).apply {
 fun Context.surfaceImage(night: Int, day: Int): ImageView = ImageView(this).apply {
     scaleType = ImageView.ScaleType.FIT_XY
     look { setImageBitmap(Surfaces.res(context, if (Palette.dark) night else day)) }
+}
+
+/**
+ * A scrolling list's edge inside a card or an overlay (SPEC.md section 4): the baked fade stretched sideways, in the surface's own
+ * colour, so no saveLayer. Lay it over the list's first or last 28 px, with the list inset 8 from the surface's edge: a rect so inset is
+ * inside the corner, and the fade cannot poke out of it (the mockups' fade has rounded corners of its own, which a bitmap cannot have).
+ */
+fun Context.scrollFade(surface: Surface, top: Boolean): ImageView {
+    val overlay = surface == Surface.OVERLAY
+    return surfaceImage(
+        when {
+            overlay && top -> R.drawable.fade_overlay_top_night
+            overlay -> R.drawable.fade_overlay_bot_night
+            top -> R.drawable.fade_card_top_night
+            else -> R.drawable.fade_card_bot_night
+        },
+        when {
+            overlay && top -> R.drawable.fade_overlay_top_day
+            overlay -> R.drawable.fade_overlay_bot_day
+            top -> R.drawable.fade_card_top_day
+            else -> R.drawable.fade_card_bot_day
+        }
+    )
 }
 
 /** Whether a drawable is a real 9-patch once it is out of aapt2: its guides were kept (the gallery checks). */

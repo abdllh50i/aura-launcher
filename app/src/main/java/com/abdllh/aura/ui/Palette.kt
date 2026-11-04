@@ -36,6 +36,7 @@ object Palette : ColorTokens() {
     @JvmField var danger = 0
     @JvmField var accentFg = 0
 
+    /** The one accent. */
     val DEFAULT_ACCENT = Tokens2.NIGHT.accent
 
     /** What Settings' swatches offer until that page is rebuilt: the one accent. */
