@@ -40,8 +40,11 @@ class TripVerdictTest {
 
     @Test fun nextToThePlaceHeIsThere() {
         assertEquals(Verdict.ARRIVED, sameBoot(5_000L, toDest = 150.0))
-        assertEquals(Verdict.ARRIVED, afterPowerOff(5 * min, toDest = 290.0))
-        assertEquals(Verdict.RESUME, afterPowerOff(5 * min, toDest = 310.0))
+        assertEquals(Verdict.RESUME, sameBoot(5_000L, toDest = 310.0))
+        // (after a power-off he has parked: a pin 350 m from where he stands is where he was going)
+        assertEquals(Verdict.ARRIVED, afterPowerOff(5 * min, toDest = 350.0))
+        assertEquals(Verdict.ARRIVED, afterPowerOff(5 * min, toDest = 990.0))
+        assertEquals(Verdict.RESUME, afterPowerOff(5 * min, toDest = 1010.0))
     }
 
     @Test fun aCarFarFromWhereItStoppedIsAnotherStory() {

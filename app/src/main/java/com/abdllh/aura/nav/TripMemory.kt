@@ -8,7 +8,12 @@ import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import com.abdllh.aura.BuildConfig
+import com.abdllh.aura.R
+import com.abdllh.aura.link.TripCard
+import com.abdllh.aura.phone.Calls
+import com.abdllh.aura.util.LocaleHelper
 import com.abdllh.aura.util.Prefs
+import com.abdllh.aura.voice.Amri
 import org.json.JSONObject
 import java.io.File
 
@@ -16,7 +21,9 @@ import java.io.File
  * The trip being driven, kept on disk so that it outlives the process: an update installed on the way, a crash, and (the
  * owner powers the unit off with the car) a fuel stop. Written when a trip starts and once a minute while it runs, gone when
  * it ends. At the next start of the process [resume] brings it back with a new route from where the car is then, if
- * [TripRule] agrees it is still the same drive, and says what it did in Settings → About ([NavNote]).
+ * [TripRule] agrees it is still the same drive, and says what it did in Settings → About ([NavNote]). In the same boot (an
+ * update, a crash) the trip just goes on. After a power-off the car has been parked: it may well be the end of the drive, so
+ * the card asks first ([ASK_MS], no answer is no), and nothing is said until he answers yes.
  *
  * It may never get in the way: nothing runs when nothing is kept; any failure leaves no trip; and a kept trip that takes the
  * process down is tried twice ([MAX_TRIES]) and then dropped, so it cannot walk the home screen into the crash guard.
@@ -29,6 +36,8 @@ internal object TripMemory {
     private const val WAIT_FIX_MS = 4 * 60_000L
     private const val ROUTE_TRIES = 3
     private const val ROUTE_RETRY_MS = 20_000L
+    /** How long the card asks whether to go on. */
+    private const val ASK_MS = 15_000L
 
     const val MAX_TRIES = 2
 
@@ -96,6 +105,7 @@ internal object TripMemory {
     // ------------------------------------------------------------------------------------------ at the process's start
     private val main = Handler(Looper.getMainLooper())
     private var resuming = false
+    private var asking = false
     private var handingOver = false
     private var listener: ((Location) -> Unit)? = null
 
@@ -136,6 +146,11 @@ internal object TripMemory {
 
     private fun onFix(c: Context, k: Kept, sameBoot: Boolean, fix: Location) {
         if (listener == null) return
+        // (nothing over the camera or a call's card: it goes, and the next fix after them looks and asks again)
+        if (asking) {
+            if (blocked()) { asking = false; TripCard.hide() }
+            return
+        }
         // (a last-known position is no news of where the car is now; after a power-off only GPS's own clock is true)
         val age = (SystemClock.elapsedRealtimeNanos() - fix.elapsedRealtimeNanos) / 1_000_000L
         if (age > 60_000L) return
@@ -145,10 +160,42 @@ internal object TripMemory {
             k.pos?.let { Geo.distance(here, it) } ?: 0.0)
         Log.i(TAG, "kept trip to '${k.dest.name}': $v")
         if (v != TripRule.Verdict.RESUME) { giveUp(v.name.lowercase()); return }
+        if (!sameBoot) {
+            if (!blocked()) ask(c, k)
+            return
+        }
+        go(c, k, true, fix)
+    }
+
+    private fun go(c: Context, k: Kept, sameBoot: Boolean, fix: Location) {
         stopWaiting()
         val moving = fix.hasBearing() && fix.hasSpeed() && fix.speed > 2f
-        askRoute(c, k, sameBoot, here, if (moving) fix.bearing.toDouble() else null, ROUTE_TRIES)
+        askRoute(c, k, sameBoot, LatLon(fix.latitude, fix.longitude), if (moving) fix.bearing.toDouble() else null, ROUTE_TRIES)
     }
+
+    private fun blocked() = Amri.reversing || Amri.inCall || Calls.busy
+
+    /** After a power-off: does he want to go on? The fixes go on coming, so what he says starts from where the car is by then. */
+    private fun ask(c: Context, k: Kept) {
+        val w = LocaleHelper.wrap(c)
+        asking = true
+        val shown = TripCard.show(c, w.getString(R.string.trip_resume_caption), w.getString(R.string.trip_resume_q, k.dest.name), null, listOf(
+            TripCard.Action(w.getString(R.string.trip_resume_yes), true) {
+                if (asking) {
+                    asking = false
+                    val fix = CarLocation.last
+                    if (fix == null) giveUp("no fix") else go(c, k, false, fix)
+                }
+            },
+            TripCard.Action(w.getString(R.string.link_no), false) { if (asking) { asking = false; giveUp("declined") } }
+        ), ASK_MS) { if (asking) { asking = false; giveUp("no answer") } }
+        if (!shown) { asking = false; giveUp("no card to ask with"); return }
+        // (another card may have taken the card's place, and with it its time: this ends the question all the same)
+        main.removeCallbacks(askOver)
+        main.postDelayed(askOver, ASK_MS + 2_000L)
+    }
+
+    private val askOver = Runnable { if (asking) { asking = false; giveUp("no answer") } }
 
     private fun askRoute(c: Context, k: Kept, sameBoot: Boolean, here: LatLon, heading: Double?, tries: Int) {
         Router.route(here, k.dest.pos, heading) { r, err ->
@@ -181,6 +228,8 @@ internal object TripMemory {
 
     private fun finish() {
         stopWaiting()
+        main.removeCallbacks(askOver)
+        if (asking) { asking = false; TripCard.hide() }
         resuming = false
         CarLocation.release(HOLDER)
     }
@@ -198,6 +247,13 @@ internal object TripMemory {
         if (resuming) finish()
     }
 
+    /** The phone's or the voice's "stop" while a kept trip is on its way back: it does not come. True when one was. */
+    fun dropResume(by: String): Boolean {
+        if (!resuming) return false
+        giveUp("stopped by $by")
+        return true
+    }
+
     private const val HOLDER = "resume"
 }
 
@@ -207,6 +263,8 @@ internal object TripRule {
     const val RESUME_WITHIN_MS = 30 * 60_000L
     /** So close to the place, he is there: parked before the arrival was noticed. */
     const val THERE_M = 300.0
+    /** The same after a power-off: he has parked, and the place's pin is rarely where the car ends up. */
+    const val THERE_PARKED_M = 1000.0
     /** The unit was off, so the car stood: a fix this far from where it stopped is a wrong fix, or it was towed. */
     const val STOOD_M = 3000.0
 
@@ -223,7 +281,7 @@ internal object TripRule {
             !sameBoot && age < -2 * 60_000L -> Verdict.WRONG_TIME
             sameBoot && age < 0 -> Verdict.WRONG_TIME
             age > RESUME_WITHIN_MS -> Verdict.TOO_OLD
-            toDest < THERE_M -> Verdict.ARRIVED
+            toDest < (if (sameBoot) THERE_M else THERE_PARKED_M) -> Verdict.ARRIVED
             !sameBoot && fromKept > STOOD_M -> Verdict.MOVED
             else -> Verdict.RESUME
         }

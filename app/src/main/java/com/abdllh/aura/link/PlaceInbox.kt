@@ -363,6 +363,7 @@ internal object PlaceInbox {
         onMap = null
         if (Trips.attempt != null) { Trips.cancel(by); did = true }
         if (NavSession.state != NavSession.State.IDLE) { NavSession.stop(); did = true }
+        if (com.abdllh.aura.nav.TripMemory.dropResume(by)) did = true // (a kept trip still waiting for its fix or its card)
         return did
     }
 
