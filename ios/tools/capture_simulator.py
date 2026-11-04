@@ -44,13 +44,14 @@ def launch(udid, screen, language):
 def shoot(udid, screen, language, suffix=""):
     launch(udid, screen, language)
     # The map's tiles take a moment; the screens over the panel take a little longer to come up.
-    time.sleep(5 if not screen.startswith("share-") else 2.5)
+    time.sleep(4 if not screen.startswith("share-") else 2)
     name = f"{language}{suffix}-{screen}.png"
     run("xcrun", "simctl", "io", udid, "screenshot", "--type=png", str(OUT / name))
 
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
+    Path("evidence").mkdir(exist_ok=True)
     device = pick_device()
     udid = device["udid"]
     Path("evidence/simulator-udid.txt").write_text(udid)
@@ -64,6 +65,9 @@ def main():
     run("xcrun", "simctl", "install", udid, APP)
     run("xcrun", "simctl", "privacy", udid, "grant", "location", BUNDLE)
     run("xcrun", "simctl", "ui", udid, "appearance", "light")
+    if "--boot-only" in sys.argv:
+        print("Booted", device["name"], udid)
+        return
     # The first start is slow while the system prepares the app, and the map's tiles load.
     launch(udid, "home", "ar")
     time.sleep(12)

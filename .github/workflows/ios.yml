@@ -1,5 +1,5 @@
 # The iPhone app عمري, in ios/. No tags and no releases from here: the car's updater reads this repo's releases. The IPA
-# is an artifact of the run.
+# is an artifact of the run. Four jobs side by side, so the slow pictures hold up nothing else.
 name: Amri iPhone
 on:
   push:
@@ -38,10 +38,10 @@ jobs:
           path: kit-tests.txt
           retention-days: 7
 
-  app:
-    name: The app, its IPA, screens and UI tests
+  ipa:
+    name: The IPA
     runs-on: macos-26
-    timeout-minutes: 60
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: ios
@@ -51,18 +51,14 @@ jobs:
           sparse-checkout: ios
           filter: blob:none
           fetch-depth: 1
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Install XcodeGen
-        run: brew install xcodegen
       - name: Every Arabic string has its English
         run: python3 tools/check_strings.py
       - name: Generate project
-        run: xcodegen generate
+        run: |
+          brew install xcodegen
+          xcodegen generate
       - name: Build iPhone application
         run: |
-          set -o pipefail
           mkdir -p evidence
           xcodebuild -project Amri.xcodeproj -scheme Amri -configuration Release \
             -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath DerivedData \
@@ -78,14 +74,32 @@ jobs:
             ios/Amri-unsigned.ipa
             ios/Amri-nogroup-unsigned.ipa
           retention-days: 30
+
+  screens:
+    name: Every screen, Arabic first
+    runs-on: macos-26
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: ios
+          filter: blob:none
+          fetch-depth: 1
+      - name: Generate project
+        run: |
+          brew install xcodegen
+          xcodegen generate
       - name: Build for the simulator
         run: |
-          set -o pipefail
+          mkdir -p evidence
           xcodebuild -project Amri.xcodeproj -scheme Amri -configuration Debug \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO build-for-testing 2>&1 \
+            -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO build 2>&1 \
             | tee evidence/simulator-build.txt | grep -E 'error:|BUILD |\*\* ' || true
-          grep -q 'SUCCEEDED' evidence/simulator-build.txt
+          grep -q 'BUILD SUCCEEDED' evidence/simulator-build.txt
       - name: Capture every screen
         run: python3 tools/capture_simulator.py
       - uses: actions/upload-artifact@v4
@@ -94,17 +108,46 @@ jobs:
           name: Amri-screens
           path: ios/evidence/screens/
           retention-days: 14
+
+  flows:
+    name: UI tests against the fake unit, in Arabic
+    runs-on: macos-26
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: ios
+          filter: blob:none
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Generate project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+      - name: Build for testing
+        run: |
+          mkdir -p evidence
+          xcodebuild -project Amri.xcodeproj -scheme Amri -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO build-for-testing 2>&1 \
+            | tee evidence/simulator-build.txt | grep -E 'error:|BUILD |\*\* ' || true
+          grep -q 'SUCCEEDED' evidence/simulator-build.txt
+      - name: Boot the simulator and install
+        run: python3 tools/capture_simulator.py --boot-only
       - name: Start the fake unit
         run: |
           node tools/fake_unit.mjs --port 47101 --adb 15555:K2501 --adb "15556:Pixel 7" --route-delay 1500 --progress-ms 3000 --eta 9:41 > evidence/fake-unit.txt 2>&1 &
           echo "127.0.0.1:47101" > /tmp/amri-fake-unit
           sleep 1
           curl -s http://127.0.0.1:47101/v1/ping
-      - name: UI tests against the fake unit, in Arabic
+      - name: UI tests
         run: |
-          set -o pipefail
           UDID=$(cat evidence/simulator-udid.txt)
-          xcrun simctl terminate "$UDID" com.abdllh.amri || true
           xcodebuild -project Amri.xcodeproj -scheme Amri -configuration Debug \
             -destination "platform=iOS Simulator,id=$UDID" -derivedDataPath DerivedData \
             -resultBundlePath evidence/Flows.xcresult -only-testing:AmriUITests/AmriFlowUITests \
@@ -149,9 +192,3 @@ jobs:
             ios/evidence/flow/
             ios/evidence/*.txt
           retention-days: 14
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: Amri-xcresult
-          path: ios/evidence/*.xcresult
-          retention-days: 5

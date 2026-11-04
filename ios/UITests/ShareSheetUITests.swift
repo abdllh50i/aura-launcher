@@ -16,15 +16,19 @@ final class ShareSheetUITests: XCTestCase {
         XCTAssertTrue(button.waitForExistence(timeout: 15))
         button.tap()
 
-        let sheet = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        let name = "إرسال للسيارة"
-        var entry = app.descendants(matching: .any)[name].firstMatch
-        if !entry.waitForExistence(timeout: 8) {
-            entry = sheet.descendants(matching: .any)[name].firstMatch
-        }
+        // The sheet's row is drawn by the system, in the system's language: it may show the app's name or the extension's.
+        RunLoop.current.run(until: Date().addingTimeInterval(3))
         attach(app, "share-sheet")
-        if !entry.waitForExistence(timeout: 5) {
-            // It may be behind "More".
+        let names = ["إرسال للسيارة", "Send to Car", "عمري", "Amri"]
+        var entry: XCUIElement?
+        for name in names {
+            let candidate = app.descendants(matching: .any)[name].firstMatch
+            if candidate.waitForExistence(timeout: 2) {
+                entry = candidate
+                break
+            }
+        }
+        if entry == nil {
             for more in ["المزيد", "More"] {
                 let key = app.descendants(matching: .any)[more].firstMatch
                 if key.exists {
@@ -32,10 +36,19 @@ final class ShareSheetUITests: XCTestCase {
                     break
                 }
             }
-            entry = app.descendants(matching: .any)[name].firstMatch
+            RunLoop.current.run(until: Date().addingTimeInterval(2))
             attach(app, "share-sheet-more")
+            for name in names {
+                let candidate = app.descendants(matching: .any)[name].firstMatch
+                if candidate.waitForExistence(timeout: 2) {
+                    entry = candidate
+                    break
+                }
+            }
         }
-        XCTAssertTrue(entry.waitForExistence(timeout: 10), "the extension is not in the share sheet: \(app.debugDescription)")
+        guard let entry else {
+            return XCTFail("the extension is not in the share sheet: \(app.debugDescription)")
+        }
         entry.tap()
 
         // A paired-less send: the stand-in takes it from the gateway and shows a card.
