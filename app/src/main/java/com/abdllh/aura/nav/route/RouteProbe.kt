@@ -217,7 +217,7 @@ internal object RouteProbe {
         }
         r.put("finished", true)
         save(c, r)
-        try { work(c).deleteRecursively() } catch (_: Throwable) { }
+        try { work(c).deleteRecursively(); File(c.filesDir, "probe").deleteRecursively() } catch (_: Throwable) { }
         doneFile(c).writeText("")
     }
 
