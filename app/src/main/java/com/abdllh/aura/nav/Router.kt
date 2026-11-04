@@ -6,7 +6,6 @@ import com.abdllh.aura.BuildConfig
 import com.abdllh.aura.system.SystemProps
 import org.json.JSONObject
 import java.util.Locale
-import java.util.concurrent.Executors
 
 /** One lane where a manoeuvre is (OSRM): the arrows painted on it, and whether it leads the route's way. */
 class Lane(val indications: List<String>, val valid: Boolean, val validIndication: String)
@@ -72,16 +71,17 @@ class Route(val line: Polyline, val steps: List<Step>, val distance: Double, val
 }
 
 /**
- * Driving directions: the public OSRM server (OpenStreetMap data, with road names) and, where the offline map has
- * routing data, BRouter on the unit ([com.abdllh.aura.nav.offline.OfflineRouter]) at the same time. OSRM's route is
- * taken when it comes within [ONLINE_HEAD_START_MS]; else the offline one, so a route shows at once also without
- * internet or with a hotspot that stopped passing traffic (where OSRM would only time out). OSRM's answer coming later
- * still is kept on the route taken ([Route.better]): a slow hotspot must not mean nameless guidance for the whole trip.
+ * Driving directions, one router after another ([com.abdllh.aura.nav.route.RouteChain]): Valhalla over the pack, BRouter on
+ * the unit, the public OSRM server abroad or as the last try. No race and no head start: the local route is the route. So
+ * [Route.better] is never set any more (the screens still read it until the shell's move is in).
  */
 object Router {
-    private const val ONLINE_HEAD_START_MS = 2500L
-    private val io = Executors.newSingleThreadExecutor()
-    private val offlineIo = Executors.newSingleThreadExecutor()
+    /**
+     * What [route]'s `done` hears for its reason when another request took the engine (a newer one ends the wait for the older):
+     * no answer yet, not "no route". The caller asks again through [afterOthers]; it spends no try and shows no failure.
+     */
+    const val NO_ANSWER_YET = "a newer request"
+    private const val AFTER_OTHERS_MS = 400L
     private val main = Handler(Looper.getMainLooper())
 
     /** Debug builds: another OSRM (a stand-in on the PC: setprop debug.aura.osrm http://10.0.2.2:5000). */
@@ -93,57 +93,20 @@ object Router {
     /** [heading] (degrees) helps the router start in the direction the car is already moving. */
     fun route(from: LatLon, to: LatLon, heading: Double?, whenFound: (Route?, String?) -> Unit) {
         val asked = android.os.SystemClock.elapsedRealtime()
-        val done = { r: Route?, e: String? ->
-            com.abdllh.aura.diag.TripRecorder.route("route", android.os.SystemClock.elapsedRealtime() - asked, r != null) // (only while it records)
+        com.abdllh.aura.nav.route.RouteChain.route(from, to, heading) { r, e ->
+            if (e != NO_ANSWER_YET) com.abdllh.aura.diag.TripRecorder.route("route", android.os.SystemClock.elapsedRealtime() - asked, r != null) // (only while it records)
             whenFound(r, e)
         }
-        // 2.0's order, Valhalla first, while it is tried out (a preference, off by default: nav/route/RouteChain.kt)
-        if (com.abdllh.aura.nav.route.RouteChain.on) { com.abdllh.aura.nav.route.RouteChain.route(from, to, heading, done); return }
-        val ctx = com.abdllh.aura.nav.offline.OfflineMaps.context
-        val offline = ctx != null && com.abdllh.aura.nav.offline.OfflineRouter.canRoute(ctx, from, to)
-        if (!offline) {
-            io.execute { val (r, err) = online(from, to, heading); main.post { done(r, err) } }
-            return
-        }
-        // both, on the main thread from here: the first good answer within the rules above is the one
-        var delivered = false
-        var onlineDone = false
-        var onlineRoute: Route? = null
-        var onlineErr: String? = null
-        var offlineDone = false
-        var offlineRoute: Route? = null
-        var headStartOver = false
-        var taken: Route? = null
-        fun decide() {
-            // (the limits are in BRouter's answer alone: they go with whichever route is driven, also one already delivered)
-            val on = onlineRoute
-            val off = offlineRoute
-            if (on != null && off != null && on.limits == null) on.limits = off.limits
-            if (delivered) {
-                // BRouter's was taken after OSRM's head start, and OSRM has answered after all
-                if (on != null && off != null && on !== taken && off === taken) off.better = on
-                if (onlineDone) android.util.Log.i("AuraNav", "OSRM after the head start: ${if (on != null) "kept" else "no route ($onlineErr)"}")
-                return
-            }
-            val r: Route? = when {
-                onlineDone && onlineRoute != null -> onlineRoute
-                offlineDone && offlineRoute != null && (headStartOver || onlineDone) -> offlineRoute
-                onlineDone && offlineDone -> null
-                else -> return
-            }
-            delivered = true
-            taken = r
-            done(r, if (r == null) onlineErr else null)
-        }
-        io.execute {
-            val (r, err) = online(from, to, heading)
-            main.post { onlineDone = true; onlineRoute = r; onlineErr = err; decide() }
-        }
-        offlineIo.execute {
-            val r = com.abdllh.aura.nav.offline.OfflineRouter.route(ctx!!, from, to, heading)
-            main.post { offlineDone = true; offlineRoute = r; decide() }
-        }
-        main.postDelayed({ headStartOver = true; decide() }, ONLINE_HEAD_START_MS)
+    }
+
+    /**
+     * After [NO_ANSWER_YET]: [again] runs on the main thread once nobody is waiting for a route. Asked again at once, two askers would
+     * end each other's wait for good on a unit where a route takes longer than the pause between them.
+     */
+    fun afterOthers(again: () -> Unit) {
+        main.postDelayed(object : Runnable {
+            override fun run() { if (com.abdllh.aura.nav.route.RouteChain.asking) main.postDelayed(this, AFTER_OTHERS_MS) else again() }
+        }, AFTER_OTHERS_MS)
     }
 
     internal fun online(from: LatLon, to: LatLon, heading: Double?): Pair<Route?, String?> = try {

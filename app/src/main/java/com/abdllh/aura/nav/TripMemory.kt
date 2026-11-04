@@ -213,6 +213,8 @@ internal object TripMemory {
                 } finally {
                     handingOver = false
                 }
+                // (another asker took the engine: no answer yet, and no try spent)
+                err == Router.NO_ANSWER_YET -> Router.afterOthers { if (resuming) askRoute(c, k, sameBoot, CarLocation.last?.let { LatLon(it.latitude, it.longitude) } ?: here, heading, tries) }
                 // (from where the car is by then: it may be driving)
                 tries > 1 -> main.postDelayed({ if (resuming) askRoute(c, k, sameBoot, CarLocation.last?.let { LatLon(it.latitude, it.longitude) } ?: here, heading, tries - 1) }, ROUTE_RETRY_MS)
                 else -> giveUp("no route: $err")

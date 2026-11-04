@@ -32,7 +32,7 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 object PlaceSearch {
     private const val TAG = "AuraPlaces"
-    /** The test's way to drive today's search box over this engine ([com.abdllh.aura.nav.Places]). */
+    /** Today's search box over this engine ([com.abdllh.aura.nav.Places]). On; a debug build can say off, to see the old road. */
     const val PREF_SWAP = "placesEngine"
     /** While typing (SEARCH_SPEC.md section 7). */
     private const val DEBOUNCE_MS = 250L
@@ -83,8 +83,8 @@ object PlaceSearch {
         return l(c) ?: File(File(c.filesDir, "maps2"), "no-pack-holds-places.db")
     }
 
-    /** The preference, default off. */
-    val swapOn: Boolean get() = try { Prefs.raw.getBoolean(PREF_SWAP, false) } catch (_: Throwable) { false }
+    /** The preference, default on. */
+    val swapOn: Boolean get() = try { Prefs.raw.getBoolean(PREF_SWAP, true) } catch (_: Throwable) { true }
 
     /** The answer to a search. [hits] empty and [status] usable: nothing found. Not usable: the file could not be used, and [status] says why. */
     class Answer internal constructor(val hits: List<PlaceHit>, val status: PlacesStatus) {
@@ -210,6 +210,16 @@ object PlaceSearch {
             }
             used()
             main.post { if (gen == generation.get()) done(a) }
+        }
+    }
+
+    /** A search for someone other than the search field (the voice, the phone, a saved address): it stops nothing and nothing stops it. */
+    fun lookup(query: String, near: LatLon?, limit: Int = 12, done: (Answer) -> Unit) {
+        io.execute {
+            val hits = try { guarded(emptyList<PlaceHit>()) { it.search(query, near, limit, null) } } catch (t: Throwable) { Log.w(TAG, "$t"); emptyList() }
+            val a = Answer(hits, status)
+            used()
+            main.post { done(a) }
         }
     }
 

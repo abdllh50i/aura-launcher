@@ -105,6 +105,7 @@ class MapsActivity : Activity() {
     private var selected: Place? = null
     private var preview: Route? = null
     private var routing = false
+    private var routeAsk = 0
     private val arabic get() = Locale.getDefault().language == "ar"
     private val rtl get() = resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL
     private var searchRunnable: Runnable? = null
@@ -697,7 +698,19 @@ class MapsActivity : Activity() {
         if (car == null) { routeStatus(getString(R.string.maps_waiting_gps)); return }
         routing = true
         routeStatus(getString(R.string.maps_routing))
-        Router.route(LatLon(car.latitude, car.longitude), p.pos, if (car.hasBearing() && car.speed > 2) car.bearing.toDouble() else null) { r, _ ->
+        val ask = ++routeAsk
+        Router.route(LatLon(car.latitude, car.longitude), p.pos, if (car.hasBearing() && car.speed > 2) car.bearing.toDouble() else null) { r, err ->
+            if (ask != routeAsk) return@route // (this screen has asked again: the newer one's answer is the one, and it is still routing)
+            // (another asker took the engine: no answer yet, not a failure)
+            if (err == Router.NO_ANSWER_YET) {
+                Router.afterOthers {
+                    if (ask == routeAsk) {
+                        routing = false
+                        if (!isDestroyed && selected?.pos == p.pos && preview == null && following == null && NavSession.state == NavSession.State.IDLE) requestRoute()
+                    }
+                }
+                return@route
+            }
             routing = false
             // (the same spot: a dropped pin is replaced by its named place while the route is on its way)
             if (isDestroyed || selected?.pos != p.pos) return@route

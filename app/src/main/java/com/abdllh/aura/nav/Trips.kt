@@ -120,10 +120,16 @@ object Trips {
         main.removeCallbacks(tooLong)
         main.postDelayed(tooLong, ROUTE_WAIT_MS)
         changed()
+        ask(c, a, from, heading)
+    }
+
+    private fun ask(c: Context, a: Attempt, from: LatLon, heading: Double?) {
         Router.route(from, a.place.pos, heading) { r, err ->
             if (attempt !== a) return@route // cancelled or replaced meanwhile
             when {
                 !a.wanted() -> finish(a, Outcome.DROPPED, "not wanted")
+                // (another asker took the engine: no answer yet, and [tooLong] still stands over it)
+                err == Router.NO_ANSWER_YET -> Router.afterOthers { if (attempt === a) ask(c, a, from, heading) }
                 r == null -> finish(a, Outcome.FAILED, err ?: "no_route")
                 else -> try {
                     start(c, a.place, r, a.source, a.remember)

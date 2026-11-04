@@ -70,6 +70,7 @@ object NavSession {
     private const val BETTER_CLEAR_S = 30.0
     private const val BETTER_CLEAR_MIN_M = 300.0
     private const val BETTER_CLEAR_MAX_M = 1500.0
+    private const val NO_ANSWER_RETRY_MS = 2000L
 
     private var app: Context? = null
     private val main = Handler(Looper.getMainLooper())
@@ -349,11 +350,13 @@ object NavSession {
         val t = trip
         val moving = l.hasSpeed() && l.speed > 2f // a heading at walking pace is noise: it could pick the wrong road
         val asked = SystemClock.elapsedRealtime()
-        Router.route(here, dest.pos, if (l.hasBearing() && moving) l.bearing.toDouble() else null) { nr, _ ->
-            com.abdllh.aura.diag.TripRecorder.route("reroute", SystemClock.elapsedRealtime() - asked, nr != null) // (only while it records)
+        Router.route(here, dest.pos, if (l.hasBearing() && moving) l.bearing.toDouble() else null) { nr, err ->
+            if (err != Router.NO_ANSWER_YET) com.abdllh.aura.diag.TripRecorder.route("reroute", SystemClock.elapsedRealtime() - asked, nr != null) // (only while it records)
             if (t != trip) return@route // that trip has ended (or another one started)
             rerouting = false
             if (state != State.NAVIGATING) return@route
+            // (another asker took the engine: no answer yet, so a fix in a moment asks again, without the pause of a failure)
+            if (err == Router.NO_ANSWER_YET) nextRerouteAt = SystemClock.elapsedRealtime() + NO_ANSWER_RETRY_MS
             if (nr != null) {
                 route = nr
                 lastSeg = 0

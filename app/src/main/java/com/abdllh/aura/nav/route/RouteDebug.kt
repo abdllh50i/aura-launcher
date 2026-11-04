@@ -17,8 +17,7 @@ import java.io.File
 
 /**
  * Debug builds only (`am broadcast -a com.abdllh.aura.debug.ROUTE`), tools/mapbuild/tests/app_route_check.py drives it:
- *   --ez valhalla true|false              the preference: Router.route over RouteChain
- *   --ez guide true|false                 the preference: the guidance part's words for routes from the pack
+ *   --ez guide true|false                 the preference (on by default): the guidance part's words for routes from the pack
  *   --ez avoid_haram true|false           the preference: go round the Haram of Makkah, on every route (the ring from places.db)
  *   --es tar <path>                       another route.tar
  *   --es ask lat,lon,lat,lon[,heading]    one request through RouteClient: files/diag/route-ask.json, steps and all
@@ -51,7 +50,6 @@ internal object RouteDebug {
     }
 
     private fun handle(c: Context, i: Intent) {
-        if (i.hasExtra("valhalla")) { RouteChain.on = i.getBooleanExtra("valhalla", false); Log.i(TAG, "valhalla ${RouteChain.on}") }
         if (i.hasExtra("guide")) { RouteChain.guideOn = i.getBooleanExtra("guide", false); Log.i(TAG, "guide ${RouteChain.guideOn}") }
         if (i.hasExtra("avoid_haram")) { RouteChain.avoidHaramOn = i.getBooleanExtra("avoid_haram", false); Log.i(TAG, "avoid haram ${RouteChain.avoidHaramOn}") }
         i.getStringExtra("tar")?.let { RoutePack.tar = File(it); Log.i(TAG, "tar $it") }
@@ -59,7 +57,7 @@ internal object RouteDebug {
         if (i.hasExtra("idle_ms")) RouteClient.idleMs = i.getLongExtra("idle_ms", RouteClient.idleMs)
         if (i.getBooleanExtra("guard_reset", false)) RouteGuard.reset(c)
         if (i.getBooleanExtra("guard", false)) {
-            Log.i(TAG, "guard: ${RouteGuard.status(c)}; client: ${RouteClient.describe()}; pref ${RouteChain.on}")
+            Log.i(TAG, "guard: ${RouteGuard.status(c)}; client: ${RouteClient.describe()}")
             for (l in RouteGuard.logText(c).lines().takeLast(30)) Log.i(TAG, "guard log: $l")
         }
         i.getStringExtra("ask")?.let { s ->

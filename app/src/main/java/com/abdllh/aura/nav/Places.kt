@@ -3,6 +3,10 @@ package com.abdllh.aura.nav
 import android.os.Handler
 import android.os.Looper
 import com.abdllh.aura.BuildConfig
+import com.abdllh.aura.nav.places.PlaceHit
+import com.abdllh.aura.nav.places.PlaceSearch
+import com.abdllh.aura.nav.places.ReverseHit
+import com.abdllh.aura.nav.route.RouteChain
 import com.abdllh.aura.util.Prefs
 import com.abdllh.aura.util.TextMatch
 import org.json.JSONArray
@@ -27,8 +31,9 @@ data class Place(val name: String, val detail: String, val pos: LatLon) {
 }
 
 /**
- * Place search (Photon, OpenStreetMap data), with the offline map's own index ([com.abdllh.aura.nav.offline.PlaceIndex])
- * beside it when there is one, and the saved places: Home, Work and recent destinations.
+ * Place search: the pack's places.db first ([PlaceSearch]), then Photon's rows after them when online. A unit with no pack, or one
+ * whose file cannot be used, goes the old way: Photon (OpenStreetMap data) with the offline map's own index
+ * ([com.abdllh.aura.nav.offline.PlaceIndex]) beside it when there is one. And the saved places: Home, Work and recent destinations.
  */
 object Places {
     private val io = Executors.newSingleThreadExecutor()
@@ -51,28 +56,17 @@ object Places {
     const val USER_AGENT = "Aura/${BuildConfig.VERSION_NAME} (car head unit; github.com/abdllh50i/aura-launcher)"
 
     /**
-     * Searches places by text, biased to [near]. Older searches still running are dropped (type-ahead). An Arabic
-     * query is also searched in Latin letters ([ArabicQuery]): many places only have a Latin name in the map data.
-     * With the offline map, its results come at once and Photon's join them when they arrive ([done] may run twice);
-     * without internet the offline ones stay. null = no answer at all (no internet and nothing offline).
+     * Searches places by text, biased to [near]. Older searches still running are dropped (type-ahead). The pack's rows come
+     * at once and Photon's join them after them when online ([done] may run twice); with no file to use, the old road: [find].
+     * An Arabic query also goes to Photon in Latin letters ([ArabicQuery]): many places only have a Latin name in its data.
+     * null = no answer at all (no internet and nothing offline).
      */
     fun search(query: String, near: LatLon?, arabic: Boolean, done: (List<Place>?) -> Unit) {
-        // 2.0's search over places.db, behind one preference (default off): a file it cannot use leaves the search below as it was
-        if (com.abdllh.aura.nav.places.PlaceSearch.swapOn) {
-            val gen = generation.incrementAndGet()
-            com.abdllh.aura.nav.places.PlaceSearch.search(query, near) { a ->
-                if (gen == generation.get()) {
-                    if (a.usable) done(a.hits.map { com.abdllh.aura.nav.places.PlaceSearch.place(it, arabic) }) else searchToday(query, near, arabic, done)
-                }
-            }
-            return
-        }
-        searchToday(query, near, arabic, done)
-    }
-
-    private fun searchToday(query: String, near: LatLon?, arabic: Boolean, done: (List<Place>?) -> Unit) {
         val gen = generation.incrementAndGet()
-        find(query, near, arabic, io, { gen == generation.get() }) { list, _ -> done(list) }
+        val current = { gen == generation.get() }
+        val listed: (List<Place>?, Boolean) -> Unit = { list, _ -> done(list) }
+        if (!PlaceSearch.swapOn) { find(query, near, arabic, io, current, listed); return }
+        PlaceSearch.search(query, near) { a -> if (current()) afterEngine(a, query, near, arabic, io, current, listed) }
     }
 
     /**
@@ -82,11 +76,41 @@ object Places {
      */
     fun lookup(query: String, near: LatLon?, arabic: Boolean, done: (List<Place>?, Boolean) -> Unit) {
         if (BuildConfig.DEBUG) debugAnswer?.let { a -> main.post { done(a, true) }; return }
-        find(query, near, arabic, lookupIo, { true }, done)
+        if (!PlaceSearch.swapOn) { find(query, near, arabic, lookupIo, { true }, done); return }
+        PlaceSearch.lookup(query, near) { a -> afterEngine(a, query, near, arabic, lookupIo, { true }, done) }
     }
 
     /** Debug builds: what [lookup] answers instead of searching (the voice's choice, tested without the internet). */
     @Volatile internal var debugAnswer: List<Place>? = null
+
+    /** The engine has answered. Its rows at once, and "nothing found" only once Photon has not found it either. Main thread, and [done] on it. */
+    private fun afterEngine(a: PlaceSearch.Answer, query: String, near: LatLon?, arabic: Boolean, online: java.util.concurrent.Executor, current: () -> Boolean,
+                            done: (List<Place>?, Boolean) -> Unit) {
+        if (!a.usable) { find(query, near, arabic, online, current, done); return }
+        val rows = a.hits.map { PlaceSearch.place(it, arabic) }
+        if (!isOnline()) { done(rows, true); return }
+        if (rows.isNotEmpty()) done(rows, false)
+        online.execute {
+            if (!current()) return@execute
+            val more = photonRanked(query, near, arabic, current)
+            main.post { if (current()) done(if (more == null) rows else withPhoton(a.hits, rows, more), true) }
+        }
+    }
+
+    /** With no way to know, Photon is tried: it only costs its own thread its timeouts. */
+    private fun isOnline(): Boolean = com.abdllh.aura.nav.offline.OfflineMaps.context?.let { RouteChain.online(it) } ?: true
+
+    /** The engine's rows, then Photon's that are not one of them by either of a row's names within 200 m, up to 14. */
+    private fun withPhoton(hits: List<PlaceHit>, rows: List<Place>, photon: List<Place>): List<Place> {
+        val out = ArrayList(rows)
+        for (p in photon) {
+            if (out.size >= 14) break
+            val n = TextMatch.norm(p.name)
+            val known = hits.any { h -> (TextMatch.norm(h.name) == n || h.alt?.let { TextMatch.norm(it) } == n) && Geo.distance(LatLon(h.lat, h.lon), p.pos) < 200 }
+            if (!known && out.none { TextMatch.norm(it.name) == n && Geo.distance(it.pos, p.pos) < 200 }) out.add(p)
+        }
+        return out
+    }
 
     private fun find(query: String, near: LatLon?, arabic: Boolean, online: java.util.concurrent.Executor, current: () -> Boolean,
                      done: (List<Place>?, Boolean) -> Unit) {
@@ -114,22 +138,28 @@ object Places {
         }
         online.execute {
             if (!current()) return@execute // typed further meanwhile: only the newest search goes out
-            val variants = listOfNotNull(query.trim(), ArabicQuery.latin(query)).distinct()
-            val found = ArrayList<Place>()
-            var failed = 0
-            for (q in variants) {
-                if (!current()) return@execute
-                try { found += photon(q, near, arabic) } catch (_: Throwable) { failed++ }
-            }
-            // the strong pull towards the car fills the list with local namesakes ("Jeddah Street" in Jubail): the
-            // engine's best answers anywhere are asked for too, so a far city or airport is still at the list's end
-            var wide = emptyList<Place>()
-            if (near != null && failed < variants.size && current()) {
-                try { wide = photon(variants[0], null, arabic, 3) } catch (_: Throwable) { }
-            }
-            val result = if (failed == variants.size) null else rank(found, wide, query, variants.getOrNull(1), near)
+            val result = photonRanked(query, near, arabic, current)
+            if (!current()) return@execute
             main.post { answer = result; onlineDone = true; show() }
         }
+    }
+
+    /** Photon's answer, ranked; null when it could not be reached. Off the main thread. */
+    private fun photonRanked(query: String, near: LatLon?, arabic: Boolean, current: () -> Boolean): List<Place>? {
+        val variants = listOfNotNull(query.trim(), ArabicQuery.latin(query)).distinct()
+        val found = ArrayList<Place>()
+        var failed = 0
+        for (q in variants) {
+            if (!current()) return null
+            try { found += photon(q, near, arabic) } catch (_: Throwable) { failed++ }
+        }
+        // the strong pull towards the car fills the list with local namesakes ("Jeddah Street" in Jubail): the
+        // engine's best answers anywhere are asked for too, so a far city or airport is still at the list's end
+        var wide = emptyList<Place>()
+        if (near != null && failed < variants.size && current()) {
+            try { wide = photon(variants[0], null, arabic, 3) } catch (_: Throwable) { }
+        }
+        return if (failed == variants.size) null else rank(found, wide, query, variants.getOrNull(1), near)
     }
 
     /**
@@ -215,10 +245,22 @@ object Places {
         return ranked.take(11) + ranked.first { key(it) == best }
     }
 
-    fun cancelSearch() { generation.incrementAndGet(); com.abdllh.aura.nav.places.PlaceSearch.cancel() }
+    fun cancelSearch() { generation.incrementAndGet(); PlaceSearch.cancel() }
 
-    /** Turns a free-text address (the 1.0 Home/Work setting) into a place (the offline index when Photon fails). */
+    /**
+     * Turns a free-text address (the 1.0 Home/Work setting) into a place: the pack's best row (it is text, so its search and not
+     * [PlaceSearch.reverse]) unless its position is only coarse; else Photon, the old index, and last that coarse row.
+     */
     fun geocode(text: String, near: LatLon?, arabic: Boolean, done: (Place?) -> Unit) {
+        if (!PlaceSearch.swapOn) { geocodeOnline(text, near, arabic, null, done); return }
+        PlaceSearch.lookup(text.trim(), near, 1) { a ->
+            val h = a.hits.firstOrNull()
+            if (h != null && !h.approx) done(PlaceSearch.place(h, arabic))
+            else geocodeOnline(text, near, arabic, h?.let { PlaceSearch.place(it, arabic) }, done)
+        }
+    }
+
+    private fun geocodeOnline(text: String, near: LatLon?, arabic: Boolean, coarse: Place?, done: (Place?) -> Unit) {
         io.execute {
             val p = try {
                 val q = URLEncoder.encode(text.trim(), "UTF-8")
@@ -229,15 +271,30 @@ object Places {
                     try { com.abdllh.aura.nav.offline.PlaceIndex.search(it, text, near, arabic, 1).firstOrNull() } catch (_: Throwable) { null }
                 }
             }
-            main.post { done(p) }
+            main.post { done(p ?: coarse) }
         }
     }
 
     /**
-     * What is at a point (a dropped pin): the nearest named place or address, or null. With the offline map its answer
-     * comes first, and Photon's replaces it when it arrives ([done] may run twice).
+     * What is at a point (a dropped pin): what the pack says is there, the exact point kept; or the old road, where the offline
+     * map's answer comes first and Photon's replaces it when it arrives ([done] may run twice). Null: nothing named.
      */
     fun reverse(pos: LatLon, arabic: Boolean, done: (Place?) -> Unit) {
+        if (!PlaceSearch.swapOn) { reverseOnline(pos, arabic, done); return }
+        PlaceSearch.reverse(pos.lat, pos.lon) { h ->
+            val name = h?.shown(arabic).orEmpty()
+            if (h != null && name.isNotBlank()) done(Place(name, placeDetail(h, name, arabic), pos)) else reverseOnline(pos, arabic, done)
+        }
+    }
+
+    /** Where a reverse's thing is: its district and town, unless the name already says them. */
+    private fun placeDetail(h: ReverseHit, name: String, arabic: Boolean): String {
+        val district = if (arabic) h.districtAr else h.districtEn ?: h.districtAr
+        val town = if (arabic) h.townAr else h.townEn ?: h.townAr
+        return listOfNotNull(district, town).filter { it.isNotBlank() && !name.contains(it) }.distinct().joinToString(if (arabic) "، " else ", ")
+    }
+
+    private fun reverseOnline(pos: LatLon, arabic: Boolean, done: (Place?) -> Unit) {
         val store = com.abdllh.aura.nav.offline.OfflineMaps.searchStore()
         var onlineShown = false
         if (store != null) offlineIo.execute {

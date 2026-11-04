@@ -32,14 +32,13 @@ import java.util.concurrent.atomic.AtomicInteger
  * nearest (Jana Island: a route that ends 22 km away, code Ok, on both engines). Abroad the pack knows nothing, so with a connection
  * OSRM is asked first.
  *
- * Behind the preference [on], default off, until 2.0 makes it the way: `Router.route` comes here then. [ask] is the way in for the
- * new screens: alternates, via points, polygons, the road switch. A request that only Valhalla can keep ([RouteRequest.needsValhalla]) gets
- * that or the truth: another router's way is checked against the rings and left out if it goes through them, and via points are not
- * asked of any other router ([RouteAnswer.NOT_HONOURED]). The engine that answered goes to the guard's log and to [NavNote].
+ * `Router.route` comes here. [ask] is the way in for the new screens: alternates, via points, polygons, the road switch. A request that
+ * only Valhalla can keep ([RouteRequest.needsValhalla]) gets that or the truth: another router's way is checked against the rings and left
+ * out if it goes through them, and via points are not asked of any other router ([RouteAnswer.NOT_HONOURED]). The engine that answered
+ * goes to the guard's log and to [NavNote].
  */
 internal object RouteChain {
     private const val TAG = "AuraRouteChain"
-    private const val PREF = "routeValhalla"
     private const val PREF_GUIDE = "routeGuideWords"
     private const val PREF_HARAM = "routeAvoidHaram"
     /** Makkah's Haram lies inside this (its ring of 89 points in places.db: south 21.2, north 21.6, west 39.6, east 40.0, rounded out). */
@@ -49,14 +48,14 @@ internal object RouteChain {
     private val brouter = Any()
     /** The newest [ask]: a chain that took its time with another router must not take the client from a newer one. Bumped on the main thread. */
     private val newest = AtomicInteger()
+    private var running = 0
 
-    var on: Boolean
-        get() = try { Prefs.raw.getBoolean(PREF, false) } catch (_: Throwable) { false }
-        set(v) { Prefs.raw.edit().putBoolean(PREF, v).apply() }
+    /** Somebody is waiting for a chain's answer. Main thread. */
+    val asking: Boolean get() = running > 0
 
-    /** The guidance part's words for routes from the pack ([com.abdllh.aura.nav.guide.Guidance]), off until 2.0's screens: [GuideLink]. */
+    /** The guidance part's words for routes from the pack ([com.abdllh.aura.nav.guide.Guidance]): [GuideLink]. On; a debug build can say off, to hear the old wording. */
     var guideOn: Boolean
-        get() = try { Prefs.raw.getBoolean(PREF_GUIDE, false) } catch (_: Throwable) { false }
+        get() = try { Prefs.raw.getBoolean(PREF_GUIDE, true) } catch (_: Throwable) { true }
         set(v) { Prefs.raw.edit().putBoolean(PREF_GUIDE, v).apply() }
 
     /** The driver's switch: go round the Haram of Makkah. Off unless he asks; asked for, it holds for every route. */
@@ -64,11 +63,16 @@ internal object RouteChain {
         get() = try { Prefs.raw.getBoolean(PREF_HARAM, false) } catch (_: Throwable) { false }
         set(v) { Prefs.raw.edit().putBoolean(PREF_HARAM, v).apply() }
 
-    /** As [Router.route]: the first route, or the reason as a message. */
+    /** As [Router.route]: the first route, or the reason as a message; [Router.NO_ANSWER_YET] when another request took the engine. */
     fun route(from: LatLon, to: LatLon, heading: Double?, done: (Route?, String?) -> Unit) {
         ask(RouteRequest(from, to, heading, arabic = Locale.getDefault().language == "ar", avoidHaram = avoidHaramOn)) { a ->
             val c = OfflineMaps.context
-            done(a.route, if (a.route == null) (if (a.status == RouteAnswer.NOT_HONOURED && c != null) a.userMessage(c) else a.message) else null)
+            done(a.route, when {
+                a.route != null -> null
+                a.status == RouteAnswer.CANCELLED -> Router.NO_ANSWER_YET
+                a.status == RouteAnswer.NOT_HONOURED && c != null -> a.userMessage(c)
+                else -> a.message
+            })
         }
     }
 
@@ -77,6 +81,7 @@ internal object RouteChain {
         val c = OfflineMaps.context
         if (c == null) { main.post { done(RouteAnswer(RouteAnswer.FAILED, "too early")) }; return }
         val seq = newest.incrementAndGet()
+        running++
         Thread({
             val a = try {
                 chain(c, req, seq)
@@ -84,7 +89,7 @@ internal object RouteChain {
                 Log.w(TAG, "$t")
                 RouteAnswer(RouteAnswer.FAILED, t.toString().take(200))
             }
-            main.post { done(a) }
+            main.post { running--; done(a) }
         }, "aura-route-chain").apply { isDaemon = true }.start()
     }
 
@@ -185,7 +190,7 @@ internal object RouteChain {
         return r
     }
 
-    private fun online(c: Context): Boolean = try {
+    internal fun online(c: Context): Boolean = try {
         val cm = c.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         cm.getNetworkCapabilities(cm.activeNetwork)?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
     } catch (_: Throwable) {

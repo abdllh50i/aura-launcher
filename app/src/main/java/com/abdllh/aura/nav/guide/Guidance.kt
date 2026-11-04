@@ -280,13 +280,17 @@ class Guidance internal constructor(
         return Junctions.of(t.step, route.steps.getOrNull(t.index + 1))
     }
 
-    /** The next camera or bump within reach of [along] ("ساهر بعد 500 متر، السرعة 80"), its limit from the spot or the road. */
-    fun nextAlert(along: Double): SpotAlert? {
+    /**
+     * The next camera or bump within reach of [along] ("ساهر بعد 500 متر، السرعة 80"), its limit from the spot or the road. [skip]: spots not to count, as the
+     * owner's own of the pack's build when his live set is known ([com.abdllh.aura.nav.RoadWatch]).
+     */
+    fun nextAlert(along: Double, skip: ((AlongSpot) -> Boolean)? = null): SpotAlert? {
         for (s in spots) {
             if (s.along <= along) continue
             if (s.along - along > CAMERA_M) break
             val reach = when (s.kind) { SpotRow.CAMERA -> CAMERA_M; SpotRow.BUMP -> BUMP_M; else -> continue }
             if (s.along - along > reach) continue
+            if (skip != null && skip(s)) continue
             val kmh = if (s.kind == SpotRow.CAMERA) s.kmh.takeIf { it > 0 } ?: route.facts?.at(s.along)?.limit ?: 0 else 0
             return SpotAlert(s, s.along - along, kmh)
         }

@@ -14,6 +14,9 @@ import com.abdllh.aura.R
 import com.abdllh.aura.music.LyricsServer
 import com.abdllh.aura.nav.CarLocation
 import com.abdllh.aura.nav.NavSession
+import com.abdllh.aura.nav.offline.PackTiles
+import com.abdllh.aura.nav.pack.PackManager
+import com.abdllh.aura.nav.route.RouteGuard
 import com.abdllh.aura.nav.route.RouteProbe
 import com.abdllh.aura.system.Device
 import com.abdllh.aura.system.Gear
@@ -520,10 +523,19 @@ object ScreenCheck {
         r.put("tests", tests).put("c_gpu", gl).put("e_map", map).put("f_motion", motion)
         if (deaths.length() > 0) r.put("processDeaths", deaths)
         DiagFiles.read(RouteProbe.resultFile(app))?.let { r.put("n_route", it) }
+        r.put("o_maps", part { mapsNow(app) })
         val trip = TripRecorder.recorded(app)
         if (trip.length() > 0) r.put("trip", trip)
         write(app, r)
     }
+
+    /** How the map's parts have fared on this unit: the first real numbers of the pack's install and its tiles. */
+    private fun mapsNow(app: Context): JSONObject = JSONObject()
+        .put("routeGuard", RouteGuard.status(app))
+        .put("routeGuardLog", RouteGuard.logText(app))
+        .put("packLastInstall", PackManager.lastInstall() ?: JSONObject.NULL)
+        .put("refusedTiles", PackTiles.refusedTiles)
+        .put("tileReads", PackTiles.readStats())
 
     /** On the disk as the page and the server get it: with the one secret this process knows taken out of every line. */
     private fun write(app: Context, r: JSONObject) {
