@@ -76,7 +76,8 @@ class BootHome : Activity() {
             return
         }
         val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-        val found = find(home)
+        // (debug: the last resort below, which a stock Android cannot show by itself. docs/DEV.md, "One way to the screens")
+        val found = if (com.abdllh.aura.BuildConfig.DEBUG && intent.getBooleanExtra("behind", false)) null else find(home)
         when {
             found != null && found.name != javaClass.name -> hand(home, "${found.packageName}/${found.name}")
             // the package manager still answers with this screen (a step behind the unlock): asked again

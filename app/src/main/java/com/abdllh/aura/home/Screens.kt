@@ -73,11 +73,16 @@ object Screens {
      * is the home app: it would be an ordinary activity, the first half of the trap above. It finishes itself and this
      * asks again the right way. In this order: while it is on top, a home intent is only delivered to it.
      */
-    fun homeByName(a: Activity): Boolean {
-        if (a.intent?.hasCategory(Intent.CATEGORY_HOME) == true || !Device.isDefaultHome(a)) return false
-        a.finish()
-        home(a, FROM_BY_NAME)
-        return true
+    fun homeByName(a: Activity): Boolean = try {
+        if (a.intent?.hasCategory(Intent.CATEGORY_HOME) == true || !Device.isDefaultHome(a)) false
+        else {
+            a.finish()
+            home(a, FROM_BY_NAME)
+            true
+        }
+    } catch (t: Throwable) {
+        Log.w(TAG, "by name: $t") // (built as it was asked for: a home screen comes first)
+        false
     }
 
     /**
@@ -86,8 +91,11 @@ object Screens {
      * home activity runs) stops a debug build at once, and on the unit shows in Settings → About.
      */
     fun homeBuilt(i: Intent?, others: Int) {
-        val from = i?.getStringExtra(EXTRA_FROM) ?: "the system"
-        i?.removeExtra(EXTRA_FROM) // (once: a recreate brings the same intent back)
+        val from = try {
+            i?.getStringExtra(EXTRA_FROM).also { i?.removeExtra(EXTRA_FROM) } // (once: a recreate brings the same intent back)
+        } catch (_: Throwable) {
+            null // (extras from outside that do not unpack)
+        } ?: "the system"
         Log.i(TAG, "home activity built, from $from, others alive: $others")
         when {
             others > 0 -> {

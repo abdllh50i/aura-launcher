@@ -660,7 +660,7 @@ stock system. Why it did nothing before: a key that starts one app (KeyRuleConfi
 (`exitSource`, `ExitMode` 1 = back to the source before) only when the key's source is the current one **and** its
 package is on top (`ProcessManager.getTopPackgeName`). With Aura Music on top it is not ("app is at top = false"), so
 the firmware starts the stock screen once more, and 1.6 opened Aura Music over it again. Now a stock music screen that
-comes up over Aura Music (`Front.own` is `MusicActivity`, paused within 1.5 s) on the source Aura Music plays is the
+comes up over Aura Music (`Front.ownIs(Screens.MUSIC)`: left the front within 1.5 s) on the source Aura Music plays is the
 second press: the home screen instead. The other source's screen is its own button, and changes the source as before
 (MODE, key 23, loops 2 → 3 → 8 → 9 → 11 → 15). Emulator: `settings put system activity_starting
 com.nwd.bt.music,com.nwd.bt.music.home_horizontalActivity` with another app started over Aura Music a moment before.
@@ -1825,8 +1825,9 @@ The owner asked for two things: none of Android's notifications on the screen, a
     the candidates are the stock launcher and it; the property picks AMRI's package, that is it. It is a black
     screen that waits for `ACTION_USER_UNLOCKED` (and looks every 400 ms), then sends the home intent, which now
     finds `HomeActivity` (priority 0, first of AMRI's entries), and finishes — what Android's own `FallbackHome` does.
-    After 6 s unlocked with the intent still finding itself it starts `HomeActivity` by name; never unlocked for 40 s,
-    the stock launcher by name (it exists in that state). The component is off in the manifest and switched on by
+    After 6 s unlocked with the intent still finding itself it sends the home intent limited to its package (never the
+    class by name: "One way to the screens"); nothing else found by 40 s, or never unlocked for 40 s, the stock launcher
+    by name (it exists in that state). The component is off in the manifest and switched on by
     the app on the unit (`BootHome.ensure`, at every start): on a stock Android a second home activity in the package
     makes the package manager drop the chosen home app ("Result set changed, dropping preferred activity"). Component
     states are written 10 s late: the first power-on after the update's first run uses it. Behind it,
