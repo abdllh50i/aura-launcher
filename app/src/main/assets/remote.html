@@ -319,7 +319,8 @@ function placeButton(p, onTap) {
   var t = document.createElement("b");
   t.textContent = p.name;
   b.appendChild(t);
-  var d = [p.detail, p.distanceM != null ? km(p.distanceM) : ""].filter(Boolean).join(" · ");
+  // (each part whole: a Latin address beside "2.4 كم" must not take the number into its own direction)
+  var d = [p.detail, p.distanceM != null ? km(p.distanceM) : ""].filter(Boolean).map(function (x) { return "\u2068" + x + "\u2069"; }).join(" · ");
   if (d) { var s = document.createElement("span"); s.textContent = d; b.appendChild(s); }
   b.addEventListener("click", onTap);
   return b;
