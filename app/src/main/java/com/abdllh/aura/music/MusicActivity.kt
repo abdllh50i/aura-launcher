@@ -212,6 +212,7 @@ class MusicActivity : Activity() {
     /** Where the music comes from: the unit's own files, the phone over Bluetooth, or YouTube's app on the unit. */
     private enum class Src(val pref: String) { LOCAL("local"), BT("bt"), YT("yt") }
     private var src = Src.LOCAL
+        set(v) { field = v; onBluetooth = v == Src.BT }
     private val bt get() = src == Src.BT
     private val yt get() = src == Src.YT
     private val rtl get() = resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL
@@ -364,6 +365,11 @@ class MusicActivity : Activity() {
     override fun onPause() {
         try { unregisterReceiver(looks) } catch (_: Throwable) { }
         super.onPause()
+    }
+
+    override fun onDestroy() {
+        onBluetooth = null
+        super.onDestroy()
     }
 
     /** Sunset or sunrise under "auto" (a minute's tick), or a theme, accent or language chosen in Settings meanwhile. */
@@ -2349,6 +2355,10 @@ class MusicActivity : Activity() {
     }
 
     companion object {
+        /** The source the screen is on while there is one (null: none), for [com.abdllh.aura.system.MusicKeys]. */
+        @Volatile var onBluetooth: Boolean? = null
+            private set
+
         // art keys for "no cover" states (album ids are >= 0)
         private const val BT_ART = Long.MIN_VALUE + 1
         private const val NO_ART = -2L
