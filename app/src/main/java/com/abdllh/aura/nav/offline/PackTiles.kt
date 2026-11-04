@@ -47,6 +47,7 @@ object PackTiles {
     private val KEEP_THE_FILE = DatabaseErrorHandler { db -> Log.w(TAG, "corrupt: ${db.path}") }
     val EMPTY = ByteArray(0)
 
+    /** Where the pack is (set once, at the start: [OfflineMaps.init]). */
     @Volatile var paths: MapPackPaths? = null
 
     private class Reader(val pick: (MapPackPaths) -> File?) {
@@ -93,11 +94,11 @@ object PackTiles {
     private val places = Reader { it.places }
     private val glyphs = Reader { it.glyphs }
 
-    /** Whether the unit holds a pack the map should draw from: its files are there. Reads nothing, so the main thread may ask. */
-    val present: Boolean get() = try { paths?.base != null } catch (_: Throwable) { false }
+    /** Whether the unit holds a pack the map should draw from: its files are there. Reads nothing, so the main thread may ask, and once it is open not even that (the tile server asks per tile). */
+    val present: Boolean get() = base.db != null || try { paths?.base != null } catch (_: Throwable) { false }
     /** Whether the labels can be in the pack's fonts. */
-    val hasFonts: Boolean get() = try { paths?.glyphs != null } catch (_: Throwable) { false }
-    val hasPlaces: Boolean get() = try { paths?.places != null } catch (_: Throwable) { false }
+    val hasFonts: Boolean get() = glyphs.db != null || try { paths?.glyphs != null } catch (_: Throwable) { false }
+    val hasPlaces: Boolean get() = places.db != null || try { paths?.places != null } catch (_: Throwable) { false }
 
     /** The pack was switched or removed: the next request opens what is there now. */
     fun changed() {
