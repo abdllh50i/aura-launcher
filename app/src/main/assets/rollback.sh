@@ -128,6 +128,9 @@ sync
 # (again: a dying AMRI's crash guard may have switched it on while the install ran)
 setprop persist.aura.disabled 0
 rm -f /data/data/$PKG/files/disable_home /data/aura_disabled
+# the guard counts the version left behind anew, should it come back in this boot (an older version leaves no marks of its own)
+M=/data/data/$PKG/files/guard-marks
+[ -f $M ] && echo "R $(cut -c1-8 /proc/sys/kernel/random/boot_id) 0 0" >> $M
 setprop persist.nwd.launcher.default $PKG
 am start -a android.intent.action.MAIN -c android.intent.category.HOME >/dev/null 2>&1
 note DONE

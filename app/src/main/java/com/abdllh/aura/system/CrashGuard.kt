@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.Process
 import android.os.SystemClock
+import android.util.Log
 import android.widget.Toast
 import com.abdllh.aura.R
 import com.abdllh.aura.util.Prefs
@@ -23,6 +24,7 @@ import java.io.StringWriter
  * units set their wall clock late (GPS / network time) and a wall-clock window would then forget or invent crashes.
  */
 object CrashGuard {
+    private const val TAG = "AuraCrash"
     private const val WINDOW_MS = 3 * 60_000L
     private const val LIMIT = 3
     private const val KEY = "crashes"
@@ -42,11 +44,22 @@ object CrashGuard {
         sp = app.getSharedPreferences("aura_crash", Context.MODE_PRIVATE)
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->
+            var again = false
             try {
                 record(app, e)
+                again = recent(SystemClock.elapsedRealtime()).size >= 2 || SystemProps.get(Device.DISABLED_PROP) == "1"
             } catch (_: Throwable) {
             }
-            previous?.uncaughtException(t, e) ?: Process.killProcess(Process.myPid())
+            // From the second crash in a row Android puts "keeps stopping" over the screen, and this process waits for
+            // the answer, 5 minutes if nobody gives one. The next start, which would find the crash loop, waits with it (seen
+            // on the emulator): so from there on it leaves without asking. With the kill switch on, a crash behind the
+            // stock launcher has no business on the screen at all.
+            if (again) {
+                Log.e(TAG, "crashed again, leaving", e)
+                Process.killProcess(Process.myPid())
+            } else {
+                previous?.uncaughtException(t, e) ?: Process.killProcess(Process.myPid())
+            }
         }
     }
 

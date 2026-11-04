@@ -42,7 +42,7 @@ object GuardMarks {
     const val OK = "O"
     const val ALIVE = "B"
     const val WIFI = "W"
-    /** Written by the guard or Rescue: counting starts anew from here. */
+    /** Written by the guard, Rescue or rollback.sh: counting starts anew from here. */
     const val RESET = "R"
     /** Written by the guard: this start's main thread froze. */
     const val FROZEN = "F"

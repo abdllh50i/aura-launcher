@@ -110,6 +110,7 @@ internal class GuardWatch(private val c: Context, private val h: Handler) {
         val starts = ArrayList<Start>()
         var wifi = false
         var verdict = false
+        var frozen = 0
     }
 
     private val boot = GuardMarks.bootId()
@@ -198,16 +199,17 @@ internal class GuardWatch(private val c: Context, private val h: Handler) {
                     // (only the last stretch of this version: what the version before an update did says nothing about this
                     // one, nor what this one did before a way back and an update again, in one boot)
                     val v = p.getOrNull(4)
-                    if (v != run) { run = v; m.starts.clear(); m.verdict = false }
+                    if (v != run) { run = v; m.starts.clear(); m.verdict = false; m.frozen = 0 }
                     if (v == version) m.starts.add(Start(pid, t))
                 }
                 GuardMarks.HOME -> s?.home = true
-                GuardMarks.OK -> s?.let { it.ok = true; it.okAt = t }
+                // (a healthy start after a verdict: a new failure later is a new story, and gets its own)
+                GuardMarks.OK -> s?.let { it.ok = true; it.okAt = t; m.verdict = false }
                 GuardMarks.ALIVE -> s?.alive = true
                 GuardMarks.WIFI, GuardMarks.GUARD_WIFI -> m.wifi = true
-                GuardMarks.RESET -> { m.starts.clear(); m.verdict = false }
-                GuardMarks.VERDICT -> m.verdict = true
-                GuardMarks.FROZEN -> p.getOrNull(4)?.toIntOrNull()?.let { fp -> m.starts.lastOrNull { it.pid == fp }?.frozen = true }
+                GuardMarks.RESET -> { m.starts.clear(); m.verdict = false; m.frozen = 0 }
+                GuardMarks.VERDICT -> { m.verdict = true; m.frozen = 0 }
+                GuardMarks.FROZEN -> p.getOrNull(4)?.toIntOrNull()?.let { fp -> m.starts.lastOrNull { it.pid == fp }?.let { it.frozen = true; m.frozen++ } }
             }
         }
         return m
@@ -306,9 +308,8 @@ internal class GuardWatch(private val c: Context, private val h: Handler) {
             loggedStreak = n
         }
         if (marks.verdict) return
-        val frozen = marks.starts.count { it.frozen }
-        if (n < limit && frozen < LIMIT) return
-        verdict("$n starts in a row with no OK, $frozen frozen")
+        if (n < limit && marks.frozen < LIMIT) return
+        verdict("$n starts in a row with no OK, ${marks.frozen} frozen")
     }
 
     private fun verdict(why: String) {
