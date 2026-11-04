@@ -263,11 +263,14 @@ final class LinkAgainstFakeUnitTests: XCTestCase {
             if seenMusic != nil, seenCar != nil { break }
         }
         XCTAssertEqual(seenMusic?.title, "يا طير", "the snapshot on connect")
-        XCTAssertEqual(seenCar?.volumeStep, 12)
+        XCTAssertEqual(seenMusic?.volume, 12, "the car's own step")
+        XCTAssertEqual(seenMusic?.maxVolume, 40)
+        XCTAssertEqual(seenCar?.gpsFix, true)
 
-        try await client.remote(.volumeUp)
+        let reply2 = try await client.remote(.volumeUp)
+        XCTAssertEqual(reply2.volume, 13, "what really happened comes back")
         let state = try await client.state()
-        XCTAssertEqual(state.car?.volumeStep, 13)
+        XCTAssertEqual(state.music?.volume, 13)
         try await client.remote(.musicNext)
         let afterNext = try await client.state()
         XCTAssertEqual(afterNext.music?.title, "على البال")
@@ -282,7 +285,7 @@ final class LinkAgainstFakeUnitTests: XCTestCase {
         XCTAssertEqual(ack.state, "accepted")
         try await client.stop()
         let afterStop = try await client.state()
-        XCTAssertEqual(afterStop.nav?.kind, .stopped)
+        XCTAssertEqual(afterStop.nav?.kind, .idle)
         let diag = try await client.diag()
         XCTAssertTrue(diag.contains("AMRI"))
     }
@@ -294,13 +297,13 @@ final class LinkAgainstFakeUnitTests: XCTestCase {
             _ = try await LinkClient(address: unit.address).pair(code: "000000", device: "test")
             XCTFail("a wrong code must not pair")
         } catch let error as LinkError {
-            XCTAssertEqual(error, .unauthorized("bad code"))
+            XCTAssertEqual(error, .unauthorized("bad_code"))
         }
         do {
             _ = try await LinkClient(address: unit.address).state()
             XCTFail("state needs a token")
         } catch let error as LinkError {
-            XCTAssertEqual(error, .unauthorized("token required"))
+            XCTAssertEqual(error, .unauthorized("pair"))
         }
     }
 

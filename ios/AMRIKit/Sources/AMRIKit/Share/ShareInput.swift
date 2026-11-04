@@ -76,7 +76,7 @@ public enum ShareInput {
         let coordinate = item.placemark.coordinate
         guard CLLocationCoordinate2DIsValid(coordinate) else { return nil }
         return SharedMapItem(name: item.name, detail: item.placemark.title, lat: coordinate.latitude,
-                             lon: coordinate.longitude, placeID: item.identifier?.rawValue)
+                             lon: coordinate.longitude, placeID: PlaceQueries.placeID(of: item))
     }
 
     private static func unarchive(_ data: Data) -> MKMapItem? {

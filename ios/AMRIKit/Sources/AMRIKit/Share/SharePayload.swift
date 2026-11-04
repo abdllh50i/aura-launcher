@@ -47,6 +47,8 @@ public enum ShareConfidence: String, Codable, Sendable {
 public struct PhonePlace: Codable, Hashable, Sendable, Identifiable {
     /// The name shown when nothing better is known. It reaches the car screen, so it is Arabic in every language.
     public static let unnamed = "موقع من الجوال"
+    /// Names Apple on purpose: the unit refuses to keep a place whose source says so.
+    public static let appleSearchSource = "apple.mapkit"
 
     public var name: String
     public var detail: String?
@@ -74,5 +76,5 @@ public struct PhonePlace: Codable, Hashable, Sendable, Identifiable {
     public var wire: LinkPlace { LinkPlace(name: name, detail: detail, lat: lat, lon: lon, src: src) }
 
     /// Apple's data may reach the car one place at a time, by hand, and may not be stored there (section 2.6).
-    public var isAppleSourced: Bool { src == "mapkit" || src == "share.apple" }
+    public var isAppleSourced: Bool { src == "mapkit" || src.contains("apple") }
 }

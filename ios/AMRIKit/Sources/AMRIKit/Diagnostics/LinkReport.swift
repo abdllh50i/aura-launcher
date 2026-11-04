@@ -209,6 +209,11 @@ public enum LinkReport {
         case .arrived: return "وصل"
         case .stopped: return "انتهت"
         case .card: return "كرت على الشاشة"
+        case .waitingFix: return "تنتظر إشارة الموقع"
+        case .held: return "ماسكة المكان لين تخلص المكالمة أو الرجوع للخلف"
+        case .handed: return "راحت لتطبيق الملاحة الثاني"
+        case .ignored: return "الشاشة كملت الرحلة اللي كانت فيها"
+        case .replaced: return "مكان ثاني أخذ دوره"
         case .other(let raw): return raw
         }
     }

@@ -51,8 +51,9 @@ final class LinkEventTests: XCTestCase {
     }
 
     func testNavStateNamesAreRead() {
-        let cases: [(String, NavEvent.Kind)] = [("routing", .routing), ("progress", .progress), ("failed", .failed), ("arrived", .arrived),
-                                                ("stopped", .stopped), ("idle", .idle), ("card", .card), ("mystery", .other("mystery"))]
+        let cases: [(String, NavEvent.Kind)] = [("routing", .routing), ("progress", .progress), ("navigating", .progress), ("failed", .failed), ("arrived", .arrived),
+                                                ("stopped", .stopped), ("cancelled", .stopped), ("idle", .idle), ("card", .card), ("waiting_fix", .waitingFix),
+                                                ("held", .held), ("handed", .handed), ("ignored", .ignored), ("replaced", .replaced), ("mystery", .other("mystery"))]
         for (raw, kind) in cases {
             XCTAssertEqual(NavEvent(json: ["state": raw])?.kind, kind, raw)
         }
@@ -70,6 +71,26 @@ final class LinkEventTests: XCTestCase {
         XCTAssertEqual(car.volumeStep, 12)
         XCTAssertEqual(car.gpsFix, false)
         XCTAssertNil(car.speedKmh)
+    }
+
+    /// The shapes link/PhoneServer.kt really sends.
+    func testTheUnitsOwnShapes() {
+        guard case .music(let music) = LinkEvent(message: SSEMessage(event: "music", data: #"{"playing":true,"volume":12,"maxVolume":40,"muted":false,"title":"x","artist":"y","source":"com.abdllh.naghm"}"#)) else { return XCTFail() }
+        XCTAssertEqual(music.volume, 12)
+        XCTAssertEqual(music.maxVolume, 40)
+        XCTAssertEqual(music.muted, false)
+        guard case .car(let car) = LinkEvent(message: SSEMessage(event: "car", data: #"{"gear":null,"gearSure":false,"reversing":false,"inCall":true,"fix":{"lat":1,"lon":2,"ageS":3,"kmh":44}}"#)) else { return XCTFail() }
+        XCTAssertEqual(car.speedKmh, 44)
+        XCTAssertEqual(car.gpsFix, true)
+        XCTAssertEqual(car.inCall, true)
+        XCTAssertNil(car.gear, "null stays unknown")
+        guard case .nav(let nav) = LinkEvent(message: SSEMessage(event: "nav", data: #"{"state":"navigating","place":{"name":"الراشد مول","detail":"","lat":26.29,"lon":50.18},"by":"phone","remainingM":800,"timeLeftS":120,"etaLocal":"9:41","speedKmh":40,"rerouting":false}"#)) else { return XCTFail() }
+        XCTAssertEqual(nav.kind, .progress)
+        XCTAssertTrue(nav.kind.isUnderWay)
+        XCTAssertEqual(nav.name, "الراشد مول")
+        XCTAssertEqual(nav.placeLat, 26.29)
+        XCTAssertEqual(nav.placeLon, 50.18)
+        XCTAssertEqual(nav.timeLeftS, 120)
     }
 
     func testASnapshotEvent() {
@@ -95,6 +116,26 @@ final class LinkEventTests: XCTestCase {
         XCTAssertNotNil(LinkClient.outcome(of: NavEvent(kind: .progress, id: "A"), forID: "A", routing: routing), "its own progress proves the start")
         XCTAssertEqual(LinkClient.outcome(of: NavEvent(kind: .failed, id: "A", reason: "x"), forID: "A", routing: routing), .failed("x"))
         XCTAssertNil(LinkClient.outcome(of: NavEvent(kind: .idle), forID: "A", routing: routing))
+    }
+
+    func testAnEventsOwnPlaceAlsoProvesTheStart() {
+        let routing = Locked(false)
+        let place = LinkPlace(name: "x", lat: 26.29, lon: 50.18)
+        let same = NavEvent(kind: .progress, placeLat: 26.29, placeLon: 50.18)
+        let elsewhere = NavEvent(kind: .progress, placeLat: 24.7, placeLon: 46.6)
+        XCTAssertEqual(LinkClient.outcome(of: same, forID: "A", place: place, routing: routing), .started(same), "the snapshot of this very trip")
+        XCTAssertNil(LinkClient.outcome(of: elsewhere, forID: "A", place: place, routing: routing), "an earlier trip somewhere else")
+        XCTAssertNil(LinkClient.outcome(of: same, forID: "A", routing: routing), "without the place to compare, no claim")
+    }
+
+    func testOtherEndsOfASend() {
+        let routing = Locked(false)
+        XCTAssertEqual(LinkClient.outcome(of: NavEvent(kind: .handed, id: "A"), forID: "A", routing: routing), .handed, "not started")
+        XCTAssertEqual(LinkClient.outcome(of: NavEvent(kind: .ignored, id: "A"), forID: "A", routing: routing), .ignored)
+        XCTAssertEqual(LinkClient.outcome(of: NavEvent(kind: .replaced, id: "A"), forID: "A", routing: routing), .cancelled)
+        XCTAssertEqual(LinkClient.outcome(of: NavEvent(kind: .stopped, id: "A"), forID: "A", routing: routing), .cancelled)
+        XCTAssertNil(LinkClient.outcome(of: NavEvent(kind: .stopped, id: "B"), forID: "A", routing: routing))
+        XCTAssertNil(LinkClient.outcome(of: NavEvent(kind: .card, id: "A"), forID: "A", routing: routing), "the screen asks: not an end")
     }
 }
 

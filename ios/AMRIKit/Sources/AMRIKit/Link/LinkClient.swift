@@ -206,7 +206,8 @@ public final class LinkClient: @unchecked Sendable {
 
     /// Watches the unit's events until this send's real outcome, for the time given. Reconnects when the hotspot blinks.
     /// `update` hears every step on the way (routing, a card on the screen, waiting for GPS), as the unit says them.
-    public func waitForStart(id: String?, timeout: TimeInterval, update: (@Sendable (NavEvent) -> Void)? = nil) async -> StartOutcome {
+    /// `place` is what was sent: the unit's snapshot names its trip by place and not by id.
+    public func waitForStart(id: String?, place: LinkPlace? = nil, timeout: TimeInterval, update: (@Sendable (NavEvent) -> Void)? = nil) async -> StartOutcome {
         let routing = Locked(false)
         let result: StartOutcome = await withTaskGroup(of: StartOutcome?.self) { group in
             group.addTask { [self] in
@@ -215,12 +216,12 @@ public final class LinkClient: @unchecked Sendable {
                         for try await event in events() {
                             guard case .nav(let nav) = event else {
                                 if case .snapshot(let snapshot) = event, let nav = snapshot.nav {
-                                    if let outcome = LinkClient.outcome(of: nav, forID: id, routing: routing) { return outcome }
+                                    if let outcome = LinkClient.outcome(of: nav, forID: id, place: place, routing: routing) { return outcome }
                                     if nav.id == id { update?(nav) }
                                 }
                                 continue
                             }
-                            if let outcome = LinkClient.outcome(of: nav, forID: id, routing: routing) { return outcome }
+                            if let outcome = LinkClient.outcome(of: nav, forID: id, place: place, routing: routing) { return outcome }
                             if nav.id == nil || nav.id == id { update?(nav) }
                         }
                     } catch {
@@ -242,7 +243,7 @@ public final class LinkClient: @unchecked Sendable {
     }
 
     /// The rule for "started": only the unit's word, and for this send when the unit names one.
-    static func outcome(of nav: NavEvent, forID id: String?, routing: Locked<Bool>) -> StartOutcome? {
+    static func outcome(of nav: NavEvent, forID id: String?, place: LinkPlace? = nil, routing: Locked<Bool>) -> StartOutcome? {
         let sameSend = nav.id == nil || id == nil || nav.id == id
         guard sameSend else { return nil }
         switch nav.kind {
@@ -250,12 +251,15 @@ public final class LinkClient: @unchecked Sendable {
             routing.with { $0 = true }
             return nil
         case .started:
-            // A "started" with no id at all is the snapshot of an earlier trip only if it says "navigating", which reads
-            // as progress. The unit's real start always names its id or comes alone.
             return .started(nav)
         case .progress:
-            // A progress with this send's own id proves the start. One without an id could be an earlier trip.
+            // A progress with this send's own id proves the start, and so does one naming this very place. Any other
+            // could be an earlier trip.
             if nav.id != nil, nav.id == id { return .started(nav) }
+            if nav.id == nil, let place, let lat = nav.placeLat, let lon = nav.placeLon,
+               abs(lat - place.lat) < 0.00001, abs(lon - place.lon) < 0.00001 {
+                return .started(nav)
+            }
             return nil
         case .failed:
             return nav.id == nil && id != nil && !routing.current ? nil : .failed(nav.reason)

@@ -334,6 +334,9 @@ public struct NavEvent: Equatable, Sendable {
     public var kind: Kind
     public var id: String?
     public var name: String?
+    /// The event's own place, when it names one.
+    public var placeLat: Double?
+    public var placeLon: Double?
     public var distanceM: Double?
     public var durationS: Double?
     public var remainingM: Double?
@@ -342,12 +345,14 @@ public struct NavEvent: Equatable, Sendable {
     public var nextText: String?
     public var reason: String?
 
-    public init(kind: Kind, id: String? = nil, name: String? = nil, distanceM: Double? = nil, durationS: Double? = nil,
-                remainingM: Double? = nil, timeLeftS: Double? = nil, etaLocal: String? = nil, nextText: String? = nil,
-                reason: String? = nil) {
+    public init(kind: Kind, id: String? = nil, name: String? = nil, placeLat: Double? = nil, placeLon: Double? = nil,
+                distanceM: Double? = nil, durationS: Double? = nil, remainingM: Double? = nil, timeLeftS: Double? = nil,
+                etaLocal: String? = nil, nextText: String? = nil, reason: String? = nil) {
         self.kind = kind
         self.id = id
         self.name = name
+        self.placeLat = placeLat
+        self.placeLon = placeLon
         self.distanceM = distanceM
         self.durationS = durationS
         self.remainingM = remainingM
@@ -363,6 +368,8 @@ public struct NavEvent: Equatable, Sendable {
         id = JSONField.string(json["id"])
         let place = json["place"] as? [String: Any]
         name = JSONField.string(JSONField.first(json, "name", "destName", "destination")) ?? JSONField.string(place?["name"])
+        placeLat = JSONField.double(place?["lat"])
+        placeLon = JSONField.double(place?["lon"])
         distanceM = JSONField.double(json["distanceM"])
         durationS = JSONField.double(json["durationS"])
         remainingM = JSONField.double(json["remainingM"])

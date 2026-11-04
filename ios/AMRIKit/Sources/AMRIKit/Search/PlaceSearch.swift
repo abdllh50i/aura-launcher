@@ -186,7 +186,9 @@ public enum PlaceQueries {
         return try await start(request, near: near)
     }
 
+    /// Place IDs need iOS 18. His phone has it; on an older one a saved place simply cannot be looked up.
     public static func lookup(placeID: String) async -> PhonePlace? {
+        guard #available(iOS 18.0, macOS 15.0, *) else { return nil }
         guard let identifier = MKMapItem.Identifier(rawValue: placeID) else { return nil }
         let request = MKMapItemRequest(mapItemIdentifier: identifier)
         return await withCheckedContinuation { (continuation: CheckedContinuation<PhonePlace?, Never>) in
@@ -194,6 +196,11 @@ public enum PlaceQueries {
                 continuation.resume(returning: item.flatMap { place(from: $0) })
             }
         }
+    }
+
+    static func placeID(of item: MKMapItem) -> String? {
+        if #available(iOS 18.0, macOS 15.0, *) { return item.identifier?.rawValue }
+        return nil
     }
 
     private static func start(_ request: MKLocalSearch.Request, near: CLLocationCoordinate2D?) async throws -> [PhonePlace] {
@@ -232,7 +239,7 @@ public enum PlaceQueries {
         let title = item.placemark.title
         let name = item.name ?? title
         return PhonePlace(name: name, detail: title == name ? nil : title, lat: c.latitude, lon: c.longitude,
-                          confidence: .guess, src: "mapkit", placeID: item.identifier?.rawValue)
+                          confidence: .guess, src: PhonePlace.appleSearchSource, placeID: placeID(of: item))
     }
 
     private static func sorted(_ places: [PhonePlace], near: CLLocationCoordinate2D?) -> [PhonePlace] {

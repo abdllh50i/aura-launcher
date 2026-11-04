@@ -84,13 +84,15 @@ export function createFakeUnit(options = {}) {
       nav: { state: 'idle' },
       trip: null,
       card: null,
-      music: { ...PLAYLIST[0], playing: true, positionS: 42 },
+      music: { ...PLAYLIST[0], playing: true, volume: 12, maxVolume: 40, muted: false },
       musicIndex: 0,
-      car: { volumeStep: 12, volumeMax: 40, speedKmh: 0, gpsFix: true, reversing: false },
+      navVoice: true,
+      car: { gear: 'P', gearSure: true, reversing: false, inCall: false, fix: { lat: 26.29, lon: 50.18, ageS: 1, kmh: 0 } },
       places: { home: null, work: null, favourites: [], recents: [] },
       starts: [],
       log: [],
       adbOpens: [],
+      lastState: {},
     };
     for (const client of sseClients) client.end();
     sseClients.clear();
@@ -122,7 +124,15 @@ export function createFakeUnit(options = {}) {
   }
   function setNav(nav) {
     state.nav = nav;
+    if (nav.id && state.seenIds.includes(nav.id)) state.lastState[nav.id] = nav.state;
     broadcast('nav', nav);
+  }
+  /** The trip as it is now: the shape of /v1/state's "nav" and of the snapshot on connect. It names no id, like the unit's. */
+  function navJson() {
+    const trip = state.trip;
+    if (!trip) return state.nav.state === 'arrived' ? { state: 'arrived', place: state.nav.place } : { state: 'idle' };
+    if (!trip.running) return { state: 'routing', place: trip.place };
+    return { state: 'navigating', place: trip.place, by: 'phone', remainingM: trip.leftM, timeLeftS: trip.leftS, etaLocal: etaLocal(trip.leftS), speedKmh: 0, rerouting: false, nextText: 'بعد ٨٠٠ متر انعطف يمين' };
   }
   function setMusic(patch) {
     state.music = { ...state.music, ...patch };
@@ -142,17 +152,19 @@ export function createFakeUnit(options = {}) {
   function startTrip(id, place) {
     endTripTimers();
     state.card = null;
-    state.trip = { id, place, leftS: config.tripSeconds, leftM: base.tripMeters };
+    state.trip = { id, place, leftS: config.tripSeconds, leftM: base.tripMeters, running: false };
     state.starts.push({ id, place });
-    setNav({ state: 'routing', id, name: place.name });
+    setNav({ state: 'routing', id, place });
     state.trip.route = later(config.routeDelayMs, () => {
       if (config.failRoute) {
         const reason = config.failRoute;
         state.trip = null;
-        setNav({ state: 'failed', id, name: place.name, reason });
+        setNav({ state: 'failed', id, reason });
         return;
       }
-      setNav({ state: 'started', id, name: place.name, distanceM: base.tripMeters, durationS: config.tripSeconds, etaLocal: etaLocal(config.tripSeconds) });
+      state.trip.running = true;
+      setNav({ state: 'started', id, distanceM: base.tripMeters, durationS: config.tripSeconds, etaLocal: etaLocal(config.tripSeconds) });
+      broadcast('nav', navJson());
       scheduleProgress();
     });
   }
@@ -166,10 +178,10 @@ export function createFakeUnit(options = {}) {
       trip.leftM = Math.max(0, trip.leftM - 800);
       if (trip.leftS === 0) {
         state.trip = null;
-        setNav({ state: 'arrived', id: trip.id, name: trip.place.name });
+        setNav({ state: 'arrived', place: trip.place });
         return;
       }
-      setNav({ state: 'progress', id: trip.id, name: trip.place.name, remainingM: trip.leftM, timeLeftS: trip.leftS, etaLocal: etaLocal(trip.leftS), nextText: 'بعد ٨٠٠ متر انعطف يمين' });
+      setNav({ ...navJson(), state: 'progress' });
       scheduleProgress();
     });
   }
@@ -207,29 +219,29 @@ export function createFakeUnit(options = {}) {
   // Handlers
   const needsToken = (trust, res) => {
     if (trust === 'token') return true;
-    send(res, 401, { reason: 'token required' });
+    send(res, trust === 'gateway' ? 401 : 403, { reason: trust === 'gateway' ? 'pair' : 'refused' });
     return false;
   };
 
   function handleGo(req, res, body, trust) {
     const place = body?.place;
     if (!body?.id || !place || typeof place.lat !== 'number' || typeof place.lon !== 'number' || !place.name) {
-      return send(res, 400, { reason: 'bad request' });
+      return send(res, 400, { reason: 'bad_place' });
     }
-    if (trust === 'other') return send(res, 403, { reason: 'not paired' });
+    if (trust === 'other') return send(res, 403, { reason: 'refused' });
     if (config.dropGo > 0) {
       config.dropGo -= 1;
       state.log[state.log.length - 1].dropped = true;
       return; // never answered, and not seen: a frozen hotspot
     }
-    if (state.seenIds.includes(body.id)) return send(res, 202, { id: body.id, state: 'duplicate' });
+    if (state.seenIds.includes(body.id)) return send(res, 202, { id: body.id, state: 'duplicate', last: state.lastState[body.id] ?? 'accepted' });
     remember(body.id);
     if (config.conflict) return send(res, 409, { reason: config.conflict });
 
     if (trust === 'gateway' || state.trip) {
       // Unpaired from the gateway: always the card. Already navigating: a card too, never a silent change of route.
       state.card = { id: body.id, place, reason: trust === 'gateway' ? 'unpaired' : 'navigating' };
-      broadcast('nav', { state: 'card', id: body.id, name: place.name });
+      broadcast('nav', { id: body.id, state: 'card', kind: trust === 'gateway' ? 'ask' : 'replace' });
     } else {
       startTrip(body.id, place);
     }
@@ -238,13 +250,13 @@ export function createFakeUnit(options = {}) {
       state.log[state.log.length - 1].ackLost = true;
       return;
     }
-    return send(res, 202, { id: body.id, state: 'accepted' });
+    return send(res, 202, { id: body.id, state: 'accepted', ...(trust === 'gateway' ? { needs: 'tap' } : {}) });
   }
 
   function handleShare(req, res, body, trust) {
-    if (trust === 'other') return send(res, 403, { reason: 'not paired' });
+    if (trust === 'other') return send(res, 403, { reason: 'refused' });
     const text = `${body?.url ?? ''} ${body?.text ?? ''}`;
-    if (!text.trim()) return send(res, 400, { reason: 'nothing shared' });
+    if (!text.trim()) return send(res, 400, { reason: 'nothing_shared' });
     const id = body?.id ?? crypto.randomUUID();
     if (state.seenIds.includes(id)) return send(res, 202, { id, state: 'duplicate' });
     remember(id);
@@ -259,9 +271,9 @@ export function createFakeUnit(options = {}) {
 
   function handleEvents(req, res) {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
-    res.write(`: hello\n\n${sseFrame('nav', state.nav)}${sseFrame('music', state.music)}${sseFrame('car', state.car)}`);
+    res.write(`retry: 3000\n\n${sseFrame('nav', navJson())}${sseFrame('music', state.music)}${sseFrame('car', state.car)}`);
     sseClients.add(res);
-    const beat = setInterval(() => res.write(': heartbeat\n\n'), base.heartbeatMs);
+    const beat = setInterval(() => res.write(': alive\n\n'), base.heartbeatMs);
     res.on('close', () => {
       clearInterval(beat);
       sseClients.delete(res);
@@ -270,7 +282,8 @@ export function createFakeUnit(options = {}) {
 
   function handleRemote(res, body) {
     const cmd = body?.cmd;
-    if (!REMOTE_COMMANDS.has(cmd)) return send(res, 400, { reason: 'unknown command' });
+    if (!REMOTE_COMMANDS.has(cmd)) return send(res, 400, { reason: 'bad_cmd' });
+    if (cmd.startsWith('open.') && state.car.reversing) return send(res, 409, { id: body?.id, cmd, state: 'refused', reason: 'reversing' });
     switch (cmd) {
       case 'music.toggle':
         setMusic({ playing: !state.music.playing });
@@ -283,15 +296,18 @@ export function createFakeUnit(options = {}) {
         break;
       }
       case 'volume.up':
-        setCar({ volumeStep: Math.min(state.car.volumeMax, state.car.volumeStep + 1) });
+        setMusic({ muted: false, volume: Math.min(state.music.maxVolume, state.music.volume + 1) });
         break;
       case 'volume.down':
-        setCar({ volumeStep: Math.max(0, state.car.volumeStep - 1) });
+        setMusic({ volume: Math.max(0, state.music.volume - 1) });
+        break;
+      case 'voice.mute':
+        state.navVoice = !state.navVoice;
         break;
       default:
         break;
     }
-    return send(res, 200, { ok: true, cmd });
+    return send(res, 200, { id: body?.id, cmd, state: 'ok', volume: state.music.volume, muted: state.music.muted, navVoice: state.navVoice });
   }
 
   function validPlace(p) {
@@ -303,7 +319,7 @@ export function createFakeUnit(options = {}) {
       case '/__fake/log':
         return send(res, 200, { requests: state.log, starts: state.starts, adbOpens: state.adbOpens });
       case '/__fake/state':
-        return send(res, 200, { nav: state.nav, music: state.music, car: state.car, places: state.places, code: state.code, card: state.card, tokens: state.tokens.size, seenIds: state.seenIds, config });
+        return send(res, 200, { nav: navJson(), last: state.nav, music: state.music, car: state.car, places: state.places, code: state.code, card: state.card, tokens: state.tokens.size, seenIds: state.seenIds, config });
       case '/__fake/config':
         Object.assign(config, body ?? {});
         return send(res, 200, config);
@@ -322,7 +338,7 @@ export function createFakeUnit(options = {}) {
         if (!card) return send(res, 409, { reason: 'no card' });
         state.card = null;
         if (body?.accept === false) {
-          setNav(state.trip ? state.nav : { state: 'failed', id: card.id, name: card.place.name, reason: 'ما انضغط ابدأ' });
+          broadcast('nav', { id: card.id, state: 'ignored', kept: true });
         } else {
           startTrip(card.id, card.place);
         }
@@ -332,7 +348,7 @@ export function createFakeUnit(options = {}) {
         const trip = state.trip;
         endTripTimers();
         state.trip = null;
-        if (trip) setNav({ state: 'arrived', id: trip.id, name: trip.place.name });
+        if (trip) setNav({ state: 'arrived', place: trip.place });
         return send(res, 200, { ok: true });
       }
       default:
@@ -360,7 +376,8 @@ export function createFakeUnit(options = {}) {
       return send(res, 200, { app: 'AMRI', unit: base.unit, name: base.name, version: base.version, proto: base.proto });
     }
     if (key === 'POST /v1/pair') {
-      if (!body?.code || body.code !== state.code || Date.now() > state.codeExpires) return send(res, 403, { reason: 'bad code' });
+      if (!state.code || Date.now() > state.codeExpires) return send(res, 403, { reason: 'no_code' });
+      if (!body?.code || body.code !== state.code) return send(res, 403, { reason: 'bad_code', triesLeft: 4 });
       state.code = null; // single use
       const token = crypto.randomBytes(24).toString('hex');
       state.tokens.add(sha256(token)); // the unit stores a hash of the token
@@ -371,10 +388,11 @@ export function createFakeUnit(options = {}) {
     if (key === 'POST /v1/nav/saved') {
       if (!needsToken(trust, res)) return undefined;
       const which = body?.which;
-      if (which !== 'home' && which !== 'work') return send(res, 400, { reason: 'which must be home or work' });
+      if (which !== 'home' && which !== 'work') return send(res, 400, { reason: 'bad_which' });
       const place = state.places[which];
-      if (!place) return send(res, 409, { reason: which === 'home' ? 'البيت غير محدد' : 'العمل غير محدد' });
-      const id = crypto.randomUUID();
+      if (!place) return send(res, 409, { reason: 'not_set', which });
+      const id = body?.id || crypto.randomUUID();
+      if (state.seenIds.includes(id)) return send(res, 202, { id, state: 'duplicate', last: state.lastState[id] ?? 'accepted' });
       remember(id);
       if (state.trip) state.card = { id, place, reason: 'navigating' };
       else startTrip(id, place);
@@ -385,17 +403,19 @@ export function createFakeUnit(options = {}) {
       const trip = state.trip;
       endTripTimers();
       state.trip = null;
-      setNav(trip ? { state: 'stopped', id: trip.id } : { state: 'idle' });
-      return send(res, 200, { state: 'stopped' });
+      if (trip) broadcast('nav', { id: trip.id, state: 'cancelled', by: 'phone' });
+      setNav({ state: 'idle' });
+      return send(res, 200, { id: body?.id, state: trip ? 'stopped' : 'idle' });
     }
     if (key === 'POST /v1/search') {
       if (!needsToken(trust, res)) return undefined;
-      if (!body?.q) return send(res, 400, { reason: 'q required' });
+      if (!body?.q || body.q.length < 2) return send(res, 400, { reason: 'bad_query' });
+      if (body.on === 'phone') return send(res, 200, { state: 'ok', results: [] });
       return send(res, 202, { state: 'accepted' });
     }
     if (key === 'GET /v1/state') {
       if (!needsToken(trust, res)) return undefined;
-      return send(res, 200, { nav: state.nav, music: state.music, car: state.car, link: { peers: sseClients.size } });
+      return send(res, 200, { nav: navJson(), music: state.music, car: state.car, link: { naghm: false, wifi: 'ok', address: req.socket.localAddress?.replace(/^::ffff:/, '') ?? null, listening: sseClients.size } });
     }
     if (key === 'GET /v1/events') {
       if (!needsToken(trust, res)) return undefined;
@@ -407,13 +427,16 @@ export function createFakeUnit(options = {}) {
     }
     if (key === 'PUT /v1/places') {
       if (!needsToken(trust, res)) return undefined;
+      // Only what the body names changes. Places from Apple's data are not kept here (its terms: section 2.6 of the plan).
       const doc = body ?? {};
-      const favourites = doc.favourites ?? [];
-      const recents = doc.recents ?? [];
+      const apple = (p) => String(p?.src ?? '').toLowerCase().includes('apple');
+      if (apple(doc.home) || apple(doc.work)) return send(res, 409, { reason: 'apple_not_kept' });
+      const favourites = (doc.favourites ?? state.places.favourites).filter((p) => !apple(p));
+      const recents = (doc.recents ?? state.places.recents).filter((p) => !apple(p));
       if (!validPlace(doc.home) || !validPlace(doc.work) || !favourites.every(validPlace) || !recents.every(validPlace)) {
-        return send(res, 400, { reason: 'bad place' });
+        return send(res, 400, { reason: 'bad_place' });
       }
-      state.places = { home: doc.home ?? null, work: doc.work ?? null, favourites, recents };
+      state.places = { home: 'home' in doc ? doc.home : state.places.home, work: 'work' in doc ? doc.work : state.places.work, favourites, recents };
       return send(res, 200, state.places);
     }
     if (key === 'POST /v1/remote') {

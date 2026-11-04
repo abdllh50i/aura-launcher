@@ -59,6 +59,7 @@ async function readEvents(token, until, timeoutMs = 2000) {
           events.push({ comment: frame });
           continue;
         }
+        if (frame.startsWith('retry:')) continue;
         const name = frame.match(/^event: (.*)$/m)?.[1];
         const data = frame.match(/^data: (.*)$/m)?.[1];
         events.push({ event: name, data: JSON.parse(data) });
@@ -221,11 +222,12 @@ test('already navigating: a new place makes a card, the route does not change si
 test('stop ends the trip, the events have a snapshot on connect and a heartbeat', async () => {
   const token = await pair();
   await post('/v1/nav/go', { id: 'S1', place }, token);
-  const events = await readEvents(token, (list) => list.filter((e) => e.comment === ': heartbeat').length >= 1);
+  const events = await readEvents(token, (list) => list.filter((e) => e.comment === ': alive').length >= 1);
   assert.deepEqual(events.filter((e) => e.event).slice(0, 3).map((e) => e.event), ['nav', 'music', 'car']);
   const stop = await post('/v1/nav/stop', {}, token);
   assert.equal(stop.status, 200);
-  assert.equal(unit.state.nav.state, 'stopped');
+  assert.equal(unit.state.nav.state, 'idle');
+  assert.equal(unit.state.trip, null);
 });
 
 test('places: the unit is the source of truth, saved home starts a trip, a missing one says so', async () => {
@@ -249,7 +251,7 @@ test('remote: music and the volume step change, an unknown command is refused', 
   await post('/v1/remote', { cmd: 'music.next' }, token);
   assert.equal(unit.state.music.title, 'على البال');
   await post('/v1/remote', { cmd: 'volume.up' }, token);
-  assert.equal(unit.state.car.volumeStep, 13);
+  assert.equal(unit.state.music.volume, 13);
   await post('/v1/remote', { cmd: 'music.toggle' }, token);
   assert.equal(unit.state.music.playing, false);
   assert.equal((await post('/v1/remote', { cmd: 'format.disk' }, token)).status, 400);
