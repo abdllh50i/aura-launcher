@@ -82,6 +82,8 @@ class AuraApp : Application() {
             AssistiveBall.offOnce(this) // the stock floating circle the owner switched on by accident
             com.abdllh.aura.system.AppRemover.removeRequestedOnce(this) // the "Vivid" launcher the owner asked to remove
             com.abdllh.aura.voice.Amri.init(this) // the voice assistant (its wake word listener when switched on)
+            // a trip that was being driven when the process went (an update, a crash, a fuel stop); after the start's rush
+            android.os.Handler(mainLooper).postDelayed({ com.abdllh.aura.nav.TripMemory.resume(this) }, 4000L)
         }
     }
 

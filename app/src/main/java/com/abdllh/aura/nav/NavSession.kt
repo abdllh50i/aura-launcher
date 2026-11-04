@@ -110,6 +110,7 @@ object NavSession {
         nextRerouteAt = 0L
         forgetPrompts()
         Places.addRecent(dest)
+        TripMemory.started(dest, CarLocation.last)
         CarLocation.acquire(c, "nav")
         CarLocation.removeListener(onFix)
         CarLocation.addListener(onFix)
@@ -122,6 +123,7 @@ object NavSession {
         val c = app
         state = State.IDLE
         trip++
+        TripMemory.forget()
         main.removeCallbacks(endAfterArrival)
         destination = null
         route = null
@@ -169,6 +171,7 @@ object NavSession {
             arrive()
             return
         }
+        if (dest != null) TripMemory.beat(dest, l)
         // leaving the route ([OffRouteWatch]) while moving; retries back off while the car stays off it
         if (!off) rerouteStreak = 0
         if (watch.leaving && speed > 5 && !rerouting && SystemClock.elapsedRealtime() >= nextRerouteAt) reroute(here, l)
@@ -310,6 +313,7 @@ object NavSession {
 
     private fun arrive() {
         state = State.ARRIVED
+        TripMemory.forget()
         arrivedAt = SystemClock.elapsedRealtime()
         progress = progress?.let { Progress(it.position, it.bearing, it.along, it.next, 0.0, 0.0, 0.0, it.speedKmh, false) }
         // by the place's name, unless it is only a pin's (named in AMRI's language, which the bare application
