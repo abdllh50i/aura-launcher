@@ -80,7 +80,8 @@ def main():
     run("xcrun", "simctl", "status_bar", udid, "override", "--time", "9:41", "--batteryState", "charged",
         "--batteryLevel", "100", "--wifiBars", "3", "--cellularBars", "4")
     run("xcrun", "simctl", "location", udid, "set", "26.2894,50.1975")
-    run("xcrun", "simctl", "install", udid, APP)
+    # The first install on a fresh simulator took over three minutes on the Intel runner.
+    run("xcrun", "simctl", "install", udid, APP, timeout=900)
     run("xcrun", "simctl", "privacy", udid, "grant", "location", BUNDLE)
     run("xcrun", "simctl", "ui", udid, "appearance", "light")
     if "--boot-only" in sys.argv:
