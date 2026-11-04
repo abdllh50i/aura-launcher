@@ -99,10 +99,7 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
     private var open: Sheet? = null
     private var menuUp: android.widget.PopupWindow? = null
 
-    override fun onShow(args: Bundle?) {
-        Look.catchUp(root)
-        apply(args)
-    }
+    override fun onShow(args: Bundle?) = apply(args)
 
     override fun onArgs(args: Bundle) = apply(args)
 
@@ -956,6 +953,13 @@ class GalleryReceiver : BroadcastReceiver() {
     override fun onReceive(c: Context, i: Intent) {
         val s = HomeActivity.current ?: return
         if (i.getBooleanExtra("probe", false)) { probe(s); return }
+        // (what a hidden panel does through a theme change: --es over probe opens a panel over the gallery, --es swap day changes the theme under it by the real path, then Back)
+        i.getStringExtra("over")?.let { s.panels.show(it); return }
+        i.getStringExtra("swap")?.let { t ->
+            Prefs.theme = when (t) { "night" -> Theme.DARK; "day" -> Theme.LIGHT; else -> Theme.AUTO }
+            ThemeSwap.run(s)
+            return
+        }
         val args = Bundle(i.extras ?: Bundle())
         // (no page: a theme alone. What is open stays open, to be seen changing; a panel's show closes the sheets)
         val top = s.panels.top

@@ -32,7 +32,7 @@ object Look {
         if (root is ViewGroup) for (i in 0 until root.childCount) apply(root.getChildAt(i))
     }
 
-    /** A hidden panel: it recolours when it is next shown ([catchUp], from its onShow), so no frame walks hundreds of views. */
+    /** A hidden panel: it recolours when it is next shown ([catchUp], from the panel stack, by whichever way it comes back), so no frame walks hundreds of views. */
     fun markStale(root: View) = root.setTag(R.id.aura_look_stale, true)
 
     fun catchUp(root: View) {

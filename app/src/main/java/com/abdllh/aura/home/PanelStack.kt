@@ -177,7 +177,6 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
 
     private fun place(p: Panel) {
         val f = p.frame
-        com.abdllh.aura.ui.Look.catchUp(f)
         f.visibility = View.VISIBLE
         f.live = true
         val layer = root.panelLayer
@@ -203,6 +202,7 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
     // ------------------------------------------------------------------------------------------ the top panel's callbacks
     /** It is the top one now: the window follows it, and it goes as far as the window has. */
     private fun arrive(p: Panel, args: Bundle?): Boolean {
+        com.abdllh.aura.ui.Look.catchUp(p.frame) // (a theme changed while it was hidden; before its first frame, by whichever way it came back)
         applyTo(p)
         if (!shell.startedNow) { firstArgs = args; return true }
         return bringUp(p, args)
