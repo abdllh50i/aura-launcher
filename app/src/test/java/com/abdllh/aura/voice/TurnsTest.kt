@@ -95,6 +95,17 @@ class TurnsTest {
         assertFalse(turns.free(Who.NAV))
     }
 
+    @Test fun aWakeNobodySpokeIntoGivesWayToATurn() {
+        val after = WakeTurn.GRACE_MS
+        assertTrue(WakeTurn.givesWay(true, byVoice = true, speechBegun = false, sinceWakeMs = after))
+        // he is speaking; he tapped the microphone: it stays
+        assertFalse(WakeTurn.givesWay(true, byVoice = true, speechBegun = true, sinceWakeMs = after))
+        assertFalse(WakeTurn.givesWay(true, byVoice = false, speechBegun = false, sinceWakeMs = after))
+        // a moment to start speaking; the answer of a request is not listening
+        assertFalse(WakeTurn.givesWay(true, byVoice = true, speechBegun = false, sinceWakeMs = after - 1))
+        assertFalse(WakeTurn.givesWay(false, byVoice = true, speechBegun = false, sinceWakeMs = after))
+    }
+
     @Test fun whatIsForgottenDoesNotRun() {
         var said = false
         turns.take(Who.AMRI)

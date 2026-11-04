@@ -130,6 +130,14 @@ object Amri {
                 override fun onReceive(c: Context, i: Intent) {
                     i.getStringExtra("say")?.let { heard(LocaleHelper.wrap(c.applicationContext), listOf(it), simulated = true); return }
                     if (i.getBooleanExtra("wake", false)) wake(c)
+                    // a wake by voice listening, with no recogniser to do it (the emulator has none): --ez wakevoice true,
+                    // then --ez speech true (he speaks), --ez endwake true
+                    if (i.getBooleanExtra("wakevoice", false)) {
+                        state = State.LISTENING; session++; wokenByVoice = true; speechBegun = false
+                        wokeAt = SystemClock.elapsedRealtime(); VoiceTurn.take(VoiceTurn.Who.AMRI)
+                    }
+                    if (i.getBooleanExtra("speech", false)) speechBegun = true
+                    if (i.getBooleanExtra("endwake", false)) cancel(c)
                     // the wake word from files (16 kHz mono WAV): --es enroll a.wav,b.wav,...  --es detect x.wav,y.wav
                     i.getStringExtra("enroll")?.let { files -> DebugWav.enroll(c.applicationContext, files.split(',')) }
                     i.getStringExtra("detect")?.let { files -> DebugWav.detect(c.applicationContext, files.split(',')) }
@@ -179,6 +187,10 @@ object Amri {
     /** This session's wake by voice (null: the microphone was tapped), until the owner shows whether he meant it. */
     private var heardBy: WakeCandidate? = null
     private var wokeAt = 0L
+    /** This session was woken by voice, not by a finger on the microphone. */
+    private var wokenByVoice = false
+    /** Somebody has started speaking to this session (the recogniser says so; the taught requests hear a voice). */
+    @Volatile private var speechBegun = false
     /** What played when the assistant was called, before it paused the music ("what's playing" answers about it). */
     private var playingAtWake: com.abdllh.aura.media.NowPlaying? = null
 
@@ -196,6 +208,8 @@ object Amri {
         state = State.LISTENING
         val s = ++session
         heardBy = heard
+        wokenByVoice = heard != null
+        speechBegun = false
         wokeAt = SystemClock.elapsedRealtime()
         playingAtWake = MediaMonitor.current
         AmriService.pauseMic() // the recogniser needs the microphone
@@ -240,6 +254,7 @@ object Amri {
             // a bump, a door, a cough before the request: not the request, keep listening (the 8 s still apply)
             if (heard || !VoiceCheck.isVoice(pcm, noise)) return@Segmenter
             heard = true
+            speechBegun = true
             val item = OfflineCommands.match(c, Features.spectrum(pcm, noise))
             main.post {
                 stopOffline()
@@ -316,7 +331,7 @@ object Amri {
         recognizer = r
         r.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {}
-            override fun onBeginningOfSpeech() {}
+            override fun onBeginningOfSpeech() { speechBegun = true }
             override fun onRmsChanged(rmsdB: Float) { AmriOverlay.level(((rmsdB + 2f) / 12f).coerceIn(0f, 1f)) }
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() { AmriOverlay.level(0f) }
@@ -399,6 +414,24 @@ object Amri {
             com.abdllh.aura.link.PlaceInbox.dropVoice()
             AmriOverlay.hide()
         }
+    }
+
+    /**
+     * A turn prompt that cannot wait, while the assistant holds the car's voice. False wakes on bumps are common, and a wake holds the
+     * voice for up to 15 s, half a kilometre at motorway speed, in which an exit would pass unspoken: a wake by voice that nobody has
+     * spoken into gives way, as not meant. Not once he is speaking, and not a tap on the microphone. True when the voice is free now.
+     */
+    fun giveWayToPrompt(): Boolean {
+        val c = app ?: return false
+        if (!WakeTurn.givesWay(state == State.LISTENING, wokenByVoice, speechBegun, SystemClock.elapsedRealtime() - wokeAt)) return false
+        Log.i(TAG, "a turn prompt comes first: nothing was said to this wake")
+        val w = LocaleHelper.wrap(c)
+        unmeant(w, "a turn prompt")
+        session++
+        release()
+        AmriOverlay.hide()
+        requestOver(w, null)
+        return true
     }
 
     private fun release() {
@@ -791,23 +824,27 @@ object Amri {
         val done = {
             if (!ended && session == s) {
                 ended = true
-                // music the assistant paused plays on, unless the owner wanted it stopped or changed
-                val p = paused
-                paused = null
-                when (WakeMusic.after(p != null, cmd == Command.Pause || cmd == Command.Mute, p != null && somethingElsePlays(p), inCall)) {
-                    WakeMusic.Then.PLAY -> MediaMonitor.playAgain(c, p!!)
-                    WakeMusic.Then.AFTER_CALL -> afterCall = p
-                    WakeMusic.Then.LEAVE -> {}
-                }
-                heardBy = null
-                state = State.IDLE
-                VoiceTurn.forget(VoiceTurn.Who.AMRI)
-                VoiceTurn.release(VoiceTurn.Who.AMRI)
-                AmriService.resumeMic()
+                requestOver(c, cmd)
             }
         }
         if (speak && spoken && mode == AmriOverlay.Mode.DONE) say(c, text, done) else main.postDelayed({ done() }, 900)
         main.postDelayed({ done() }, 8000) // a voice that never finishes must not leave it deaf
+    }
+
+    /** The request is over: the music the assistant paused plays on, unless the owner wanted it stopped or changed, and the car's voice and the microphone are free. */
+    private fun requestOver(c: Context, cmd: Command?) {
+        val p = paused
+        paused = null
+        when (WakeMusic.after(p != null, cmd == Command.Pause || cmd == Command.Mute, p != null && somethingElsePlays(p), inCall)) {
+            WakeMusic.Then.PLAY -> MediaMonitor.playAgain(c, p!!)
+            WakeMusic.Then.AFTER_CALL -> afterCall = p
+            WakeMusic.Then.LEAVE -> {}
+        }
+        heardBy = null
+        state = State.IDLE
+        VoiceTurn.forget(VoiceTurn.Who.AMRI)
+        VoiceTurn.release(VoiceTurn.Who.AMRI)
+        AmriService.resumeMic()
     }
 
     // ------------------------------------------------------------------------------------------ voice

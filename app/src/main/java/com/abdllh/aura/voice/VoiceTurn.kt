@@ -11,6 +11,7 @@ import android.util.Log
  * the recogniser while the owner talks. So one at a time: the assistant holds the turn from the moment it wakes (listening
  * counts) until it is done, a prompt while it plays. Who comes second waits for the other to end, and a turn nobody gives
  * back (an engine that never reports its end) ends by itself: nothing here can leave the car mute or the assistant deaf.
+ * One exception, decided outside: a turn close by takes the voice from a wake nobody has spoken into ([WakeTurn]).
  * Main thread.
  */
 object VoiceTurn {
@@ -37,6 +38,15 @@ object VoiceTurn {
 
     /** What [who] was waiting for is not wanted any more. */
     fun forget(who: Who) = turns.forget(who)
+}
+
+/** Whether a wake gives the car's voice up for a turn prompt ([Amri.giveWayToPrompt]). No Android in here. */
+internal object WakeTurn {
+    /** He gets a moment to start speaking: the prompt comes 8 s ahead, and takes about 3. */
+    const val GRACE_MS = 2_000L
+
+    fun givesWay(listening: Boolean, byVoice: Boolean, speechBegun: Boolean, sinceWakeMs: Long): Boolean =
+        listening && byVoice && !speechBegun && sinceWakeMs >= GRACE_MS
 }
 
 /** [VoiceTurn]'s rules, apart from Android's clock and handler. */

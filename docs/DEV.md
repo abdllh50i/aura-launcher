@@ -2281,10 +2281,19 @@ sign, a trip resumed or not and why) is the first real measurement.
 * **Assistant and music** (`MediaMonitor.pauseNow` / `playAgain`, `voice/WakeMusic.kt`): absolute commands to the source that was
   playing, and exactly that comes back; a pause or mute means it; another source playing by then is not interrupted; a call
   that came meanwhile: when it ends. A false wake still pauses for as long as it listens (up to 15 s).
+* **A broadcast that says nothing of its state does not play** (`NowPlayingRule.broadcastPlaying`). The stock Bluetooth app tells every title on
+  `com.nwd.btmusic.playinfo.changed` with no state while it is alive, and it is at every ignition (fact 34; its bytecode; not seen on the unit): that
+  was "playing" for ever, so the card said so with the phone paused, and the assistant found another source playing and left the phone's music off. It is ignored where
+  `BtMusic` has that song; no state means what it said last, else not playing; no media key goes to an app that never said it plays (`command`); the
+  assistant's play opens AMRI Music there (`playable`). `Player.release` releases its media session: set inactive it stayed the one that gets the
+  media keys (Android keeps the last session that played, active or not, tried on the emulator), and a key meant for something else resumed the old local song.
 * **One voice at a time** (`voice/VoiceTurn.kt`): the assistant from the wake until it is done, a prompt while it plays. A prompt
   being said ends before the chime. A prompt due during the assistant's turn is not looked at: the next fix decides, at the distance of
-  that moment, so nothing comes late or for a turn already passed. A turn nobody gives back ends by itself (15 s, 40 s). The price: a false
-  wake can hold a prompt back for up to 15 s; the sign still shows it.
+  that moment, so nothing comes late or for a turn already passed. A turn nobody gives back ends by itself (15 s, 40 s). A false wake must not
+  cost the exit, though: 15 s is half a kilometre at 120 km/h. So a near prompt that is due takes the voice from a wake by voice nobody has spoken into
+  (`Amri.giveWayToPrompt`, `WakeTurn`: from 2 s after the wake, until `onBeginningOfSpeech`; learned as not meant). Far and early prompts still wait, and a
+  request being spoken, or a tap on the microphone, keeps it. Emulator, a drive simulated at 90 km/h: `AMRI takes the turn`, 2.2 s later
+  `a turn prompt comes first`, `In 150 metres, turn left`; with speech begun: nothing for 25 s until it ended (`--ez wakevoice true`, `--ez speech true`).
 * **Lyrics** (`MusicActivity.phoneTakesOver`): Naghm's coming after the screen's own go up, unless they are the very same lines
   (the owner's correction goes on applying) or have no times where the shown ones do. The correction stays on disk with its lines.
 * **Music keys:** "the same source" is `MusicActivity.onBluetooth`, what the screen is really on; the pref only with no screen.

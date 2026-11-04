@@ -15,6 +15,7 @@ import com.abdllh.aura.BuildConfig
 import com.abdllh.aura.R
 import com.abdllh.aura.util.LocaleHelper
 import com.abdllh.aura.util.Prefs
+import com.abdllh.aura.voice.Amri
 import com.abdllh.aura.voice.VoiceTurn
 import java.util.Locale
 import java.util.concurrent.CopyOnWriteArrayList
@@ -200,7 +201,9 @@ object NavSession {
         if (!off) rerouteStreak = 0
         if (watch.leaving && speed > 5 && !rerouting && SystemClock.elapsedRealtime() >= nextRerouteAt) reroute(here, l)
         // (while the assistant has the car's voice a prompt is not even looked at: the fix after it ends decides, with the
-        // distance of that moment, so nothing is said late and nothing that has been passed is said at all)
+        // distance of that moment, so nothing is said late and nothing that has been passed is said at all. But a turn close
+        // by does not wait for a wake nobody has spoken into: a bump must not cost the exit)
+        if (!off && !VoiceTurn.free(VoiceTurn.Who.NAV) && nearDue(next, toNext, speed)) Amri.giveWayToPrompt()
         if (!off && VoiceTurn.free(VoiceTurn.Who.NAV)) prompt(r, next, toNext, along, speed)
         changed()
     }
@@ -250,6 +253,13 @@ object NavSession {
         return true
     }
 
+    /** How far before a manoeuvre its near prompt is said: 8 s ahead, an Arabic sentence takes about 3 s. */
+    private fun nearM(speedKmh: Double) = (speedKmh / 3.6 * 8).coerceIn(80.0, 300.0)
+
+    /** The last prompt for the step ahead is due now, and has not been said. (A debug build has no voice to say it on the emulator: it writes it.) */
+    private fun nearDue(next: Int, toNext: Double, speedKmh: Double) =
+        voiceOn && (ttsReady || BuildConfig.DEBUG) && next > 0 && next !in saidNear && toNext <= nearM(speedKmh)
+
     private fun forgetPrompts() {
         saidEarly.clear()
         saidFar.clear()
@@ -270,7 +280,7 @@ object NavSession {
         val step = r.steps[next]
         val v = speedKmh / 3.6
         val far = (v * 22).coerceIn(400.0, 1500.0)
-        val near = (v * 8).coerceIn(80.0, 300.0)
+        val near = nearM(speedKmh)
         val highway = step.type in setOf("off ramp", "on ramp", "fork", "merge") || speedKmh > 80
         val early = if (highway) (v * 60).coerceIn(1000.0, 2000.0) else 0.0
         // the stretch before it, from the last manoeuvre the driver was told about
