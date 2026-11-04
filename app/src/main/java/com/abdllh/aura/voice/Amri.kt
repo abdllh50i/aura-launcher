@@ -449,7 +449,7 @@ object Amri {
 
     /** Does [cmd]; the answer to show (and to say). */
     private fun run(c: Context, cmd: Command): Answer {
-        fun s(id: Int, vararg a: Any) = c.getString(id, *a)
+        fun s(id: Int, vararg a: Any) = digits(c, id, *a)
         return when (cmd) {
             Command.Next -> { media(c, MediaMonitor.Key.NEXT); Answer(s(R.string.amri_next)) }
             Command.Previous -> { media(c, MediaMonitor.Key.PREV); Answer(s(R.string.amri_previous)) }
@@ -521,6 +521,9 @@ object Amri {
 
     private val arabic get() = Locale.getDefault().language == "ar"
 
+    /** An answer with its numbers in Western digits, the app's rule everywhere (%d alone gives ١٢ in Arabic, beside 12 on the dock). */
+    private fun digits(c: Context, id: Int, vararg a: Any): String = String.format(Locale.ROOT, c.getString(id), *a)
+
     /** What is left of the route on AMRI Maps (another navigation app does not say). */
     private fun eta(c: Context): Answer {
         val nav = com.abdllh.aura.nav.NavSession
@@ -562,7 +565,7 @@ object Amri {
             cmd.up -> R.string.amri_brighter
             else -> R.string.amri_dimmer
         }
-        return Answer(c.getString(id, to))
+        return Answer(digits(c, id, to))
     }
 
     /**
