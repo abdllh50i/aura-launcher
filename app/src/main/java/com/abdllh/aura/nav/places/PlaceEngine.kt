@@ -338,9 +338,9 @@ internal class PlaceEngine(val db: PlacesDb) {
 
     /**
      * The nearest of a kind ahead on a route (key of table cat: "fuel", "mosque"), best first by the way along it: walks the line in stretches from [fromAlong], stops as soon as
-     * [limit] are found or [maxAheadM] is behind it. Within [corridorM] of the line; which side it is on is told, not judged.
+     * [limit] are found or [maxAheadM] is behind it. Within [corridorM] of the line. Which side it is on is told, and only judged with [rightOnly]: on a divided road what is on the left may take a long way round.
      */
-    fun nearestAhead(line: Polyline, fromAlong: Double, catKey: String, limit: Int = 3, corridorM: Double = 200.0, maxAheadM: Double = 500_000.0, cs: CancellationSignal? = null): List<RoutePlace> {
+    fun nearestAhead(line: Polyline, fromAlong: Double, catKey: String, limit: Int = 3, rightOnly: Boolean = false, corridorM: Double = 200.0, maxAheadM: Double = 500_000.0, cs: CancellationSignal? = null): List<RoutePlace> {
         val cat = db.catKeys[catKey] ?: return emptyList()
         val found = LinkedHashMap<Int, RoutePlace.Found>()
         RoadAhead.stretches(line, fromAlong, maxAheadM, corridorM) { s, n, w, e, first, last ->
@@ -348,7 +348,8 @@ internal class PlaceEngine(val db: PlacesDb) {
             val rows = db.rows("SELECT ${PlacesDb.COLUMNS} FROM p WHERE p.lat BETWEEN $s AND $n AND p.lon BETWEEN $w AND $e AND p.cat=${cat.id} AND p.kind=$KIND_POI AND p.src&$SRC_COARSE=0", null, cs)
             for (r in rows) {
                 if (r.id in found) continue
-                RoadAhead.nearestOn(line, first, last, fromAlong, r.lat / 1e6, r.lon / 1e6, corridorM)?.let { found[r.id] = RoutePlace.Found(r, it) }
+                val on = RoadAhead.nearestOn(line, first, last, fromAlong, r.lat / 1e6, r.lon / 1e6, corridorM) ?: continue
+                if (!rightOnly || on.onRight) found[r.id] = RoutePlace.Found(r, on)
             }
             found.size < limit
         }

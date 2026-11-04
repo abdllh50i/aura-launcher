@@ -193,6 +193,8 @@ internal class PlacesDb private constructor(private val db: SQLiteDatabase, val 
                 db.rawQuery("SELECT w,cats,role,canon FROM syn ORDER BY w", null).use { c ->
                     while (c.moveToNext()) syn.add(c.getString(0), c.getString(1), c.getInt(2), c.getString(3))
                 }
+                // a firmware's SQLite without FTS4 says so here, not as an empty answer to every search for ever after (the catch below: BROKEN, and the old search stays)
+                db.rawQuery("SELECT docid FROM f WHERE f MATCH 'k:x' LIMIT 1", null).use { it.moveToFirst() }
                 val places = PlacesDb(db, syn, cats, keys)
                 holder = places
                 return places to PlacesStatus(PlacesState.READY, "norm ${Norm.VERSION}, schema $SCHEMA")

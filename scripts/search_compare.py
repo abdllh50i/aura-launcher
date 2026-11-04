@@ -4,6 +4,7 @@
   python -I search_compare.py fixture --db places.db --out app/src/test/resources/places     what the JVM tests read (syn, cat, Python's own answers)
   python -I search_compare.py prepare --db places.db --routes <route-tests> --out <folder>   the jobs for the app, and what the reference answers to them
   python -I search_compare.py compare --out <folder>                                         the app's answers against those: every mismatch, then the times
+  python -I search_compare.py zones --db places.db --routes <route-tests> --out <any>        which zones the kept trips go through, and which rule warns on which
 
 Standard library only.
 """
@@ -120,6 +121,8 @@ def route_classes(routes, tid, n):
     """Road class of each segment of the line, from trace_attributes over the same route: the number of gate.road."""
     names = {"motorway": 0, "trunk": 1, "primary": 2, "secondary": 3, "tertiary": 4, "unclassified": 5, "residential": 6, "living_street": 7}
     e = load(os.path.join(routes, "edges", tid + ".json"))
+    if "edges" not in e:
+        return None  # (trace_attributes refused that one)
     out = [8] * (n - 1)
     for x in e["edges"]:
         for i in range(x["begin_shape_index"], min(x["end_shape_index"], n - 1)):
@@ -532,16 +535,51 @@ def compare(a):
     print("report:", os.path.join(a.out, "report.json"))
 
 
+def zones(a):
+    """Which zones of kinds 3 and 4 the kept test trips go through, on which classes of road, and which of them warn by which rule: the evidence for RoadAhead.MINOR_CLASS."""
+    db = sqlite3.connect(f"file:{a.db}?mode=ro", uri=True)
+    rows = [(i, k, n or e, s, nn, w, ee, json.loads(r)) for i, k, n, e, s, nn, w, ee, r in db.execute("SELECT id,kind,name,en,s,n,w,e,ring FROM zone")]
+    names = ["motorway", "trunk", "primary", "secondary", "tertiary", "unclassified", "residential", "living_street", "service"]
+    warns = {2: [], 3: [], 4: []}
+    for f in sorted(os.listdir(os.path.join(a.routes, "valhalla"))):
+        tid = f[:-5]
+        if not os.path.exists(os.path.join(a.routes, "edges", f)):
+            continue
+        c = route_coords(a.routes, tid)
+        cl = route_classes(a.routes, tid, len(c))
+        if cl is None:
+            print(tid, "has no road classes")
+            continue
+        for zid, kind, name, s, n, w, e, ring in rows:
+            metres = {}
+            for i in range(len(c) - 1):
+                p, q = c[i], c[i + 1]
+                if max(p[1], q[1]) < s or min(p[1], q[1]) > n or max(p[0], q[0]) < w or min(p[0], q[0]) > e:
+                    continue
+                if inside((p[1] + q[1]) / 2, (p[0] + q[0]) / 2, ring):
+                    metres[cl[i]] = metres.get(cl[i], 0.0) + dist((p[1], p[0]), (q[1], q[0]))
+            if not metres:
+                continue
+            starts, ends = inside(c[0][1], c[0][0], ring), inside(c[-1][1], c[-1][0], ring)
+            print(tid, zid, kind, name, "starts inside" if starts else "", "ends inside" if ends else "", {names[k]: round(v) for k, v in sorted(metres.items())})
+            if kind >= 3 and not starts:
+                for rule in warns:
+                    if ends or sum(v for k, v in metres.items() if k >= rule) >= 50.0:
+                        warns[rule].append(f"{tid}/{zid}")
+    for rule, x in warns.items():
+        print(f"a route that ends inside, or from class {rule} ({names[rule]}) on: {len(x)} warn: {x}")
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser()
-    ap.add_argument("what", choices=["fixture", "prepare", "compare"])
+    ap.add_argument("what", choices=["fixture", "prepare", "compare", "zones"])
     ap.add_argument("--db")
     ap.add_argument("--routes")
     ap.add_argument("--out", required=True)
     ap.add_argument("--golden")
     a = ap.parse_args()
-    {"fixture": fixture, "prepare": prepare, "compare": compare}[a.what](a)
+    {"fixture": fixture, "prepare": prepare, "compare": compare, "zones": zones}[a.what](a)
 
 
 if __name__ == "__main__":

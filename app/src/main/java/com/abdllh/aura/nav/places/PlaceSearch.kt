@@ -59,10 +59,25 @@ object PlaceSearch {
     /** Debug builds: how long the last open took: the file's checks, table cat, table syn. */
     @Volatile internal var openNs = 0L
 
+    /**
+     * Where the file is, asked every time it is used: a new pack gives another path and the file is opened again. Set once at start by whoever knows (the pack manager's `PackPaths.placesDb`); null
+     * from it means no pack holds one. Until then `files/maps2/places.db`.
+     */
+    @Volatile var locate: ((Context) -> File?)? = null
+
+    /** Told, off the main thread, once per open file after a search found something: the pack manager's `PackPaths.noteWorked`. */
+    @Volatile var worked: ((Context) -> Unit)? = null
+    private var workedTold = false
+
     fun init(ctx: Context) { app = ctx.applicationContext }
 
-    /** The pack's place, off the main thread: filesDir can touch the disk. */
-    private fun file(): File? = testFile ?: app?.let { File(File(it.filesDir, "maps2"), "places.db") }
+    /** Off the main thread: filesDir can touch the disk. */
+    private fun file(): File? {
+        testFile?.let { return it }
+        val c = app ?: return null
+        val l = locate ?: return File(File(c.filesDir, "maps2"), "places.db")
+        return l(c) ?: File(File(c.filesDir, "maps2"), "no-pack-holds-places.db")
+    }
 
     /** The preference, default off. */
     val swapOn: Boolean get() = try { Prefs.raw.getBoolean(PREF_SWAP, false) } catch (_: Throwable) { false }
@@ -92,6 +107,7 @@ object PlaceSearch {
             return null
         }
         engine = PlaceEngine(db)
+        workedTold = false
         return engine
     }
 
@@ -179,6 +195,10 @@ object PlaceSearch {
             val a = try {
                 val hits = guarded(emptyList<PlaceHit>()) { it.search(query, near, limit, cs) }
                 counters[1]++
+                if (hits.isNotEmpty() && !workedTold) {
+                    workedTold = true
+                    try { app?.let { worked?.invoke(it) } } catch (t: Throwable) { Log.w(TAG, "worked: $t") }
+                }
                 Answer(hits, status)
             } catch (t: OperationCanceledException) {
                 counters[2]++
@@ -212,9 +232,9 @@ object PlaceSearch {
     /** The number of `gate.road` for Valhalla's road_class. */
     fun roadClassNumber(valhallaClass: String): Int = RoadAhead.classNumber(valhallaClass)
 
-    /** The nearest of a kind (a key of table cat: "fuel", "mosque") ahead on a route, first the nearest along it. */
-    fun nearestAhead(line: Polyline, fromAlong: Double, catKey: String, limit: Int = 3, done: (List<RoutePlace>) -> Unit) =
-        later(emptyList(), done) { it.nearestAhead(line, fromAlong, catKey, limit) }
+    /** The nearest of a kind (a key of table cat: "fuel", "mosque") ahead on a route, first the nearest along it; with [rightOnly] only on the driver's side. */
+    fun nearestAhead(line: Polyline, fromAlong: Double, catKey: String, limit: Int = 3, rightOnly: Boolean = false, done: (List<RoutePlace>) -> Unit) =
+        later(emptyList(), done) { it.nearestAhead(line, fromAlong, catKey, limit, rightOnly) }
 
     /** The nearest of a kind ("parking") near a point. */
     fun nearestTo(lat: Double, lon: Double, catKey: String, limit: Int = 5, radiusM: Double = 3000.0, done: (List<PlaceHit>) -> Unit) =

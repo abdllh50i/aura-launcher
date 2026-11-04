@@ -86,7 +86,7 @@ class ZoneHit internal constructor(
     /**
      * Haram: any route that comes in. Military and private: a route that ends inside, or goes on a tertiary road or less inside. Without classes only the first is known.
      * The spec says "leaves the motorway and trunk roads", and gives Jubail-Dammam as the public highway that must not warn: but that road is OSM's primary for 9 km in the
-     * naval base's ring, and the rings are coarse (519 holds 1,289 POIs of Khobar and Dhahran). Over the 56 test trips the spec's words warn 11 times, 1 of them a guarded
+     * naval base's ring, and the rings are coarse (519 holds 1,289 POIs of Khobar and Dhahran). Over the 54 kept test trips with road classes (scripts/search_compare.py zones) the spec's words warn 11 times, 1 of them a guarded
      * place (gate-air); this rule 3 times (gate-air, and ithra and j1, which end inside), and a guard that OSM knows is told by table gate anyway.
      */
     val warn: Boolean
