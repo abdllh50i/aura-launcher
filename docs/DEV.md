@@ -1874,6 +1874,124 @@ About page's "Last time" line and the guard's lines are the report.
 **What this does not have:** no snapshot of the settings for the way down (not needed while 2.0 keeps to the data rule above), no
 phone trigger (Naghm), no acting in 1.x except the Wi-Fi step.
 
+## A place from the phone (`link/`, `nav/Trips.kt`, 1.19.1)
+Set a place on the iPhone, directions start on the screen, with no iPhone app yet: a page the unit serves, opened from a
+QR code with the iPhone's camera. The app that comes later speaks the same protocol, and so can a Shortcut. Off by
+default: Settings → Vehicle & system → "ربط الجوال" (2.0's design decides whether it stays a switch). Nothing here has
+run on the real hotspot; what to believe is at the end of this section. The design behind it is in the planning report
+`tmp/v2/understand/companion.md` (AMRI Link v2).
+
+**`nav/Trips.kt`: starting a trip, whoever asks.** What `MapsActivity.driveTo`, its Go and the 1.0 address lookup did,
+without a screen: `goTo(ctx, place, origin, source, waitForFix, remember, wanted, done)` finds the route and starts
+`NavSession`. The Maps screen's Home and Work, Go, the voice and the phone all go through it, one attempt at a time (a
+newer one replaces it); a screen listens (`addListener`) and reads `attempt` to show what is going on. `done` says what
+really happened: STARTED only after `NavSession.start` returned, FAILED, NO_FIX, DROPPED. The asker's own position
+(`origin`) is used only while the car has no fresh fix (2 minutes), and with no position at all it waits up to 10 minutes
+for the first fix, holding the GPS itself because no screen may be. A route gets 60 s (a router that never answers must
+not hold a place for ever). `NavSession.start` throwing is a FAILED, not a crash. `MapsActivity` keeps today's behaviour
+for its own paths: Back during a Home/Work route still means no trip (`wanted`), no fix still means `select`.
+
+**`link/PhoneServer.kt`: HTTP/1.1 on every interface, port 47101.** Why the unit serves: Safari, a Shortcut, a share
+extension and an app can all connect out while iOS has the app asleep, and only those. A wildcard bind survives
+`WifiKeeper`'s restarts. TileServer's pattern: at most 4 connections on background-priority threads (the fifth is told
+503 on the accept thread and closed), 10 s for a whole request (a watchdog closes the socket, so a byte a second gets no
+further than silence does), 64 KB body, 16 KB head, 20 s for an answer nobody reads, connection closes after each answer.
+One blocked thread at idle: pool and watchdog threads die after 5 s. At most 2 event streams, the oldest goes for a new
+one, so a request always finds a way in; a stream whose phone left without a word goes at the next heartbeat's failed
+write (15 to 30 s). `persist.aura.disabled` stops it at the next connection.
+
+Who may do what (`classify`, `Pairing`): a paired token acts at once; no token from the Wi-Fi's gateway (on the iPhone's
+hotspot that is the phone itself, any app on it) gets a card on the screen that waits for a tap, and nothing else that
+acts; no token from another private address gets the page, the ping and the pairing while a code shows; anything else
+403 on connect. Pairing: six digits, single use, 5 minutes, 5 tries, and valid only while really on the screen (leaving
+the page or Settings ends it within a second; `windowVisibility`, because Home does not call a page's `onHide`). Only
+SHA-256 of a token is kept, at most 4 phones. For web pages: POST and PUT must say `application/json`, no CORS allowance
+is ever sent so a preflight fails, a mismatched `Origin` (and `null`) is refused, `Host` must be an address or this unit's
+name (DNS rebinding). The page itself: one inline file, CSP `default-src 'none'`, no frames. What a token is worth,
+honestly: adbd on 5555 gives root to anything on the hotspot; it stops accidents and other phones, nothing more.
+
+Endpoints: `GET /`, `/p/<code>`, `/v1/ping`, `/v1/state`, `/v1/events` (SSE: `nav`, `music`, `car`, a snapshot on
+connect, a heartbeat every 15 s, one `progress` per 10 s at most), `/v1/places` (and PUT), `/v1/diag`; `POST /v1/pair`,
+`/v1/nav/go`, `/v1/share`, `/v1/nav/saved`, `/v1/nav/stop`, `/v1/search`, `/v1/remote`. The last 64 `id`s are remembered,
+so a retry starts nothing: it hears `duplicate` and `last`, what became of it. Beyond the report: `/v1/search` with
+`"on":"phone"` answers with the unit's own results and leaves the screen alone (the page's list); `no_answer` when the
+service did not answer in 9 s, which is not "nothing found". `/v1/nav/saved` is a place from a paired phone like any
+other, not Maps' `go` extra: that one starts at once, and a route must not change silently during a trip.
+
+`link/NavBridge.kt` is the server's only door into the app: everything runs posted to the main thread, caught, and a
+server thread that needs the answer waits a limited time (a map's first frame can hold the main thread for seconds on the
+emulator). What was asked still happens when the main thread comes free, so the phone is told 202 `pending`, not an error;
+only a plain read (`/v1/state`, 3 s) says 503 `busy`. The main thread never waits for anybody here. The live feed listens only while a
+phone does. The redesign may rename the Maps internals: this file changes then, the server does not.
+
+**`link/PlaceInbox.kt`: what the unit does with a place** (`TripCard` is its one overlay, in the look of the call and
+message cards, narrower and on the other side during a trip, because the top of the driver's side belongs to the next
+turn; 2.0 reskins it):
+* Idle, paired: Maps comes forward (the existing `MapsActivity.open`), the route starts, "بدأت الاتجاهات إلى X" is said
+  and shown, 5 s with a Cancel. The phone hears `routing`, then `started` with the route's numbers. Started means started:
+  it is told from `Trips`' STARTED, never from having accepted the request. A retry after a lost answer says the same.
+* No fix: the phone's `from` if under 60 s old and under 100 m, else `waiting_fix` with the place on the map and a Cancel.
+* On a trip: the card asks, 20 s, nobody answers: the trip goes on. A replacement that finds no route keeps the trip and
+  says so (`failed`, `kept`): `select` over a running trip's panels is what the first pass did.
+* In a call or in reverse: `held`, and when that ends the card asks (it is old news after 30 minutes). No card ever covers
+  the camera or a call's card: one up when they start goes away (a question goes back to `held`; a route being found goes
+  on underneath; the started card just ends, the trip runs, Maps has its End).
+* No token, or a place that is only a guess (a Google viewport, a name near a point): always the card, 30 s, `expired`.
+* No route: `failed`, the place stays on the map with its retry and Go; if he then starts it there, `started`.
+* No overlay permission: the place on the map with Go, which is the same tap. Another navigation app chosen: handed to
+  it and told `handed`, not `started`, because it says nothing back.
+* Apple's place data stays off the recents, also when it starts from the map's Go (`dest_keep`; its terms, the report's 2.6).
+* Settings → About: "آخر وجهة من الجوال: 18:22، الراشد مول، عبر الشبكة (بدأت)" and the server's line with its last request,
+  because the owner's photo of that page is the only report from the road.
+
+**Voice.** "ودني <مكان>" searches here (`Places.lookup`: the same search, which cancels nothing of the Maps field's, and
+which nothing cancels) and `Places.clearWinner` decides. Clear: the name answers what was said (≥ 0.85), no other name
+answers as well at about the same distance, branches of one name are one answer, the nearest. Then it goes through the
+inbox: it says "أبشر، أوديك إلى X، تبعد Y", the card has the 5 s Cancel, a tap on the pill cancels while it still looks, and
+during a trip the card asks. Not clear, or no position: the map's search on it, as before. A word for a kind of place alone
+is a list, whatever answers it ("ودني المطار" found the district Al Matar, "شارع" the nearest Street 9), and so is a far
+namesake with a partial answer nearby. Photon's Arabic data decides a lot of this: "مطار الملك فهد" and "جامعة الملك فهد"
+stayed lists on the live search, "الراشد مول" and "ستاربكس" started. In `Commands` a place with a name is no longer the
+nearest of its kind ("ودني مستشفى الموسى"), "جامعة" is no longer a mosque, and "وقف الملاحة" ends the trip (`StopTrip`).
+
+**`link/ShareParser.kt`.** Coordinates the link or text states are `exact`; `/@lat,lon` is where the map was looked at:
+`guess`, which always asks; a name alone is a search; a link that gives nothing says why (`dead_link`, `no_redirect`,
+`network`, `not_a_map`, `no_place`) and never guesses. The only network step is a short link's redirect, at most 2 hops of 3 s
++ 3 s, https, only the hosts in `isShort`: the Location header is read and the page never (its `center=` holds the
+requester's region, measured). An app's User-Agent, because a browser's gets a preview page instead of the redirect.
+`tools/link-fixtures/share.json` has 53 cases in a form the phone's Swift parser can use; 6 are marked as measured live,
+the others are the listed formats written by hand, to be replaced by real captures.
+
+**`link/Qr.kt`.** Written here: byte mode, level M, versions 1 to 10 (213 bytes; the address is about 35). Always dark on a white
+square with its quiet zone, whatever the theme: a phone's camera reads that. `PhoneLinkCard` shows it at 232 dp.
+
+**`assets/remote.html`** (24 KB, Arabic RTL, system fonts, dark and light by the phone's setting). The status line says what
+the unit reports and nothing else: "أرسلت" until it answers, "بدأت" only from its `started`. A token per address in
+localStorage; fetch's stream for the events, because EventSource cannot carry a token. The same `id` on three tries over
+20 s (the hotspot freezes for 5 to 8 s when it re-associates). Without a token it can still send a link, the screen asks.
+
+**`PhoneLink.playSong`.** "شغّل <أغنية>" with Naghm linked: YouTube Music's search here, its first song to Naghm (`playSong`,
+already in CAR_LINK.md, nothing changed there). It waits 4 s for Naghm's `state` with that id: only that says the phone
+took it, a sent line says nothing about a phone that is asleep. No answer: it says so. No link: the YouTube Music app, as before.
+
+**`NavService`** starts with a plain `startService` while the app is in front, `startForegroundService` otherwise. After the
+latter a service has 10 s to call `startForeground()`: on a loaded emulator a 24 s first map frame killed the whole app
+with `RemoteServiceException`, and the home screen with it. Trips now start from outside while Maps is coming up.
+
+**Test:** `python scripts/phone-server-test.py [--serial emulator-5572] [--only peers,safety,...]`, real HTTP through
+`adb forward`: every endpoint, peer rules, retries, a bad body, a slow client, 5 clients, the flows with screenshots
+(`shots/v2-link-*`), a whole drive, the voice, a stand-in Naghm. Debug builds only: `setprop debug.aura.phoneserver 1`
+(loopback counts as a private peer; `gateway` as the gateway; refused otherwise, and always in a release build) and with it
+`/debug/parse` (fixtures), `/debug/qr` (decoded with cv2 on the PC for versions 1 to 10), `/debug/code`, `/debug/peer`,
+`/debug/command`, `/debug/winner`, `/debug/answer` (fixes `Places.lookup`'s answer: Photon stops answering this PC when many
+agents search); `debug.aura.navsim <km/h>` drives any trip; `com.abdllh.aura.debug.LINK --ez on true`. Overlays need
+`appops set com.abdllh.aura SYSTEM_ALERT_WINDOW allow`. A place while the location is off: `settings put secure location_mode 0`.
+
+**What only the unit and the iPhone can prove.** Whether the iPhone reaches a hotspot client on 47101 (Apple has never
+promised it: the report's top risk), whether the firmware's iptables lets it, whether the Camera opens the QR in Safari and
+the events stream there, `dhcpInfo.gateway` being the phone, the card and the bringing forward from the background on the real
+ROM, the sentences in the unit's TTS (the emulator has none), Naghm itself answering `playSong`, the real share text of Apple
+and Google Maps on his phone. The first look: About's two lines after a try, and `GET /v1/diag`.
 ## Facts about the firmware (from the dump)
 * No `avb` flag in the vendor fstab → no dm-verity on system/vendor/product; vbmeta uses the public AOSP test keys.
 * `persist.nwd.launcher.default=<pkg>` makes the patched PackageManager return that package as HOME.

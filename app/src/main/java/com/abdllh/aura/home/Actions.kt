@@ -62,6 +62,15 @@ object Actions {
         return start(ctx, Intent(Intent.ACTION_VIEW, android.net.Uri.parse(uri)).setPackage(pkg)) || nav(ctx)
     }
 
+    /** A place as coordinates, handed the same way (what the phone sends while another navigation app is the chosen one). */
+    fun driveWithApp(ctx: Context, pos: com.abdllh.aura.nav.LatLon): Boolean {
+        val pkg = AppRepo.navPackage(ctx) ?: return false
+        val at = String.format(java.util.Locale.ROOT, "%.6f,%.6f", pos.lat, pos.lon)
+        val uri = if (pkg == "com.waze") "waze://?ll=$at&navigate=yes" else "google.navigation:q=$at"
+        com.abdllh.aura.system.HomeGuard.launching(pkg)
+        return start(ctx, Intent(Intent.ACTION_VIEW, android.net.Uri.parse(uri)).setPackage(pkg))
+    }
+
     /** Opens Aura Maps (default) or the chosen navigation app. */
     fun nav(ctx: Context): Boolean {
         if (com.abdllh.aura.util.Prefs.builtInMaps) {

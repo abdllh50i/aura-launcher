@@ -51,6 +51,8 @@ object NavSession {
     var arrivedAt = 0L
         private set
     const val ARRIVED_HOLD_MS = 30_000L
+    /** An announcement holds the first prompt back at most this long (should its end never be reported). */
+    private const val ANNOUNCE_MS = 6000L
 
     private var app: Context? = null
     private val main = Handler(Looper.getMainLooper())
@@ -83,7 +85,8 @@ object NavSession {
 
     private val arabic: Boolean get() = Locale.getDefault().language == "ar"
 
-    fun start(ctx: Context, dest: Place, r: Route) {
+    /** [remember]: the place goes to the recent places (not one that may not be kept: [com.abdllh.aura.link.PlaceInbox]). */
+    fun start(ctx: Context, dest: Place, r: Route, remember: Boolean = true) {
         val c = ctx.applicationContext
         app = c
         destination = dest
@@ -97,13 +100,24 @@ object NavSession {
         rerouteStreak = 0
         nextRerouteAt = 0L
         forgetPrompts()
-        Places.addRecent(dest)
+        if (remember) Places.addRecent(dest)
         CarLocation.acquire(c, "nav")
         CarLocation.removeListener(onFix)
         CarLocation.addListener(onFix)
         NavService.start(c)
         initVoice(c)
-        CarLocation.last?.let { update(it) } ?: changed()
+        progress = null
+        CarLocation.last?.let { update(it) }
+        // (a route from the phone's position, before the unit's first fix: the whole route, from its start)
+        if (progress == null && state == State.NAVIGATING) progress = atStart(r)
+        changed()
+    }
+
+    private fun atStart(r: Route): Progress {
+        val (at, bearing) = r.line.at(0.0)
+        var next = r.steps.indexOfFirst { !it.silent && it.at + it.span > 3 }
+        if (next < 0) next = r.steps.size - 1
+        return Progress(at, bearing, 0.0, next, r.steps.getOrNull(next)?.at ?: 0.0, r.line.length, r.timeLeft(0.0), 0, false)
     }
 
     fun stop() {
@@ -118,6 +132,8 @@ object NavSession {
         CarLocation.removeListener(onFix)
         CarLocation.release("nav")
         NavSim.stop()
+        announcement = null
+        announcingUntil = 0L
         if (c != null) NavService.stop(c)
         tts?.stop()
         tts?.shutdown()
@@ -186,6 +202,7 @@ object NavSession {
      */
     private fun prompt(r: Route, next: Int, toNext: Double, along: Double, speedKmh: Double) {
         if (next <= 0) return
+        if (SystemClock.elapsedRealtime() < announcingUntil) return // (the announcement's words are not cut off)
         val step = r.steps[next]
         val v = speedKmh / 3.6
         val far = (v * 22).coerceIn(400.0, 1500.0)
@@ -283,6 +300,25 @@ object NavSession {
     @Volatile private var lastUtterance = ""
     private var utterances = 0
 
+    /**
+     * One sentence about the trip that just started ("بدأت الاتجاهات إلى ..."), before its first prompt; said once the
+     * voice is ready (it takes a moment to start), and not at all when there is none or it is switched off.
+     */
+    fun announce(text: String) {
+        if (state != State.NAVIGATING) return
+        if (ttsReady) sayAnnouncement(text) else announcement = text
+    }
+
+    private var announcement: String? = null
+    private var announcingUntil = 0L
+
+    private fun sayAnnouncement(text: String) {
+        announcement = null
+        if (!voiceOn || ttsArabic != arabic) return // (the sentence is in the app's language: not in another voice)
+        announcingUntil = SystemClock.elapsedRealtime() + ANNOUNCE_MS
+        say(text)
+    }
+
     private fun initVoice(c: Context) {
         if (tts != null) return
         ttsArabic = arabic
@@ -311,6 +347,7 @@ object NavSession {
                     override fun onStop(id: String?, interrupted: Boolean) = finished(id)
                 })
                 ttsReady = true
+                announcement?.let { if (state == State.NAVIGATING) sayAnnouncement(it) else announcement = null }
             }
         } catch (_: Throwable) {
             voiceMissing = true
@@ -342,6 +379,7 @@ object NavSession {
     /** A prompt ended (TTS thread): give the focus back once the latest one is over (a flushed one ends first). */
     private fun finished(id: String?) {
         if (id != lastUtterance) return
+        announcingUntil = 0L
         val c = app ?: return
         val req = duck ?: return
         try { (c.getSystemService(Context.AUDIO_SERVICE) as AudioManager).abandonAudioFocusRequest(req) } catch (_: Throwable) { }

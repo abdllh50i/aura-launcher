@@ -40,6 +40,8 @@ internal sealed class Command {
     data class Nearby(val place: Place) : Command()
     /** "ودني المطار": a place by name, on the map. */
     data class SearchPlace(val query: String) : Command()
+    /** "وقف الملاحة": the trip ends. */
+    object StopTrip : Command()
     /** "افتح يوتيوب": an app by its name. */
     data class OpenApp(val name: String) : Command()
     /** "شغّل عبادي الجوهر": a song by name (YouTube Music). */
@@ -85,6 +87,9 @@ internal sealed class Command {
 
             // "الغ الكتم" takes the mute away (and does not cancel)
             if (has("الكتم") && has("فك", "الغ", "الغاء", "شيل", "وقف", "رجع")) return Unmute
+            // the trip, not this request: "وقف الملاحة", "الغ الرحلة"
+            if (has("الملاحه", "ملاحه", "الرحله", "الاتجاهات", "navigation", "directions", "trip") &&
+                (stop || word("الغ", "الغي", "الغاء", "cancel", "end"))) return StopTrip
             if (word("خلاص", "الغاء", "الغ", "cancel", "انسى", "انساها") || t == "لا" || t.contains("ولا شي") || t.contains("لا شي") ||
                 t.contains("مابي شي") || t.contains("ما ابي شي") || t.contains("لا شكرا") || t.contains("never mind")) return Cancel
             if (words.size <= 4 && (word("شكرا", "مشكور", "تسلم", "thanks") || t.contains("يعطيك العافيه") || t.contains("thank you"))) return Thanks
@@ -138,19 +143,21 @@ internal sealed class Command {
             val go = has("ودن", "وديني", "ودينا", "خذني", "خذنا", "وصلني", "وصلنا", "روح", "نروح", "رح", "طريق", "go", "take", "navigate")
             if (has("البيت", "بيتي", "المنزل", "home") && go && !has("home screen")) return Navigate(true)
             if (has("الدوام", "الشغل", "العمل", "work") && go) return Navigate(false)
-            Place.values().firstOrNull { p -> has(*p.keys) }?.let { p ->
+            val dest = if (!go) null else after(words, "ودني", "وديني", "ودنا", "ودينا", "خذني", "خذنا", "وصلني", "وصلنا", "روح", "نروح", "رح", "take", "go", "navigate",
+                drop = setOf("على", "الى", "الي", "لين", "عند", "me", "to", "the", "يا", "لي"))
+            // (a university is no mosque: "جامعة" starts like "جامع")
+            Place.values().firstOrNull { p -> has(*p.keys) && !(p == Place.MOSQUE && word("جامعه", "الجامعه") && !has("مسجد", "المسجد")) }?.let { p ->
+                // "ودني مستشفى الموسى" names a place, which is not the nearest of its kind: that goes on below as a place
+                val kind = p.keys.flatMap { normalize(it).split(' ') } + KIND_FILLERS
+                val named = dest != null && !has("اقرب", "قريب", "nearest", "nearby") && dest.split(' ').any { d -> kind.none { d.startsWith(it) } }
                 // "وين أقرب محطة"; also the kind alone ("صيدلية؟"), or with "أبي" / "ودني"
-                if (go || words.size <= 3 || has("اقرب", "قريب", "وين", "دور", "ابي", "ابغى", "ابغي", "فيه", "find", "nearest", "nearby", "where", "need")) return Nearby(p)
+                if (!named && (go || words.size <= 3 || has("اقرب", "قريب", "وين", "دور", "ابي", "ابغى", "ابغي", "فيه", "find", "nearest", "nearby", "where", "need"))) return Nearby(p)
             }
-            if (go) {
-                val dest = after(words, "ودني", "وديني", "ودنا", "ودينا", "خذني", "خذنا", "وصلني", "وصلنا", "روح", "نروح", "رح", "take", "go", "navigate",
-                    drop = setOf("على", "الى", "الي", "لين", "عند", "me", "to", "the", "يا", "لي"))
-                if (dest != null && !mapsWord(dest)) return SearchPlace(dest)
-            }
+            if (dest != null && !mapsWord(dest)) return SearchPlace(dest)
             // ("ماب" only as a whole word: "مابي" is "I don't want")
             val maps = has("الملاحه", "ملاحه", "الخريطه", "خريطه", "الخرايط", "الخرائط", "خرائط", "navigation", "maps", "gps") ||
                 word("الماب", "ماب", "map")
-            if (maps) return if (stop) null else OpenMaps // "وقف الملاحه": not a request it knows, and not "open the map"
+            if (maps) return if (stop) null else OpenMaps // "طف الخريطة": not a request it knows, and not "open the map"
             if (has("الرئيسيه", "الشاشه الرئيسيه", "home screen")) return HomeScreen
             if (has("كم الساعه", "الساعه كم", "كم الوقت", "الوقت", "what time")) return Time
 
@@ -188,6 +195,9 @@ internal sealed class Command {
 
         /** Apps one "plays" ("شغل يوتيوب"). */
         private val APPS = listOf("يوتيوب", "youtube", "الراديو", "راديو", "radio", "انغامي", "anghami", "سبوتيفاي", "spotify", "شاهد", "نتفلكس", "netflix")
+
+        /** Words beside a kind that name no place: "محطة بنزين", "مغسلة سيارات", "a hospital". */
+        private val KIND_FILLERS = listOf("سيار", "السيار", "اي", "a", "an", "car", "gas", "station")
 
         private fun mapsWord(s: String) = s.split(' ').any { it in setOf("الخريطه", "الملاحه", "الماب", "map", "maps") }
 
