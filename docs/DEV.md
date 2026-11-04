@@ -1665,6 +1665,66 @@ The owner asked for two things: none of Android's notifications on the screen, a
   debug.aura.msgpkg com.android.shell` so a debug build takes the shell's notifications as messages. Android 10's
   `-S messaging` style fails to post from the shell.
 
+## Logic that was wrong, fixed for 2.0's sake (1.19.1)
+Each is its own commit; the screens are untouched. Limits were chosen from reading and made-up drives, since nothing has run on
+the unit: what the owner's photo of Settings → About tells (`NavNote`, three lines: a late route, the route left and by which
+sign, a trip resumed or not and why) is the first real measurement.
+
+* **Tests:** `src/test`, junit 4.13.2 from Gradle's offline cache, no Android classes in the code they test:
+  `gradlew --offline testDebugUnitTest`. On this PC the test JVM cannot start from the Arabic user home path: run it with
+  `GRADLE_USER_HOME` on an ASCII path (a junction to the real one). 68 tests at this writing.
+* **Debug hooks** (`nav/NavDebug.kt`, `am broadcast -a com.abdllh.aura.debug.NAV`): `--es fix lat,lon,bearing,kmh[,accuracy]`
+  (from then on the emulator's own GPS keeps out), `--es go lat,lon,name`, `--ei sim 90`, `--ez end true`,
+  `--es turn nav|amri|free`, `--es fetch url,name`, `--ez dump true` (log tag `AuraNavDebug`: trip, limit, media card, sun).
+  `adb emu geo fix` first, or a process start reads Mountain View. `scripts/osrm_standin.py` (`setprop debug.aura.osrm`) answers
+  with a real BRouter answer as OSRM would, after a delay; `scripts/naghm_standin.py` (`setprop debug.aura.phonelink`) sends what
+  is written to a file. For BRouter on the AVD: `E45_N25.rd5` into `files/offline/segments4`, owned by the app's user.
+* **Speed limits** (`nav/RouteLimits.kt`): BRouter's answer has OSM's `maxspeed` in its `messages` (49-97 % of the driven length
+  of real routes here). Only for the route being driven, by place and course rather than distance along, so an OSRM route can use
+  the limits of the BRouter answer that raced it. His limits come first and `LimitHold` keeps his number through a hole in his
+  line. `RoadWatch.State.limitFromMap` tells them apart; today's sign looks the same. Nothing guessed from a road's class; BRouter's
+  bucket "10" (5 to 15) is too rough for a sign.
+* **Off route** (`nav/OffRouteWatch.kt`): `too far` as before, and two signs by the course, each over three fixes: `against the
+  route` (from 20 km/h, no stretch of the line near the car within 60 degrees of its course: a U-turn, the other carriageway,
+  a side road; all of the line near it counts, which keeps a roundabout quiet) and `drifting off` (from 30 km/h, the course
+  pointing away from the line on the car's side, 6 m gained over three fixes, 20 m or more off). A course is the GPS's Doppler, so a
+  wandering position does not fool it. Emulator: 100 km/h with 12 m of noise and 5 degrees: nothing; 10 km/h turned round: nothing; a
+  U-turn at 60: `against the route`; a slip road at 8 degrees at 120: `drifting off` 23 m out, in 5 s (over 40 m took 9-16 s). Not
+  seen, and it cannot be without the road network: a parallel road within the limit going the same way.
+* **A late OSRM answer** (`Route.better`): kept instead of thrown away after the 2.5 s head start. NavSession takes it on a later
+  fix, without a word, when the car is on it going its way and nothing is to be done soon on either route (30 s, 300 m to 1.5 km); a car
+  300 m from it drops it. A failed answer stays a failure for that trip: no second question is asked.
+* **A trip survives the process** (`nav/TripMemory.kt`): `navTrip` in the prefs, at the start and once a minute. A process start
+  looks 4 s later: same boot and under 30 minutes by the monotonic clock; another boot, under 30 minutes by GPS's clock and within 3 km of
+  where the car stopped (a head unit's wall clock is set late); within 300 m of the place, he is there. Each try is counted on disk
+  first, and after two that did not reach a minute the trip is dropped, so it cannot walk the home screen into the crash guard.
+* **Arrival:** within 30 m of the place in a straight line counts only with under 300 m of the route left, or off the route: a place
+  seen across a divided road used to end the trip with the way round still ahead.
+* **Day and night** (`ui/Daylight.kt`): the sun's real height at the last fix (NOAA's formulas), night under -6 degrees: civil
+  dusk, about 23 minutes after sunset here. `Theme.isDarkNow` uses it, so every screen does. Maps also changes theme while moving when
+  the next manoeuvre is 3 km off or more: a highway at dusk used to stay on the bright map until the first red light.
+* **Search** (`nav/ArabicQuery.kt`): Arabic names the place and then its kind, so word by word gave "laundry syarat". Whole phrases
+  for every kind the assistant sends; "مغسلة" alone is a car wash in a car, "مغسلة ملابس" the laundry. Keys go through the query's
+  normalisation (a key with ئ could never match).
+* **Offline map:** 4 workers (OpenFreeMap's terms). `ResumeCheck`: a 206 is compared by its own ETag or Last-Modified and its
+  Content-Range, since GitHub's CDN answers 206 to a wrong `If-Range`. Emulator, a server answering 206 with another version's ETag:
+  "not the file that was begun", and the whole new file. What it cannot see is damage in the part kept: a connection cut hard on the
+  emulator lost single bytes before the break, 2 times in 4, and nothing in `fetchFile` checks a whole file. Packs with a hash would.
+* **Home card** (`NowPlayingRule`): what plays wins as always; when nothing plays, what played last, then the source chosen last,
+  then the old order. The phone paused used to give the card, and its play button, to the local queue restored paused at every start.
+* **Assistant and music** (`MediaMonitor.pauseNow` / `playAgain`, `voice/WakeMusic.kt`): absolute commands to the source that was
+  playing, and exactly that comes back; a pause or mute means it; another source playing by then is not interrupted; a call
+  that came meanwhile: when it ends. A false wake still pauses for as long as it listens (up to 15 s).
+* **One voice at a time** (`voice/VoiceTurn.kt`): the assistant from the wake until it is done, a prompt while it plays. A prompt
+  being said ends before the chime. A prompt due during the assistant's turn is not looked at: the next fix decides, at the distance of
+  that moment, so nothing comes late or for a turn already passed. A turn nobody gives back ends by itself (15 s, 40 s). The price: a false
+  wake can hold a prompt back for up to 15 s; the sign still shows it.
+* **Lyrics** (`MusicActivity.phoneTakesOver`): Naghm's coming after the screen's own go up, unless they are the very same lines
+  (the owner's correction goes on applying) or have no times where the shown ones do. The correction stays on disk with its lines.
+* **Music keys:** "the same source" is `MusicActivity.onBluetooth`, what the screen is really on; the pref only with no screen.
+* **Prefs:** gone: `setupDone`, `setupBannerDismissed`, `adbBridge`, `hiddenApps` (no version ever wrote them). Kept, read-only:
+  `homeAddress`, `workAddress`: their writer went in 1.3, but a unit where one was typed still drives there from it.
+
 ## Facts about the firmware (from the dump)
 * No `avb` flag in the vendor fstab → no dm-verity on system/vendor/product; vbmeta uses the public AOSP test keys.
 * `persist.nwd.launcher.default=<pkg>` makes the patched PackageManager return that package as HOME.

@@ -111,6 +111,7 @@ object Router {
             if (delivered) {
                 // BRouter's was taken after OSRM's head start, and OSRM has answered after all
                 if (on != null && off != null && on !== taken && off === taken) off.better = on
+                if (onlineDone) android.util.Log.i("AuraNav", "OSRM after the head start: ${if (on != null) "kept" else "no route ($onlineErr)"}")
                 return
             }
             val r: Route? = when {
