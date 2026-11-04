@@ -15,6 +15,7 @@ import com.abdllh.aura.util.Prefs
 import java.io.File
 import java.util.Locale
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * 2.0's order of routers (maps.md 7.6): Valhalla over the pack; BRouter when the guard tripped, the pack is missing, or Valhalla
@@ -82,8 +83,17 @@ internal object RouteChain {
     private fun valhalla(c: Context, q: RouteRequest): RouteAnswer {
         var answer: RouteAnswer? = null
         val done = CountDownLatch(1)
-        main.post { RouteClient.ask(c, q, RoutePack.tar(c)) { answer = it; done.countDown() } }
-        done.await()
+        main.post {
+            try {
+                RouteClient.ask(c, q, RoutePack.tar(c)) { answer = it; done.countDown() }
+            } catch (t: Throwable) {
+                // (nothing of this may reach the home screen's main thread)
+                Log.w(TAG, "$t")
+                done.countDown()
+            }
+        }
+        // (the client always answers, within its own 30 s: this is only so that a mistake there cannot leave a trip rerouting for ever)
+        done.await(40, TimeUnit.SECONDS)
         return answer ?: RouteAnswer(RouteAnswer.FAILED, "no answer")
     }
 
