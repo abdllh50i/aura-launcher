@@ -1,0 +1,21 @@
+# Temporary: which macOS runners can be had right now, and what Xcode they carry. macos-26 is not being acquired.
+name: Amri runner probe
+on:
+  push:
+    branches: [ios-app]
+    paths:
+      - '.github/workflows/ios-probe.yml'
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-26, macos-15, macos-15-intel, macos-14]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - run: |
+          sw_vers; uname -m
+          ls /Applications | grep -i xcode
+          xcodebuild -version
+          xcrun simctl list runtimes | tail -6
