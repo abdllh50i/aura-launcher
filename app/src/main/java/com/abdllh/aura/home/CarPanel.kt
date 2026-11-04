@@ -37,7 +37,7 @@ import java.util.Date
  * on the screen's background (its frames are composed over that colour, see CarEtc): no card may go under it.
  */
 class CarPanel(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
-    // Roboto Light in both languages (the clock's figures are the same in Arabic): the thin weight it had until 1.11
+    // Plex Regular in both languages (the clock's figures are the same in Arabic): the thin weight it had until 1.11
     // was about 2 px wide on this panel and broke up in daylight
     private val clock: AText = ctx.label(Type.DISPLAY_L).apply { typeface = Fonts.light() }
     private val ampm: AText = ctx.label(Type.BUTTON, Palette.text2)

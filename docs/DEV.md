@@ -444,8 +444,8 @@ What 2.0's screens are made of. The design is `SPEC.md` of the design folder (`t
 differs where it does. The old screens still build on all of it: they look imperfect in the new tokens until they are rebuilt, and that is expected.
 
 **The one font.** IBM Plex Sans Arabic in three weights, `assets/fonts` (727 KB, `OFL.txt` beside them, `NOTICE`). `Fonts.get(400|500|600)`, `Fonts.of(role)`;
-`Fonts.LIGHT..BOLD` are the old names and fall on the three. Roboto and Readex are out of the UI. The Readex file moved to `design/fonts`: the map pack's glyph
-build reads it (`tools/mapbuild/run_build.ps1` on the map branch names the old path, and must name `design/fonts/ReadexPro-VF.ttf` when the two meet). All text goes
+`Fonts.LIGHT..BOLD` are the old names and fall on the three. Roboto and Readex are out of the UI, and Readex out of the repository: nothing else needed it, because the map pack's glyphs are Plex too (`AMRI Map Sans`, the map branch's
+`tools/mapbuild`; its `run_build.ps1 -Fonts` can take `assets/fonts` once the two meet, the same files by the hashes of its `lock.json`). All text goes
 through `Fonts.tune(paint)`: subpixel, no hinting. Hinted at 1 dp = 1 px, stems snap and advances round to the pixel, and a long line is off by 2 px from the design;
 unhinted the letters are the design's. A long Arabic line still comes out about 1 % narrower than in Chromium (330 px against 327), not traced. There is no `tnum` any more: Plex's digits are
 equal, and no feature was needed; the seven sites left in `MapsActivity` and `MusicActivity` do nothing and go with those screens. Whether digits shrink in one run with Arabic (section 14, question 6): `600` at 56 px has 41 px of ink alone, with its unit in spans and in one run with
@@ -488,6 +488,9 @@ sea cover's pill came out `#56A1BF` against the design's `#6FD6F6`, duller, beca
 **The gallery.** `am broadcast -n com.abdllh.aura/.debug.GalleryReceiver --es page controls --es theme night --ez cut true` (debug builds): every component in every state at real size, a page per group; `theme` without `cut` goes through the real `ThemeSwap`. `r-*` pages put them where the mockups have them with the mockups' words, on the mockups' map plates (`scripts/gallery-shots.ps1 -Design <folder>` pushes them).
 `scripts/gallery_compare.py <design folder>` compares those pages rect by rect with `screens/_layout.json`. Text can never be equal: Chromium's gamma and Skia's differ.
 On an emulator under load a window can stop drawing altogether while its main thread is well and every view is new: `OpenGLRenderer: dequeueBuffer failed, error = -110; switching to fallback` in the log (the composer lagged more than the buffer's wait, while something animated without a pause), then the renderer is disabled and the surface released until the next relayout. It is the framework's, on the emulator's composer, and not a state of a page; `--ez probe true` prints it (`settings put global hidden_api_policy 1` first). That is why the gallery's page with spinners is its own and last, and a theme change, which relayouts, brings the window back.
+With five emulators on the one GPU, one can also die outright (qemu gone, adb says `not found`). Its next start then waits behind a window of its own, "Android Emulator closed unexpectedly", with no device in adb, for as long as nobody closes it: closing the window sends nothing, and the boot goes on.
+
+**What it weighs.** Against the shell before it, entry by entry in the debug APK: +1,334,128 B (fonts 183,153 compressed, 443,855 raw; `assets/surfaces` 724,091; png 82,118; xml 37,413; tones 35,852; arsc 15,976; dex 110,760, the gallery's classes in it; and 144,732 of covers that only a debug build carries). The file itself says less, because an incremental build leaves gaps in the zip. PSS at Home on the emulator, 40 s after a start: 88.7, 92.1 and 93.6 MB, against 96.9 MB before it (the one run of three whose map had come up by then); the views went from 311 to 214, since an `IconButton` has no children. One theme's bitmaps of `Surfaces.prepare` are 3.33 MB of gralloc on the unit, which the emulator's meminfo does not show (`Graphics: 0`); the three surfaces' 9-patches 504 KB for both themes. The fonts are compressed in the APK as Readex was, so the platform inflates each into a direct buffer: 727 KB; `noCompress` would map them instead, for 544 KB more APK. Not done: this is the build file's, and worth a look on the unit's numbers.
 
 ## Design system (1.12)
 The tokens' numbers below are history since 2.0; their names, and how they are used, are still what old screens do.
@@ -2620,11 +2623,9 @@ sign, a trip resumed or not and why) is the first real measurement.
   old one back. Zips must be STORED; `rom/tools/gen_bootanim.py` makes it (the car turning in, then the AMRI OS logo
   from `design/logo/`, palette PNGs with 16 entries kept for the logo blue).
 
-## Arabic font (`design/fonts/`)
-Until 2.0 Arabic UI text was Readex Pro (OFL), a variable font; the UI is IBM Plex Sans Arabic now ("Design system (2.0)"). The file stays in `design/fonts` for the
-offline map's glyph build, which needs a variable font with a `wght` axis. Upstream declares ascent 1000 / descent 250 while the Arabic reaches about −550…1150, and the
-app's labels use `includeFontPadding = false`, so Android cut the bottom off (ي lost its dots). `design/fonts/make_arabic_font.py` writes it from the Google Fonts
-file with ascent 1150 / descent 560 (nothing else changed; renamed "Readex Pro AMRI" as the OFL asks).
+## Arabic font
+Until 2.0 Arabic UI text was Readex Pro (OFL), a variable font; the UI is IBM Plex Sans Arabic now ("Design system (2.0)"), whose metrics need no patch. Upstream Readex declares ascent 1000 / descent 250 while the Arabic reaches about −550…1150, and the
+app's labels use `includeFontPadding = false`, so Android cut the bottom off (ي lost its dots): `design/fonts/make_arabic_font.py` wrote the app's copy with ascent 1150 / descent 560, renamed "Readex Pro AMRI" as the OFL asks. The file and the script left the repository with 2.0 (git's history has them): the map pack's glyphs, the last thing that could have read them, are Plex as well.
 
 ## Logo and icon (`design/logo/`)
 `amri-os-en-source.png` / `amri-ar-source.png` are the owner's artwork (white and blue on black). `make_assets.py` takes
