@@ -25,6 +25,7 @@ import zipfile
 
 import numpy as np
 import shapely
+import shapely.ops
 from shapely.geometry import LineString, Point, box, shape
 from shapely.geometry.polygon import orient
 from shapely.ops import polygonize, unary_union
@@ -61,7 +62,6 @@ def natural_earth_ocean(zip_path):
 
 def classify_faces(faces, ways):
     """Votes per face from points just right (sea) and left (land) of the coastline ways."""
-    tree = shapely.STRtree(faces)
     eps = 2e-5  # about 2 m
     pts_x, pts_y, side = [], [], []
     for coords in ways:
@@ -81,7 +81,9 @@ def classify_faces(faces, ways):
             pts_y += [my - dx / n * eps, my + dx / n * eps]
             side += [1, -1]
     points = shapely.points(np.array(pts_x), np.array(pts_y))
-    pi, fi = tree.query(points, predicate="within")
+    # (asked face by face: the query prepares each face, so one point costs a lookup and not a walk round a coast of
+    # half a million points. Asked point by point the same answer took over ten minutes.)
+    fi, pi = shapely.STRtree(points).query(np.array(faces, dtype=object), predicate="contains")
     votes = np.zeros(len(faces), dtype=np.int64)
     np.add.at(votes, fi, np.array(side)[pi])
     say(f"sample points {len(points):,}, inside a face {len(pi):,}")
@@ -164,16 +166,31 @@ def main():
     say("ways touching the working area", len(hit))
     near = [lines[i] for i in hit]
     near_coords = [ways[i] for i in hit]
-    clipped = shapely.intersection(np.array(near, dtype=object), work)
-    noded = unary_union(list(clipped) + [work.boundary])
+    # The whole lines, not lines clipped to the area: the end of a clipped line is a computed point next to the area's edge,
+    # not on it, so it would never be noded with it and the line would divide nothing.
+    # A coast the extract's edge has cut (the Red Sea coast at both of its ends) stops inside the working area, and land
+    # and sea would stay one face round its end. So each loose end is closed to the nearest point of the area's edge, a
+    # little past it: never more than the buffer away, far from any town, and the guard below still limits the sea there.
+    closers = []
+    for p in inside_loose:
+        edge = shapely.ops.nearest_points(p, work.boundary)[1]
+        dx, dy = edge.x - p.x, edge.y - p.y
+        n = (dx * dx + dy * dy) ** 0.5
+        closers.append(LineString([(p.x, p.y), (edge.x + dx / n * 0.01, edge.y + dy / n * 0.01)]))
+        say(f"closing the loose end {p.x:.3f},{p.y:.3f} to the edge at {edge.x:.3f},{edge.y:.3f}")
+    noded = unary_union(near + closers + [work.boundary])
     say("noded")
     faces = list(polygonize(noded))
+    faces = [f for f in faces if work.contains(f.representative_point())]
     say("faces", len(faces))
     votes = classify_faces(faces, near_coords)
     sea, land, unknown = [], [], []
     for f, v in zip(faces, votes):
         (sea if v > 0 else land if v < 0 else unknown).append(f)
     say(f"sea faces {len(sea)}, land faces {len(land)}, no vote {len(unknown)}")
+    for f, v in sorted(zip(faces, votes), key=lambda fv: -fv[0].area)[:6]:
+        rp = f.representative_point()
+        say(f"  largest faces: {f.area:.3f} deg2 votes {v} at {rp.x:.2f},{rp.y:.2f}")
     for f in unknown:
         rp = f.representative_point()
         (sea if ocean.contains(rp) else land).append(f)

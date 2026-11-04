@@ -36,6 +36,9 @@ def main():
         z.writestr("lake_centerline.shp", shp_header())
         z.writestr("lake_centerline.shx", shp_header())
         z.writestr("lake_centerline.dbf", dbf())
+        # (without a projection Planetiler's reader stops with a NullPointerException, even on no features)
+        z.writestr("lake_centerline.prj", 'GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137,298.257223563]],'
+                                          'PRIMEM["Greenwich",0],UNIT["Degree",0.0174532925199433]]')
     with open(out, "wb") as f:
         f.write(buf.getvalue())
     print("wrote", out, len(buf.getvalue()), "bytes")

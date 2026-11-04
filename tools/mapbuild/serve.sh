@@ -9,6 +9,5 @@ valhalla_build_config \
   --mjolnir-admin /nonexistent/admin.sqlite \
   --mjolnir-timezone /nonexistent/tz.sqlite \
   --mjolnir-landmarks /nonexistent/landmarks.sqlite \
-  --mjolnir-logging-type std_out \
   "$@" > /tmp/valhalla.json
 exec valhalla_service /tmp/valhalla.json "$THREADS"
