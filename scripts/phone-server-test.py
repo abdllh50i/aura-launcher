@@ -29,6 +29,8 @@ FIXTURES = os.path.join(HERE, "..", "tools", "link-fixtures", "share.json")
 
 results = []
 RUN = str(int(time.time()))
+# (a place every 2 s at most from a peer with no token)
+UNPAIRED_S = 2.1
 
 
 def I(name):
@@ -43,7 +45,12 @@ def check(name, ok, detail=""):
 
 
 def adb(*args):
-    return subprocess.run([ADB, "-s", SERIAL] + list(args), capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
+    # (a time limit: `adb emu` and a stuck emulator can hang for ever)
+    try:
+        return subprocess.run([ADB, "-s", SERIAL] + list(args), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=90).stdout
+    except subprocess.TimeoutExpired:
+        print("     (adb %s: no answer in 90 s)" % " ".join(args)[:60])
+        return ""
 
 
 def shell(cmd):
@@ -320,7 +327,16 @@ def t_share_fixtures():
         for k, v in case.get("redirects", {}).items():
             if v != "error":
                 red[k] = v
-        s, j, _, _ = req("POST", "/debug/parse", {"text": case["input"]["text"], "redirects": red})
+        limit = case.get("withinMs", 5000) / 1000.0
+        t0 = time.time()
+        try:
+            s, j, _, _ = req("POST", "/debug/parse", {"text": case["input"]["text"], "redirects": red}, timeout=limit + 5)
+        except Exception as x:
+            check("share: " + case["name"], False, "no answer in %.0f s: %s" % (limit + 5, x))
+            continue
+        took = time.time() - t0
+        if not check("share, in time: " + case["name"], took <= limit, "%.2f s" % took):
+            continue
         e = case["expect"]
         ok = s == 200 and j["kind"] == e["kind"]
         if ok:
@@ -332,6 +348,120 @@ def t_share_fixtures():
                 else:
                     ok = ok and j.get(k, "") == v
         check("share: " + case["name"], ok, json.dumps(j, ensure_ascii=False))
+
+
+def t_threads_busy():
+    """aura-phone threads burning CPU right now: a regular expression that never ends looks like this."""
+    pid = shell("pidof com.abdllh.aura").strip().split(" ")[0]
+    out = shell("top -H -b -n 1 -p %s | grep aura-phone" % pid)
+    return [l for l in out.splitlines() if " R " in l]
+
+
+def t_share_hostile(token):
+    """Text and links built to hurt: the server's real path, as the gateway with no token, the way any app on the hotspot can."""
+    set_debug("gateway")
+    try:
+        k = 580
+        sp = " " * k
+        evil = "1" + sp + "1" + sp + "1" + sp + "N" + sp + "1" + sp + "1" + sp + "1" + sp + "!"
+        for i in range(4):
+            t0 = time.time()
+            s, j, _, _ = req("POST", "/v1/share", {"id": I("evil-%d" % i), "text": evil}, timeout=8)
+            check("share: a hostile text is answered at once (%d)" % i, s in (200, 429) and time.time() - t0 < 3, (s, j, time.time() - t0))
+            time.sleep(2.1)
+        time.sleep(1)
+        check("share: no thread is left burning", not t_threads_busy(), t_threads_busy())
+        s, _, _, _ = req("GET", "/v1/ping")
+        check("share: the server still answers after them", s == 200, s)
+        # a listener where an attacker's address would be: the PC, as the emulator sees it
+        lst = socket.socket()
+        lst.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        lst.bind(("0.0.0.0", 47999))
+        lst.listen(8)
+        lst.settimeout(0.2)
+        got = []
+        stop = []
+        def accept():
+            while not stop:
+                try:
+                    c, a = lst.accept()
+                    got.append(a)
+                    c.close()
+                except socket.timeout:
+                    pass
+                except OSError:
+                    break
+        th = threading.Thread(target=accept, daemon=True)
+        th.start()
+        hostile = ["https://10.0.2.2:47999\\@maps.app.goo.gl/x", "https://x@maps.app.goo.gl:y@10.0.2.2:47999/x"]
+        for i, u in enumerate(hostile):
+            s, j, _, _ = req("POST", "/debug/parse", {"text": u, "network": True}, timeout=10)
+            check("ssrf: %s is not read as a short link" % u, j["kind"] == "unresolved" and j["reason"] == "not_a_map", j)
+            time.sleep(2.1)
+            s, j, _, _ = req("POST", "/v1/share", {"id": I("ssrf-%d" % i), "text": u}, timeout=10)
+            check("ssrf: the same through /v1/share", s == 422 and j["reason"] == "not_a_map", (s, j))
+            time.sleep(2.1)
+        time.sleep(1)
+        check("ssrf: nothing connected to the listener", not got, got)
+        # 40 such links in one body
+        many = " ".join(hostile[i % 2].replace("/x", "/x%d" % i) for i in range(40))
+        t0 = time.time()
+        s, j, _, _ = req("POST", "/v1/share", {"id": I("ssrf-many"), "text": many}, timeout=35)
+        check("ssrf: 40 links in a body end at once", time.time() - t0 < 5 and not got, (s, j, time.time() - t0, got))
+        stop.append(1)
+        lst.close()
+    finally:
+        set_debug("1")
+
+
+def t_flood(token):
+    """A loop of places with no token, as any app on the hotspot can do: the main thread and the guard must not notice."""
+    pid = shell("pidof com.abdllh.aura").strip().split(" ")[0]
+    before = shell("run-as com.abdllh.aura cat files/guard-log.txt | wc -l").strip()
+    run = [True]
+    answers = {}
+    lock = threading.Lock()
+    def loop(n):
+        i = 0
+        while run[0]:
+            i += 1
+            try:
+                s, _, _, _ = req("POST", "/v1/nav/go", {"id": I("flood-%d-%d" % (n, i)), "place": {"name": "x%d" % i, "lat": 26.3, "lon": 50.2}, "mode": "start"}, timeout=5)
+            except Exception as x:
+                s = type(x).__name__
+            with lock:
+                answers[s] = answers.get(s, 0) + 1
+    set_debug("gateway")
+    th = [threading.Thread(target=loop, args=(n,), daemon=True) for n in range(3)]
+    for t in th:
+        t.start()
+    worst = 0.0
+    busy = 0
+    asks = 0
+    t_end = time.time() + 60
+    while time.time() < t_end:
+        t0 = time.time()
+        s, _, _, _ = req("GET", "/v1/state", token=token, timeout=8)
+        worst = max(worst, time.time() - t0)
+        asks += 1
+        if s != 200:
+            busy += 1
+        time.sleep(1)
+    run[0] = False
+    for t in th:
+        t.join(8)
+    set_debug("1")
+    print("     flood: %s; state asked %d times, busy %d, slowest %.2f s" % (answers, asks, busy, worst))
+    check("flood: most are told too fast", answers.get(429, 0) > 10 * answers.get(202, 1), answers)
+    check("flood: a place every 2 s at most", answers.get(202, 0) <= 35, answers)
+    check("flood: /v1/state stays answerable", busy == 0 and worst < 3, (busy, worst))
+    check("flood: same process", shell("pidof com.abdllh.aura").strip().split(" ")[0] == pid)
+    after = shell("run-as com.abdllh.aura cat files/guard-log.txt | tail -n +%d" % (int(before or 0) + 1))
+    check("flood: the guard saw nothing", "has not answered" not in after and "no OK" not in after, after)
+    stop_trip(token)
+    shell("input keyevent BACK")
+    time.sleep(1)
+    home()
 
 
 def t_share_live():
@@ -491,12 +621,12 @@ def t_navigating(token, routes):
     time.sleep(6)
     req("POST", "/v1/nav/go", {"id": I("nav-2"), "place": {"name": "المكان الثاني", "lat": 26.35, "lon": 50.15}, "mode": "start"}, token)
     e = ev.wait(lambda x: x.get("id") == I("nav-2") and x["state"] == "card", 5)
+    t0 = time.time()
     check("on a trip: a card, kind replace", e is not None and e.get("kind") == "replace", ev.nav())
     time.sleep(0.5)
     shot("v2-link-replace-card")
     s, j, _, _ = req("GET", "/v1/state", token=token)
     check("on a trip: the trip has not changed", j["nav"]["place"]["name"] == "الرحلة الأولى", j["nav"])
-    t0 = time.time()
     e = ev.wait(lambda x: x.get("id") == I("nav-2") and x["state"] == "ignored", 24)
     check("on a trip: after 20 s it keeps the trip", e is not None and e.get("kept") and 17 < time.time() - t0 < 24, (e, time.time() - t0))
     s, j, _, _ = req("GET", "/v1/state", token=token)
@@ -580,18 +710,31 @@ def t_unpaired(token, routes):
     tap_card(CARD_SECOND)
     e = ev.wait(lambda x: x.get("id") == I("gw-1") and x["state"] == "ignored", 4)
     check("gateway, no token: No", e is not None, ev.nav())
+    # (too soon after the last one, and told so, with the id not taken: the same id goes through once its time has come)
+    s, j, _, _ = req("POST", "/v1/nav/go", {"id": I("gw-fast"), "place": {"name": "x", "lat": 26.29, "lon": 50.18}, "mode": "start"})
+    check("gateway, no token: a place every 2 s at most", s == 429 and j["reason"] == "too_fast", (s, j))
+    time.sleep(UNPAIRED_S)
+    s, j, _, _ = req("POST", "/v1/nav/go", {"id": I("gw-fast"), "place": {"name": "x", "lat": 26.29, "lon": 50.18}, "mode": "start"})
+    check("gateway, no token: the same id, later, is taken", s == 202 and j["state"] == "accepted", (s, j))
+    ev.wait(lambda x: x.get("id") == I("gw-fast") and x["state"] == "card", 4)
+    time.sleep(0.5)
+    tap_card(CARD_SECOND)
+    time.sleep(UNPAIRED_S)
     s, j, _, _ = req("POST", "/v1/share", {"id": I("gw-2"), "text": "الراشد مول\nhttps://maps.google.com/?q=26.290457,50.184555"})
     check("gateway share: read here, the place back", s == 202 and j["place"]["name"] == "الراشد مول" and j.get("needs") == "tap", (s, j))
     e = ev.wait(lambda x: x.get("id") == I("gw-2") and x["state"] == "card", 4)
     check("gateway share: a card", e is not None, ev.nav())
     # a newer place replaces one still waiting
+    time.sleep(UNPAIRED_S)
     s, j, _, _ = req("POST", "/v1/share", {"id": I("gw-3"), "text": "26.31, 50.21"})
     e = ev.wait(lambda x: x.get("id") == I("gw-2") and x["state"] == "replaced", 4)
     check("a newer place replaces one waiting", e is not None, ev.nav())
     time.sleep(0.5)
     tap_card(CARD_SECOND)
+    time.sleep(UNPAIRED_S)
     s, j, _, _ = req("POST", "/v1/share", {"id": I("gw-4"), "text": "https://example.com/nothing"})
     check("share of no place: says so", s == 422 and j["reason"] == "not_a_map", (s, j))
+    time.sleep(UNPAIRED_S)
     s, j, _, _ = req("POST", "/v1/share", {"id": I("gw-5"), "text": "مكان بالاسم"})
     check("share of a name, no token: no search on the screen", s == 200 and j["state"] == "search" and j["onScreen"] is False, (s, j))
     s, j, _, _ = req("POST", "/v1/share", {"id": I("gw-6"), "text": "https://www.google.com/maps/@26.29,50.18,15z"}, token)
@@ -601,6 +744,7 @@ def t_unpaired(token, routes):
     time.sleep(0.5)
     tap_card(CARD_SECOND)
     # nobody answers: it goes after 30 s, and the phone hears that
+    time.sleep(UNPAIRED_S)
     req("POST", "/v1/nav/go", {"id": I("gw-7"), "place": {"name": "ما أحد رد", "lat": 26.29, "lon": 50.18}, "mode": "start"})
     ev.wait(lambda x: x.get("id") == I("gw-7") and x["state"] == "card", 4)
     t0 = time.time()
@@ -1236,7 +1380,11 @@ def main():
     p.add_argument("--serial", default="emulator-5572")
     p.add_argument("--port", type=int, default=47101)
     p.add_argument("--only", default="")
+    p.add_argument("--list", action="store_true")
     a = p.parse_args()
+    if a.list:
+        print("peers safety bad endpoints fixtures hostile flood live qr events busy slow many retries flow cancel navigating held unpaired drive apple remote saved failed nofix voicewords voice voicelive naghm kill idle off")
+        return
     SERIAL = a.serial
     PORT = a.port
     only = set(filter(None, a.only.split(",")))
@@ -1262,6 +1410,10 @@ def main():
         t_endpoints(token)
     if want("fixtures"):
         t_share_fixtures()
+    if want("hostile"):
+        t_share_hostile(token)
+    if want("flood"):
+        t_flood(token)
     if want("live"):
         t_share_live()
     if want("qr"):

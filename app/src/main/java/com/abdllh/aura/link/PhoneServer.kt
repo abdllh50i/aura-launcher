@@ -77,8 +77,14 @@ object PhoneServer {
     private const val HEAD_CAP = 16 * 1024
     private const val HEARTBEAT_S = 15L
     private const val MAX_IDS = 64
-    /** A short link's redirect, at most two hops of 3 s + 3 s: the parser's own limit. An answer may take that long. */
+    /** A shared text's short links: at most 3 requests of 3 s + 3 s in all, the parser's own limit. An answer may take that long. */
     private const val WORK_MS = 30_000L
+    /** How fast one peer's places may come. Without a token: one per 2 s, enough for a person, none for a loop. */
+    private const val UNPAIRED_PER_S = 0.5
+    /** With one: a few a second, and a small burst for a phone that has been retrying. */
+    private const val PAIRED_PER_S = 3.0
+    private const val PAIRED_BURST = 5.0
+    private const val MAX_BUCKETS = 16
 
     /** Who is asking. */
     internal enum class Peer { GATEWAY, PRIVATE, REFUSED }
@@ -383,7 +389,7 @@ object PhoneServer {
     private fun status(code: Int) = when (code) {
         200 -> "OK"; 202 -> "Accepted"; 204 -> "No Content"; 400 -> "Bad Request"; 401 -> "Unauthorized"; 403 -> "Forbidden"
         404 -> "Not Found"; 405 -> "Method Not Allowed"; 409 -> "Conflict"; 411 -> "Length Required"; 413 -> "Payload Too Large"
-        415 -> "Unsupported Media Type"; 422 -> "Unprocessable Entity"; 431 -> "Request Header Fields Too Large"
+        415 -> "Unsupported Media Type"; 422 -> "Unprocessable Entity"; 429 -> "Too Many Requests"; 431 -> "Request Header Fields Too Large"
         503 -> "Service Unavailable"; else -> "Error"
     }
 
@@ -532,6 +538,39 @@ object PhoneServer {
 
     private fun lastState(id: String): String = synchronized(seen) { seen[id]?.state.orEmpty() }
 
+    private fun isRetry(id: String): Boolean = synchronized(seen) { id in seen }
+
+    private class Bucket(var tokens: Double, var at: Long)
+
+    private val buckets = HashMap<String, Bucket>()
+
+    /** One more place from this peer, now? */
+    private fun mayPlace(r: Request): Boolean = synchronized(buckets) {
+        if (buckets.size >= MAX_BUCKETS) buckets.clear() // (a few phones at most: a list this long is someone's game, and starts anew)
+        val now = SystemClock.elapsedRealtime()
+        val perMs = (if (r.paired) PAIRED_PER_S else UNPAIRED_PER_S) / 1000.0
+        val most = if (r.paired) PAIRED_BURST else 1.0
+        val b = buckets.getOrPut((if (r.paired) "p " else "u ") + r.peerAddress) { Bucket(most, now) }
+        b.tokens = minOf(most, b.tokens + (now - b.at).coerceAtLeast(0L) * perMs)
+        b.at = now
+        if (b.tokens < 1.0) false else { b.tokens -= 1.0; true }
+    }
+
+    /**
+     * Whether this request may go on to do what it asks: what it is told otherwise is its answer. A retry is told what
+     * became of the first try and costs nothing. Too fast is told so and is not remembered as seen, so the same id can
+     * come again once its time has come.
+     */
+    private fun firstPlace(c: Conn, r: Request, id: String): Boolean {
+        if (isRetry(id)) { reply(c, 202, JSONObject().put("id", id).put("state", "duplicate").put("last", lastState(id))); return false }
+        if (!mayPlace(r)) {
+            send(c, 429, "application/json; charset=utf-8", reason("too_fast").put("id", id).toString().toByteArray(Charsets.UTF_8), "Retry-After: 2\r\n")
+            return false
+        }
+        firstTime(id)
+        return true
+    }
+
     /** The id of a request: what the phone sent, or one of ours for a caller that sent none (no retry is told apart then). */
     private fun idOf(c: Conn, b: JSONObject): String? {
         val id = b.optString("id")
@@ -582,7 +621,7 @@ object PhoneServer {
         val place = placeOf(b.optJSONObject("place"))
         if (place == null) { reply(c, 400, reason("bad_place")); return }
         val id = idOf(c, b) ?: return
-        if (!firstTime(id)) { reply(c, 202, JSONObject().put("id", id).put("state", "duplicate").put("last", lastState(id))); return }
+        if (!firstPlace(c, r, id)) return
         val src = text(b.optJSONObject("place")?.optString("src"), 32).ifEmpty { "phone" }
         NavBridge.place(app ?: return, PlaceInbox.Incoming(id, named(place), src, originOf(b.optJSONObject("from")), r.paired, r.peerAddress, ask = false))
         reply(c, 202, JSONObject().put("id", id).put("state", "accepted").also { if (!r.paired) it.put("needs", "tap") })
@@ -595,7 +634,7 @@ object PhoneServer {
         val id = idOf(c, b) ?: return
         val shared = listOf(b.optString("text"), b.optString("url")).filter { it.isNotBlank() }.joinToString("\n")
         if (shared.isBlank()) { reply(c, 400, reason("nothing_shared")); return }
-        if (!firstTime(id)) { reply(c, 202, JSONObject().put("id", id).put("state", "duplicate").put("last", lastState(id))); return }
+        if (!firstPlace(c, r, id)) return
         when (val parsed = ShareParser.parse(shared)) {
             is ShareParser.Result.Found -> {
                 val place = named(Place(text(parsed.name, 120), text(parsed.detail, 240), LatLon(parsed.lat, parsed.lon)))
@@ -630,7 +669,7 @@ object PhoneServer {
         if (which != "home" && which != "work") { reply(c, 400, reason("bad_which")); return }
         val id = idOf(c, b) ?: return
         if (!NavBridge.hasSaved(which)) { reply(c, 409, reason("not_set") { put("which", which) }); return }
-        if (!firstTime(id)) { reply(c, 202, JSONObject().put("id", id).put("state", "duplicate").put("last", lastState(id))); return }
+        if (!firstPlace(c, r, id)) return
         NavBridge.saved(app ?: return, which, id, r.peerAddress, pin())
         reply(c, 202, JSONObject().put("id", id).put("state", "accepted"))
     }

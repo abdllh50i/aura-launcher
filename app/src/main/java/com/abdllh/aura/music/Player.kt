@@ -351,6 +351,8 @@ object Player {
         if (Device.isNwd) setKeyRouting(c, false)
         focus?.let { (c.getSystemService(Context.AUDIO_SERVICE) as AudioManager).abandonAudioFocusRequest(it) }
         sendPlayInfo(c, inOut = 1)
+        // (or a media key meant for whatever plays next finds this session, and starts the old local song)
+        session?.isActive = false
         MusicService.stop(c)
     }
 

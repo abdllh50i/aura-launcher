@@ -96,6 +96,7 @@ object MediaMonitor {
 
     // ---------------------------------------------------------------- broadcasts
     private const val ACTION_NWD_INFO = "com.nwd.action.send_media_play_info"
+    private const val ACTION_BT_INFO = "com.nwd.btmusic.playinfo.changed"
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -125,12 +126,21 @@ object MediaMonitor {
             publish()
             return
         }
+        // The stock Bluetooth app tells every title here, with no state, while it is alive (it is at every ignition: fact 34).
+        // [BtMusic] has that song, with its real state: this would only be a second, stale copy of it, "playing" for ever.
+        if (intent.action == ACTION_BT_INFO && com.abdllh.aura.music.BtMusic.available) return
+        if (intent.action == "com.android.music.playbackcomplete") {
+            broadcastInfo = broadcastInfo?.copy(playing = false) ?: return
+            publish()
+            return
+        }
         val title = s("extra_media_name", "track", "title", "name", "song", "songname", "music_name")
         val artist = s("extra_media_artist", "artist", "singer", "artistname")
+        // (a broadcast that says nothing of its state does not play by saying nothing)
         val playing = when (val p = e?.get("playing") ?: e?.get("isPlaying") ?: e?.get("state")) {
             is Boolean -> p
             is Int -> p == 1 || p == 3
-            else -> broadcastInfo?.playing ?: true
+            else -> broadcastInfo?.playing ?: false
         }
         if (intent.action == "com.android.music.playstatechanged" && title.isEmpty()) {
             broadcastInfo = broadcastInfo?.copy(playing = playing) ?: return
@@ -148,7 +158,7 @@ object MediaMonitor {
             addAction("com.android.music.playstatechanged")
             addAction("com.android.music.playbackcomplete")
             addAction("com.nwd.action.send_media_play_info")
-            addAction("com.nwd.btmusic.playinfo.changed")
+            addAction(ACTION_BT_INFO)
         }
         try { app?.registerReceiver(receiver, f) } catch (t: Throwable) { Log.w(TAG, "register: $t") }
     }

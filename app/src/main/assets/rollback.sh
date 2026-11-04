@@ -8,7 +8,8 @@
 #   sh /data/local/tmp/amri-rollback/rollback.sh --stock  only the kill switch and the stock launcher (at once)
 #
 # Going back runs detached: replacing the package kills every process of the app, and with it whoever asked. The outcome
-# is in result ("EXIT=n"), the script's own output in runner.log.
+# is in result ("EXIT=n"), the script's own output in runner.log. --stock outlives its caller too: the firmware force-stops
+# AMRI within a second of the stock launcher coming up, unless AMRI is on its list (guard/BackgroundList.kt).
 #
 # It never runs pm uninstall: when the ROM copy is older than the /data copy that deletes AMRI's data (docs/DEV.md).
 
@@ -24,12 +25,26 @@ R=$D/result
 give_back() {
     pm enable com.android.launcher/com.launcher.FloatBar >/dev/null 2>&1
     am startservice -n com.android.launcher/com.launcher.FloatBar >/dev/null 2>&1
-    case "$(settings get system key_bt_state 2>/dev/null)" in
-        3|4|5) ;; # never during a call: it restarts the phone process
-        *) pm enable com.nwd.android.phone/com.nwd.android.phone.FloatBar >/dev/null 2>&1 ;;
-    esac
+    # never during a call: it restarts the phone process. Then at its end, behind everything else: the stock launcher with
+    # this window off shows no call at all, and AMRI may not be there to do it
+    (
+        n=0
+        while [ $n -lt 720 ]; do
+            case "$(settings get system key_bt_state 2>/dev/null)" in
+                3|4|5) sleep 5; n=$((n + 1)) ;;
+                *) pm enable com.nwd.android.phone/com.nwd.android.phone.FloatBar >/dev/null 2>&1; break ;;
+            esac
+        done
+    ) >/dev/null 2>&1 </dev/null &
     K=/data/nwdappconfig/app/KeyRuleConfig.xml
     [ -f $K.pre-aura ] && cat $K.pre-aura > $K && rm -f $K.pre-aura
+    # AMRI's ring (only while it still is AMRI's: the marker holds its MD5); the owner's own comes back
+    D=$(getprop ro.nwd.internal.path); [ -n "$D" ] || D=/mnt/media_rw/sdcard
+    if [ -f "$D/.aura-ring" ]; then
+        [ "$(md5sum "$D/ring.mp3" 2>/dev/null | cut -d' ' -f1)" = "$(cat "$D/.aura-ring")" ] && rm -f "$D/ring.mp3"
+        [ -f "$D/ring.mp3.pre-aura" ] && [ ! -f "$D/ring.mp3" ] && mv -f "$D/ring.mp3.pre-aura" "$D/ring.mp3"
+        rm -f "$D/.aura-ring"
+    fi
     case "$(settings get global policy_control 2>/dev/null)" in
         *immersive.*) settings delete global policy_control >/dev/null 2>&1 ;;
     esac
@@ -45,6 +60,8 @@ to_stock() {
 
 case "$1" in
     --stock)
+        # (whoever asked may be force-stopped halfway: adbd then hangs up on this shell, which goes on)
+        trap '' HUP PIPE
         to_stock
         echo stock-done
         exit 0

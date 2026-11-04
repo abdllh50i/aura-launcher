@@ -30,6 +30,7 @@ import org.json.JSONObject
 import java.util.Locale
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -67,12 +68,33 @@ internal object NavBridge {
     private val arabic get() = Locale.getDefault().language == "ar"
 
     // ------------------------------------------------------------------------------------------ places
-    fun place(ctx: Context, x: PlaceInbox.Incoming) = post("place") { PlaceInbox.receive(ctx, x) }
+    /** A place on its way to the main thread: at most one. */
+    private class Waiting(val id: String, val run: () -> Unit)
+
+    private val waiting = AtomicReference<Waiting?>()
+    private val drainPosted = AtomicBoolean(false)
+    private val drain = Runnable {
+        drainPosted.set(false) // (before the take: one that comes in between posts its own, which then finds nothing or the newest)
+        val w = waiting.getAndSet(null)
+        if (w != null) try { w.run() } catch (t: Throwable) { Log.w(TAG, "place: $t") }
+    }
+
+    /**
+     * Never one Runnable per request: a loop of requests would outrun the main thread, and the backlog is a frozen home
+     * screen to the driver and to the guard. A newer place takes the waiting one's seat, as it would on the screen (only one
+     * place at a time, [PlaceInbox]); that one's phone hears so, since it will never be heard of again.
+     */
+    private fun offer(id: String, run: () -> Unit) {
+        waiting.getAndSet(Waiting(id, run))?.let { old -> PhoneServer.navEvent(old.id, "replaced", null) }
+        if (drainPosted.compareAndSet(false, true)) main.post(drain)
+    }
+
+    fun place(ctx: Context, x: PlaceInbox.Incoming) = offer(x.id) { PlaceInbox.receive(ctx, x) }
 
     fun hasSaved(which: String) = Trips.saved(which) != null || Trips.legacy(which).isNotBlank()
 
     /** Home or Work: as any place from a paired phone ([PlaceInbox]), found first if it was only typed in 1.0. */
-    fun saved(ctx: Context, which: String, id: String, peer: String, pin: String) = post("saved") {
+    fun saved(ctx: Context, which: String, id: String, peer: String, pin: String) = offer(id) {
         val p = Trips.saved(which)
         if (p != null) {
             PlaceInbox.receive(ctx, PlaceInbox.Incoming(id, p.takeIf { it.name.isNotBlank() } ?: Place(pin, p.detail, p.pos), "saved.$which", null, true, peer, ask = false))

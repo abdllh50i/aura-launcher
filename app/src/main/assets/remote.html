@@ -194,6 +194,11 @@ function send(path, body, ms) {
         say("ما ردت الشاشة، أحاول مرة ثانية…", null, "warn");
         return next();
       }
+      // (too fast: the unit has not taken this id, so the same one goes again once its time has come)
+      if (r.status === 429 && i < waits.length) {
+        say("الشاشة مشغولة، أحاول مرة ثانية…", null, "warn");
+        return next();
+      }
       return r;
     });
   }
@@ -359,6 +364,7 @@ function answered(r) {
   }
   if (r.status === 403) { say("الشاشة رفضت الطلب", "اربط الجوال من شاشة السيارة", "bad"); return; }
   if (r.status === 409) { say("ما تقدر الشاشة الحين", j.reason === "not_set" ? "هذا المكان ما انحفظ في الشاشة" : j.reason, "warn"); return; }
+  if (r.status === 429) { say("الشاشة مشغولة", "جرب بعد لحظة", "warn"); return; }
   say("ردت الشاشة بخطأ (" + r.status + ")", j.reason, "bad");
 }
 

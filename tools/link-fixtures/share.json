@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "about": "What a phone shares, and the one thing it means. For link/ShareParser.kt now (scripts/phone-server-test.py runs them through the unit's real parser) and the phone's Swift parser later: the same input must give the same answer. input.text is everything shared, the link included. redirects stands in for the network: the short link's answer, by URL, as {code, location} (location is what the Location header said, null for none), or \"error\" for no answer at all; a URL not listed must never be asked for. expect.kind is place (lat, lon within 0.000001 unless tolerance says otherwise, name, detail, src, confidence), search (q, src), unresolved (reason, q when text came with the link) or nothing (reason). Marked measured: seen live from the PC (companion.md 2.5). The rest are the formats the report lists, written by hand: replace them with real captures from the phone as they come.",
+  "about": "What a phone shares, and the one thing it means. For link/ShareParser.kt now (scripts/phone-server-test.py runs them through the unit's real parser) and the phone's Swift parser later: the same input must give the same answer. input.text is everything shared, the link included. redirects stands in for the network: the short link's answer, by URL, as {code, location} (location is what the Location header said, null for none), or \"error\" for no answer at all; a URL not listed must never be asked for. withinMs: the answer must come in that time, on the phone as on the unit (a shared text must never cost a thread for good). expect.kind is place (lat, lon within 0.000001 unless tolerance says otherwise, name, detail, src, confidence), search (q, src), unresolved (reason, q when text came with the link) or nothing (reason). Marked measured: seen live from the PC (companion.md 2.5). The rest are the formats the report lists, written by hand: replace them with real captures from the phone as they come.",
   "cases": [
     {
       "name": "Apple Maps short link: the first Location is read, the page behind it never",
@@ -278,6 +278,102 @@
       "name": "A link to something else: says so, and is never fetched",
       "input": {"text": "https://example.com/somewhere"},
       "expect": {"kind": "unresolved", "reason": "not_a_map"}
+    },
+    {
+      "name": "Degrees, minutes, seconds with spaces and a comma",
+      "input": {"text": "26° 17' 25.6\" N, 50° 11' 4.4\" E"},
+      "expect": {"kind": "place", "lat": 26.290444, "lon": 50.184556, "tolerance": 1e-05, "name": "", "detail": "", "src": "share.text", "confidence": "exact"}
+    },
+    {
+      "name": "Degrees, minutes, seconds as bare numbers",
+      "input": {"text": "26 17 25.6 N 50 11 4.4 E"},
+      "expect": {"kind": "place", "lat": 26.290444, "lon": 50.184556, "tolerance": 1e-05, "name": "", "detail": "", "src": "share.text", "confidence": "exact"}
+    },
+    {
+      "name": "Degrees, minutes, seconds with Arabic words for north and east",
+      "input": {"text": "26 17 25.6 شمال 50 11 4.4 شرق"},
+      "expect": {"kind": "place", "lat": 26.290444, "lon": 50.184556, "tolerance": 1e-05, "name": "", "detail": "", "src": "share.text", "confidence": "exact"}
+    },
+    {
+      "name": "Hemisphere letters after a degree sign",
+      "input": {"text": "26.2904° N 50.1845° E"},
+      "expect": {"kind": "place", "lat": 26.2904, "lon": 50.1845, "name": "", "detail": "", "src": "share.text", "confidence": "exact"}
+    },
+    {
+      "name": "Hemisphere letters first, a degree sign and a comma",
+      "input": {"text": "N 26.2904°, E 50.1845"},
+      "expect": {"kind": "place", "lat": 26.2904, "lon": 50.1845, "name": "", "detail": "", "src": "share.text", "confidence": "exact"}
+    },
+    {
+      "name": "Hemisphere letters first, close up",
+      "input": {"text": "N26.2904° E50.1845"},
+      "expect": {"kind": "place", "lat": 26.2904, "lon": 50.1845, "name": "", "detail": "", "src": "share.text", "confidence": "exact"}
+    },
+    {
+      "name": "A name, then the numbers each on its own line",
+      "input": {"text": "الراشد مول\n26.290457\n50.184555"},
+      "expect": {"kind": "place", "lat": 26.290457, "lon": 50.184555, "name": "الراشد مول", "detail": "", "src": "share.text", "confidence": "exact"}
+    },
+    {
+      "name": "Runs of spaces around the comma",
+      "input": {"text": "26.290457      ,      50.184555"},
+      "expect": {"kind": "place", "lat": 26.290457, "lon": 50.184555, "name": "", "detail": "", "src": "share.text", "confidence": "exact"}
+    },
+    {
+      "name": "Runs of spaces in degrees, minutes, seconds",
+      "input": {"text": "26      17      25.6      N      50      11      4.4      E"},
+      "expect": {"kind": "place", "lat": 26.290444, "lon": 50.184556, "tolerance": 1e-05, "name": "", "detail": "", "src": "share.text", "confidence": "exact"}
+    },
+    {
+      "name": "Almost degrees, minutes, seconds, 120 characters of it: quickly nothing (it once took a thread for good)",
+      "withinMs": 1000,
+      "input": {"text": "1                1                1                N                1                1                1                !"},
+      "expect": {"kind": "search", "q": "1                1                1                N                1                1                1                !", "src": "share.text"}
+    },
+    {
+      "name": "The same at the longest text the parser takes: quickly nothing",
+      "withinMs": 1000,
+      "input": {"text": "1                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    1                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    1                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    N                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    1                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    1                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    1                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    !"},
+      "expect": {"kind": "search", "q": "1                                                                                                                       ", "src": "share.text"}
+    },
+    {
+      "name": "Almost hemisphere letters, long runs of spaces: quickly nothing",
+      "withinMs": 1000,
+      "input": {"text": "1.11                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        N                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        1.11                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        !"},
+      "expect": {"kind": "search", "q": "1.11                                                                                                                    ", "src": "share.text"}
+    },
+    {
+      "name": "A link's value that is a long run of spaces: quickly a name",
+      "withinMs": 1000,
+      "input": {"text": "https://maps.google.com/?q=%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%201"},
+      "expect": {"kind": "search", "q": "1", "src": "share.google"}
+    },
+    {
+      "name": "A short link's name after a backslash: another host to java.net.URL, so never asked for",
+      "input": {"text": "https://203.0.113.9:8443\\@maps.app.goo.gl/x"},
+      "expect": {"kind": "unresolved", "reason": "not_a_map"}
+    },
+    {
+      "name": "A short link's name between two @: another host to java.net.URL, so never asked for",
+      "input": {"text": "https://x@maps.app.goo.gl:y@203.0.113.9:8443/x"},
+      "expect": {"kind": "unresolved", "reason": "not_a_map"}
+    },
+    {
+      "name": "A short link with a user's name: never asked for",
+      "input": {"text": "https://user@maps.app.goo.gl/abc"},
+      "expect": {"kind": "unresolved", "reason": "not_a_map"}
+    },
+    {
+      "name": "A short link's port is not asked for: only the host, on https",
+      "input": {"text": "http://maps.app.goo.gl:8443/abc?g_st=i"},
+      "redirects": {"https://maps.app.goo.gl/abc?g_st=i": {"code": 302, "location": "https://www.google.com/maps/place/x/@26.29,50.18,17z/data=!3d26.290457!4d50.184555"}},
+      "expect": {"kind": "place", "lat": 26.290457, "lon": 50.184555, "name": "x", "detail": "", "src": "share.google", "confidence": "exact"}
+    },
+    {
+      "name": "Three requests for one text, whatever it holds: the fourth link is not asked for",
+      "input": {"text": "https://maps.app.goo.gl/a1 https://maps.app.goo.gl/a2 https://maps.app.goo.gl/a3 https://maps.app.goo.gl/a4"},
+      "redirects": {"https://maps.app.goo.gl/a1": {"code": 404, "location": null}, "https://maps.app.goo.gl/a2": {"code": 404, "location": null}, "https://maps.app.goo.gl/a3": {"code": 404, "location": null}, "https://maps.app.goo.gl/a4": {"code": 302, "location": "https://www.google.com/maps/place/x/@26.29,50.18,17z/data=!3d26.290457!4d50.184555"}},
+      "expect": {"kind": "unresolved", "reason": "dead_link"}
     },
     {
       "name": "An address on this network: never fetched",

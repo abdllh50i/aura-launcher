@@ -18,7 +18,9 @@ import java.io.RandomAccessFile
  * Two small files in files/. Plain files for the reason MapGuard's marker is one: written and closed, they outlive the
  * process, and the main thread does not wait for the disk the way a preferences commit() does.
  *  - guard-marks: one line per event, each one write() in append mode (the guard adds lines of its own). A start is
- *    marked first thing in AuraApp, before anything native is loaded, and "OK" once home has drawn and stayed up.
+ *    marked first thing in AuraApp, before anything native is loaded, "OK" once home has drawn and stayed up, and "lived"
+ *    once it has gone on working for minutes: only that makes it a healthy start (a map engine that dies at the first GPS
+ *    fix reaches OK every time).
  *    Stamped with the boot id and the monotonic clock: head units set their wall clock late (see CrashGuard).
  *  - guard-beat: this process's pid and a counter the main thread moves on. A thread of its own writes it, so a slow
  *    disk never holds the screen; a frozen main thread shows as a counter that stops while the process lives.
@@ -30,8 +32,10 @@ object GuardMarks {
     const val FILE_MARKS = "guard-marks"
     const val FILE_BEAT = "guard-beat"
     private const val BEAT_MS = 5_000L
-    /** Home on the screen this long means this build works here. */
+    /** Home on the screen this long: it came up, the first failures are behind it. */
     private const val OK_AFTER_DRAW_MS = 20_000L
+    /** And going on this long after its first frame, its main thread still answering: this build works here. */
+    private const val LIVED_AFTER_DRAW_MS = 5 * 60_000L
     /** A process that never had to show home (the unit's boot receiver, a kill switch that is on) and lives this long did not crash at its start. */
     private const val ALIVE_MS = 60_000L
     private const val TRIM_ABOVE = 24 * 1024L
@@ -40,6 +44,8 @@ object GuardMarks {
     const val START = "S"
     const val HOME = "H"
     const val OK = "O"
+    /** This start went on working for minutes after its first frame: a healthy one. */
+    const val LIVED = "L"
     const val ALIVE = "B"
     const val WIFI = "W"
     /** Written by the guard, Rescue or rollback.sh: counting starts anew from here. */
@@ -100,7 +106,7 @@ object GuardMarks {
         app?.let { add(it, HOME) }
     }
 
-    /** Home's first frame is up. In about 20 s, if this process is still here, this build has shown it works. */
+    /** Home's first frame is up. In about 20 s, if this process is still here, it came up; in some minutes, this build has shown it works. */
     fun homeDrawn() {
         if (drawnMarked) return
         drawnMarked = true
@@ -110,6 +116,8 @@ object GuardMarks {
             add(a, OK)
             if (BuildConfig.DEBUG) com.abdllh.aura.system.PrefTypes.check(a)
         }, OK_AFTER_DRAW_MS)
+        val lived = if (BuildConfig.DEBUG) GuardTest.livedSeconds()?.let { it * 1000L } ?: LIVED_AFTER_DRAW_MS else LIVED_AFTER_DRAW_MS
+        main.postDelayed({ add(a, LIVED) }, lived)
     }
 
     /** The main process's own Wi-Fi step ([com.abdllh.aura.system.WifiOnStart]) runs this boot: the guard need not. */

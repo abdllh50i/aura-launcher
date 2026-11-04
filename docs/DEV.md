@@ -1934,17 +1934,46 @@ never draws leave it nothing to count. So a process of its own: `GuardReceiver` 
 `GuardService` (foreground, the quietest channel, or Android stops it once the app leaves the screen). No native code, no
 design system, no singleton of the main process; `AuraApp.onCreate` returns at once there; a throw in it ends the process
 quietly, with no "keeps stopping" over the car's screen.
+* **The firmware force-stops what is not home and not on its list, and nothing above survives that by itself.**
+  `android.os.NwdBackgroundManagerService` (framework.jar, created in `AMS.setSystemProcess` because `persist.nwd.bms.enable=true` is in
+  the build.prop): `AMS.updateActivityUsageStats` calls its `managerPackage` at every activity event of any app, which posts a look 500 ms
+  later (message 9529), and that force-stops each package with a running service that is neither the top task nor listed
+  (`executeKillBackgroundCount`, `kill_background_services` is 1 and no firmware APK touches it). `AMS.startService` returns null for such a
+  package (`skipService`): no exception, no service. `isWhitelistBackgroundTask` lists a package through `persist.nwd.launcher.default`, so
+  none of this shows while AMRI is home, and from the moment the property names the stock launcher, the guard is a running service in a
+  package that is not listed. Then: main and `:guard` gone within a second of the stock launcher's resume, the package in the stopped state
+  (no BOOT_COMPLETED after that: no guard, no Wi-Fi step, airplane mode stays on), `Rollback.toStock`'s callers and their give-backs
+  cut off. The emulator has no such service, which is how everything below passed there. Not run on the unit; the screen check
+  now reports `dumpsys nwdbackground`, the property and the list (`a_identity.nwdBackground`).
+  What it changes, since 1.19.1:
+  - `guard/BackgroundList.kt`, from the guard's first look (again a minute later if there is no root shell yet at a cold boot): AMRI goes
+    on the list in the two places the service reads it. The setting `whitelist_packagename` ("[a,b]", read at once through its observer; the stock
+    launcher keeps a short list of its own there and may push ours out, hence at every start of the guard) and
+    `/data/nwdappconfig/app/BackgroundManager.ini` (`ro.nwd.config.path`, from `/system/platform.prop`; read at `systemReady`, so from the next boot;
+    `.pre-aura` first, so old restores undo it; checked on a copy; the firmware's file has no newline at its end). It stays with the kill switch on:
+    that is when it is needed. A restore leaves the setting, naming a package that is gone: harmless.
+  - `CrashGuard.bailOutAtStart` no longer needs a living guard: on trial with a usable copy it starts the detached `rollback.sh` itself (the crash
+    list first, or the version it goes to finds a loop that is not its own) and home never flips. Otherwise `bailOut`: the marker and the app's own
+    releases, then `rollback.sh --stock` flips the property last, gives back as root and starts the stock launcher, and goes on if its caller is
+    force-stopped halfway (HUP and PIPE ignored). In a call it gives the stock call window back at the call's end, in the background.
+  - A unit that has never run 1.19.1 and goes straight to a 2.0 that dies at once has no list at that moment; the two paths above are for it.
 * What the main process leaves: `files/guard-marks`, one line per event in one append (`S` start with the versionCode,
-  first thing in `AuraApp`, before anything native; `H` home wanted; `O` home drawn and 20 s later still here; `B` alive 60 s
-  without home to show; `W` its Wi-Fi step ran), and `files/guard-beat`: a counter the main thread moves every 5 s, written by
+  first thing in `AuraApp`, before anything native; `H` home wanted; `O` home drawn and 20 s later still here; `L` 5 minutes after
+  the first frame and still here, the main thread still answering; `B` alive 60 s without home to show; `W` its Wi-Fi step ran), and
+  `files/guard-beat`: a counter the main thread moves every 5 s, written by
   a thread of its own so a slow disk never holds the screen. Each line carries the boot id and `elapsedRealtime`: never the
   wall clock, which head units set late. The beat is compared in `uptimeMillis`, which stands still while the unit sleeps.
-* What counts: starts of **this version in this boot** with no `O`, dead by now or frozen, newest first. An update is not
+* What counts: starts of **this version in this boot** with no `L`, dead by now or frozen, newest first. An update is not
   a failure (the old version's starts are another versionCode), a power cut is not (another boot id), the start still
-  running is not, a process that lived on with no home to show is not. Limit 3 in a row, or 3 freezes since the last
+  running is not (with `O` it gets its chance: no verdict over it), a process that lived on with no home to show is not, and a
+  process Android last ranked 600 or lower is not: that is the home app behind another screen, what its memory killer goes for first
+  (with the notification listener bound it ranks 250 there, out of that killer's reach). Limit 3 in a row, or 3 freezes since the last
   verdict. A verdict is once, until a healthy start: a new failure after that is a new story. `rollback.sh` leaves a reset
   mark (`R`) in the file: a version that comes back in the same boot starts its count anew, since the older one between
   leaves no marks.
+* `O` alone says nothing about the trial: a native crash a minute after the first frame (the map engine at the first GPS fix) reaches it every time.
+  Only `L` adds a healthy start, and seconds of use are kept apart until `L` and go with a start that dies young. So `GuardTrial`: 3 starts that lived
+  and 30 minutes of use in them. A drive shorter than 5 minutes adds nothing, and fails nothing.
 * The slow first start: while a version has never reached `O` (`GuardTrial.neverOk`) the limit is 4, and a stale beat or
   an undrawn home takes 5 minutes instead of 90 s and 2 minutes: the first start after an install runs on code still being
   compiled (3 minutes and more on the unit).
@@ -1952,8 +1981,9 @@ quietly, with no "keeps stopping" over the car's screen.
   `files/guard-log.txt` (the end of it is in Settings → About) and touches nothing. From 2.0, during the trial
   (`GuardTrial`: 3 healthy starts and 30 min of use, `files/guard-trial`, per versionCode), and never in a call or in reverse:
   ends a frozen process, and after the limit goes back to the saved copy, or with none takes the kill switch and the stock
-  launcher. After the trial it only opens AMRI Rescue. Debug: `debug.aura.guard.throw`, `.hangstart`, `.hang`, `.slow`,
-  `.trialmin` (`guard/GuardTest.kt`).
+  launcher. After the trial it only opens AMRI Rescue, and that waits for the first look after a call or reverse (and goes, if it was
+  for a frozen main thread that has moved on by then). Debug: `debug.aura.guard.throw`, `.hangstart`, `.hang`, `.slow`,
+  `.trialmin`, `.livedsec` (`guard/GuardTest.kt`).
 * The Wi-Fi step: after a cold boot airplane mode stays on until `WifiOnStart` clears it, and a home screen that dies first
   would leave the unit unreachable for a phone or a PC. `system/WifiStep.kt` is that one step, without anything of the main
   process; the guard runs it 45 s after it came up when the boot has no `W` mark, also in 1.x, unless the owner's
@@ -1963,7 +1993,8 @@ quietly, with no "keeps stopping" over the car's screen.
   own package out (`AppRepo`). HomeActivity is first in the manifest, so `getLaunchIntentForPackage` still gives home.
 * `CrashGuard.isCrashLoop` now also runs right after `install` in `AuraApp`: before, a throw in `AuraApp.onCreate` was
   counted but the check lived in `HomeActivity`, which never ran. `bailOutAtStart`: nothing of the start-up runs (one of its
-  steps is what crashes), the give-backs get their 8 s, the process leaves, and the next start finds the kill switch on.
+  steps is what crashes), it goes back or hands over (above), the process leaves after 8 s, and the next start finds the new
+  version or the kill switch on.
 * That move alone was not enough, as the emulator showed: from the second crash in a row Android 10 puts "AMRI keeps
   stopping" over the screen and the crashed process waits for the answer, 5 minutes if nobody gives one, so the start
   that would find the loop never comes. From the second crash on (and always with the kill switch on, behind the stock
@@ -2016,7 +2047,7 @@ through `adb reverse` (cleartext is only allowed to 127.0.0.1). SELinux permissi
 | 1.19.1, main-thread hang | 95 s after the start: `has not answered for 90 s: would end that process` |
 | 1.19.1, throw in `AuraApp` | three crashes in under a second, the fourth start takes the kill switch; before the handler's change: 5 minutes behind "keeps stopping" |
 | 2.0.0 on trial, `kill -SEGV` loop | third death: `go back to 1.19.0`, done 30 s after the first kill; same grants and data |
-| 2.0.0 on trial, throw in `AuraApp` | back on 1.19.0 in 9 s, no kill switch left |
+| 2.0.0 on trial, throw in `AuraApp` | back on 1.19.0 in 9 s, no kill switch left. **Emulator only:** it has no `NwdBackgroundManagerService`. With a stand-in for it this path failed, see below |
 | 2.0.0 on trial, main-thread hang | ended 3 times, about 100 s each, then back: 305 s in all |
 | 2.0.0 on trial, no saved copy | `kill switch and stock launcher`: `DISABLED=1`, home property stock, marker `crash`, `crashDisabled=true` |
 | 2.0.0, trial over, `kill -SEGV` loop | `trial over, offering Rescue`: Rescue in front, version unchanged |
@@ -2031,9 +2062,27 @@ through `adb reverse` (cleartext is only allowed to 127.0.0.1). SELinux permissi
 | A real reboot | new boot id, the old boot's marks count for nothing, /data copy stays, data stays. The overlay goes with a reboot, and the system flag with it: that part says nothing about the unit |
 | Release APK | 18,346,775 B, 41 KB more than 1.19.0. R8 build with x86_64: guard up, `O`, counts; `:guard` 10.7 MB PSS (debug 32 MB) |
 
+The same with a stand-in for the firmware's force-stop (`scripts/fake_bms.sh`: 500 ms after the app in front changes, what the bytecode does;
+home follows the property; the guard's service disabled while the firmware would refuse to start it; SELinux permissive):
+`python scripts/guard-test.py --old <1.19.1 debug> --new <2.0.0 debug>`. On the build before these changes, a throw at the fourth start: home flipped,
+main and guard force-stopped within 1 s, no rollback, still 2.0.0 with the kill switch on, nothing left to change that. Now:
+
+| Step | What it showed |
+|---|---|
+| 2.0.0 on trial, a crash loop's fourth start, a copy | back on 1.19.1 in 2 s, home never flips, nothing force-stopped, no kill switch left, the old version finds no crash loop |
+| No copy, not on the list | kill switch, stock launcher in front, AMRI force-stopped, and the give-backs done all the same; marker `crash`, `crashDisabled=true` |
+| The same, on the list | nothing force-stopped, the guard still there, the package not left stopped |
+| `rollback.sh --stock`, its caller killed 0.25 s in | goes on to the end; in a call the call window comes back at the call's end |
+| The list | setting `[com.a,com.b,com.abdllh.aura]`, or `[com.abdllh.aura]`; the ini's last line whole, ours on its own, `.pre-aura` the old bytes; a second start changes nothing; the restore's loop puts the file back |
+| `kill -SEGV` a few seconds after `O`, three times, 1.19.1 | `3 starts in a row failed … would go back`; no healthy start, no seconds |
+| The same on trial, 2.0.0 | back on 1.19.1 |
+| A start that goes on | `O` adds nothing, `L` adds one healthy start and its seconds from its start |
+| Killed behind another screen, rank 600, three times | `not counted`, no verdict |
+| Trial over, frozen, reverse on | `Rescue waits`, nothing over the camera; in front within 5 s of reverse ending. Frozen and moved on meanwhile: not offered |
+
 Only the unit can tell: that its own `pm` takes `-r -d` as its bytecode says (the emulator's is AOSP's, and it behaved as read); the
 real ARM 1.19.0 installing; real adbd's hangup (fake_adbd runs through `adb exec-out`); how long dexopt takes the first start; whether
-the firmware shows "keeps stopping" at all; the stock launcher listing AMRI Rescue (its own list is not on the emulator, which has no
+the firmware shows "keeps stopping" at all; what `dumpsys nwdbackground` really says there, and that the stand-in behaves as its bytecode reads; the stock launcher listing AMRI Rescue (its own list is not on the emulator, which has no
 `com.android.launcher` either, so "the stock launcher opens" was only seen as the home property and the kill switch); airplane mode
 after a real cold boot. "Try the way back" in 1.19.1 is there to answer the first three, at no risk. Once 1.19.1 runs: the
 About page's "Last time" line and the guard's lines are the report.
@@ -2091,6 +2140,14 @@ emulator). What was asked still happens when the main thread comes free, so the 
 only a plain read (`/v1/state`, 3 s) says 503 `busy`. The main thread never waits for anybody here. The live feed listens only while a
 phone does. The redesign may rename the Maps internals: this file changes then, the server does not.
 
+A place never costs the main thread more than one waiting Runnable: `NavBridge.offer` keeps the newest and one posted drain, and
+the one it replaces hears `replaced`, as it would on the screen. And a peer may send a place at most every 2 s with no token, 3 a
+second (5 at once) with one, or it hears 429 `too_fast` with `Retry-After: 2` and its id is not taken, so the same id may come again;
+a retry of an id already taken costs nothing and hears `duplicate`. Measured (`phone-server-test.py --only flood`): three loops of
+places with no token, 92 a second for a minute: 31 reached the app, `/v1/state` answered every time in under a second, the guard
+saw nothing. Before: 324 a second held the main thread at 100 % past the flood's end, and the guard read that as a frozen home screen,
+which from 2.0 on means an app with no token could send AMRI back a version.
+
 **`link/PlaceInbox.kt`: what the unit does with a place** (`TripCard` is its one overlay, in the look of the call and
 message cards, narrower and on the other side during a trip, because the top of the driver's side belongs to the next
 turn; 2.0 reskins it):
@@ -2124,10 +2181,16 @@ nearest of its kind ("ودني مستشفى الموسى"), "جامعة" is no l
 **`link/ShareParser.kt`.** Coordinates the link or text states are `exact`; `/@lat,lon` is where the map was looked at:
 `guess`, which always asks; a name alone is a search; a link that gives nothing says why (`dead_link`, `no_redirect`,
 `network`, `not_a_map`, `no_place`) and never guesses. The only network step is a short link's redirect, at most 2 hops of 3 s
-+ 3 s, https, only the hosts in `isShort`: the Location header is read and the page never (its `center=` holds the
-requester's region, measured). An app's User-Agent, because a browser's gets a preview page instead of the redirect.
-`tools/link-fixtures/share.json` has 53 cases in a form the phone's Swift parser can use; 6 are marked as measured live,
-the others are the listed formats written by hand, to be replaced by real captures.
++ 3 s for a link and 3 requests for a whole text, https, only the hosts in `SHORT_HOSTS`: the Location header is read and the page never
+(its `center=` holds the requester's region, measured). An app's User-Agent, because a browser's gets a preview page instead of the
+redirect. A link whose authority holds `@` or `\` is never asked for (`https://other\@maps.app.goo.gl/x` and
+`https://x@maps.app.goo.gl:y@other/x` name another host to `java.net.URL`, seen connecting on API 29), the request goes to the checked host
+rebuilt with the path as written, never to the link's text, and `network` checks the address once more. Text comes from any app on the
+hotspot, and a thread in a regular expression cannot be stopped (the watchdog only closes the socket): `coordinates` looks at the first 512
+characters with whitespace squeezed, and each separator has one way to be read, or 120 characters of runs of spaces keep a thread busy until
+the process dies (four of them: every slot and every core).
+`tools/link-fixtures/share.json` has 71 cases in a form the phone's Swift parser can use (`withinMs`: how long an answer may take); 6 are
+marked as measured live, the others are the listed formats written by hand, to be replaced by real captures.
 
 **`link/Qr.kt`.** Written here: byte mode, level M, versions 1 to 10 (213 bytes; the address is about 35). Always dark on a white
 square with its quiet zone, whatever the theme: a phone's camera reads that. `PhoneLinkCard` shows it at 232 dp.

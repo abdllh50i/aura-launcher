@@ -98,10 +98,15 @@ internal object Collect {
         for (k in listOf("ro.debuggable", "ro.secure", "ro.adb.secure", "sys.task.monitor.enable", "sys.whitelist.enable",
             "sys.cpu.usage.monitor.enable", "ro.opengles.version", "ro.sf.lcd_density", "ro.board.platform", "ro.sys.cputype",
             "ro.product.firmware", "persist.lowmem.1024m", "ro.config.low_ram", "dalvik.vm.heapgrowthlimit", "dalvik.vm.heapsize",
-            "persist.aura.disabled", "persist.nwd.launcher.default", "ro.hwui.use_vulkan", "ro.nwd.internal.path", "zj.phonelink.type")) {
+            "persist.aura.disabled", "persist.nwd.launcher.default", "ro.hwui.use_vulkan", "ro.nwd.internal.path", "zj.phonelink.type",
+            "persist.nwd.bms.enable", "ro.nwd.config.path")) {
             props.put(k, prop(k))
         }
         o.put("props", props)
+        // the firmware's force-stop of whatever is not home and not on its list (guard/BackgroundList.kt): whether it runs
+        // here, and its lists as it holds them now. Package names only.
+        val killer = Sh.text("dumpsys nwdbackground | head -c 12000; echo; settings get system kill_background_services; settings get system whitelist_packagename; grep -c 'white:com.abdllh.aura' /data/nwdappconfig/app/BackgroundManager.ini", 6000)
+        if (killer.isNotEmpty()) o.put("nwdBackground", Num.cut(killer, 12000))
         // what an app may not read by itself (the emulator, an enforcing SELinux)
         val shProps = Sh.text("getprop | grep -E 'hwui|egl|gralloc|opengles|lowmem|low_ram|lmk|zram|dalvik.vm.heap|dexopt|task.monitor|whitelist|cpu.usage|aura|nwd.platform' | head -c 12000")
         if (shProps.isNotEmpty()) o.put("propsShell", shProps)
