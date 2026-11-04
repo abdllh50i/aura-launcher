@@ -132,6 +132,26 @@ object OfflineMaps {
         }, "aura-offline-delete").start()
     }
 
+    /**
+     * The 2.0 pack has worked ([com.abdllh.aura.nav.pack.PackManager.freeOldMap]): the old tiles and their search index go. BRouter's squares and its profile stay in this
+     * folder: BRouter is the fallback when Valhalla is guarded off or the pack is missing (maps.md 7.6).
+     */
+    fun freeOldTiles(done: () -> Unit) {
+        val c = app ?: return
+        main.removeCallbacks(autoResume)
+        stop = true
+        Thread({
+            while (running) SystemClock.sleep(100)
+            TileServer.store = null
+            store?.close()
+            store = null
+            dir(c).listFiles()?.filter { it.name.startsWith("map.db") }?.forEach { it.delete() }
+            Prefs.raw.edit().putString(KEY_STATE, "none").remove(KEY_UPDATED).apply()
+            set(Status(Phase.NONE), force = true)
+            main.post(done)
+        }, "aura-offline-free").start()
+    }
+
     private fun openStore(f: File): TileStore = TileStore(f).also { store = it; TileServer.store = it }
 
     /** Removes the tiles and the routing squares that are outside the area; how many tiles went. */

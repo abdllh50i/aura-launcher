@@ -144,6 +144,12 @@
             android:exported="false"
             android:foregroundServiceType="location" />
 
+        <!-- the map pack on its way (nav/pack): foreground only while bytes are coming -->
+        <service
+            android:name=".nav.pack.PackService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
         <!-- Aura Music. Exported with MAIN: the firmware's source manager starts it for app id 2 (Music/Mode keys,
              USB insertion) once replace_source_list.xml points there. -->
         <activity

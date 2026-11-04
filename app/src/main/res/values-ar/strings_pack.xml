@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pack_title">خريطة السعودية</string>
+    <string name="pack_channel">تحميل الخريطة</string>
+    <string name="pack_none">الخريطة مو موجودة على الجهاز</string>
+    <string name="pack_checking">يتأكد…</string>
+    <string name="pack_offer">الخريطة جاهزة للتحميل</string>
+    <string name="pack_update">فيه خريطة أحدث</string>
+    <string name="pack_fetching">يحمّل الخريطة %1$s%% · %2$s/ث</string>
+    <string name="pack_copying">ينسخ الخريطة من الفلاش %1$s%% · %2$s/ث</string>
+    <string name="pack_waiting">الاتصال فصل، يحاول مرة ثانية · %1$s%%</string>
+    <string name="pack_trip">موقف عشان الرحلة، ويكمل لما توصل · %1$s%%</string>
+    <string name="pack_paused">موقف · %1$s%%. كمّل متى ما تبي</string>
+    <string name="pack_verifying">يتأكد من الملفات %1$s%%</string>
+    <string name="pack_installed">الخريطة جاهزة</string>
+    <string name="pack_sizes">التحميل %1$s، وتاخذ على الجهاز %2$s. لازم يكون فاضي %3$s، والفاضي الحين %4$s.</string>
+    <string name="pack_usb_advice">لو نتك من الجوال، الأسهل بالفلاش: انسخ الخريطة عليه من الكمبيوتر ووصّله هنا.</string>
+
+    <string name="pack_err_net">ما فيه نت، أو الاتصال ضعيف. يحاول من نفسه.</string>
+    <string name="pack_err_clock">ما قدر يتصل بالسيرفر بأمان. تأكد إن تاريخ الجهاز صحيح.</string>
+    <string name="pack_err_not_published">الخريطة مو موجودة على السيرفر للحين.</string>
+    <string name="pack_err_space">المساحة ما تكفي. فضّي مساحة وجرّب مرة ثانية.</string>
+    <string name="pack_err_bad_data">وصلت ملفات خربانة أكثر من مرة. جرّب بعدين، أو استخدم الفلاش.</string>
+    <string name="pack_err_app_old">هذي الخريطة تبي نسخة أحدث من النظام. حدّث النظام أول.</string>
+    <string name="pack_err_pack_old">هذي الخريطة قديمة على هذي النسخة من النظام.</string>
+    <string name="pack_err_manifest">ملف وصف الخريطة مو سليم.</string>
+    <string name="pack_err_usb_gone">الفلاش انفصل. وصّله وكمّل.</string>
+    <string name="pack_err_usb_damaged">فيه ملف خربان في الفلاش. انسخ الخريطة عليه من جديد.</string>
+    <string name="pack_err_no_usb">ما لقيت الخريطة في الفلاش. لازم يكون فيه مجلد اسمه amri-maps.</string>
+    <string name="pack_err_disk">صار خطأ في التخزين. جرّب مرة ثانية.</string>
+    <string name="pack_err_trip">ما يصير أثناء الرحلة.</string>
+</resources>
