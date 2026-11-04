@@ -29,6 +29,8 @@ import com.abdllh.aura.util.Prefs
 
 class AuraApp : Application() {
     override fun onCreate() {
+        // Valhalla's process (nav/route/RouteProcess.kt): its crash is not the home screen's, and it has no use for any of this
+        if (processName().endsWith(":route")) { super.onCreate(); return }
         super.onCreate()
         val process = processName()
         // BootHome's process, right after a power-on: the user's storage is still closed (settings would throw) and
@@ -60,6 +62,7 @@ class AuraApp : Application() {
         if (BuildConfig.DEBUG) com.abdllh.aura.nav.NavDebug.init(this)
         UpdateManager.init(this)
         CarAudio.init(this)
+        if (BuildConfig.DEBUG) com.abdllh.aura.nav.route.RouteProbe.debugInit(this)
         // the status bar, the volume display and the screen-change animations are Aura's to change only while Aura is
         // the home screen
         val disabled = SystemProps.get(Device.DISABLED_PROP) == "1"

@@ -14,6 +14,7 @@ import com.abdllh.aura.R
 import com.abdllh.aura.music.LyricsServer
 import com.abdllh.aura.nav.CarLocation
 import com.abdllh.aura.nav.NavSession
+import com.abdllh.aura.nav.route.RouteProbe
 import com.abdllh.aura.system.Device
 import com.abdllh.aura.system.Gear
 import com.abdllh.aura.system.MusicKeys
@@ -158,9 +159,11 @@ object ScreenCheck {
         Step(R.string.diag_s_identity, 2), Step(R.string.diag_s_capacity, 4), Step(R.string.diag_s_memory, 5), Step(R.string.diag_s_voice, 3),
         Step(R.string.diag_s_voice, 0))
     private const val SECONDS_AFTER = 4 // the logs, the report
+    private const val ROUTE_SECONDS = 60 // the map engine's probe, when nothing goes wrong
+    private const val ROUTE_MAX_MS = 500_000L // its own limit is 480 s
 
     private val totalSeconds: Int
-        get() = STEPS_BEFORE.sumOf { it.seconds } + WHEEL_SECONDS + Checks.GROUPS.sumOf { g -> g.sumOf { it.seconds } + Checks.START_SECONDS } + SECONDS_AFTER
+        get() = STEPS_BEFORE.sumOf { it.seconds } + WHEEL_SECONDS + Checks.GROUPS.sumOf { g -> g.sumOf { it.seconds } + Checks.START_SECONDS } + ROUTE_SECONDS + SECONDS_AFTER
 
     private var doneSeconds = 0
 
@@ -220,10 +223,31 @@ object ScreenCheck {
             if (cancelWhy == null) group(app, texts, g)
             doneSeconds += g.sumOf { it.seconds } + Checks.START_SECONDS
         }
+        if (cancelWhy == null) routeStep(app, texts)
+        doneSeconds += ROUTE_SECONDS
         progress(texts, R.string.diag_s_logs)
         finishReport(app, r, startedAt, SystemClock.elapsedRealtime() - t0, cancelWhy)
         DiagFiles.run(app).delete()
         if (cancelWhy == null) send(app)
+    }
+
+    /**
+     * Does the map's new engine run on this unit at all ([RouteProbe]). Last, since it may die a few times on its way: in :route,
+     * never here, and its report says where. On a cancel it is left to end by itself.
+     */
+    private fun routeStep(app: Context, texts: Context) {
+        val done = java.util.concurrent.CountDownLatch(1)
+        RouteProbe.start(app, null) { done.countDown() }
+        val t0 = SystemClock.elapsedRealtime()
+        val start = doneSeconds
+        while (cancelWhy == null && !done.await(1000L, TimeUnit.MILLISECONDS)) {
+            giveWay()
+            val took = SystemClock.elapsedRealtime() - t0
+            if (took > ROUTE_MAX_MS) break
+            doneSeconds = start + (took / 1000).toInt().coerceAtMost(ROUTE_SECONDS - 1)
+            progress(texts, R.string.diag_s_route)
+        }
+        doneSeconds = start
     }
 
     /** What the last run left: a test that never came back, old results. */
@@ -495,6 +519,7 @@ object ScreenCheck {
         }
         r.put("tests", tests).put("c_gpu", gl).put("e_map", map).put("f_motion", motion)
         if (deaths.length() > 0) r.put("processDeaths", deaths)
+        DiagFiles.read(RouteProbe.resultFile(app))?.let { r.put("n_route", it) }
         val trip = TripRecorder.recorded(app)
         if (trip.length() > 0) r.put("trip", trip)
         write(app, r)

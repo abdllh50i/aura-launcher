@@ -40,7 +40,7 @@ object CrashGuard {
 
     private var sp: SharedPreferences? = null
 
-    /** AuraApp found a crash loop and has handed the home role over: this process is on its way out ([bailOutAtStart]). */
+    /** A crash loop was found and the home role is being handed over, or the way back is running: no home screen from this process ([bailOutAtStart]). */
     @Volatile var bailedOut = false
         private set
 
@@ -190,9 +190,10 @@ object CrashGuard {
     private fun goBack(app: Application): Boolean {
         if (BuildConfig.VERSION_CODE < com.abdllh.aura.guard.GuardService.ACTS_FROM_CODE || com.abdllh.aura.guard.GuardTrial.load(app).passed) return false
         if (!Rollback.usable(Rollback.payload())) return false
-        // (the crash list first: the version it goes to reads the same file, and would find a loop that is not its own. And
-        // should the script fail, its own fallback is the kill switch: a new build then gets another chance, as after a bail-out)
-        sp?.edit()?.remove(KEY)?.putBoolean(KEY_DISABLED, true)?.commit()
+        // (should the script fail, its own fallback is the kill switch: a new build then gets another chance, as after a
+        // bail-out. The crash list stays: a start while the install runs finds the loop and comes here again, and the script
+        // removes it when it is through)
+        sp?.edit()?.putBoolean(KEY_DISABLED, true)?.commit()
         Log.w(TAG, "a crash loop on trial: going back")
         return Rollback.runScript(app, false)
     }
@@ -203,6 +204,7 @@ object CrashGuard {
      * firmware force-stops AMRI within a second of the stock launcher coming up unless AMRI is on its list.
      */
     fun bailOut(ctx: Context) {
+        bailedOut = true // (a home intent meanwhile, the property not flipped yet: nothing more of AMRI's home screen)
         setAuraEnabled(ctx, false, "crash", flipHome = false)
         try { Prefs.safeModeNotice = true } catch (_: Throwable) { }
         clear()

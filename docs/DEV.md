@@ -2568,3 +2568,7 @@ file with ascent 1150 / descent 560 (nothing else changed; renamed "Readex Pro A
 them off the black (alpha = brightest channel), writes the transparent logos, the app's `drawable-nodpi/logo_amri_*`
 (white for the dark theme, `_ink` for the light one) and traces the "A" with its blue dot for the vector launcher icon
 (`ic_launcher_foreground.xml`, from `a_glyph.txt`).
+
+## The route probe in the Screen check (1.19.1)
+
+The last step of the Screen check runs `nav/route/RouteProbe` in `:route`: does Valhalla run on the unit's ARM32 userspace at all, how long a route takes, how much memory it holds, and whether the kernel runs a static AArch64 program. It runs last because it may die a few times on its way; its deaths are reported, never felt by Home. The whole JSON goes in the report as `n_route`, one line of it on the page's summary. A cancel leaves it to end by itself. It adds 7.5 MB to the APK, of which 6 MB is the library 2.0 ships anyway.

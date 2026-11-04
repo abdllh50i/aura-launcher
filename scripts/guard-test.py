@@ -268,6 +268,36 @@ def t_throw_back():
     restore_new()
 
 
+def t_throw_slow_install():
+    """The way back takes a while on the unit (pm install, dexopt): what the home screen does meanwhile. The script is held for 10 s."""
+    install(NEW)
+    clean()
+    save_copy(OLD)
+    stopped()
+    seed_crash_loop()
+    bms_start()
+    adb("logcat", "-c")
+    home_intent()
+    pid = wait(lambda: shell("cat %s/running 2>/dev/null" % DIR), 30, 0.1)
+    check("slow install: the script is running", pid, guard_log())
+    if pid:
+        shell("kill -STOP %s" % pid)
+    time.sleep(10)
+    starts = adb("logcat", "-d", "-s", "ActivityTaskManager:I").count("START u0")
+    procs = adb("logcat", "-d", "-s", "ActivityManager:I").count("Start proc")
+    print("     in 10 s: %d home starts, %d processes; %s" % (starts, procs, shell("uptime")))
+    check("slow install: home does not spin", starts < 40, starts)
+    log = adb("logcat", "-d", "-b", "crash")
+    check("slow install: no crash meanwhile", "FATAL" not in log, log[-300:])
+    if pid:
+        shell("kill -CONT %s" % pid)
+    done = wait(lambda: version() == VERSIONS[OLD][0], 60, 1)
+    check("slow install: back on the old version", done, shell("cat %s/result" % DIR))
+    check("slow install: no kill switch left", prop(OFF_PROP) == "0" and prop(HOME_PROP) == PKG, (prop(OFF_PROP), prop(HOME_PROP)))
+    check("slow install: home in front", wait(lambda: PKG in front(), 30), front())
+    restore_new()
+
+
 def t_throw_stock():
     """The same with no copy: the kill switch and the stock launcher, the give-backs done though AMRI is force-stopped."""
     install(NEW)
@@ -459,7 +489,7 @@ def t_rescue_recovered():
     restore_new()
 
 
-TESTS = {"list": t_list, "outlives": t_stock_outlives, "throw": t_throw_back, "stock": t_throw_stock, "listed": t_listed_survives,
+TESTS = {"list": t_list, "outlives": t_stock_outlives, "throw": t_throw_back, "slowinstall": t_throw_slow_install, "stock": t_throw_stock, "listed": t_listed_survives,
          "young": t_young_watch, "youngback": t_young_back, "lived": t_lived, "behind": t_behind, "reverse": t_rescue_reverse, "recovered": t_rescue_recovered}
 
 

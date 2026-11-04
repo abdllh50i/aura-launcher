@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- فحص الشاشة (الإعدادات › حول): زر واحد، حوالي دقيقتين، وتقرير يتصوّر وينرسل لخادم المالك -->
+<!-- فحص الشاشة (الإعدادات › حول): زر واحد، حوالي 3 دقايق، وتقرير يتصوّر وينرسل لخادم المالك -->
 <resources>
     <string name="diag_title">فحص الشاشة</string>
     <string name="diag_about_sub">يقيس الذاكرة والرسم والخريطة على هالجهاز، ويعطيك تقرير تصوّره. ما يشتغل إلا إذا ضغطت زره.</string>
-    <string name="diag_intro">يقيس اللي يقدر عليه هالجهاز فعلًا: الذاكرة، ورسم الشاشة، والخريطة والحركة فوقها. ياخذ حوالي دقيقتين والشاشة تتبدل خلالها. وقّف السيارة أول.</string>
+    <string name="diag_intro">يقيس اللي يقدر عليه هالجهاز فعلًا: الذاكرة، ورسم الشاشة، والخريطة والحركة فوقها. ياخذ حوالي 3 دقايق والشاشة تتبدل خلالها. وقّف السيارة أول.</string>
     <string name="diag_start_send">شغّل الفحص وأرسل التقرير لخادمك</string>
     <string name="diag_start_keep">شغّل الفحص (بدون إرسال: ما فيه خادم مضبوط)</string>
     <string name="diag_privacy">ما يشتغل شي ولا ينرسل شي إلا إذا ضغطت الزر. التقرير ما فيه مفتاح خادمك ولا مكان بيتك وعملك ولا أرقامك ولا رسايلك ولا أسماء أغانيك.</string>
@@ -13,8 +13,8 @@
     <string name="diag_cancel">إلغاء</string>
     <string name="diag_cancelling">جاري الإلغاء…</string>
     <string name="diag_progress">⁨%1$s⁩ · باقي حوالي ⁨%2$s⁩</string>
-    <string name="diag_refuse_moving">وقّف السيارة أول: الفحص ياخذ الشاشة دقيقتين</string>
-    <string name="diag_refuse_trip">فيه مشوار شغّال. خلّصه أول: الفحص ياخذ الشاشة دقيقتين</string>
+    <string name="diag_refuse_moving">وقّف السيارة أول: الفحص ياخذ الشاشة 3 دقايق</string>
+    <string name="diag_refuse_trip">فيه مشوار شغّال. خلّصه أول: الفحص ياخذ الشاشة 3 دقايق</string>
     <string name="diag_refuse_call">فيه مكالمة. جرّب بعدها</string>
 
     <!-- خطوات الفحص على سطر التقدّم -->
@@ -226,4 +226,8 @@
     <string name="diag_bt_on">البلوتوث</string>
     <string name="diag_sec_settings">الإعدادات على هالجهاز</string>
     <string name="diag_system_language">لغة النظام</string>
+    <string name="diag_s_route">محرك الخريطة الجديد</string>
+    <string name="diag_route">محرك الخريطة الجديد</string>
+    <string name="diag_route_ok">يشتغل: %1$d من %2$d رحلات، أطولها %3$s مللي ثانية</string>
+    <string name="diag_route_bad">ما اشتغل: %1$s</string>
 </resources>
