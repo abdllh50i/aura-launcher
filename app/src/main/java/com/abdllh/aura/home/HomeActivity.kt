@@ -5,8 +5,10 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.PixelFormat
 import android.os.Bundle
 import com.abdllh.aura.media.MediaMonitor
+import com.abdllh.aura.nav.MapController
 import com.abdllh.aura.system.CrashGuard
 import com.abdllh.aura.system.NwdBridge
 import com.abdllh.aura.ui.Fonts
@@ -16,15 +18,17 @@ import com.abdllh.aura.util.LocaleHelper
 import com.abdllh.aura.util.Prefs
 
 /**
- * The shell: the one window of 2.0, which holds the map's slot, the panels ([PanelStack], Home at the bottom), the chrome and
- * the sheets ([ShellRoot]), and hands what the system tells an activity on to the top panel. Nothing of any screen is here:
- * the home screen itself is [HomePanel]. It keeps this name and its manifest entry for good: the home intent, BootHome,
+ * The shell: the one window of 2.0, which holds the one map ([MapController]), the panels ([PanelStack], Home at the bottom), the
+ * chrome and the sheets ([ShellRoot]), and hands what the system tells an activity on to the map and to the top panel. Nothing of any
+ * screen is here: the home screen itself is [HomePanel]. It keeps this name and its manifest entry for good: the home intent, BootHome,
  * HomeGuard, stock Android's preferred home and every script know it.
  */
 class HomeActivity : Activity() {
     lateinit var root: ShellRoot
         private set
     lateinit var panels: PanelStack
+        private set
+    lateinit var map: MapController
         private set
     private var builtLang = ""
     private var counted = false
@@ -67,8 +71,12 @@ class HomeActivity : Activity() {
         Theme.refresh()
         builtLang = Prefs.lang
         root = ShellRoot(this)
+        // (no background, and alpha in the window: the map shows where nothing is drawn. Each panel draws its own room, the home screen
+        // a wall with its card open. From the start, as the format would otherwise change under a running window with the map's first frame)
+        window.setFormat(PixelFormat.TRANSLUCENT)
         setContentView(root)
-        panels = PanelStack(this, HomePanel(this, savedInstanceState))
+        map = MapController(this)
+        panels = PanelStack(this, HomePanel(this))
         MediaMonitor.start(this)
         NwdBridge.startStockServicesOncePerBoot(this)
         // what this start is for: a recreate brings back what was on top; the intent says it once (a recreate reads it again)
@@ -84,6 +92,7 @@ class HomeActivity : Activity() {
     override fun onStart() {
         super.onStart()
         startedNow = true
+        map.started()
         panels.started()
     }
 
@@ -99,6 +108,7 @@ class HomeActivity : Activity() {
             addAction(Intent.ACTION_LOCALE_CHANGED)
         }
         registerReceiver(tick, f)
+        map.resumed()
         panels.resumed()
         if (firstResume) {
             firstResume = false
@@ -110,13 +120,13 @@ class HomeActivity : Activity() {
     override fun onPause() {
         try { unregisterReceiver(tick) } catch (_: Throwable) { }
         resumedNow = false
-        if (::panels.isInitialized) panels.paused()
+        if (::panels.isInitialized) { panels.paused(); map.paused() }
         super.onPause()
     }
 
     override fun onStop() {
         startedNow = false
-        if (::panels.isInitialized) panels.stopped()
+        if (::panels.isInitialized) { panels.stopped(); map.stopped() }
         // a sheet left open under an app opened from it (so it did not close during the app's opening) goes now
         if (::root.isInitialized) root.closeSheets()
         super.onStop()
@@ -129,18 +139,19 @@ class HomeActivity : Activity() {
         if (::panels.isInitialized) {
             if (isChangingConfigurations && reopen == null && panels.top.name != Screens.HOME) reopen = panels.top.name to null
             panels.destroyed()
+            map.destroyed()
         }
         super.onDestroy()
     }
 
     override fun onLowMemory() {
         super.onLowMemory()
-        if (::panels.isInitialized) panels.trim(TRIM_LOW_MEMORY)
+        if (::panels.isInitialized) { panels.trim(TRIM_LOW_MEMORY); map.trim(TRIM_LOW_MEMORY) }
     }
 
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        if (::panels.isInitialized) panels.trim(level)
+        if (::panels.isInitialized) { panels.trim(level); map.trim(level) }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -168,7 +179,7 @@ class HomeActivity : Activity() {
         if (::panels.isInitialized) panels.own(isOpen, close)
     }
 
-    /** The system bars for the top panel, and no window background: each panel draws its own room ([HomePanel]). */
+    /** The system bars for the top panel, and no window background: the map, and each panel's own room ([HomePanel]). */
     fun windowLook(navBar: Int) = Theme.window(this, navBar, fill = false)
 
     /**

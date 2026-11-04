@@ -86,7 +86,7 @@ class ProbePanel(shell: HomeActivity) : Panel(shell, "probe") {
 /** A surface in the map's slot, a grid drawn on it, once for the window: nobody else touches it. */
 private fun surfaceInSlot(shell: HomeActivity) {
     val slot = shell.root.mapHost
-    if (slot.childCount > 0) return
+    if ((0 until slot.childCount).any { slot.getChildAt(it) is SurfaceView }) return
     val v = SurfaceView(shell)
     v.holder.addCallback(object : SurfaceHolder.Callback {
         private fun paint(h: SurfaceHolder) {

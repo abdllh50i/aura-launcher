@@ -44,7 +44,7 @@ object Screens {
     const val SETTINGS = "settings"
 
     /** The screens that are panels of the home activity. */
-    private val PANELS = setOf(SETTINGS)
+    private val PANELS = setOf(SETTINGS, MAPS)
 
     /** Which screen a home intent is for. */
     const val EXTRA_PANEL = "panel"
@@ -170,7 +170,6 @@ object Screens {
     /** The name of the screen [a] shows ("" for none of them: a screen of its own that is not one of these). */
     fun panelOf(a: Activity): String = when (a) {
         is HomeActivity -> a.topPanel
-        is MapsActivity -> MAPS
         is MusicActivity -> MUSIC
         else -> ""
     }

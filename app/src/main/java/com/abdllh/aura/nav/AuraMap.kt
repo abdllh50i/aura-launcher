@@ -7,6 +7,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.Rect
 import android.graphics.RectF
 import android.os.Bundle
 import android.os.Handler
@@ -48,7 +49,8 @@ import kotlin.math.pow
 /**
  * A MapLibre map in the Aura style with the car, the route and the destination, plus the camera behaviour of a car
  * screen: follow the car north-up while browsing, heading-up and tilted while navigating, or stay where the user
- * dragged it. Used full screen by [MapsActivity] and small (TextureView, no gestures) on the home screen.
+ * dragged it. One of these in the one window ([MapController], the only one that talks to it), under every panel, on a
+ * SurfaceView: it is never moved, resized or hidden. What differs between the screens is [setRoom], what part of it shows.
  *
  * The car is an ordinary view laid over the map at its screen point rather than a map icon: crisp at any tilt, and
  * independent of the GPU's icon rendering. The destination is drawn by the map itself ([MapStyle.SRC_DEST]).
@@ -87,14 +89,19 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
      * more at motorway speed, where what is far ahead matters more.
      */
     var navTopPadding = 0.42
-    /** Extra start padding (e.g. a side panel covering the map). */
-    var startPadding = 0
+    // [setRoom]
+    private var roomL = 0.0
+    private var roomT = 0.0
+    private var roomR = 0.0
+    private var roomB = 0.0
     /**
      * Where a picture of this map is kept (the home map): taken when the map has come to rest, shown by
      * [com.abdllh.aura.ui.MapBackdropView] at the next start until the map has drawn, so the screen opens on the real
      * streets instead of invented ones.
      */
     var pictureFile: File? = null
+    /** The part of the view that picture is of (it is the home screen's card, not the whole map); null: all of it. */
+    var pictureArea: Rect? = null
 
     private val rtl: Boolean
     private val app = ctx.applicationContext
@@ -150,7 +157,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
 
     // ---- the camera
     // zoom kept by the map itself while following (the camera is set on every frame the car moves)
-    private var followZoom = 15.0
+    private var followZoom = FOLLOW_ZOOM
     private var navZoomOffset = 0.0
     // navigating: what the camera eases towards — zoom by speed and the turn ahead, tilt, the room above the car,
     // and a heading that looks a little down the road
@@ -164,6 +171,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
     private var blendFrom: Cam? = null
     private var blendStart = 0L
     private var blendMs = BLEND_MS
+    private var blendSpring = false  // on [springK], not [Motion.STANDARD]
     private var flightUntil = 0L // a recenter from far away is MapLibre's own flight; the loop waits for it
     private var applied: Cam? = null // the camera the loop set last
     private var camOnCar = false     // ... and it was on the car (the car is drawn at the focal point then)
@@ -175,6 +183,9 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
     private var looping = false
     private var lastDriveNs = 0L
     private val frame = Choreographer.FrameCallback { onFrame(it) }
+    /** Covered by an opaque panel ([setFrozen]). */
+    private var frozen = false
+    private var gestures = interactive
     private var fpsWanted = 30
     private var fpsCap = 30
     private var renders = 0
@@ -195,7 +206,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
             if (done) return
             if (!first) {
                 first = true
-                if (guarded) MapGuard.ok(app)
+                if (guarded) { MapGuard.ok(app); MapGuard.live(app) }
                 view.postDelayed(late, DRAWN_LATE_MS)
             }
             // (before the style is there, a frame of land colour alone counts as "fully" drawn)
@@ -219,6 +230,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         // Every request goes to the unit's own tile server (offline map, else the internet): without a network Android
         // reports "disconnected" and MapLibre would stop asking at all, so its connectivity check is overridden
         if (com.abdllh.aura.nav.offline.TileServer.running) Mapbox.setConnected(true)
+        Log.i(TAG, "engine #${++engines} in this process (${if (texture) "texture" else "surface"})")
         val opts = MapboxMapOptions.createFromAttributes(ctx)
             .textureMode(texture)
             .logoEnabled(false)
@@ -242,8 +254,8 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         mapView.getMapAsync { m ->
             map = m
             m.uiSettings.apply {
-                setAllGesturesEnabled(interactive)
-                setRotateGesturesEnabled(interactive)
+                setAllGesturesEnabled(gestures)
+                setRotateGesturesEnabled(gestures)
                 setTiltGesturesEnabled(false)
                 setCompassEnabled(false)
                 setLogoEnabled(false)
@@ -272,12 +284,14 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
             val start = CarLocation.lastKnown() ?: LatLon(24.7136, 46.6753) // Riyadh until the first fix
             m.moveCamera(CameraUpdateFactory.newCameraPosition(CameraPosition.Builder().target(LatLng(start.lat, start.lon)).zoom(followZoom).build()))
             loadStyle()
+            placeRoom(m)
         }
     }
 
     private fun loadStyle() {
         val m = map ?: return
         val arabic = Locale.getDefault().language == "ar"
+        Log.i(TAG, "style load #${++styleLoads}")
         m.setStyle(Style.Builder().fromJson(MapStyle.json(arabic)).withImage(MapStyle.POI_DOT, MapStyle.poiDot(), true)) { s ->
             style = s
             extrasVersion = -1
@@ -290,6 +304,23 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
             placeOverlays()
             onReady?.invoke()
         }
+    }
+
+    /**
+     * The look changed (sunset, a new accent): the map stays, the same surface and engine, with the style of now; everything
+     * on it goes back on it as the style comes (the route, the turn, the destination, the additions). [onDrawn] says when it
+     * has drawn again.
+     */
+    fun reloadStyle() {
+        carView.refreshLook()
+        style = null
+        if (started) {
+            firstFrame.cancel()
+            mapView.removeOnDidFinishRenderingFrameListener(firstFrame)
+            firstFrame = Drawn().also { mapView.addOnDidFinishRenderingFrameListener(it) }
+        }
+        drawn = false
+        loadStyle()
     }
 
     /** The owner's additions ([MapExtras]) on the map; again whenever a newer set was fetched. */
@@ -361,7 +392,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
     fun onPause() = mapView.onPause()
 
     fun onStop() {
-        if (guarded) MapGuard.ok(app) // still alive: the engine did not crash
+        if (guarded) { MapGuard.ok(app); MapGuard.notLive(app) } // still alive: the engine did not crash
         started = false
         sleep()
         view.removeCallbacks(stale)
@@ -385,6 +416,73 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         mapView.setMaximumFps(fps)
         measureFrom = 0L
         if (fps > 30) mapView.addOnDidFinishRenderingFrameListener(counter) else mapView.removeOnDidFinishRenderingFrameListener(counter)
+    }
+
+    /**
+     * Touches move the map, or nothing of it does (it is the one map: the Maps panel wants the finger, the home screen wants
+     * a tap on its card to open Maps). What a press and a tap do needs no switch: [onLongPress] and [onPoiTap] are null then.
+     */
+    fun setInteractive(on: Boolean) {
+        if (on == gestures) return
+        gestures = on
+        map?.uiSettings?.apply {
+            setAllGesturesEnabled(on)
+            setRotateGesturesEnabled(on)
+            setTiltGesturesEnabled(false)
+        }
+    }
+
+    /**
+     * What part of the view shows, in pixels from each side (the rest lies under the panels): the camera keeps the car in
+     * the middle of that part, and this is the only thing that differs between the screens. The view itself never moves or
+     * resizes; a new room eases, as a pan, with no tile touched when the zoom stays. [navTop]: the fraction of that part kept
+     * free above the car while navigating ([navTopPadding]).
+     */
+    fun setRoom(l: Int, t: Int, r: Int, b: Int, navTop: Double) {
+        navTopPadding = navTop
+        if (l.toDouble() == roomL && t.toDouble() == roomT && r.toDouble() == roomR && b.toDouble() == roomB) return
+        roomL = l.toDouble()
+        roomT = t.toDouble()
+        roomR = r.toDouble()
+        roomB = b.toDouble()
+        // (not yet ready: the first camera takes it. One the finger or an overview holds stays where it is, until it follows again)
+        if (map != null && (camera == Camera.FOLLOW || camera == Camera.NAVIGATE)) startBlend(ROOM_MS, true)
+    }
+
+    /** The first camera, with the room of now. */
+    private fun placeRoom(m: MapboxMap) {
+        val c = m.cameraPosition ?: return
+        try {
+            m.moveCamera(CameraUpdateFactory.newCameraPosition(CameraPosition.Builder(c).padding(roomL, roomT, roomR, roomB).build()))
+        } catch (t: Throwable) {
+            Log.w(TAG, "room: $t")
+        }
+    }
+
+    /**
+     * An opaque panel lies over the whole map, or no longer: LIVE and FROZEN (home-shell.md 5.3). Frozen, nothing sets the
+     * camera, so the map draws nothing (it draws when dirty); its surface and GL context stay, and fixes go on being taken in.
+     * Uncovered, the camera is where the car is, at once: it comes out from under a fade, and a flight would only show the
+     * time the panel was up.
+     */
+    fun setFrozen(on: Boolean) {
+        if (on == frozen) return
+        frozen = on
+        if (on) {
+            sleep()
+            view.removeCallbacks(keepPicture)
+            return
+        }
+        blendFrom = null
+        flightUntil = 0L
+        applied = null
+        wake()
+    }
+
+    /** The zoom a map that follows the car starts with, and no offset on the navigating one: what the home screen shows. */
+    fun zoomBack() {
+        followZoom = FOLLOW_ZOOM
+        navZoomOffset = 0.0
     }
 
     fun onLowMemory() = mapView.onLowMemory()
@@ -428,7 +526,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
     private fun fixOnRoute(line: Polyline, snap: Polyline.Snap, speed: Double, now: Long) {
         val along = snap.along
         routeSeg = snap.segment
-        val jump = !onRoute || carPos == null || abs(along - drawnAlong) > JUMP_M
+        val jump = !onRoute || carPos == null || frozen || abs(along - drawnAlong) > JUMP_M
         onRoute = true
         fixAlong = along
         fixKmh = speed
@@ -456,7 +554,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         if (from != null && !wasOnRoute && cameraOnCar && speed < 4 && Geo.distance(from, p) < 6) return false
         // a GPS course at walking pace is noise (a car park flips it about): the arrow keeps the last heading then
         val b = if (from != null && speed < HOLD_KMH) carBearing else bearing
-        if (from == null || Geo.distance(from, p) > JUMP_M) {
+        if (from == null || frozen || Geo.distance(from, p) > JUMP_M) {
             carPos = p
             carBearing = b
             glideFrom = null
@@ -733,12 +831,13 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
      * moving. From much further than the screen shows (a recenter after panning across town), MapLibre's own flight
      * (out and back in) does the way, and the loop eases the last metres the car drove meanwhile.
      */
-    private fun startBlend() {
+    private fun startBlend(ms: Long = BLEND_MS, spring: Boolean = false) {
         val m = map ?: return
-        val from = Cam.of(m.cameraPosition) ?: return
         applied = null
         blendFrom = null
         flightUntil = 0L
+        if (frozen) return // ([setFrozen]: where the car is, when it is seen again)
+        val from = Cam.of(m.cameraPosition) ?: return
         if (camera == Camera.NAVIGATE) steer(0.0)
         val to = desired()
         val now = SystemClock.uptimeMillis()
@@ -748,7 +847,8 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         } else {
             blendFrom = from
             blendStart = now
-            blendMs = BLEND_MS
+            blendMs = ms
+            blendSpring = spring
         }
         wake()
     }
@@ -760,15 +860,15 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         return metres / perPx > 2.5 * max(mapView.width, mapView.height)
     }
 
-    /** The camera that follows the car now, or null when the camera does not follow it (free, overview). */
+    /**
+     * The camera that follows the car now, or null when the camera does not follow it (free, overview). With no fix ever,
+     * the same around where the map looks: the room counts there too.
+     */
     private fun desired(): Cam? {
-        val p = carPos ?: return null
-        val side = startPadding.toDouble()
-        val l = if (rtl) 0.0 else side
-        val r = if (rtl) side else 0.0
+        val p = carPos ?: map?.cameraPosition?.target?.let { LatLon(it.latitude, it.longitude) } ?: return null
         return when (camera) {
-            Camera.FOLLOW -> Cam(p.lat, p.lon, followZoom, 0.0, 0.0, l, 0.0, r, 0.0)
-            Camera.NAVIGATE -> Cam(p.lat, p.lon, navZoom, navTilt, camBearing, l, mapView.height * navPad, r, 0.0)
+            Camera.FOLLOW -> Cam(p.lat, p.lon, followZoom, 0.0, 0.0, roomL, roomT, roomR, roomB)
+            Camera.NAVIGATE -> Cam(p.lat, p.lon, navZoom, navTilt, camBearing, roomL, roomT + (mapView.height - roomT - roomB) * navPad, roomR, roomB)
             else -> null
         }
     }
@@ -836,11 +936,13 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
             blendFrom = Cam.of(m.cameraPosition)
             blendStart = now
             blendMs = LANDING_MS
+            blendSpring = false
         }
         val from = blendFrom
         val out = if (from == null) d else {
             val t = ((now - blendStart).toDouble() / blendMs).coerceIn(0.0, 1.0)
-            if (t >= 1.0) { blendFrom = null; d } else from.lerp(d, Motion.STANDARD.getInterpolation(t.toFloat()).toDouble())
+            if (t >= 1.0) { blendFrom = null; d }
+            else from.lerp(d, if (blendSpring) springK((now - blendStart) / 1000.0) else Motion.STANDARD.getInterpolation(t.toFloat()).toDouble())
         }
         if (applied?.near(out) != true) {
             inDrive = true
@@ -850,6 +952,12 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         camOnCar = blendFrom == null
         cameraOnCar = true
         return blendFrom != null
+    }
+
+    /** A move that leaves at once and comes to rest softly, with no end of its own (the design's camera between screens). */
+    private fun springK(s: Double): Double {
+        val x = ROOM_SPRING * s
+        return 1 - (1 + x) * exp(-x)
     }
 
     /** Shows the whole route (or the car and a place) with room for the panels. */
@@ -908,7 +1016,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
     // ------------------------------------------------------------------------------------------ the frame loop
     private fun wake() {
         view.removeCallbacks(keepPicture)
-        if (looping || !started) return
+        if (looping || !started || frozen) return
         looping = true
         lastDriveNs = 0L
         measureFrom = 0L
@@ -967,13 +1075,16 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         val m = map ?: return
         if (!started || !drawn || !pictureWorthy()) return
         pictureAt = SystemClock.uptimeMillis()
+        val area = pictureArea?.let { Rect(it) }
         try {
             m.snapshot { bmp ->
                 PICTURES.execute {
                     try {
+                        val part = if (area != null && area.left >= 0 && area.top >= 0 && area.right <= bmp.width && area.bottom <= bmp.height)
+                            Bitmap.createBitmap(bmp, area.left, area.top, area.width(), area.height()) else bmp
                         val tmp = File(f.path + ".tmp")
                         @Suppress("DEPRECATION")
-                        tmp.outputStream().use { bmp.compress(Bitmap.CompressFormat.WEBP, 80, it) }
+                        tmp.outputStream().use { part.compress(Bitmap.CompressFormat.WEBP, 80, it) }
                         tmp.renameTo(f)
                     } catch (t: Throwable) {
                         Log.w(TAG, "picture not kept: $t")
@@ -1018,6 +1129,9 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
 
     companion object {
         private const val TAG = "AuraMap"
+        // (the log's proof that nothing is built or loaded twice in a process's life)
+        private var engines = 0
+        private var styleLoads = 0
         private const val EMPTY = """{"type":"FeatureCollection","features":[]}"""
         // the car on the route
         private const val ON_ROUTE_M = 3.0   // a fix this close to the driven line is on it (navigation snaps them)
@@ -1030,6 +1144,10 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         // the camera
         private const val BLEND_MS = 650L
         private const val LANDING_MS = 400L
+        /** A new room: 95 % at 365 ms, settled by here (the design's section 9). */
+        private const val ROOM_MS = 520L
+        private const val ROOM_SPRING = 13.0
+        private const val FOLLOW_ZOOM = 15.0
         private const val FLIGHT_MS = 900L
         private const val OVERVIEW_MS = 750
         private const val NAV_TILT = 50.0
@@ -1112,7 +1230,7 @@ private class CarMarker(ctx: Context) : View(ctx) {
     }
     private val path = Path()
     private val oval = RectF()
-    private val color = MapStyle.routeColor()
+    private var color = MapStyle.routeColor()
     private var navK = 0f
     private var staleK = 0f
     private val navSpring = Spring(0f, 520f, 1f) { navK = it; invalidate() }
@@ -1156,6 +1274,12 @@ private class CarMarker(ctx: Context) : View(ctx) {
     }
 
     fun setNav(on: Boolean) = navSpring.animateTo(if (on) 1f else 0f)
+
+    /** The route's colour may be another now ([AuraMap.reloadStyle]). */
+    fun refreshLook() {
+        color = MapStyle.routeColor()
+        invalidate()
+    }
 
     fun setStale(on: Boolean) {
         if (staleSpring.target != (if (on) 1f else 0f)) staleSpring.animateTo(if (on) 1f else 0f)
@@ -1276,8 +1400,25 @@ private class CarMarker(ctx: Context) : View(ctx) {
  * and a home screen that embeds the map would crash again on every start. Each map start is marked on disk first and
  * cleared once a frame was drawn (or the map was shut down normally); after two starts that never got there, the home
  * screen stops embedding the live map (Maps itself still opens on request).
+ *
+ * Since the map lies under everything (2.0), the same for a map that goes down later: a second mark from its first frame to its
+ * stop ([live], [notLive]). A process found gone with that mark means it went down with the map up, which counts only in the
+ * boot it happened and within [LIVE_WINDOW_MS] of the map coming up: a car losing its power with the map on the screen is normal,
+ * and that is another boot. [LIVE_LIMIT] of those and no map at the home screen until the next boot: fewer than the guard's three
+ * dead starts in a row ([com.abdllh.aura.guard.GuardWatch]), so a map that cannot run costs the map and not the home screen.
  */
 object MapGuard {
+    private const val LIVE_WINDOW_MS = 3 * 60_000L
+    private const val LIVE_LIMIT = 2
+    // (a new file for what is new: 1.19 reads aura_mapguard, and 1.19 must start on whatever this leaves)
+    private const val PREFS_LIVE = "aura_shell"
+    private const val KEY_LIVE_BOOT = "mapLiveBoot"
+    private const val KEY_LIVE_FAILS = "mapLiveFails"
+
+    private fun liveMark(c: Context) = File(c.noBackupFilesDir, "map-live")
+    private fun bootId() = com.abdllh.aura.guard.GuardMarks.bootId()
+    private fun spLive(c: Context) = c.getSharedPreferences(PREFS_LIVE, Context.MODE_PRIVATE)
+
     // the count of failed starts, in a tiny preferences file of its own (written only when it changes)
     private fun sp(c: Context) = c.getSharedPreferences("aura_mapguard", Context.MODE_PRIVATE)
 
@@ -1295,11 +1436,45 @@ object MapGuard {
             sp.edit().putInt("fails", sp.getInt("fails", 0) + 1).remove("starting").commit()
             m.delete()
         }
-        return sp.getInt("fails", 0) < 2
+        countLive(c)
+        return sp.getInt("fails", 0) < 2 && liveFails(c) < LIVE_LIMIT
+    }
+
+    /** What the mark left by the process before this one means, once. */
+    private fun countLive(c: Context) {
+        try {
+            val f = liveMark(c)
+            if (!f.exists()) return
+            val p = f.readText().trim().split(' ')
+            f.delete()
+            val at = p.getOrNull(1)?.toLongOrNull() ?: return
+            val boot = bootId()
+            if (p[0] != boot || SystemClock.elapsedRealtime() - at > LIVE_WINDOW_MS) return
+            val n = liveFails(c) + 1
+            spLive(c).edit().putString(KEY_LIVE_BOOT, boot).putInt(KEY_LIVE_FAILS, n).commit()
+            Log.w("AuraMap", "the process went down with the map up: $n in this boot")
+        } catch (t: Throwable) {
+            Log.w("AuraMap", "guard: $t")
+        }
+    }
+
+    /** How many times the process went down with the map up, in this boot. */
+    private fun liveFails(c: Context): Int = spLive(c).let { if (it.getString(KEY_LIVE_BOOT, "") == bootId()) it.getInt(KEY_LIVE_FAILS, 0) else 0 }
+
+    /** Why the home screen has no live map (for Settings → About); empty when it may have one. */
+    fun whyNot(c: Context): String = try {
+        val live = liveFails(c)
+        when {
+            live >= LIVE_LIMIT -> "not at the home screen until the next start of the unit: the process went down $live times with the map up"
+            sp(c).getInt("fails", 0) >= 2 -> "not at the home screen until it has drawn once in Maps: two starts never drew"
+            else -> ""
+        }
+    } catch (_: Throwable) {
+        ""
     }
 
     /** No failed start on record, and none just now. Counts nothing, unlike [homeMapAllowed], so any thread may ask. */
-    fun looksFine(c: Context): Boolean = !marker(c).exists() && sp(c).let { !it.getBoolean("starting", false) && it.getInt("fails", 0) == 0 }
+    fun looksFine(c: Context): Boolean = !marker(c).exists() && liveFails(c) == 0 && sp(c).let { !it.getBoolean("starting", false) && it.getInt("fails", 0) == 0 }
 
     fun starting(c: Context) {
         try { marker(c).writeText("") } catch (_: Throwable) { }
@@ -1310,5 +1485,15 @@ object MapGuard {
         if (m.exists()) m.delete()
         val sp = sp(c)
         if (sp.getInt("fails", 0) != 0) sp.edit().putInt("fails", 0).apply()
+    }
+
+    /** The map has drawn its first frame after a start. */
+    fun live(c: Context) {
+        try { liveMark(c).writeText("${bootId()} ${SystemClock.elapsedRealtime()}") } catch (_: Throwable) { }
+    }
+
+    /** It stopped in good order. */
+    fun notLive(c: Context) {
+        try { liveMark(c).let { if (it.exists()) it.delete() } } catch (_: Throwable) { }
     }
 }

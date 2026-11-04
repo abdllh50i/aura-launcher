@@ -10,6 +10,7 @@ import android.view.View
 import android.view.inputmethod.InputMethodManager
 import com.abdllh.aura.BuildConfig
 import com.abdllh.aura.R
+import com.abdllh.aura.nav.MapsPanel
 import com.abdllh.aura.settings.SettingsPanel
 import com.abdllh.aura.system.Front
 import com.abdllh.aura.system.IdleGc
@@ -51,6 +52,8 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
 
     val top: Panel get() = stack.last()
 
+    fun holds(p: Panel): Boolean = p in stack
+
     /** The panel on its way off, over the top one (from before the one under it is told it is back). */
     var leaving: Panel? = null
         private set
@@ -83,7 +86,9 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
         under.frame.live = false
         leave(under)
         p.alive = true
+        p.offDue = false
         stack.add(p)
+        if (!p.opaque) root.mapHost.covered = false // ("wake first")
         place(p)
         if (!arrive(p, args)) { failed(p); return }
         val ready = SystemClock.uptimeMillis() - t0
@@ -119,6 +124,7 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
         if (at == stack.lastIndex) { popTo(at - 1); return }
         stack.removeAt(at)
         if (!p.keep) p.alive = false
+        p.offDue = true
         gone(p)
     }
 
@@ -130,10 +136,12 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
         val off = stack.removeAt(stack.lastIndex)
         off.frame.live = false
         if (!off.keep) off.alive = false // (first: what it does on the way out sees that it is for good)
+        off.offDue = true
         leave(off)
         while (stack.lastIndex > index) {
             val between = stack.removeAt(stack.lastIndex)
             if (!between.keep) between.alive = false
+            between.offDue = true
             gone(between)
         }
         leaving = off
@@ -153,6 +161,7 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
     private fun make(name: String): Panel? = try {
         val p = when (name) {
             Screens.SETTINGS -> SettingsPanel(shell)
+            Screens.MAPS -> MapsPanel(shell)
             else -> if (BuildConfig.DEBUG) debugPanel(name) else null
         }
         p?.also { attach(it) }
@@ -370,7 +379,12 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
 
     private fun gone(p: Panel) {
         rest(p.frame)
-        if (p.keep) p.frame.visibility = View.INVISIBLE else destroy(p)
+        if (!p.keep) { destroy(p); return }
+        p.frame.visibility = View.INVISIBLE
+        if (p.offDue) {
+            p.offDue = false
+            call(p, "onOff") { p.onOff() }
+        }
     }
 
     private fun destroy(p: Panel) {

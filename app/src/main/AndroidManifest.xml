@@ -182,15 +182,16 @@
             android:screenOrientation="landscape"
             android:theme="@style/Theme.Aura.Boot" />
 
+        <!-- Maps is a panel of HomeActivity now; this name stays for whoever starts it (home/Entry.kt): no window, gone
+             at once. -->
         <activity
             android:name=".nav.MapsActivity"
-            android:configChanges="orientation|keyboard|keyboardHidden|screenSize|smallestScreenSize|screenLayout|uiMode|density|fontScale"
+            android:excludeFromRecents="true"
             android:exported="true"
             android:label="@string/dock_nav"
-            android:launchMode="singleTask"
-            android:screenOrientation="landscape"
-            android:theme="@style/Theme.Aura.Heavy"
-            android:windowSoftInputMode="adjustResize|stateHidden">
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.NoDisplay">
             <intent-filter>
                 <action android:name="com.abdllh.aura.action.MAPS" />
                 <category android:name="android.intent.category.DEFAULT" />

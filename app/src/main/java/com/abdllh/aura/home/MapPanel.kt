@@ -3,19 +3,13 @@ package com.abdllh.aura.home
 import android.content.Context
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
-import android.location.Location
-import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import com.abdllh.aura.R
-import com.abdllh.aura.nav.AuraMap
-import com.abdllh.aura.nav.CarLocation
 import com.abdllh.aura.nav.GuidanceBanner
-import com.abdllh.aura.nav.LatLon
-import com.abdllh.aura.nav.MapGuard
 import com.abdllh.aura.nav.NavSession
 import com.abdllh.aura.nav.Places
 import com.abdllh.aura.nav.reveal
@@ -43,41 +37,30 @@ import com.abdllh.aura.util.Prefs
 import com.abdllh.aura.util.dp
 
 /**
- * End side of the home screen: a live map with the car (Aura Maps, read-only here), "Where to?" with Home and Work
- * beside it in one row along the top, and the player along the bottom, so the map shows between them (the row and
- * the player covered half of it until 1.11). While navigating it follows the route and shows the next manoeuvre
- * on the Maps screen's sign, in its compact form ([GuidanceBanner]).
- * Tapping it opens Maps.
- * The live map is started by [startLive], after the home screen's entrance: MapLibre's start (its library, the style,
+ * End side of the home screen: the card the live map shows in (the one map, under the window: [HomePanel] opens a hole here),
+ * "Where to?" with Home and Work beside it in one row along the top, and the player along the bottom, so the map shows between
+ * them (the row and the player covered half of it until 1.11). While navigating it shows the next manoeuvre on the Maps screen's
+ * sign, in its compact form ([GuidanceBanner]). Tapping it opens Maps. Only this chrome is here: the map and what is on it are
+ * [com.abdllh.aura.nav.MapController]'s, and that starts after the home screen's entrance: MapLibre's start (its library, the style,
  * the first tiles) took the processor from the entrance and the car on every cold start, when the map could not be
  * seen yet anyway; the placeholder shows meanwhile.
  */
-class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
+class MapPanel(private val shell: HomeActivity, private val host: HomeHost) : FrameLayout(shell) {
     private val backdrop: MapBackdropView // over the live map until it has drawn (in its place when it cannot run)
-    private var live: AuraMap? = null
-    // (also when another app does the navigating: the home screen keeps its own live map)
-    private val allowed = MapGuard.homeMapAllowed(ctx)
-    val media = MediaCard(ctx, host)
+    val media = MediaCard(shell, host)
     /** "Where to?", Home and Work (each of them hidden while navigating; the row itself stays). */
     val places: LinearLayout
     /** The next manoeuvre while navigating: the Maps screen's sign, in its compact form, so both read the same. */
-    private val banner = GuidanceBanner(ctx, compact = true)
+    private val banner = GuidanceBanner(shell, compact = true)
     private val hud: LinearLayout
     private val homeIcon: ImageView
     private val workIcon: ImageView
     /** A trip is shown: its first step comes in without the change animation. */
     private var tripShown = false
 
-    // the activity's lifecycle as far as it went, replayed on the live map when it is started late
-    private var savedState: Bundle? = null
-    private var created = false
-    private var started = false
-    private var resumed = false
-    private var destroyed = false
-    /** [startLive] came while the panel was stopped: the map is built at the next [onStart]. */
-    private var liveWanted = false
-
     init {
+        val ctx: Context = shell
+        val allowed = shell.map.allowed
         background = Shapes.rect(Palette.mapLand, Radius.XL)
         roundedClip(Radius.XL)
         if (!Palette.dark) {
@@ -150,37 +133,10 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
     }
 
     // ------------------------------------------------------------------------------------------ lifecycle (from HomePanel)
-    fun onCreate(b: Bundle?) {
-        savedState = b
-        created = true
-    }
-
-    /**
-     * Builds the live map and brings it to where the activity is (HomePanel calls it after the entrance). Only
-     * while the panel is started: building it writes MapGuard's "starting" mark, which only a drawn frame or the map's
-     * onStop clears. Built under another app that covered the home screen at boot, and the process then killed in the
-     * background, the mark stayed and counted as a crash; two such drives turned the home map off for good.
-     */
-    fun startLive() {
-        if (live != null || destroyed || !created) return
-        if (!started) { liveWanted = true; return }
-        liveWanted = false
-        if (allowed) {
-            val m = AuraMap(context, interactive = false, texture = true, guarded = true)
-            m.navTopPadding = 0.08 // the player covers the lower part: keep the car in the middle of what is visible
-            m.pictureFile = MapBackdropView.pictureFile(context)
-            m.onDrawn = {
-                background = null // (the opaque map covers it: no fill under every frame of the map)
-                if (backdrop.visibility == View.VISIBLE) handOff()
-            }
-            live = m
-            addView(m.view, indexOfChild(backdrop), flp(MATCH, MATCH)) // (under the picture, the press tint and the cards)
-        }
-        val m = live ?: return
-        m.onReady = { syncNav(); CarLocation.last?.let { onFix(it) } }
-        m.onCreate(savedState)
-        if (started) m.onStart()
-        if (resumed) m.onResume()
+    /** The map has drawn: nothing of this card covers it any more, once the picture has faded. */
+    fun mapDrawn() {
+        background = null
+        if (backdrop.visibility == View.VISIBLE) handOff()
     }
 
     /**
@@ -196,53 +152,17 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
     }
 
     fun onStart() {
-        started = true
-        // (a map asked for while stopped is built now; startLive starts it itself)
-        if (live == null && liveWanted) startLive() else live?.onStart()
-        CarLocation.acquire(context, "home")
-        CarLocation.addListener(fixListener)
         NavSession.addListener(navListener)
         syncNav()
     }
 
-    fun onResume() {
-        resumed = true
-        live?.onResume()
-    }
-
-    fun onPause() {
-        resumed = false
-        live?.onPause()
-    }
-
     fun onStop() {
-        started = false
-        CarLocation.removeListener(fixListener)
-        CarLocation.release("home")
         NavSession.removeListener(navListener)
-        live?.onStop()
     }
 
-    fun onDestroy() {
-        destroyed = true
-        live?.onDestroy()
-        live = null
-    }
-
-    fun onLowMemory() = live?.onLowMemory()
-
-    private val fixListener: (Location) -> Unit = { onFix(it) }
     private val navListener: () -> Unit = { syncNav() }
 
-    private fun onFix(l: Location) {
-        if (NavSession.state == NavSession.State.NAVIGATING) return // navigation moves the car itself, on the route
-        live?.setCar(LatLon(l.latitude, l.longitude), if (l.hasBearing()) l.bearing.toDouble() else 0.0, if (l.hasSpeed()) l.speed * 3.6 else 0.0)
-    }
-
-    private var shownRoute: Any? = null
-
     private fun syncNav() {
-        val m = live
         val nav = NavSession.state == NavSession.State.NAVIGATING
         if (nav && !tripShown) { tripShown = true; banner.reset() }
         if (!nav) tripShown = false
@@ -253,30 +173,6 @@ class MapPanel(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
         for (i in 0 until places.childCount) {
             places.getChildAt(i).reveal(!nav, -8f, delay = if (nav) 0L else Motion.SHORT + PLACES_STAGGER_MS * i)
         }
-        if (m == null) return
-        if (!nav) {
-            shownRoute = null
-            if (m.camera == AuraMap.Camera.NAVIGATE) {
-                m.setRoute(null)
-                m.setDestination(null)
-                m.setTurn(null)
-                m.setCamera(AuraMap.Camera.FOLLOW)
-            }
-            return
-        }
-        val r = NavSession.route ?: return
-        val p = NavSession.progress ?: return
-        if (r !== shownRoute) { // a new trip or a new route after leaving the old one
-            shownRoute = r
-            m.setRouteAhead(r.line) // (what is ahead of the car only: the map cuts it at the car)
-            m.setDestination(NavSession.destination?.pos)
-        }
-        if (m.camera != AuraMap.Camera.NAVIGATE) m.setCamera(AuraMap.Camera.NAVIGATE)
-        m.setCar(p.position, p.bearing, p.speedKmh.toDouble())
-        val step = r.steps[p.next]
-        // the turn ahead as an arrow on the route, as on the Maps screen (not the start or the arrival, nor one far off)
-        val turn = step.type != "arrive" && step.type != "depart" && p.toNext <= 900 && !NavSession.rerouting
-        m.setTurn(if (turn) r.line else null, step.at, AuraMap.turnAfter(step))
     }
 
     /** The sign's widest: the panel's width less the speed sign and camera chip column beside it. */
