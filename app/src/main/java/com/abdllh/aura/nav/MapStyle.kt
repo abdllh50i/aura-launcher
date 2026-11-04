@@ -401,7 +401,7 @@ object MapStyle {
             """{"id":"road-name","type":"symbol","source":"omt","source-layer":"transportation_name","minzoom":13,
                "filter":${cls("primary", "secondary", "tertiary", "minor", "service")},
                "layout":{"symbol-placement":"line","text-field":$name,"text-font":$regular,"symbol-spacing":320,
-               "text-size":${size(13 to 12.5, 16 to 14.5, 18 to 17.0)},"text-max-angle":30,"text-padding":5,
+               "text-size":${size(13 to 12.5, 16 to 14.5, 18 to 17.0)},"text-max-angle":30,"text-padding":8,
                "text-rotation-alignment":"map","text-pitch-alignment":"viewport"},
                "paint":{"text-color":"${c.roadLabel}","text-halo-color":"${c.roadHalo}","text-halo-width":1.8}}""",
             // (from z11, and far apart while far out: at z10 they outshouted the towns they join)

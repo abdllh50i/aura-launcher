@@ -34,6 +34,7 @@ import java.util.Locale
  *      --es dest lat,lon                the destination
  *      --es extras lat,lon              a camera, a signal and a bump around it, as MapExtras would send them
  *      --ez style true                  writes files/maplook-style.json     --ez stats true   the pack's read times in the log
+ *      --ez cached true                 the sources not volatile, to measure what that is worth (the size of files/mbgl-offline.db)
  * The log (tag AuraMapLook) says "drawn" when MapLibre has all it asked for and has placed the labels.
  */
 class MapLookActivity : Activity() {
@@ -91,6 +92,7 @@ class MapLookActivity : Activity() {
             Log.i(TAG, "style written")
         }
         if (i.getBooleanExtra("stats", false)) Log.i(TAG, "pack: ${PackTiles.readStats()}")
+        if (i.getBooleanExtra("cached", false)) m.style?.let { s -> s.getSource("omt")?.setVolatile(false); s.getSource("places")?.setVolatile(false) }
     }
 
     override fun onStart() { super.onStart(); map.onStart() }
