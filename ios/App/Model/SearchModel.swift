@@ -146,6 +146,17 @@ final class SearchModel: ObservableObject {
         }
     }
 
+    /// A place he tapped on Apple's own map.
+    @available(iOS 18.0, *)
+    func choose(feature: MapFeature) {
+        running?.cancel()
+        running = Task {
+            guard let item = try? await MKMapItemRequest(feature: feature).mapItem, let place = PlaceQueries.place(from: item) else { return }
+            if Task.isCancelled { return }
+            selected = place
+        }
+    }
+
     private func runSearch(_ work: @escaping () async throws -> [PhonePlace]) async {
         suggestions = []
         selected = nil

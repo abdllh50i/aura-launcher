@@ -11,7 +11,6 @@ struct MapScreen: View {
     @EnvironmentObject private var router: Router
 
     @State private var camera: MapCameraPosition = .userLocation(fallback: .region(MapScreen.startRegion))
-    @State private var pick: PhonePlace?
     @State private var detent: PresentationDetent = Panel.peek
     @State private var panelUp = true
 
@@ -21,14 +20,7 @@ struct MapScreen: View {
 
     var body: some View {
         GeometryReader { geometry in
-            Map(position: $camera, selection: $pick) {
-                UserAnnotation()
-                ForEach(search.pins) { place in
-                    Marker(place.name, systemImage: "mappin", coordinate: place.coordinate)
-                        .tint(place == search.selected ? Theme.signal : Theme.ink)
-                        .tag(place)
-                }
-            }
+            mapView
             .mapControls {
                 MapUserLocationButton()
                 MapCompass()
@@ -59,11 +51,7 @@ struct MapScreen: View {
                 detent = link.trip?.kind.isUnderWay == true ? .medium : Panel.peek
             }
         }
-        .onChange(of: pick) { _, new in
-            if let new { search.selected = new }
-        }
         .onChange(of: search.selected) { _, new in
-            pick = new
             if let new {
                 withAnimation { camera = .region(MKCoordinateRegion(center: new.coordinate, latitudinalMeters: 1600, longitudinalMeters: 1600)) }
                 detent = .medium
@@ -72,6 +60,25 @@ struct MapScreen: View {
         .onChange(of: search.results) { _, new in
             guard search.selected == nil, let region = MapScreen.region(fitting: new) else { return }
             withAnimation { camera = .region(region) }
+        }
+        // What must be read does not wait behind the small sheet.
+        .onChange(of: needsRoom, initial: true) { _, room in
+            if room, detent == Panel.peek { detent = .medium }
+        }
+    }
+
+    private var needsRoom: Bool {
+        if case .notFound(denied: true) = link.presence { return true }
+        return !link.pending.isEmpty || link.trip?.kind.isUnderWay == true
+    }
+
+    /// From iOS 18 any place on Apple's map can be tapped too. Before it, only the results' own pins.
+    @ViewBuilder
+    private var mapView: some View {
+        if #available(iOS 18.0, *) {
+            TappableMap(camera: $camera)
+        } else {
+            PinsMap(camera: $camera)
         }
     }
 
@@ -92,6 +99,62 @@ struct MapScreen: View {
         let center = CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLon + maxLon) / 2)
         let span = MKCoordinateSpan(latitudeDelta: max(0.012, (maxLat - minLat) * 1.5), longitudeDelta: max(0.012, (maxLon - minLon) * 1.5))
         return MKCoordinateRegion(center: center, span: span)
+    }
+}
+
+private struct PinsMap: View {
+    @Binding var camera: MapCameraPosition
+    @EnvironmentObject private var search: SearchModel
+    @State private var pick: PhonePlace?
+
+    var body: some View {
+        Map(position: $camera, selection: $pick) {
+            UserAnnotation()
+            ForEach(search.pins) { place in
+                Marker(place.name, systemImage: "mappin", coordinate: place.coordinate)
+                    .tint(place == search.selected ? Theme.signal : Theme.ink)
+                    .tag(place)
+            }
+        }
+        .onChange(of: pick) { _, new in
+            if let new { search.selected = new }
+        }
+        .onChange(of: search.selected) { _, new in
+            pick = new
+        }
+    }
+}
+
+/// One place at a time, picked by hand on Apple's own map, as section 2.6 asks.
+@available(iOS 18.0, *)
+private struct TappableMap: View {
+    @Binding var camera: MapCameraPosition
+    @EnvironmentObject private var search: SearchModel
+    @State private var pick: MapSelection<PhonePlace>?
+
+    var body: some View {
+        Map(position: $camera, selection: $pick) {
+            UserAnnotation()
+            ForEach(search.pins) { place in
+                Marker(place.name, systemImage: "mappin", coordinate: place.coordinate)
+                    .tint(place == search.selected ? Theme.signal : Theme.ink)
+                    .tag(MapSelection(place))
+            }
+        }
+        .onChange(of: pick) { _, new in
+            if let place = new?.value {
+                search.selected = place
+            } else if let feature = new?.feature {
+                search.choose(feature: feature)
+            }
+        }
+        .onChange(of: search.selected) { _, new in
+            guard let new else {
+                pick = nil
+                return
+            }
+            if pick?.value != new { pick = MapSelection(new) }
+        }
     }
 }
 

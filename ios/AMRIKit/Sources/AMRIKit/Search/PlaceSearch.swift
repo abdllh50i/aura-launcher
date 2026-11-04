@@ -281,7 +281,7 @@ public enum PlaceQueries {
         return SaudiArea.contains(lat: c.latitude, lon: c.longitude)
     }
 
-    private static func place(from item: MKMapItem) -> PhonePlace? {
+    public static func place(from item: MKMapItem) -> PhonePlace? {
         let c = item.placemark.coordinate
         guard CLLocationCoordinate2DIsValid(c) else { return nil }
         let title = item.placemark.title

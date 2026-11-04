@@ -14,7 +14,7 @@ enum Theme {
     static let ink2 = dynamic(light: 0x45433D, dark: 0xBDB7AB)
     static let ink3 = dynamic(light: 0x6A6861, dark: 0x8F8A80)
     static let rule = dynamic(light: 0xCFCCC2, dark: 0x35332E)
-    /// Only ever means "now": a trip under way, the unit's own started.
+    /// The one loud colour: a trip under way, the unit's own started, the place in question.
     static let signal = dynamic(light: 0xE03C00, dark: 0xFF4D14)
     static let key = dynamic(light: 0x0E0E0C, dark: 0xF6F2E9)
     static let keyText = dynamic(light: 0xF4F2EB, dark: 0x000000)
