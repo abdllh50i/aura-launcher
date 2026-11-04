@@ -122,6 +122,35 @@ internal class PlacesDb private constructor(private val db: SQLiteDatabase, val 
         return out
     }
 
+    /** Table spot in a box, degrees. */
+    fun spotsIn(south: Int, north: Int, west: Int, east: Int, cs: CancellationSignal?): ArrayList<SpotRow> {
+        val out = ArrayList<SpotRow>()
+        db.rawQuery("SELECT kind,lat,lon,dir,kmh,src,j FROM spot WHERE lat BETWEEN $south AND $north AND lon BETWEEN $west AND $east", null, cs).use { c ->
+            while (c.moveToNext()) {
+                out.add(SpotRow(c.getInt(0), c.getInt(1), c.getInt(2), if (c.isNull(3)) null else c.getInt(3), if (c.isNull(4)) null else c.getInt(4), c.getInt(5), if (c.isNull(6)) null else c.getInt(6)))
+            }
+        }
+        return out
+    }
+
+    /** Table gate in a box. */
+    fun gatesIn(south: Int, north: Int, west: Int, east: Int, cs: CancellationSignal?): ArrayList<GateRow> {
+        val out = ArrayList<GateRow>()
+        db.rawQuery("SELECT lat,lon,sub,road FROM gate WHERE lat BETWEEN $south AND $north AND lon BETWEEN $west AND $east", null, cs).use { c ->
+            while (c.moveToNext()) out.add(GateRow(c.getInt(0), c.getInt(1), c.getInt(2), if (c.isNull(3)) 8 else c.getInt(3)))
+        }
+        return out
+    }
+
+    /** The names of the roads the index knows by this Latin name in a box, with where they are: name, lat, lon. */
+    fun roadsByAlt(latin: String, south: Int, north: Int, west: Int, east: Int, cs: CancellationSignal?): List<Triple<String, Int, Int>> {
+        val out = ArrayList<Triple<String, Int, Int>>(2)
+        db.rawQuery("SELECT name,lat,lon FROM p WHERE lat BETWEEN $south AND $north AND lon BETWEEN $west AND $east AND kind=$KIND_ROAD AND alt=?", arrayOf(latin), cs).use { c ->
+            while (c.moveToNext()) out.add(Triple(c.getString(0) ?: "", c.getInt(1), c.getInt(2)))
+        }
+        return out
+    }
+
     /** The zones whose box meets a box. */
     fun zones(south: Double, north: Double, west: Double, east: Double, cs: CancellationSignal?): ArrayList<ZoneRow> =
         zoneRows("SELECT id,kind,name,en,s,n,w,e,ring FROM zone WHERE s<=$north AND n>=$south AND w<=$east AND e>=$west", cs)

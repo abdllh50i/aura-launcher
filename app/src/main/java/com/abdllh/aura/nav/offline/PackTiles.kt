@@ -17,18 +17,19 @@ interface MapPackPaths {
 }
 
 /**
- * Until the pack's own PackPaths is merged: files/maps2/current/, which the pack manager switches when a new pack is whole.
- * Debug builds can read another folder of files/maps2 (setprop debug.aura.pack name): the emulator is shared, and another
- * agent's pack may be in current.
+ * The pack manager's files ([com.abdllh.aura.nav.pack.PackPaths]), asked anew each time; null while no verified pack holds them. Debug builds can read a folder of
+ * files/maps2 instead (setprop debug.aura.pack name: scripts/map-look.ps1), since an emulator is shared and another agent's pack may be the current one.
  */
-class CurrentPackFolder(private val filesDir: File) : MapPackPaths {
-    private fun file(name: String): File? {
-        val folder = if (BuildConfig.DEBUG) SystemProps.get("debug.aura.pack").ifBlank { "current" } else "current"
-        return File(File(File(filesDir, "maps2"), folder), name).takeIf { it.length() > 0L }
+class ManagedPack(private val context: android.content.Context) : MapPackPaths {
+    private fun debugFolder(name: String): File? {
+        if (!BuildConfig.DEBUG) return null
+        val folder = SystemProps.get("debug.aura.pack")
+        return if (folder.isBlank()) null else File(File(File(context.filesDir, "maps2"), folder), name).takeIf { it.length() > 0L }
     }
-    override val base get() = file("base.mbtiles")
-    override val places get() = file("places.mbtiles")
-    override val glyphs get() = file("glyphs.db")
+    private val debugging get() = BuildConfig.DEBUG && SystemProps.get("debug.aura.pack").isNotBlank()
+    override val base get() = if (debugging) debugFolder("base.mbtiles") else com.abdllh.aura.nav.pack.PackPaths.baseMbtiles(context)
+    override val places get() = if (debugging) debugFolder("places.mbtiles") else com.abdllh.aura.nav.pack.PackPaths.placesMbtiles(context)
+    override val glyphs get() = if (debugging) debugFolder("glyphs.db") else com.abdllh.aura.nav.pack.PackPaths.glyphsDb(context)
 }
 
 /**
@@ -36,6 +37,8 @@ class CurrentPackFolder(private val filesDir: File) : MapPackPaths {
  * WAL. An answer is the tile's bytes as stored (gzip, TileServer passes them on), [EMPTY] for a tile or a font range the pack
  * has no row for, or null when the file cannot be read: the caller then goes on as if there were no pack, so a damaged pack
  * costs the map its offline side, never a crash or a wait.
+ *  - A tile row is looked through before MapLibre sees it ([TileCheck]): one damaged protobuf inside good gzip aborts the whole
+ *    process from a MapLibre worker thread, and the map runs in the home screen's process. Such a tile is an empty one.
  *  - Opened on a tile thread at the first request, never on the main thread. The style only asks [present].
  *  - A failed open is tried again a minute later (the pack manager may be about to replace the file).
  *  - Android's default error handler deletes a database it finds corrupt. This file is a download of minutes: it stays, and
@@ -103,10 +106,32 @@ object PackTiles {
     /** The pack was switched or removed: the next request opens what is there now. */
     fun changed() {
         base.close(); places.close(); glyphs.close()
+        servedOne = false
+    }
+
+    /** Told once per open pack, on a tile thread, when a real tile has been served: the pack manager's noteWorked. */
+    @Volatile var onServed: (() -> Unit)? = null
+    @Volatile private var servedOne = false
+    private val refused = AtomicLong()
+
+    /** Tile rows that were not sound and were served as empty ones ([TileCheck]): the Screen check may want it. */
+    val refusedTiles: Long get() = refused.get()
+
+    /** A row as read, once it has been looked through. A bad one is logged, and costs that one tile. */
+    private fun sound(bytes: ByteArray?, z: Int, x: Int, y: Int): ByteArray {
+        if (bytes == null || bytes.isEmpty()) return EMPTY
+        val problem = TileCheck.problem(bytes) ?: return bytes
+        if (refused.incrementAndGet() <= 20) Log.w(TAG, "tile $z/$x/$y refused: $problem")
+        return EMPTY
     }
 
     /** A tile of base.mbtiles (compact: tiles is a view). */
-    fun base(z: Int, x: Int, y: Int): ByteArray? = tile(base, z, x, y)
+    fun base(z: Int, x: Int, y: Int): ByteArray? = tile(base, z, x, y)?.also {
+        if (!servedOne && it.isNotEmpty()) {
+            servedOne = true
+            try { onServed?.invoke() } catch (t: Throwable) { Log.w(TAG, "served: $t") }
+        }
+    }
 
     /** A tile of places.mbtiles. */
     fun places(z: Int, x: Int, y: Int): ByteArray? = tile(places, z, x, y)
@@ -119,7 +144,7 @@ object PackTiles {
             db.rawQuery("SELECT tile_data FROM tiles WHERE zoom_level=CAST(? AS INTEGER) AND tile_column=CAST(? AS INTEGER) AND tile_row=CAST(? AS INTEGER)",
                 arrayOf(z.toString(), x.toString(), ((1 shl z) - 1 - y).toString())).use { c ->
                 if (c.moveToFirst()) c.getBlob(0) else EMPTY
-            }.also { note(SystemClock.elapsedRealtimeNanos() - t0) }
+            }.let { sound(it, z, x, y) }.also { note(SystemClock.elapsedRealtimeNanos() - t0) }
         } catch (t: Throwable) {
             r.failed(t)
             null

@@ -44,6 +44,12 @@ for _i in range(10):
     FOLD[chr(0x06F0 + _i)] = str(_i)  # Persian digits
 
 
+# A query is never this long, and a pasted page must not cost seconds of the engine's thread (500 characters: 1.4 s on the emulator).
+MAX_QUERY = 100
+# How far a row may be that only its consonants found.
+WEAK_KM = 30.0
+
+
 def norm(s):
     """Comparable text: lower case, no marks, one form of each letter, ASCII digits, words split by single spaces, and
     split where the script changes between Arabic and anything else."""
@@ -686,7 +692,7 @@ def score_row(r, plan, near, area, syn):
             away = min(away, 15.0)
             if all(w in names or w in ask_roles for w in plan.ws):
                 s += 30.0
-        if cat_query and cat == syn.airport:  # one drives far to an airport: the real one before a check-in spot that is nearer
+        if cat == syn.airport and (cat_query or any(syn.airport in g.cats for g in plan.required)):  # one drives far to an airport: the real one before a check-in spot, or a travel office named after it, that is nearer
             away *= 0.3
         if names_town:
             away = min(away, 15.0)  # "مطار الدمام": the driver said which town, so how far it is from him says little
@@ -772,7 +778,8 @@ def other_plans(plan, syn):
 
     def add(kind, words, skeleton_from=0):
         p = plan_query(" ".join(words) + end, syn)
-        if p.required and " ".join(p.ws) not in {" ".join(x.ws) for x in out} and p.ws != ws:
+        # (an alias may be the words themselves: a known thing's own full name, for the reading that takes it as one thing)
+        if p.required and " ".join(p.ws) not in {" ".join(x.ws) for x in out} and (kind == "alias" or p.ws != ws):
             p.other = kind
             p.skeleton_from = skeleton_from
             out.append(p)
@@ -803,16 +810,53 @@ def other_plans(plan, syn):
     return out[:4]
 
 
+def says_it(g, names, name_sks, cat):
+    """Does a row found by its consonants answer this group after all: its kind, the word, one letter off, or the same word in the other script (consonants, when there are enough of them)?"""
+    if cat in g.cats or any(x in names for x in g.alts):
+        return True
+    for w in g.words:
+        if w in names or (not is_ar(w) and latin_base(w) in names):
+            continue
+        if len(w) >= 2 and any(n.startswith(w) for n in names):
+            continue
+        if any(lev1(w, n) for n in names):
+            continue
+        if is_ar(w) != any(is_ar(n) for n in names) and any(len(s) >= 5 and s in name_sks for s in skeletons(w)):
+            continue
+        return False
+    return True
+
+
+def far_and_only_alike(r, plans, km):
+    """A row only its consonants found, far away, and no word of the query in it: "nothing found" is the truer answer (دورة مياه is not a district 400 km off)."""
+    if km is None or km <= WEAK_KM:
+        return False
+    names = set(word_set(r[2])) | set(word_set(r[3]))
+    names |= {latin_base(w) for w in names if not is_ar(w)}
+    name_sks = set()
+    for w in names:
+        name_sks.update(skeletons(w))
+    return not any(all(says_it(g, names, name_sks, r[4]) for g in pl.required) for pl in plans)
+
+
 def search(db, query, near=None, limit=12, syn=None, debug=None):
     """The answer to a query: a list of dicts, best first. near is (lat, lon) in degrees or None."""
     syn = syn or Syn(db)
-    plan = plan_query(query, syn)
+    plan = plan_query(query[:MAX_QUERY], syn)
     if not plan.required:
         return []
     letters = sum(len(w) for g in plan.required for w in g.words)
     if letters < 2 and not (plan.road_hint and plan.required[0].words[0].isdigit()):  # one letter says nothing; "شارع 9" does
         return []
     rows = {}
+    loose = set()  # found by consonants alone
+
+    def take_loose(got):
+        for rid, r in got.items():
+            if rid not in rows:
+                loose.add(rid)
+                rows[rid] = r
+
     stages = first_stages(plan)
     best = wants_best(plan, syn)
     for m in stages:
@@ -825,7 +869,11 @@ def search(db, query, near=None, limit=12, syn=None, debug=None):
             stages.append(m9)
             got = candidates(db, m9, near, wants_best(other, syn))
             hit = hit or bool(got)
-            rows.update(got)
+            if other.skeleton_from:
+                take_loose(got)
+            else:
+                rows.update(got)
+                loose.difference_update(got)
         if hit:
             plans.append(other)
     few = len(rows) < 6
@@ -837,6 +885,7 @@ def search(db, query, near=None, limit=12, syn=None, debug=None):
         for rid, r in candidates(db, mp, near, False).items():
             if place_ok(plan, r):
                 rows[rid] = r
+                loose.discard(rid)
     if few or none_near:
         m3 = fts_edit_string(plan)
         if m3 and m3 != m:
@@ -844,16 +893,17 @@ def search(db, query, near=None, limit=12, syn=None, debug=None):
             for rid, r in candidates(db, m3, near, False).items():
                 if edit_ok(plan, r):
                     rows[rid] = r
+                    loose.discard(rid)
     if few:
         m2 = fts_string(plan, loose_from=3)
         if m2 != m:
             stages.append(m2)
-            rows.update(candidates(db, m2, near, False))
+            take_loose(candidates(db, m2, near, False))
     if len(rows) < 3:  # two consonants say little: only when nothing else has been found
         m2 = fts_string(plan, loose_from=2)
         if m2 != m:
             stages.append(m2)
-            rows.update(candidates(db, m2, near))
+            take_loose(candidates(db, m2, near))
     if debug is not None:
         debug["match"] = stages
         debug["candidates"] = len(rows)
@@ -861,6 +911,9 @@ def search(db, query, near=None, limit=12, syn=None, debug=None):
     scored = []
     for rid, r in rows.items():
         s, km, t = max((score_row(r, pl, near, areas.get(r[7]), syn) for pl in plans), key=lambda x: x[0])
+        # (nothing near a relevant answer: "nothing found" must still be possible)
+        if round(s, 3) < 0.0 or (rid in loose and far_and_only_alike(r, plans, km)):
+            continue
         scored.append({"id": rid, "score": round(s, 3), "km": None if km is None else round(km, 2), "row": r, "t": round(t, 3)})
     scored.sort(key=lambda x: (-x["score"], x["id"]))
     scored = dedupe(scored)[:limit]

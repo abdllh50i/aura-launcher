@@ -1,36 +1,21 @@
 package com.abdllh.aura.nav.guide
 
-import com.abdllh.aura.nav.Geo
 import com.abdllh.aura.nav.LatLon
-import kotlin.math.abs
+import com.abdllh.aura.nav.places.RoadAhead
 
 /** A camera, a signal or a bump on the route, in the route's direction: [along] metres from the start. [kmh]: a camera's limit, or the limit of the road a signal or bump is on, 0 when not known. */
 class AlongSpot(val kind: Int, val along: Double, val pos: LatLon, val kmh: Int, val junction: Int, val owner: Boolean)
 
 /**
- * Puts spots on the route. RoadWatch's straight line and 55 degree cone fires for a parallel road (`RoadWatch.kt:71-80`): here a
- * spot counts only near the line and going the route's way, and its distance is along the road. A `dir` is where the traffic goes (the
- * data's own fix: a camera's is its road's, when that road is one-way). No `dir` means either way, so it must be nearer: on
- * a divided road the other carriageway's camera has a `dir` and is left out, and a frontage road 20-40 m off stays out of a null one's reach.
+ * Puts spots on the route, by the one rule of what a route goes by ([RoadAhead.spotsAlong]: the search part's, measured on the file's own distances). RoadWatch's straight line and 55 degree cone fires for
+ * a parallel road (`RoadWatch.kt:71-80`): here a spot counts only near the line and going the route's way, and its distance is along the road. One hit for a junction with signals on one pass (`spot.j`), one for
+ * rows of a camera or a bump that stand for one spot, with the limit of whichever knows it.
  */
 object AlongRoad {
-    private const val REACH_M = 25.0
-    private const val REACH_NO_DIR_M = 15.0
-    private const val SAME_WAY_DEG = 50.0
-    private const val NOT_AGAINST_DEG = 130.0
-
     internal fun match(c: Corridor, rows: List<SpotRow>): List<AlongSpot> {
-        val out = ArrayList<AlongSpot>()
-        for (s in rows) {
-            for (h in c.hits(s.pos, if (s.dir != null) REACH_M else REACH_NO_DIR_M)) {
-                // (a signal on the road across is the same junction's, and stops this road too; only the other carriageway's is not ours)
-                val limit = if (s.kind == SpotRow.SIGNAL) NOT_AGAINST_DEG else SAME_WAY_DEG
-                if (s.dir != null && abs(Geo.angleDiff(s.dir.toDouble(), h.bearing)) > limit) continue
-                out.add(AlongSpot(s.kind, h.along, s.pos, s.kmh, s.junction, s.owner))
-            }
-        }
-        out.sortBy { it.along }
-        return out
+        val spots = rows.map { com.abdllh.aura.nav.places.SpotRow(it.kind, Math.round(it.pos.lat * 1e6).toInt(), Math.round(it.pos.lon * 1e6).toInt(), it.dir, it.kmh.takeIf { k -> k > 0 }, if (it.owner) 2 else 1, it.junction.takeIf { j -> j != 0 }) }
+            .sortedBy { it.lat }
+        return RoadAhead.spotsAlong(c.line, spots).hits.map { AlongSpot(it.kind, it.along, LatLon(it.lat, it.lon), it.cameraKmh ?: it.roadKmh ?: 0, it.junction ?: 0, it.owners) }
     }
 }
 
@@ -64,8 +49,8 @@ class TripWarning(val kind: Kind, val along: Double, val metres: Double = 0.0, v
  * flag and goes through guarded compounds as if open (gate-camp, gate-air).
  *
  * * A gate marked private or a checkpoint counts off the main roads only: on the motorway it is a checkpoint everyone drives through.
- * * Military and private zones: only when the route ends inside, or leaves the public roads ([PUBLIC_CLASSES]) inside. A public highway
- *   may cross such a polygon (Jubail-Dammam crosses the naval base's) and that stays silent. Without [RoadFacts] the classes are not
+ * * Military and private zones: only when the route ends inside, or goes on small roads inside ([RoadAhead.zoneAlong], one rule with the search part's). A public road
+ *   may cross such a polygon (Jubail-Dammam crosses the naval base's, and so does the main street of Jubail town) and that stays silent. Without [RoadFacts] the classes are not
  *   known, so only an end inside can be told.
  * * The Haram: OSM's line and no legal text, grown outward; Hajj closures are not modelled. See [Haram].
  */
@@ -74,23 +59,15 @@ object TripCheck {
     private const val GATE_REACH_M = 15.0
     /** Still in the yard the car starts from, leaving: no warning about getting in. */
     private const val START_M = 150.0
-    private const val SIDE_ROADS_MIN_M = 100.0
     private const val TRACK_MIN_M = 50.0
     private const val FAR_M = 300.0
-    private const val SAMPLE_M = 100.0
     /**
      * The sea part of the King Fahd Causeway, by place: a road called "طريق جسر الملك فهد" runs on land for many kilometres and
-     * crosses nothing (k6 is on it and never leaves Khobar).
+     * crosses nothing (k6 is on it and never leaves Khobar). From 50.25 east, where only the causeway is: the corniche at the south end of Khobar runs along 50.22, in sight of its start.
      */
-    private val CAUSEWAY_SEA = GeoBox(26.10, 50.22, 26.25, 50.50)
+    private val CAUSEWAY_SEA = GeoBox(26.10, 50.25, 26.25, 50.50)
     /** The booths and the post come just before the sea: the causeway's own word covers them. */
-    private const val CAUSEWAY_APPROACH_M = 2000.0
-    /**
-     * Roads a car may pass a zone on. SEARCH_SPEC says motorway and trunk; primary is added here, or the spec's own example would
-     * warn: Jubail-Dammam runs 93 points of its line inside the naval base's ring on King Abdul Aziz street, primary, the main
-     * street of Jubail town. A route into the air base (gate-air) comes in on tertiary and residential.
-     */
-    private val PUBLIC_CLASSES = setOf("motorway", "trunk", "primary")
+    private const val CAUSEWAY_APPROACH_M = 5000.0
 
     internal fun check(route: GuideRoute, c: Corridor, gates: List<GateRow>, zones: List<ZoneRow>, endSnap: Double): List<TripWarning> {
         val out = ArrayList<TripWarning>()
@@ -112,76 +89,27 @@ object TripCheck {
         val tollAt = route.steps.flatMap { it.crossings }.firstOrNull { "toll" in it.classes || it.tollBooth }?.lineIndex
         if (tollAt != null && tollAt in line.cumulative.indices && line.cumulative[tollAt] < fromCauseway) once(TripWarning.Kind.TOLL, line.cumulative[tollAt])
         route.facts?.stretches?.firstOrNull { it.toll }?.let { if (it.from < fromCauseway) once(TripWarning.Kind.TOLL, it.from) }
-        // zones
-        val end = line.points.lastOrNull()
-        val start = line.points.firstOrNull()
-        if (end != null && start != null) for (z in zones) {
-            if (z.isHaram) {
-                if (z.contains(end)) out.add(TripWarning(TripWarning.Kind.HARAM_END, line.length, name = z.name))
-                else entered(route, z)?.let { (at, inside) -> out.add(TripWarning(TripWarning.Kind.HARAM_ROUTE, at, inside, z.name)) }
-                continue
-            }
+        // zones: the one rule ([RoadAhead.zoneAlong])
+        val classOf: ((Int) -> Int)? = route.facts?.let { f ->
+            { seg: Int -> f.at(line.cumulative[seg])?.roadClass?.takeIf { it.isNotEmpty() }?.let { RoadAhead.classNumber(it) } ?: -1 }
+        }
+        for (z in zones) {
+            val flat = DoubleArray(z.ring.size * 2)
+            for ((i, p) in z.ring.withIndex()) { flat[i * 2] = p.lon; flat[i * 2 + 1] = p.lat }
+            val hit = RoadAhead.zoneAlong(z.id, z.kind, z.name, z.en, z.box.south, z.box.north, z.box.west, z.box.east, flat, line, classOf) ?: continue
+            if (!hit.warn) continue
             val military = z.kind == ZoneRow.MILITARY
-            if (z.holds(end)) {
-                out.add(TripWarning(if (military) TripWarning.Kind.MILITARY_END else TripWarning.Kind.PRIVATE_END, line.length, name = z.name))
-                continue
-            }
-            if (z.contains(start)) continue // (leaving it)
-            sideRoadsInside(route, z)?.let { (at, inside) ->
-                out.add(TripWarning(if (military) TripWarning.Kind.MILITARY_ROAD else TripWarning.Kind.PRIVATE_ROAD, at, inside, z.name))
+            when {
+                z.isHaram && hit.endsInside -> out.add(TripWarning(TripWarning.Kind.HARAM_END, line.length, name = z.name))
+                z.isHaram -> out.add(TripWarning(TripWarning.Kind.HARAM_ROUTE, hit.enterAlong, hit.insideMetres, z.name))
+                hit.endsWell -> out.add(TripWarning(if (military) TripWarning.Kind.MILITARY_END else TripWarning.Kind.PRIVATE_END, line.length, name = z.name))
+                else -> out.add(TripWarning(if (military) TripWarning.Kind.MILITARY_ROAD else TripWarning.Kind.PRIVATE_ROAD, hit.enterAlong, hit.minorMetres ?: 0.0, z.name))
             }
         }
         if (route.hasFerry) out.add(TripWarning(TripWarning.Kind.FERRY, route.steps.first { it.onFerry }.at))
         trackAtEnd(route)?.let { out.add(TripWarning(TripWarning.Kind.TRACK_END, line.length - it, it)) }
         if (endSnap > FAR_M) out.add(TripWarning(TripWarning.Kind.FAR_FROM_ROAD, line.length, endSnap))
         return out.sortedBy { it.kind.ordinal }
-    }
-
-    /** Where the route first enters [z], and how much of it runs inside; null when it never does. */
-    private fun entered(route: GuideRoute, z: ZoneRow): Pair<Double, Double>? {
-        var first = -1.0
-        var inside = 0.0
-        walk(route, z) { d, len ->
-            if (first < 0) first = d
-            inside += len
-        }
-        return if (first < 0) null else first to inside
-    }
-
-    /** The first place inside [z] on a road below [PUBLIC_CLASSES], and how much of the route is so; null when under [SIDE_ROADS_MIN_M]. */
-    private fun sideRoadsInside(route: GuideRoute, z: ZoneRow): Pair<Double, Double>? {
-        val facts = route.facts ?: return null
-        var first = -1.0
-        var inside = 0.0
-        walk(route, z) { d, len ->
-            val s = facts.at(d)
-            if (s == null || s.roadClass !in PUBLIC_CLASSES) {
-                if (first < 0) first = d
-                inside += len
-            }
-        }
-        return if (first < 0 || inside < SIDE_ROADS_MIN_M) null else first to inside
-    }
-
-    /** Calls [inside] (where, how long) for each piece of the line, at most [SAMPLE_M], that is inside [z]; a long trip's stretches far from the zone are not walked. */
-    private inline fun walk(route: GuideRoute, z: ZoneRow, inside: (Double, Double) -> Unit) {
-        val line = route.line
-        val pts = line.points
-        var i = 0
-        while (i < pts.size - 1) {
-            val a = pts[i]
-            val b = pts[i + 1]
-            val segBox = GeoBox(minOf(a.lat, b.lat), minOf(a.lon, b.lon), maxOf(a.lat, b.lat), maxOf(a.lon, b.lon))
-            if (segBox.touches(z.box)) {
-                var d = line.cumulative[i]
-                val end = line.cumulative[i + 1]
-                while (d < end) {
-                    if (z.contains(line.at(d).first)) inside(d, minOf(SAMPLE_M, end - d))
-                    d += SAMPLE_M
-                }
-            }
-            i++
-        }
     }
 
     /** Metres of dirt track the route ends on, null when under [TRACK_MIN_M]: "ترابي" only when OSM says so. */

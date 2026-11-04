@@ -555,6 +555,8 @@ object PackManager {
     private fun noTwin(c: Context, m: PackManifest) {
         val cur = PackPaths.current(c) ?: return
         if (cur.id != m.id) return
+        // (the same id with other bytes is a rebuild: it comes beside this one, and the switch puts it in its place)
+        if (!cur.manifest.sameAs(m)) return
         if (m.pieces.all { PackPaths.piece(c, it.name) != null }) throw PackStopped()
         PackFiles.discard(cur.dir, PackPaths.trash(c))
         PackPaths.pointer(c).delete()
@@ -603,9 +605,10 @@ object PackManager {
         val cur = PackPaths.current(c)
         val free = freeBytes()
         val staged = stagedManifest(c)
-        val m = offeredManifest?.takeIf { cur?.id != it.id && PackRules.newer(it.built, cur?.manifest?.built) }
+        fun worth(x: PackManifest) = PackRules.worthOffering(cur?.id, cur?.manifest?.built, x.id, x.built, cur?.manifest?.sameAs(x) == true)
+        val m = offeredManifest?.takeIf { worth(it) }
         if (m == null) { offered = null; offeredManifest = null }
-        val usb = usbFind?.manifest?.takeIf { cur?.id != it.id && PackRules.newer(it.built, cur?.manifest?.built) }
+        val usb = usbFind?.manifest?.takeIf { worth(it) }
         fun offerOf(x: PackManifest, viaUsb: Boolean) = Offer(x.id, x.built, x.downloadBytes, x.diskBytes, x.needBytes, free + PackJob.staged(c, x), cur != null, viaUsb)
         val offer = m?.let { offerOf(it, false) } ?: staged?.takeIf { problem == PackProblem.SPACE }?.let { offerOf(it, false) }
         val usbOffer = usb?.let { offerOf(it, true) }

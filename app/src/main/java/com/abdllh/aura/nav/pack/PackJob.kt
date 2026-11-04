@@ -46,7 +46,7 @@ internal class PackJob(private val ctx: Context, private val m: PackManifest, pr
     fun run() {
         host.check()
         // first of all: a pack that cannot fit does not write one byte
-        if (!PackRules.fits(host.freeBytes(), m.needBytes, stagedBytes())) throw PackRefused(PackProblem.SPACE, "free ${host.freeBytes()}, need ${m.needBytes}, staged ${stagedBytes()}")
+        if (!PackRules.mayStart(host.freeBytes(), m.needBytes, m.diskBytes, stagedBytes())) throw PackRefused(PackProblem.SPACE, "free ${host.freeBytes()}, need ${m.needBytes}, staged ${stagedBytes()}")
         stage.mkdirs()
         val man = File(stage, "manifest.json")
         if (!man.isFile) PackFiles.writeAtomic(man, m.text)
@@ -263,8 +263,10 @@ internal class PackJob(private val ctx: Context, private val m: PackManifest, pr
                 progress.save()
                 continue
             }
-            // the CRCs agree and the hash does not: which chunk it is cannot be told, so all of them
-            val redo = if (bad.isEmpty()) p.chunks.map { it.url } else bad
+            // every chunk's hash was right when it came and its CRC still is, and the whole is not what the manifest says: the manifest and its chunks disagree, and no
+            // fetching mends that (it cost 810 MB and then the same again at each try)
+            if (bad.isEmpty()) throw PackRefused(if (source.usb) PackProblem.USB_DAMAGED else PackProblem.BAD_DATA, "${p.name}: its chunks are right and the whole is not: the pack itself is wrong")
+            val redo = bad
             Log.w(TAG, "${p.name}: wrong hash, fetching again: $redo")
             for (u in redo) progress.done.remove(u)
             progress.save()

@@ -275,6 +275,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
             if (interactive) m.addOnMapClickListener { ll -> tapPlace(m, ll) }
             val start = CarLocation.lastKnown() ?: LatLon(24.7136, 46.6753) // Riyadh until the first fix
             m.moveCamera(CameraUpdateFactory.newCameraPosition(CameraPosition.Builder().target(LatLng(start.lat, start.lon)).zoom(followZoom).build()))
+            live.add(this)
             loadStyle()
         }
     }
@@ -396,6 +397,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
 
     fun onLowMemory() = mapView.onLowMemory()
     fun onDestroy() {
+        live.remove(this)
         sleep()
         mapView.onDestroy()
     }
@@ -1025,6 +1027,12 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
 
     companion object {
         private const val TAG = "AuraMap"
+        /** The maps that have a style (the home screen's, the Maps screen's). Main thread. */
+        private val live = java.util.Collections.newSetFromMap(java.util.WeakHashMap<AuraMap, Boolean>())
+
+        /** The pack in use changed: each map builds its style anew. Main thread. */
+        fun reloadStyles() { for (m in live.toList()) m.loadStyle() }
+
         private const val EMPTY = """{"type":"FeatureCollection","features":[]}"""
         // the car on the route
         private const val ON_ROUTE_M = 3.0   // a fix this close to the driven line is on it (navigation snaps them)

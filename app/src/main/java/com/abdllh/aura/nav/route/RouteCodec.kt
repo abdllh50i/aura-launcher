@@ -26,6 +26,7 @@ import java.nio.ByteBuffer
 internal object RouteCodec {
     private const val ANSWER = 0x414D5241
     private const val LIMITS = 0x414D524C
+    private const val RAW = 0x414D5252
     private const val MAX_FRAME = 64 * 1024 * 1024
 
     fun write(out: OutputStream, a: RouteAnswer) {
@@ -55,6 +56,11 @@ internal object RouteCodec {
         repeat(p.int) { routes.add(route(p)) }
         return RouteAnswer(status, message, routes, raw, off, stats)
     }
+
+    /** The engine's own answer, for guidance ([GuideLink]): between the answer and the limits, only when asked for. */
+    fun writeRaw(out: OutputStream, json: ByteArray) = frame(out, RAW, json)
+
+    fun readRaw(inp: InputStream): String? = frame(inp, RAW)?.toString(Charsets.UTF_8)
 
     /** The speed limits along the first route, later than the answer: where each stretch ends, and the limit up to there (0: none known). */
     fun writeLimits(out: OutputStream, rows: List<RouteLimits.Row>) {

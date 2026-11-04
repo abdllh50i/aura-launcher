@@ -50,9 +50,12 @@ class Guidance internal constructor(
     /** Checks to show before the trip starts. */
     val warnings: List<TripWarning>,
     private val stops: StopsAlong,
-    private val parkingRows: List<PoiRow>
+    private val parkingRows: List<PoiRow>,
+    /** What was asked for, not where the road ends: the voice and the arrival card must say one side. */
+    private val destination: LatLon? = null
 ) {
     private val signals = spots.filter { it.kind == SpotRow.SIGNAL }
+    private val endSide by lazy { ArrivalCard.of(route, destination, emptyList()).side }
 
     /**
      * How many signal junctions come from [along] up to the one at this manoeuvre, that one counted: 2 is "the second". Nodes
@@ -87,8 +90,9 @@ class Guidance internal constructor(
         val count = signalCount(t, along)
         when {
             t.step.entersRing -> out.addAll(act)
-            count > 0 -> {
-                out.add(Part.Clip(when (count) { 1 -> "signal.next"; 2 -> "signal.2"; 3 -> "signal.3"; else -> "signal.next" }))
+            // (four or more to go: no ordinal to say, and "at the signal" would read as the next one)
+            count in 1..3 -> {
+                out.add(Part.Clip(when (count) { 1 -> "signal.next"; 2 -> "signal.2"; else -> "signal.3" }))
                 out.addAll(act)
             }
             else -> when (val m = t.mark) {
@@ -137,12 +141,12 @@ class Guidance internal constructor(
             "uturn" -> "uturn.gap"
             else -> "straight"
         })
+        if (s.type == "arrive") return clips(endSide.word)
         if (s.onFerry) return clips("ferry.board")
         val afterFerry = route.steps.getOrNull(t.index - 1)?.onFerry == true
         if (afterFerry) return clips("ferry.leave")
         return when (s.type) {
             "depart" -> clips("depart")
-            "arrive" -> clips(if (right) "arrive.right" else if (left) "arrive.left" else "arrive.ahead")
             "fork" -> clips(if (left) "keep.left" else if (right) "keep.right" else "straight")
             "merge" -> clips(if (left) "merge.left" else if (right) "merge.right" else "merge")
             "on ramp" -> clips(if (left) "ramp.in.left" else if (right) "ramp.in.right" else "ramp.in")
@@ -187,7 +191,7 @@ class Guidance internal constructor(
             out.add(Part.Clip(Words.distanceId(metres)))
             return out
         }
-        val inSight = metres < IN_SIGHT_M && (signalCount(t, along) > 0 || t.step.entersRing || t.mark != null)
+        val inSight = metres < IN_SIGHT_M && (signalCount(t, along) in 1..3 || t.step.entersRing || t.mark != null)
         val saysDistance = metres >= SAY_NOTHING_M && !inSight
         if (saysDistance) {
             out.add(Part.Clip("in"))
@@ -342,14 +346,17 @@ class Guidance internal constructor(
         private val TURN_LIKE = setOf("turn", "end of road", "continue", "new name")
 
         /** [build], or null when something not seen before goes wrong: the app then has the old wording, and the trip goes on. */
-        fun safely(route: GuideRoute, arabic: Boolean, world: RouteWorld = NoWorld, endSnap: Double = 0.0): Guidance? =
-            try { build(route, arabic, world, endSnap) } catch (_: Throwable) { null }
+        fun safely(route: GuideRoute, arabic: Boolean, world: RouteWorld = NoWorld, endSnap: Double = 0.0, destination: LatLon? = null): Guidance? =
+            try { build(route, arabic, world, endSnap, destination) } catch (_: Throwable) { null }
 
         /** All of it for one route. A world that fails gives plainer words, no failure. [endSnap]: [GuideAnswer.endSnapMetres]. */
-        fun build(route: GuideRoute, arabic: Boolean, world: RouteWorld = NoWorld, endSnap: Double = 0.0): Guidance {
+        fun build(route: GuideRoute, arabic: Boolean, world: RouteWorld = NoWorld, endSnap: Double = 0.0, destination: LatLon? = null): Guidance {
             val corridor = Corridor(route.line)
             val spotRows = ask { world.spots(corridor.boxes(30.0)) }
-            val spots = try { AlongRoad.match(corridor, spotRows) } catch (_: Throwable) { emptyList() }
+            // (a signal over an underpass, or under a flyover the route is on, stops somebody else: "the second signal" must not count it)
+            val spots = try {
+                AlongRoad.match(corridor, spotRows).filter { s -> s.kind != SpotRow.SIGNAL || route.facts?.at(s.along)?.let { it.tunnel || it.bridge } != true }
+            } catch (_: Throwable) { emptyList() }
             val gates = ask { world.gates(corridor.boxes(20.0)) }
             val zones = ask { world.zones(corridor.boxes(50.0)) }
             val stopRows = ask { world.pois(corridor.boxes(StopsAlong.REACH_MAIN_M), StopsAlong.CATS, 0) }
@@ -357,7 +364,7 @@ class Guidance internal constructor(
             val told = toldSteps(route, arabic, world, spotRows)
             val warnings = try { TripCheck.check(route, corridor, gates, zones, endSnap) } catch (_: Throwable) { emptyList() }
             val stops = StopsAlong(route, corridor, stopRows)
-            return Guidance(route, arabic, told, spots, warnings, stops, parking)
+            return Guidance(route, arabic, told, spots, warnings, stops, parking, destination)
         }
 
         /** This road's own signal stands further on than the turn: the car turns before it, not at it (a side street just short of the junction). */

@@ -41,7 +41,7 @@ internal object RouteGuard {
 
     fun working(c: Context, what: String) {
         // (a file written and closed outlives the process; only a power cut in this moment loses it)
-        try { marker(c).writeText("${android.os.Process.myPid()} $what") } catch (t: Throwable) { Log.w(TAG, "$t") }
+        try { marker(c).writeText("${android.os.Process.myPid()} ${BuildConfig.VERSION_CODE} $what") } catch (t: Throwable) { Log.w(TAG, "$t") }
     }
 
     fun notWorking(c: Context) {
@@ -57,15 +57,18 @@ internal object RouteGuard {
             note(c, if (s.code != BuildConfig.VERSION_CODE) "cleared: new app version" else "cleared: ${GuardState.EXPIRES_DAYS} days have passed")
             s.clear(BuildConfig.VERSION_CODE)
             store(c, s)
+        } else if (s.adopt(BuildConfig.VERSION_CODE)) store(c, s)
+        if (leftMarker(c)) {
+            // (an update ends the process in the middle of its work: that is no crash, and the new version has a new library anyway)
+            if (markerCode(c) == BuildConfig.VERSION_CODE) died(c, "a marker left from before") else { note(c, "a marker from another app version: not counted"); notWorking(c) }
         }
-        if (leftMarker(c)) died(c, "a marker left from before")
         return !s.tripped && !s.resting(SystemClock.uptimeMillis())
     }
 
     /** A process :route ended with work in hand. */
     fun died(c: Context, why: String) {
         val s = load(c)
-        s.died(System.currentTimeMillis(), SystemClock.uptimeMillis())
+        s.died(System.currentTimeMillis(), SystemClock.uptimeMillis(), BuildConfig.VERSION_CODE)
         store(c, s)
         notWorking(c)
         note(c, "died: $why (${s.deaths} in a row)${if (s.tripped) "; tripped: routing goes on without Valhalla" else ""}")
@@ -87,6 +90,13 @@ internal object RouteGuard {
         val pid = try { m.readText().substringBefore(' ').toInt() } catch (_: Throwable) { 0 }
         val alive = pid > 0 && try { File("/proc/$pid/cmdline").readText().contains(":route") } catch (_: Throwable) { false }
         return !alive
+    }
+
+    /** The app version that wrote the marker: "pid code what". An older form or a damaged one counts as this version's. */
+    private fun markerCode(c: Context): Int = try {
+        marker(c).readText().split(' ').getOrNull(1)?.toIntOrNull() ?: BuildConfig.VERSION_CODE
+    } catch (_: Throwable) {
+        BuildConfig.VERSION_CODE
     }
 
     fun hasMarker(c: Context) = marker(c).exists()
@@ -152,10 +162,19 @@ internal class GuardState(var code: Int, var deaths: Int = 0, var trippedAt: Lon
     val tripped get() = trippedAt != 0L
 
     /** [now]: the wall clock, [uptime]: SystemClock.uptimeMillis, which is what Android times its minute with. */
-    fun died(now: Long, uptime: Long) {
+    fun died(now: Long, uptime: Long, appCode: Int = code) {
+        // (this version's death: left with the code of a version before, the next look would take it for that version's and forget it and its rest)
+        code = appCode
         deaths++
         lastDeathUptime = uptime
         if (deaths >= TRIP_AT && !tripped) trippedAt = now
+    }
+
+    /** A file from the version before with nothing to forget now belongs to this one. True when that changed anything. */
+    fun adopt(appCode: Int): Boolean {
+        if (code == appCode || tripped || deaths > 0) return false
+        code = appCode
+        return true
     }
 
     /** (a smaller uptime than the death's: the unit has restarted since, and Android has forgotten) */

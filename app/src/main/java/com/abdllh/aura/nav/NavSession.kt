@@ -264,8 +264,8 @@ object NavSession {
         if (pendingIntro && ttsReady && voiceOn) {
             pendingIntro = false
             if (toNext > near) {
-                if (toNext > 3000) { saidLong.add(next); say(Instructions.continueFor(Instructions.road(r.steps[current]), toNext, ttsArabic)) }
-                else say(Instructions.spoken(step, toNext, ttsArabic))
+                if (toNext > 3000) { saidLong.add(next); say(keepOnWords(r, current, toNext) ?: Instructions.continueFor(Instructions.road(r.steps[current]), toNext, ttsArabic)) }
+                else say(guideWords(r, next, along, false) ?: Instructions.spoken(step, toNext, ttsArabic))
                 if (toNext <= far) saidFar.add(next)
                 if (toNext <= early) saidEarly.add(next)
                 return
@@ -274,23 +274,38 @@ object NavSession {
         when {
             toNext <= near && next !in saidNear -> {
                 saidNear.add(next); saidFar.add(next); saidEarly.add(next)
-                say(Instructions.spoken(step, if (toNext < 60) 0.0 else toNext, ttsArabic, after))
+                say(guideWords(r, next, along, true) ?: Instructions.spoken(step, if (toNext < 60) 0.0 else toNext, ttsArabic, after))
             }
             toNext <= far && toNext > near + 80 && legLength > near + 150 && next !in saidFar &&
                 !(step.type == "arrive" && legLength < 600) -> {
                 saidFar.add(next); saidEarly.add(next)
-                say(Instructions.spoken(step, toNext, ttsArabic))
+                say(guideWords(r, next, along, false) ?: Instructions.spoken(step, toNext, ttsArabic))
             }
             highway && toNext <= early && toNext > far + 300 && next !in saidEarly -> {
                 saidEarly.add(next)
-                say(Instructions.spoken(step, toNext, ttsArabic))
+                say(guideWords(r, next, along, false) ?: Instructions.spoken(step, toNext, ttsArabic))
             }
             // just past a manoeuvre, a long way to the next one: how long this road goes on
             toNext > 3000 && next !in saidLong && along - r.steps[prev].at < 300 -> {
                 saidLong.add(next)
-                say(Instructions.continueFor(Instructions.road(r.steps[current]), toNext, ttsArabic))
+                say(keepOnWords(r, current, toNext) ?: Instructions.continueFor(Instructions.road(r.steps[current]), toNext, ttsArabic))
             }
         }
+    }
+
+    /** The guidance part's words for a step, when the route has them in the language the voice speaks ([Route.guide]); null: the old wording. */
+    private fun guideWords(r: Route, next: Int, along: Double, withThen: Boolean): String? {
+        val g = r.guide?.takeIf { it.arabic == ttsArabic } ?: return null
+        val i = g.toldOfStep(next)
+        if (i < 0) return null
+        return com.abdllh.aura.nav.guide.Speech.text(g.spoken(i, along, withThen), ttsArabic).ifBlank { null }
+    }
+
+    private fun keepOnWords(r: Route, current: Int, metres: Double): String? {
+        val g = r.guide?.takeIf { it.arabic == ttsArabic } ?: return null
+        val i = g.told.indexOfLast { it.index <= current }
+        if (i < 0) return null
+        return com.abdllh.aura.nav.guide.Speech.text(g.keepOn(i, metres), ttsArabic).ifBlank { null }
     }
 
     private fun reroute(here: LatLon, l: Location) {
@@ -330,7 +345,8 @@ object NavSession {
         // context does not follow: it has the unit's)
         val pin = app?.let { LocaleHelper.wrap(it).getString(R.string.maps_dropped_pin) }
         val name = destination?.name?.takeIf { it != pin }
-        say(Instructions.arrived(name, ttsArabic))
+        val g = route?.guide?.takeIf { it.arabic == ttsArabic }
+        say(g?.let { com.abdllh.aura.nav.guide.Speech.text(it.arrived(name), ttsArabic).ifBlank { null } } ?: Instructions.arrived(name, ttsArabic))
         changed()
         NavSim.stop()
         // the trip ends by itself (GPS, service and the "arrived" card are not kept for a driver who drives on)

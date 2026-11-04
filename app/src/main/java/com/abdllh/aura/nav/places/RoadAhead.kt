@@ -84,12 +84,15 @@ class ZoneHit internal constructor(
     /** Metres inside on a tertiary road or less, after coming in from outside; null when the road classes were not given. What [warn] goes by. */
     val minorMetres: Double?,
     /**
-     * Haram: any route that comes in. Military and private: a route that ends inside, or goes on a tertiary road or less inside. Without classes only the first is known.
+     * Haram: any route that comes in, not one only driving out or an errand inside. Military and private: a route that ends well inside, or goes on a tertiary road or less inside for [RoadAhead.OFF_MAIN_M] or more. Without classes only the first is known.
      * The spec says "leaves the motorway and trunk roads", and gives Jubail-Dammam as the public highway that must not warn: but that road is OSM's primary for 9 km in the
-     * naval base's ring, and the rings are coarse (519 holds 1,289 POIs of Khobar and Dhahran). Over the 54 kept test trips with road classes (scripts/search_compare.py zones) the spec's words warn 11 times, 1 of them a guarded
-     * place (gate-air); this rule 3 times (gate-air, and ithra and j1, which end inside), and a guard that OSM knows is told by table gate anyway.
+     * naval base's ring, and the rings are coarse (519 holds 1,289 POIs of Khobar and Dhahran). Secondary roads are public too: King Abdul Aziz street and Madeena Street in Jubail town are that, in the same ring.
+     * Over the 53 kept test trips with road classes the spec's words warn 11 times, 1 of them a guarded place (gate-air); a line at secondary 7 times; this rule 2 times (gate-air, and ithra, which ends inside),
+     * and a guard that OSM knows is told by table gate anyway. The one rule: [com.abdllh.aura.nav.guide.TripCheck] asks here too.
      */
-    val warn: Boolean
+    val warn: Boolean,
+    /** Ends inside and not near the ring's edge ([RoadAhead.EDGE_M]). */
+    val endsWell: Boolean
 )
 
 class RouteWarnings internal constructor(val gates: List<GateHit>, val zones: List<ZoneHit>) {
@@ -129,8 +132,13 @@ internal object RoadAhead {
     const val ONE_JUNCTION_M = 300.0
     /** Two spots of one kind so close along the road are one (Pairs within 15 m exist in the file, of cameras 9): one warning. */
     const val ONE_SPOT_M = 25.0
-    /** Under this inside a zone on small roads is a slip road's end, not a route that left the big ones. */
-    const val OFF_MAIN_M = 50.0
+    /** Under this inside a zone on small roads is a slip road's end or a parking lane, not a route that left the big ones. */
+    const val OFF_MAIN_M = 100.0
+    /**
+     * Inside and this near the ring's edge is not said to be inside, for a destination: the rings are simplified to about 24 points and grown outward, which leaves thin wedges over what lies beside (Jubail Center, a mall in
+     * town, is 74 m inside the naval base's). What lies just inside a real fence has its gate on the road (table gate). Not for the Haram, whose ring is kept finer.
+     */
+    const val EDGE_M = 150.0
     /** From this class of `gate.road` on (tertiary) a stretch inside a military or private zone counts as leaving the roads the public drives through. */
     const val MINOR_CLASS = 4
 
@@ -367,11 +375,16 @@ internal object RoadAhead {
         return r
     }
 
-    /** How the line goes through a zone, or null when it never does. A stretch can cross a small zone with both its ends outside, so the crossings count, not only the points. */
+    /** How the line goes through a zone, or null when it never does. */
     fun zoneAlong(z: ZoneRow, line: Polyline, roadClass: ((Int) -> Int)?): ZoneHit? {
+        val ring = parseRing(z.ring) ?: return null
+        return zoneAlong(z.id, z.kind, z.name, z.en, z.s, z.n, z.w, z.e, ring, line, roadClass)
+    }
+
+    /** The same from a ring as lon, lat, lon, lat. A stretch can cross a small zone with both its ends outside, so the crossings count, not only the points. */
+    fun zoneAlong(id: Int, kind: Int, name: String?, en: String?, south: Double, north: Double, west: Double, east: Double, ring: DoubleArray, line: Polyline, roadClass: ((Int) -> Int)?): ZoneHit? {
         val pts = line.points
         if (pts.size < 2) return null
-        val ring = parseRing(z.ring) ?: return null
         val startsInside = inside(pts[0].lat, pts[0].lon, ring)
         var now = startsInside
         var entered = false
@@ -398,7 +411,7 @@ internal object RoadAhead {
                 if (b.lon > e) e = b.lon
                 j++
             }
-            if (s > z.n || n < z.s || w > z.e || e < z.w) {
+            if (s > north || n < south || w > east || e < west) {
                 now = false
                 i = j
                 continue
@@ -438,11 +451,23 @@ internal object RoadAhead {
             i = j
         }
         if (first.isNaN()) return null
-        val endsInside = inside(pts[pts.size - 1].lat, pts[pts.size - 1].lon, ring)
-        val haram = z.kind == 1 || z.kind == 2
+        val end = pts[pts.size - 1]
+        val endsInside = inside(end.lat, end.lon, ring)
+        val haram = kind == 1 || kind == 2
         val known = roadClass != null
-        val warn = entered && (haram || endsInside || (known && minor >= OFF_MAIN_M))
-        return ZoneHit(z.id, z.kind, z.name, z.en, first, last, metres, startsInside, endsInside, entered, if (known) off else null, if (known) minor else null, warn)
+        val endsWell = endsInside && (haram || farFromEdge(end, ring))
+        val warn = entered && (haram || endsWell || (known && minor >= OFF_MAIN_M))
+        return ZoneHit(id, kind, name, en, first, last, metres, startsInside, endsInside, entered, if (known) off else null, if (known) minor else null, warn, endsWell)
+    }
+
+    private fun farFromEdge(p: LatLon, ring: DoubleArray): Boolean {
+        val n = ring.size / 2
+        var a = n - 1
+        for (b in 0 until n) {
+            if (Geo.project(p, LatLon(ring[a * 2 + 1], ring[a * 2]), LatLon(ring[b * 2 + 1], ring[b * 2])).second < EDGE_M) return false
+            a = b
+        }
+        return true
     }
 
     /** Walks a line from [fromAlong] in stretches of up to 5 km, with each one's box in 1e-6 degrees; [each] says whether to go on. */

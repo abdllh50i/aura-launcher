@@ -4,4 +4,5 @@
     <string name="route_no_road">ما فيه طريق يوصل لهذا المكان</string>
     <string name="route_no_route">ما لقينا طريق لهذا المكان</string>
     <string name="route_failed">ما قدرنا نحسب الطريق. جرّب مرة ثانية.</string>
+    <string name="route_not_honoured">ما قدرنا نحسب الطريق بالشروط اللي طلبتها. جرّب بعد دقيقة.</string>
 </resources>

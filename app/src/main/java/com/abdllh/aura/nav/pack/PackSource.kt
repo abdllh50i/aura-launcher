@@ -45,6 +45,8 @@ internal class HttpSource(base: String) : PackSource {
         private set
     override val key: String get() = "url:$base"
     override val usb = false
+    /** How many answers of no length were not taken for a chunk ([PackRules.bodyFits]). */
+    private val refusals = HashMap<String, Int>()
 
     private fun open(url: String, from: Long, hops: MutableList<String>? = null): HttpURLConnection {
         var u = url
@@ -77,7 +79,7 @@ internal class HttpSource(base: String) : PackSource {
             if (code != 200) throw IOException("manifest: HTTP $code")
             val text = c.inputStream.use { readCapped(it, PackManifest.MAX_TEXT) }
             // a hotspot's sign-in page answers 200 for anything: that is no internet yet, not a bad pack
-            if (!text.trimStart().startsWith("{")) throw IOException("not a manifest: ${c.contentType}")
+            if (!PackRules.looksLikeManifest(text)) throw IOException("not a manifest: ${c.contentType}")
             PackRules.releaseBase(hops)?.let { base = it }
             return text
         } finally {
@@ -113,9 +115,10 @@ internal class HttpSource(base: String) : PackSource {
             }
             val left = bytes - start
             val length = c.contentLengthLong
-            if (length >= 0 && length != left) { // an error page, a hotspot's sign-in page: not this chunk
+            if (!PackRules.bodyFits(code, length, left, have, c.contentType, refusals[name] ?: 0)) { // an error page, a hotspot's sign-in page: not this chunk, and what is kept stays
+                refusals[name] = (refusals[name] ?: 0) + 1
                 t.bytes(have - start)
-                throw IOException("HTTP $code length $length, wanted $left")
+                throw IOException("HTTP $code length $length ${c.contentType}, wanted $left")
             }
             RandomAccessFile(part, "rw").use { raf ->
                 raf.setLength(start)

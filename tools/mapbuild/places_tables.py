@@ -452,7 +452,7 @@ SYNONYMS = [
     ("مختبر مختبرات تحاليل lab laboratory", [], ["lab"]),
     ("بيطري vet veterinary", [], ["vet"]),
     # worship
-    ("مسجد مساجد جامع جوامع صلاة mosque masjid mosques", [], ["mosque"]),
+    ("مسجد مساجد جامع جوامع صلاة mosque masjid mosques", ["وين اصلي", "ابي اصلي", "ابغى اصلي"], ["mosque"]),
     # rooms
     ("فندق فنادق hotel hotels lodging", [], ["hotel", "apartments"]),
     ("شقق apartments", ["شقق مفروشة"], ["apartments"]),
@@ -542,13 +542,15 @@ ROLES = {
     "و": (3, ""), "في": (3, ""), "من": (3, ""), "الي": (3, ""), "ar": (3, ""), "as": (3, ""), "ad": (3, ""), "at": (3, ""), "an": (3, ""), "ash": (3, ""), "az": (3, ""), "ath": (3, ""), "adh": (3, ""),
     "اقرب": (3, ""), "nearest": (3, ""), "near": (3, ""), "قريب": (3, ""), "قريبه": (3, ""), "ودني": (3, ""), "وديني": (3, ""), "قريبين": (3, ""), "لاقرب": (3, ""),
     "عام": (2, "عام"), "عامه": (2, "عام"), "general": (2, "عام"),
+    # (an airport's sign says it, and the driver leaves it out: مطار الملك خالد is the whole name of مطار الملك خالد الدولي)
+    "دولي": (2, "دولي"), "international": (2, "دولي"),
 }
 
 # Role 6, what people say around what they want: "وين اقرب صيدلية", "ابغى اروح الراشد مول", "خذني لاقرب محطة", "ابي قهوة". At the start or the end of a query these are only speech:
 # never required, but rows that hold them too come first ("روح الشرق", "ابي طالب"), because the search also reads the rows with every word. In the middle of a query they are plain words.
 # Not stop words: a name may hold them, and the index keeps them.
 FILLERS = """وين فين ابي ابى ابغى ابغي ابغا ابا اريد ودي عايز خذني خدني اخذني وصلني وصلنا ودنا ودينا دلني دلوني اروح نروح اذهب روح رحني نبي نبغى نبغي ابحث دور دورلي شوف شوفلي هل وش ايش فيه فيها
-    ممكن بالله الحين هنا عندي جنبي حولي where take me to go find show navigate please""".split()
+    ممكن بالله الحين هنا عندي جنبي حولي اعبي عبي where take me to go find show navigate please""".split()
 FILLER_PHRASES = ["لو سمحت", "take me to", "go to", "navigate to", "where is"]
 
 # Role 7, letters said one by one, as a recogniser writes them: "كي اف سي" is kfc, "اتش اند ام" is hm. canon holds the Latin letter, "" for the word that only joins them (اند).
@@ -562,6 +564,15 @@ ALIASES = {
     "مطار جدة": "مطار الملك عبدالعزيز الدولي", "jeddah airport": "king abdulaziz international airport", "مطار المدينة": "مطار الامير محمد بن عبدالعزيز", "madinah airport": "prince mohammad bin abdulaziz airport",
     "جامعة البترول": "جامعة الملك فهد للبترول|king fahd university of petroleum", "البترول والمعادن": "جامعة الملك فهد للبترول|king fahd university of petroleum", "kfupm": "king fahd university of petroleum|جامعة الملك فهد للبترول", "كاوست": "جامعة الملك عبدالله", "kaust": "king abdullah university",
     "المدينة الصناعية الجبيل": "الجبيل الصناعية", "صناعية الجبيل": "الجبيل الصناعية", "الهيئة الملكية الجبيل": "الجبيل الصناعية",
+    # A thing's own full name, which the plain reading takes apart. جسر is a road word and الملك a title, so "جسر الملك فهد" was every road called فهد; المكرمة was a word no row of a city holds. Tested from Jubail, Khobar, Dammam, Riyadh.
+    "جسر الملك فهد": "جسر الملك فهد|king fahd causeway", "كوبري الملك فهد": "جسر الملك فهد|king fahd causeway", "king fahd causeway": "king fahd causeway|جسر الملك فهد",
+    "مكة المكرمة": "مكة", "makkah mukarramah": "مكة", "mecca mukarramah": "مكة", "المدينة المنورة": "المدينة المنورة", "madinah munawwarah": "المدينة المنورة",
+    "المسجد الحرام": "المسجد الحرام", "masjid haram": "المسجد الحرام|masjid al haram", "المسجد النبوي": "المسجد النبوي", "masjid nabawi": "المسجد النبوي",
+    "مطار الملك خالد": "مطار الملك خالد الدولي|king khalid international airport", "king khalid airport": "king khalid international airport|مطار الملك خالد الدولي",
+    "مطار الملك فهد": "مطار الملك فهد الدولي|king fahd international airport", "king fahd airport": "king fahd international airport|مطار الملك فهد الدولي",
+    "مطار الملك عبدالعزيز": "مطار الملك عبدالعزيز الدولي|king abdulaziz international airport", "king abdulaziz airport": "king abdulaziz international airport|مطار الملك عبدالعزيز الدولي",
+    "المركز المالي": "مركز الملك عبدالله المالي|king abdullah financial district", "كافد": "مركز الملك عبدالله المالي|king abdullah financial district", "kafd": "king abdullah financial district|مركز الملك عبدالله المالي",
+    "ساتورب": "satorp", "العلا": "محافظة العلا", "alula": "محافظة العلا", "ula": "محافظة العلا",
 }
 
 # One spelling of a word that stands for one thing, so that the rows with any of them answer: rows write شاورما, people type شاورمه.

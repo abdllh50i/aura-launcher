@@ -48,6 +48,31 @@ internal object PackRules {
     /** Is there room? What the staging already took counts as found ([already]: it is in [need] and no longer in [free]). */
     fun fits(free: Long, need: Long, already: Long): Boolean = free + already >= need
 
+    /**
+     * A start's check, or a stopped job's going on? Once all pieces hold their room ([staged] is [disk]) what is still to come is only chunks' work space, and each
+     * chunk checks that for itself. The whole need again (it holds a margin the start alone asks for) would stop an install that lacks nothing, after a pause or a trip.
+     */
+    fun mayStart(free: Long, need: Long, disk: Long, staged: Long): Boolean = staged >= disk || fits(free, need, staged)
+
+    /**
+     * Is this answer the chunk that was asked for? A hotspot's sign-in page answers 200 for anything. With a length, a wrong one tells; with none (chunked) only a page's type
+     * tells, and a 200 of unknown length must not wipe what is kept: after [patience] refusals it is taken, for a proxy that does this to every answer. The hash judges it in the end.
+     */
+    fun bodyFits(code: Int, length: Long, left: Long, kept: Long, contentType: String?, refusals: Int, patience: Int = 3): Boolean {
+        if (length >= 0) return length == left
+        if (contentType != null && contentType.startsWith("text/", ignoreCase = true)) return false
+        return !(code == 200 && kept > 0) || refusals >= patience
+    }
+
+    /** Can this be a manifest at all? A portal or a proxy's JSON error is no internet yet, not a pack for a newer app. */
+    fun looksLikeManifest(text: String): Boolean = text.trimStart().startsWith("{") && text.contains("\"format\"") && text.contains("\"pieces\"")
+
+    /**
+     * Is a pack on offer worth starting, with [cur]rent in use? Newer, and another: a pack rebuilt under the same id counts as another, if its bytes differ ([sameBytes]).
+     */
+    fun worthOffering(curId: String?, curBuilt: String?, id: String, built: String, sameBytes: Boolean): Boolean =
+        (curId != id || !sameBytes) && newer(built, curBuilt)
+
     /** After a drop: 2, 4, 8, 16, 32, then every 60 seconds. attempt counts from 1. */
     fun backoffMs(attempt: Int): Long {
         val n = attempt.coerceIn(1, 7)

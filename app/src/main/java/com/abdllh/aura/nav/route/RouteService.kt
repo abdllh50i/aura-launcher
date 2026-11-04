@@ -36,21 +36,13 @@ import java.nio.ByteOrder
  * ever hold up the main process.
  */
 class RouteService : Service() {
-    internal class Ask(val json: String, val arabic: Boolean, val tar: String, val delayMs: Long, val pipe: ParcelFileDescriptor)
-
-    private val lock = Object()
-    private var waiting: Ask? = null
-    private var worker: Thread? = null
+    internal class Ask(val json: String, val arabic: Boolean, val tar: String, val delayMs: Long, val guide: Boolean, val pipe: ParcelFileDescriptor)
 
     private val binder = object : Binder() {
         override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
             if (code != ASK) return super.onTransact(code, data, reply, flags)
-            val ask = Ask(data.readString().orEmpty(), data.readInt() != 0, data.readString().orEmpty(), data.readLong(), data.readFileDescriptor() ?: return false)
-            synchronized(lock) {
-                try { waiting?.pipe?.close() } catch (_: Throwable) { }
-                waiting = ask
-                lock.notifyAll()
-            }
+            val ask = Ask(data.readString().orEmpty(), data.readInt() != 0, data.readString().orEmpty(), data.readLong(), data.readInt() != 0, data.readFileDescriptor() ?: return false)
+            RouteWork.offer(ask)
             return true
         }
     }
@@ -61,9 +53,7 @@ class RouteService : Service() {
     }
 
     override fun onBind(i: Intent): IBinder {
-        synchronized(lock) {
-            if (worker == null) worker = Thread(null, { work() }, "aura-route", RouteProcess.STACK_BYTES).apply { start() }
-        }
+        RouteWork.start(applicationContext)
         return binder
     }
 
@@ -74,30 +64,55 @@ class RouteService : Service() {
         super.onDestroy()
     }
 
-    private fun work() {
-        val engine = RouteEngine(applicationContext)
+    internal companion object {
+        const val ASK = 1
+        const val TAG = "AuraRouteService"
+        const val WALK_SPLITS = 7
+    }
+}
+
+/**
+ * The one thread and the one engine of this process. Not the service's: a client can bind again in the second before the process ends ([RouteProcess]), and
+ * that is a new service in the same process; a worker of its own beside the old one, which waits for ever, would hold a second actor and a second mapping of the
+ * 378 MB tar (measured: 8 of them, 8 GB of address space, in a process that will have 3).
+ */
+internal object RouteWork {
+    private val lock = Object()
+    private var waiting: RouteService.Ask? = null
+    private var worker: Thread? = null
+
+    fun start(c: Context) {
+        synchronized(lock) {
+            if (worker == null) worker = Thread(null, { work(c) }, "aura-route", RouteProcess.STACK_BYTES).apply { start() }
+        }
+    }
+
+    fun offer(ask: RouteService.Ask) {
+        synchronized(lock) {
+            try { waiting?.pipe?.close() } catch (_: Throwable) { }
+            waiting = ask
+            lock.notifyAll()
+        }
+    }
+
+    private fun work(c: Context) {
+        val engine = RouteEngine(c)
         while (true) {
             val ask = synchronized(lock) {
                 while (waiting == null) lock.wait()
                 waiting!!.also { waiting = null }
             }
-            RouteGuard.working(applicationContext, "request")
+            RouteGuard.working(c, "request")
             try {
                 engine.serve(ask) { synchronized(lock) { waiting != null } }
             } catch (t: Throwable) {
                 // (nothing that can be caught ends this thread: the next request is a new try)
-                Log.w(TAG, "$t")
+                Log.w(RouteService.TAG, "$t")
             } finally {
                 try { ask.pipe.close() } catch (_: Throwable) { }
-                RouteGuard.notWorking(applicationContext)
+                RouteGuard.notWorking(c)
             }
         }
-    }
-
-    internal companion object {
-        const val ASK = 1
-        const val TAG = "AuraRouteService"
-        const val WALK_SPLITS = 7
     }
 }
 
@@ -109,6 +124,7 @@ internal class RouteEngine(private val c: Context) {
     private var checked = ""
     private var loadMs = 0L
     private var actorMs = 0L
+    private var lastJson: ByteArray? = null
 
     /** Answers on the pipe. [newer]: a newer request waits, so the limits, which only this request's route wants, are left out. */
     fun serve(ask: RouteService.Ask, newer: () -> Boolean) {
@@ -123,7 +139,12 @@ internal class RouteEngine(private val c: Context) {
         }
         try {
             RouteCodec.write(out, answer)
-            answer.route?.let { limits(it, out, newer) }
+            val json = lastJson
+            lastJson = null
+            answer.route?.let {
+                if (ask.guide) RouteCodec.writeRaw(out, json ?: ByteArray(0))
+                limits(it, out, newer, ask.guide)
+            }
         } catch (e: IOException) {
             Log.i(RouteService.TAG, "nobody listens any more: ${e.message}") // a newer request, or the timeout
         }
@@ -140,6 +161,7 @@ internal class RouteEngine(private val c: Context) {
         val request = ask.json.toByteArray(Charsets.UTF_8)
         var t0 = SystemClock.elapsedRealtime()
         val bytes = lib!!.route(handle, request)
+        lastJson = if (ask.guide) bytes else null
         val routeMs = SystemClock.elapsedRealtime() - t0
         t0 = SystemClock.elapsedRealtime()
         val read = ValhallaAnswer.read(String(bytes, Charsets.UTF_8), ask.arabic)
@@ -188,7 +210,7 @@ internal class RouteEngine(private val c: Context) {
      * 18 ms for 84 km on the PC), for the same sign BRouter's `messages` fed ([RouteLimits]). In pieces, for the limits of the
      * request (device-config.json: trace, 200 km, 16,000 points). Never a reason to lose the route: what fails is left out.
      */
-    private fun limits(r: Route, out: OutputStream, newer: () -> Boolean) {
+    private fun limits(r: Route, out: OutputStream, newer: () -> Boolean, roads: Boolean) {
         val rows = ArrayList<RouteLimits.Row>()
         try {
             val line = r.line
@@ -196,7 +218,7 @@ internal class RouteEngine(private val c: Context) {
             while (from < line.points.size - 1) {
                 if (newer()) return
                 val to = sliceEnd(line, from)
-                walk(line, from, to, rows, RouteService.WALK_SPLITS)
+                walk(line, from, to, rows, RouteService.WALK_SPLITS, roads)
                 from = to
             }
         } catch (t: Throwable) {
@@ -210,13 +232,13 @@ internal class RouteEngine(private val c: Context) {
      * failed at the via: code 443): then each half on its own, so one such point costs only a little of the line. A stretch it
      * cannot walk at all has no limit: the next row must not lend it its own.
      */
-    private fun walk(line: Polyline, from: Int, to: Int, rows: MutableList<RouteLimits.Row>, splits: Int) {
-        val text = String(lib!!.traceAttributes(handle, RouteTrace.request(line.points.subList(from, to + 1)).toByteArray()), Charsets.UTF_8)
+    private fun walk(line: Polyline, from: Int, to: Int, rows: MutableList<RouteLimits.Row>, splits: Int, roads: Boolean) {
+        val text = String(lib!!.traceAttributes(handle, RouteTrace.request(line.points.subList(from, to + 1), roads).toByteArray()), Charsets.UTF_8)
         if (RouteTrace.rows(text, rows)) return
         if (splits > 0 && to - from >= 4) {
             val mid = (from + to) / 2
-            walk(line, from, mid, rows, splits - 1)
-            walk(line, mid, to, rows, splits - 1)
+            walk(line, from, mid, rows, splits - 1, roads)
+            walk(line, mid, to, rows, splits - 1, roads)
         } else {
             Log.i(RouteService.TAG, "limits: none for points $from to $to: ${text.take(100)}")
             rows.add(RouteLimits.Row(line.points[to], ""))
@@ -268,13 +290,15 @@ internal object RouteTrace {
     const val SLICE_POINTS = 15_000
     const val SLICE_METRES = 190_000.0
 
-    fun request(points: List<LatLon>): String = buildString {
+    /** [roads]: what guidance wants of each road as well ([com.abdllh.aura.nav.guide.RoadFacts]). */
+    fun request(points: List<LatLon>, roads: Boolean = false): String = buildString {
         append("{\"shape\":[")
         for ((i, p) in points.withIndex()) {
             if (i > 0) append(',')
             append("{\"lat\":").append(p.lat).append(",\"lon\":").append(p.lon).append('}')
         }
-        append("],\"costing\":\"auto\",\"shape_match\":\"edge_walk\",\"filters\":{\"attributes\":[\"edge.speed_limit\",\"edge.end_shape_index\",\"shape\"],\"action\":\"include\"}}")
+        val more = if (roads) "\"edge.road_class\",\"edge.use\",\"edge.bridge\",\"edge.tunnel\",\"edge.toll\"," else ""
+        append("],\"costing\":\"auto\",\"shape_match\":\"edge_walk\",\"filters\":{\"attributes\":[\"edge.speed_limit\",$more\"edge.end_shape_index\",\"shape\"],\"action\":\"include\"}}")
     }
 
     /** One row for each edge: where it ends on the answer's own shape, and its limit (key absent when unknown; "unlimited" reads as none). */
@@ -286,7 +310,14 @@ internal object RouteTrace {
             val e = edges.getJSONObject(i)
             val end = shape.getOrNull(e.optInt("end_shape_index", -1)) ?: continue
             val kmh = e.optInt("speed_limit", 0)
-            into.add(RouteLimits.Row(end, if (kmh > 0) "maxspeed=$kmh" else ""))
+            val tags = StringBuilder(if (kmh > 0) "maxspeed=$kmh" else "")
+            // (more words of the same form, which RouteLimits passes over; only when they were asked for)
+            e.optString("road_class").takeIf { it.isNotEmpty() }?.let { tags.append(" class=").append(it) }
+            e.optString("use").takeIf { it.isNotEmpty() }?.let { tags.append(" use=").append(it) }
+            if (e.optBoolean("bridge")) tags.append(" bridge=1")
+            if (e.optBoolean("tunnel")) tags.append(" tunnel=1")
+            if (e.optBoolean("toll")) tags.append(" toll=1")
+            into.add(RouteLimits.Row(end, tags.toString().trim()))
         }
         return true
     }

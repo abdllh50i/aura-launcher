@@ -4,4 +4,5 @@
     <string name="route_no_road">No road reaches this place</string>
     <string name="route_no_route">No route found to this place</string>
     <string name="route_failed">Could not work out the route. Try again.</string>
+    <string name="route_not_honoured">Could not work out the route with what you asked to go by or to avoid. Try again in a minute.</string>
 </resources>

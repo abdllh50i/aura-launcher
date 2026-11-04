@@ -54,6 +54,7 @@ class PackManifest(
                 throw PackRefused(PackProblem.BAD_MANIFEST, "not JSON: $t")
             }
             val format = o.optInt("format", -1)
+            if (format < 0) throw PackRefused(PackProblem.BAD_MANIFEST, "no format")
             if (format != PackRules.FORMAT) throw PackRefused(PackProblem.APP_TOO_OLD, "format $format")
             when (PackRules.fit(app, o.optLong("minApp", 0L), o.optLong("maxApp", 0L))) {
                 PackRules.Fit.APP_TOO_OLD -> throw PackRefused(PackProblem.APP_TOO_OLD, "minApp ${o.optLong("minApp")} > $app")

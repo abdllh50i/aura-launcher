@@ -55,6 +55,8 @@ class AuraApp : Application() {
         if (BuildConfig.DEBUG) com.abdllh.aura.nav.route.RouteProbe.debugInit(this)
         if (BuildConfig.DEBUG) com.abdllh.aura.nav.route.RouteDebug.init(this)
         com.abdllh.aura.nav.places.PlaceSearch.init(this) // only remembers the app: places.db is opened by the first use, off the main thread
+        com.abdllh.aura.nav.places.PlaceSearch.locate = { com.abdllh.aura.nav.pack.PackPaths.placesDb(it) }
+        com.abdllh.aura.nav.places.PlaceSearch.worked = { com.abdllh.aura.nav.pack.PackPaths.noteWorked(it) }
         if (BuildConfig.DEBUG) com.abdllh.aura.nav.places.PlacesDebug.init(this)
         if (BuildConfig.DEBUG) com.abdllh.aura.nav.pack.PackDebug.init(this)
         UpdateManager.init(this)

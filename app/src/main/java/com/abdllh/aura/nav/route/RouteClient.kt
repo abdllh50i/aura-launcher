@@ -37,7 +37,7 @@ internal object RouteClient {
     /** Debug builds: the service sits on each request this long first, marker down, so a test can kill it in the middle. */
     var debugDelayMs = 0L
 
-    private class Call(val req: RouteRequest, val tar: String, val done: (RouteAnswer) -> Unit) {
+    private class Call(val req: RouteRequest, val tar: String, val guide: Boolean, val done: (RouteAnswer) -> Unit) {
         var sent = false
         var retried = false
         var over = false
@@ -63,7 +63,7 @@ internal object RouteClient {
             else -> null
         }
         if (refusal != null) { main.post { done(refusal) }; return }
-        val call = Call(req, tar.path, done)
+        val call = Call(req, tar.path, RouteChain.guideOn, done)
         current = call
         main.postDelayed(call.timeout, TIMEOUT_MS)
         main.removeCallbacks(idle)
@@ -121,6 +121,7 @@ internal object RouteClient {
             data.writeInt(if (call.req.arabic) 1 else 0)
             data.writeString(call.tar)
             data.writeLong(debugDelayMs)
+            data.writeInt(if (call.guide) 1 else 0)
             data.writeFileDescriptor(pipe[1].fileDescriptor)
             b.transact(RouteService.ASK, data, null, IBinder.FLAG_ONEWAY)
             call.read = pipe[0]
@@ -153,9 +154,11 @@ internal object RouteClient {
             if (route != null) {
                 // the limits come later; the route is in use by then, so only the finished object is handed over
                 try {
+                    val raw = if (call.guide) RouteCodec.readRaw(inp) else null
                     val rows = RouteCodec.readLimits(inp)
                     val limits = rows?.let { RouteLimits.of(route.line.points, it) }
                     if (limits != null) main.post { route.limits = limits }
+                    if (raw != null) GuideLink.attach(route, answer, raw, rows, call.req)
                 } catch (t: Throwable) {
                     Log.i(TAG, "limits: $t")
                 }

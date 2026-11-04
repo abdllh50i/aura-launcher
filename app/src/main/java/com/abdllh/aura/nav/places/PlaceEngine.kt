@@ -162,7 +162,8 @@ internal class PlaceEngine(val db: PlacesDb) {
     fun search(query: String, near: LatLon?, limit: Int = 12, cs: CancellationSignal? = null, stats: SearchStats? = null): List<PlaceHit> {
         val syn = db.syn
         stats?.start()
-        val plan = QueryPlan.plan(query, syn)
+        // (a query is never this long, and a pasted page must not cost seconds of this thread: 500 characters took 1.4 s on the emulator)
+        val plan = QueryPlan.plan(query.take(MAX_QUERY), syn)
         if (plan.required.isEmpty()) return emptyList()
         var letters = 0
         for (g in plan.required) for (w in g.words) letters += w.length
@@ -170,6 +171,8 @@ internal class PlaceEngine(val db: PlacesDb) {
         val read = Reads(near, cs)
         val rows = LinkedHashMap<Int, Row>()
         fun take(got: List<Row>) { for (r in got) rows[r.id] = r }
+        val loose = HashSet<Int>() // found by consonants alone
+        fun takeLoose(got: List<Row>) { for (r in got) if (r.id !in rows) { loose.add(r.id); rows[r.id] = r } }
         stats?.lap(SearchStats.PLAN)
 
         val stages = QueryPlan.firstStages(plan)
@@ -191,7 +194,11 @@ internal class PlaceEngine(val db: PlacesDb) {
                 stats?.matches?.add(m)
                 val got = read.candidates(m, want)
                 if (got.isNotEmpty()) hit = true
-                take(got)
+                if (other.skeletonFrom != 0) takeLoose(got)
+                else {
+                    take(got)
+                    for (r in got) loose.remove(r.id)
+                }
             }
             if (hit) plans.add(other)
         }
@@ -204,14 +211,14 @@ internal class PlaceEngine(val db: PlacesDb) {
         val noneNear = near != null && nearby < 3
         QueryPlan.placeString(plan)?.let { mp ->
             stats?.matches?.add(mp)
-            for (r in read.candidates(mp, false)) if (QueryPlan.placeOk(plan, r)) rows[r.id] = r
+            for (r in read.candidates(mp, false)) if (QueryPlan.placeOk(plan, r)) { rows[r.id] = r; loose.remove(r.id) }
         }
         stats?.lap(SearchStats.PLACE)
         if (few || noneNear) {
             val m3 = QueryPlan.ftsEdit(plan)
             if (m3.isNotEmpty() && m3 != plain) {
                 stats?.matches?.add(m3)
-                for (r in read.candidates(m3, false)) if (QueryPlan.editOk(plan, r)) rows[r.id] = r
+                for (r in read.candidates(m3, false)) if (QueryPlan.editOk(plan, r)) { rows[r.id] = r; loose.remove(r.id) }
             }
         }
         stats?.lap(SearchStats.EDIT)
@@ -219,14 +226,14 @@ internal class PlaceEngine(val db: PlacesDb) {
             val m2 = QueryPlan.fts(plan, looseFrom = 3)
             if (m2 != plain) {
                 stats?.matches?.add(m2)
-                take(read.candidates(m2, false))
+                takeLoose(read.candidates(m2, false))
             }
         }
         if (rows.size < 3) { // two consonants say little: only when nothing else has been found
             val m2 = QueryPlan.fts(plan, looseFrom = 2)
             if (m2 != plain) {
                 stats?.matches?.add(m2)
-                take(read.candidates(m2, true))
+                takeLoose(read.candidates(m2, true))
             }
         }
         stats?.candidates = rows.size
@@ -250,7 +257,10 @@ internal class PlaceEngine(val db: PlacesDb) {
                 val x = Score.score(r, f, km, a, syn)
                 if (x > s) s = x
             }
-            scored.add(Scored(r, Score.pyRound(s, 3), km))
+            val rounded = Score.pyRound(s, 3)
+            // (nothing near a relevant answer: "nothing found" must still be possible)
+            if (rounded < 0.0 || (r.id in loose && Score.farAndOnlyAlike(r, plans, km))) continue
+            scored.add(Scored(r, rounded, km))
         }
         // ties by the lower id, after rounding (a comparison of the doubles themselves: -0.0 is 0.0)
         scored.sortWith(Comparator { x, y -> if (x.score != y.score) (if (x.score > y.score) -1 else 1) else x.row.id.compareTo(y.row.id) })
@@ -381,6 +391,7 @@ internal class PlaceEngine(val db: PlacesDb) {
 
     companion object {
         private const val DEG = Math.PI / 180.0
+        private const val MAX_QUERY = 100
         private const val NEAREST = 150
         private const val BEST = 50
         private const val BAND = 1.0 // degrees of latitude either side of the car, about 110 km

@@ -14,6 +14,10 @@ import com.abdllh.aura.R
 import com.abdllh.aura.nav.LatLon
 import com.abdllh.aura.nav.Place
 import com.abdllh.aura.nav.Polyline
+import com.abdllh.aura.nav.guide.GuideRoute
+import com.abdllh.aura.nav.guide.Guidance
+import com.abdllh.aura.nav.guide.NoWorld
+import com.abdllh.aura.nav.guide.RouteWorld
 import com.abdllh.aura.util.Prefs
 import java.io.File
 import java.util.Locale
@@ -263,6 +267,19 @@ object PlaceSearch {
             val r = try { guarded(fallback, block) } catch (t: Throwable) { Log.w(TAG, "$t"); fallback }
             used()
             main.post { done(r) }
+        }
+    }
+
+    /**
+     * The words and what lies along one route ([Guidance]), over this file ([PlacesWorld]); plainer ones with no file. Once for a route, on the engine's thread, and [done] on that thread: [Guidance] is
+     * made once and read from then on. Not on the main thread's account: a long trip asks some hundreds of small boxes.
+     */
+    fun guidance(route: GuideRoute, arabic: Boolean, endSnap: Double, destination: LatLon?, done: (Guidance?) -> Unit) {
+        io.execute {
+            val world: RouteWorld = try { current()?.let { PlacesWorld(it.db) } } catch (t: Throwable) { Log.w(TAG, "guidance: $t"); null } ?: NoWorld
+            val g = Guidance.safely(route, arabic, world, endSnap, destination)
+            used()
+            done(g)
         }
     }
 

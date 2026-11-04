@@ -19,8 +19,15 @@ internal class RouteAnswer(
     val endOffRoad: Double = -1.0,
     val stats: Stats = Stats()
 ) {
-    /** Who answered: [VALHALLA], [BROUTER], [OSRM]. Only Valhalla honours via points, polygons and the road switch. */
+    /**
+     * Who answered: [VALHALLA], [BROUTER], [OSRM]. Only Valhalla honours via points, polygons and the road switch: a request with
+     * via points or polygons no other router could keep hears [NOT_HONOURED], never another trip with status OK.
+     */
     var engine = VALHALLA
+    /** The road switch was in the request and another router answered: the route may start on the other road. */
+    var roadIgnored = false
+    /** Going round the Haram was asked for, and the trip starts or ends inside it: it could not be left out. For the driver to be told. */
+    var haramInside = false
 
     val route: Route? get() = routes.firstOrNull()
 
@@ -28,6 +35,7 @@ internal class RouteAnswer(
     fun userMessage(c: Context): String = c.getString(when (status) {
         NO_ROAD -> R.string.route_no_road
         NO_ROUTE -> R.string.route_no_route
+        NOT_HONOURED -> R.string.route_not_honoured
         else -> R.string.route_failed
     })
 
@@ -61,6 +69,8 @@ internal class RouteAnswer(
         const val CANCELLED = 7
         /** [RouteGuard] does not let Valhalla run. */
         const val GUARDED = 8
+        /** The request has via points or a ring to avoid, the one router that can keep them cannot answer now, and no other could give that trip. */
+        const val NOT_HONOURED = 9
 
         const val VALHALLA = "valhalla"
         const val BROUTER = "brouter"

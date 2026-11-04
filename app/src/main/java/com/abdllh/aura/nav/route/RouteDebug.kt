@@ -18,9 +18,11 @@ import java.io.File
 /**
  * Debug builds only (`am broadcast -a com.abdllh.aura.debug.ROUTE`), tools/mapbuild/tests/app_route_check.py drives it:
  *   --ez valhalla true|false              the preference: Router.route over RouteChain
+ *   --ez guide true|false                 the preference: the guidance part's words for routes from the pack
+ *   --ez avoid_haram true|false           the preference: go round the Haram of Makkah, on every route (the ring from places.db)
  *   --es tar <path>                       another route.tar
  *   --es ask lat,lon,lat,lon[,heading]    one request through RouteClient: files/diag/route-ask.json, steps and all
- *     with --es ring <file of lat,lon lines>, --es via lat,lon[;lat,lon...] (--ez stop true), --es road main:<class> or side:<main class>[:<side class>]
+ *     with --es ring <file of lat,lon lines>, --ez haram true (the ring from places.db), --es via lat,lon[;lat,lon...] (--ez stop true), --es road main:<class> or side:<main class>[:<side class>]
  *     or --es raw <file>: that JSON is asked, whatever the rest says (the old 2.35 MB answer needs the old options)
  *   --es chain lat,lon,lat,lon[,heading]  the whole chain; the log says which engine answered
  *   --es batch <path> [--ei rounds 1] [--ez limits false]   lines id,lat,lon,lat,lon in a row: files/diag/route-batch.json
@@ -50,6 +52,8 @@ internal object RouteDebug {
 
     private fun handle(c: Context, i: Intent) {
         if (i.hasExtra("valhalla")) { RouteChain.on = i.getBooleanExtra("valhalla", false); Log.i(TAG, "valhalla ${RouteChain.on}") }
+        if (i.hasExtra("guide")) { RouteChain.guideOn = i.getBooleanExtra("guide", false); Log.i(TAG, "guide ${RouteChain.guideOn}") }
+        if (i.hasExtra("avoid_haram")) { RouteChain.avoidHaramOn = i.getBooleanExtra("avoid_haram", false); Log.i(TAG, "avoid haram ${RouteChain.avoidHaramOn}") }
         i.getStringExtra("tar")?.let { RoutePack.tar = File(it); Log.i(TAG, "tar $it") }
         if (i.hasExtra("delay_ms")) RouteClient.debugDelayMs = i.getLongExtra("delay_ms", 0L)
         if (i.hasExtra("idle_ms")) RouteClient.idleMs = i.getLongExtra("idle_ms", RouteClient.idleMs)
@@ -68,7 +72,7 @@ internal object RouteDebug {
         }
         i.getStringExtra("chain")?.let { s ->
             val t0 = SystemClock.elapsedRealtime()
-            RouteChain.ask(request(s, i)) { a -> Log.i(TAG, "chain: ${a.engine} ${line(a, SystemClock.elapsedRealtime() - t0)}") }
+            RouteChain.ask(request(s, i)) { a -> Log.i(TAG, "chain: ${a.engine}${if (a.roadIgnored) " (road switch ignored)" else ""}${if (a.haramInside) " (trip touches the Haram: not left out)" else ""} ${line(a, SystemClock.elapsedRealtime() - t0)}") }
         }
         i.getStringExtra("batch")?.let { p ->
             val lines = File(p).readLines().filter { it.isNotBlank() }
@@ -83,7 +87,7 @@ internal object RouteDebug {
         val via = i.getStringExtra("via")?.split(';')?.map { RouteRequest.Via(point(it), i.getBooleanExtra("stop", false)) } ?: emptyList()
         val road = i.getStringExtra("road")?.split(':')?.let { if (it[0] == "main") RouteRequest.RoadClasses.onMain(it[1]) else RouteRequest.RoadClasses.onSide(it[1], it.getOrNull(2)) }
         val raw = i.getStringExtra("raw")?.let { File(it).readText() }
-        return object : RouteRequest(LatLon(v[0], v[1]), LatLon(v[2], v[3]), v.getOrNull(4), via, ring, road) {
+        return object : RouteRequest(LatLon(v[0], v[1]), LatLon(v[2], v[3]), v.getOrNull(4), via, ring, road, avoidHaram = i.getBooleanExtra("haram", false)) {
             override fun json() = raw ?: super.json()
         }
     }

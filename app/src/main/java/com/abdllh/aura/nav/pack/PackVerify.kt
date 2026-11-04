@@ -1,6 +1,8 @@
 package com.abdllh.aura.nav.pack
 
+import android.database.DatabaseErrorHandler
 import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteException
 import java.io.File
 import java.io.FileInputStream
 
@@ -12,12 +14,20 @@ internal object PackVerify {
     /** What is wrong, or null. */
     fun problem(dir: File, m: PackManifest): String? {
         tar(File(dir, PackPaths.ROUTE))?.let { return it }
-        places(File(dir, PackPaths.PLACES), m)?.let { return it }
-        tiles(File(dir, PackPaths.BASE))?.let { return it }
-        tiles(File(dir, PackPaths.POIS))?.let { return it }
-        glyphs(File(dir, PackPaths.GLYPHS), m)?.let { return it }
+        // (a file whose hash is right and SQLite cannot open is a wrong pack, not a storage error; each try would end the same)
+        try {
+            places(File(dir, PackPaths.PLACES), m)?.let { return it }
+            tiles(File(dir, PackPaths.BASE))?.let { return it }
+            tiles(File(dir, PackPaths.POIS))?.let { return it }
+            glyphs(File(dir, PackPaths.GLYPHS), m)?.let { return it }
+        } catch (t: SQLiteException) {
+            return "cannot be opened: $t"
+        }
         return null
     }
+
+    /** Android's default handler deletes a database it finds corrupt. Here it stays: whoever looks at it can see why, and a cancel takes it away. */
+    private val KEEP = DatabaseErrorHandler { d -> android.util.Log.w("AuraPack", "corrupt: ${d.path}") }
 
     /** Valhalla's scan-free start needs index.bin as the first entry (tools/mapbuild/tar_start_check.sh). */
     internal fun tar(f: File): String? {
@@ -31,7 +41,7 @@ internal object PackVerify {
     }
 
     private inline fun <T> db(f: File, block: (SQLiteDatabase) -> T): T {
-        val d = SQLiteDatabase.openDatabase(f.path, null, SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS)
+        val d = SQLiteDatabase.openDatabase(f.path, null, SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS, KEEP)
         try { return block(d) } finally { d.close() }
     }
 

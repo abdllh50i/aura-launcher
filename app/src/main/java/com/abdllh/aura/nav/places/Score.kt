@@ -101,6 +101,8 @@ internal class PlanFacts(@JvmField val plan: Plan, syn: Syn) {
 internal object Score {
     private const val DEG = Math.PI / 180.0 // Python's math.radians is x * (pi / 180); Math.toRadians was not always
     private const val EXACT_WEIGHT = 22.0
+    /** How far a row may be that only its consonants found. */
+    private const val WEAK_KM = 30.0
     private val EMPTY = HashSet<String>()
 
     fun kindWeight(kind: Int) = when (kind) {
@@ -283,11 +285,34 @@ internal object Score {
                 away = min(away, 15.0)
                 if (plan.ws.all { it in names || it in f.askStop }) s += 30.0
             }
-            if (catQuery && cat == syn.airport) away *= 0.3 // one drives far to an airport: the real one before a check-in spot that is nearer
+            if (cat == syn.airport && (catQuery || required.any { syn.airport in it.cats })) away *= 0.3 // one drives far to an airport: the real one before a check-in spot, or a travel office named after it, that is nearer
             if (namesTown) away = min(away, 15.0) // "مطار الدمام": the driver said which town, so how far it is from him says little
             s -= away
         }
         return s
+    }
+
+    /** Does a row found by its consonants answer this group after all: its kind, the word, one letter off, or the same word in the other script (consonants, when there are enough of them)? */
+    private fun saysIt(g: Group, r: Row): Boolean {
+        if (r.cat in g.cats) return true
+        val names = r.names
+        for (x in g.alts) if (x in names) return true
+        next@ for (w in g.words) {
+            val wAr = Norm.isAr(w)
+            if (w in names || (!wAr && Norm.latinBase(w) in names)) continue
+            if (w.length >= 2) for (n in names) if (n.startsWith(w)) continue@next
+            for (n in names) if (Norm.lev1(w, n)) continue@next
+            if (wAr != names.any { Norm.isAr(it) }) for (s in Norm.skeletons(w)) if (s.length >= 5 && s in r.nameSks) continue@next
+            return false
+        }
+        return true
+    }
+
+    /** A row only its consonants found, far away, and no word of the query in it: "nothing found" is the truer answer (دورة مياه is not a district 400 km off). */
+    fun farAndOnlyAlike(r: Row, plans: List<Plan>, km: Double?): Boolean {
+        if (km == null || km <= WEAK_KM) return false
+        for (p in plans) if (p.required.all { saysIt(it, r) }) return false
+        return true
     }
 
     private fun everyWordIsAName(required: List<Group>, names: Set<String>): Boolean {

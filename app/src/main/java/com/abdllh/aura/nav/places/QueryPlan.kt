@@ -298,7 +298,8 @@ internal object QueryPlan {
         val out = ArrayList<Plan>(4)
         fun add(kind: String, words: List<String>, skeletonFrom: Int = 0) {
             val p = plan(words.joinToString(" ") + end, syn)
-            if (p.required.isNotEmpty() && out.none { it.ws == p.ws } && p.ws != ws) {
+            // (an alias may be the words themselves: a known thing's own full name, for the reading that takes it as one thing)
+            if (p.required.isNotEmpty() && out.none { it.ws == p.ws } && (kind == "alias" || p.ws != ws)) {
                 p.other = kind
                 p.skeletonFrom = skeletonFrom
                 out.add(p)
