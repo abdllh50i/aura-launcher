@@ -22,6 +22,7 @@ import com.abdllh.aura.nav.CarLocation
 import com.abdllh.aura.system.CarAudio
 import com.abdllh.aura.system.CrashGuard
 import com.abdllh.aura.system.NwdBridge
+import com.abdllh.aura.ui.CarEtc
 import com.abdllh.aura.ui.CarFrames
 import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.MATCH
@@ -123,7 +124,8 @@ class HomeActivity : Activity(), HomeHost {
         builtAccent = Prefs.accent
         builtDark = Palette.dark
         Theme.window(this, Palette.dock)
-        CarFrames.warmUp(this, resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL)
+        // (with the GPU's frame file there, the GPU draws the car from its first frame: see CarStage.playIntro)
+        if (!CarEtc.readyNow(this, Palette.dark, Palette.bg)) CarFrames.warmUp(this, resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL)
         setContentView(buildUi())
         if (!processStarted) {
             processStarted = true
@@ -132,7 +134,6 @@ class HomeActivity : Activity(), HomeHost {
         mapPanel.onCreate(savedInstanceState)
         MediaMonitor.start(this)
         NwdBridge.startStockServicesOncePerBoot(this)
-        AppRepo.preload(this) // the app grid opens instantly instead of querying the package manager on the UI thread
         try {
             registerReceiver(packages, IntentFilter().apply {
                 addAction(Intent.ACTION_PACKAGE_ADDED)
@@ -315,6 +316,7 @@ class HomeActivity : Activity(), HomeHost {
                 }
             }
             startCover = null
+            com.abdllh.aura.nav.MapLib.preload(this) // (the map below will want it: off the main thread, and not before this frame)
             // (counted from here too: from onResume, the first frame's wait brought it into the middle of the entrance)
             r.postDelayed({ if (!isDestroyed) mapPanel.startLive() }, LIVE_MAP_AFTER_MS)
         }

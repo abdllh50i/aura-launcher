@@ -31,8 +31,10 @@ import kotlin.math.sign
  * The user's car on a turntable (frames from [CarFrames]). Drag sideways to turn it, flick to spin it; it comes to
  * rest with inertia and, after a few idle seconds, swings back to its showroom angle. While it turns the view eases
  * out to frame the whole turntable, and back in when it returns. Adjacent frames are cross-faded during motion.
- * The GPU draws it ([CarGlView], under this view's own drawing) once its frames are in; until then, or if it fails,
- * this view draws the frames on its canvas.
+ * The GPU draws it ([CarGlView], under this view's own drawing) once its frames are in. While it is the first thing
+ * to be drawn at all (the intro with the frame file there) nothing else is prepared: the car stays faded out until the
+ * GPU's first frame. Otherwise (the first start, a rebuilt screen, a late or failed GPU) this view draws the frames on
+ * its canvas until then, or for good.
  * Both paths fade the car into [Palette.bg] and the GPU's frames are composed over it: the stage must stand directly on
  * the screen's background, never on a card, or it shows as a rectangle of another colour.
  */
@@ -70,6 +72,9 @@ class CarStage(context: Context) : FrameLayout(context) {
     private var anim: ValueAnimator? = null
     private var introWait: Runnable? = null   // the intro, waiting for its first frame (see playIntro)
     private var introFirst = 0
+    private var cpuDraws = true               // this view may draw frames itself (not while the intro waits for the GPU)
+    private var restFadeDue = false           // the GPU was late: the resting car fades in once its one frame is there
+    private var firstDrawAt = 0L              // (diagnostics) when the screen's first frame was drawn
     private var ticking = false
     private var lastFrameNs = 0L
 
@@ -91,8 +96,9 @@ class CarStage(context: Context) : FrameLayout(context) {
     private var fitCx = 0f
     private var fitCy = 0f
 
-    private val onFrameReady: () -> Unit = { introReady(); if (isShown) invalidate() }
+    private val onFrameReady: () -> Unit = { introReady(); restFadeReady(); if (isShown) invalidate() }
     private val goHome = Runnable { settleHome() }
+    private val gpuLate = Runnable { onGpuLate() }
     private val frameCallback = Choreographer.FrameCallback { t -> tick(t) }
 
     // the GPU path
@@ -113,12 +119,34 @@ class CarStage(context: Context) : FrameLayout(context) {
                 glOn = true
                 gpuDrawing = true
                 CarFrames.dropRawFiles(context)
-                CarFrames.trim(emptyList()) // the CPU's decoded frames are not drawn any more (tens of MB)
+                CarFrames.gpuDraws(true) // the CPU's frames are not drawn any more (tens of MB)
+                gpuAfterDrawMs = when {
+                    firstDrawAt != 0L -> SystemClock.uptimeMillis() - firstDrawAt
+                    startPath == PATH_GPU -> 0L // (it came with the screen's first frame, before that one was reported)
+                    else -> -1L
+                }
+                android.util.Log.i("AuraCar", "GPU's first frame $gpuAfterDrawMs ms after the screen's (path $startPath)")
                 introReady()
+                restFadeReady()
+                if (anim == null) g.loadRest() // (else the intro's end asks for them)
                 invalidate()
             }
-            g.onLost = { glOn = false; restAsked = -1; restFor = -1; invalidate() }
-            g.onFailed = { glOn = false; gpuDrawing = false; CarFrames.startRawFallback(); invalidate() }
+            g.onLost = { glOn = false; cpuDraws = true; CarFrames.gpuDraws(false); restAsked = -1; restFor = -1; invalidate() }
+            g.onFailed = {
+                glOn = false
+                gpuDrawing = false
+                cpuDraws = true
+                CarFrames.gpuDraws(false)
+                CarFrames.startRawFallback()
+                // an intro waiting for the GPU waits for the CPU's frames now, as on a first start
+                introWait?.let { go ->
+                    removeCallbacks(gpuLate)
+                    startPath = PATH_FAILED
+                    CarFrames.warmUp(context, isRtl())
+                    postDelayed(go, INTRO_WAIT_MS)
+                }
+                invalidate()
+            }
             g.onRestReady = { i ->
                 if (restAsked == i) {
                     restFor = i
@@ -151,6 +179,14 @@ class CarStage(context: Context) : FrameLayout(context) {
         super.onAttachedToWindow()
         CarFrames.addListener(onFrameReady)
         resolveHome()
+        if (!glOn) CarFrames.gpuDraws(false) // (a rebuilt screen: until its own GPU draws, the view shows the frame)
+        // no intro asked for (a rebuilt screen): the resting view and its neighbours go into the GPU first
+        // (before the GL view hears of its own attach, which comes after this)
+        val g = glView
+        if (g != null && g.firstFrames == null) {
+            val d = home.roundToInt()
+            g.firstFrames = intArrayOf(Math.floorMod(d, n), Math.floorMod(d + 1, n), Math.floorMod(d - 1, n))
+        }
         introReady() // (the intro is asked for before the stage is attached: its first frame may have come meanwhile)
     }
 
@@ -159,6 +195,7 @@ class CarStage(context: Context) : FrameLayout(context) {
         restAnim?.cancel()
         CarFrames.removeListener(onFrameReady)
         removeCallbacks(goHome)
+        removeCallbacks(gpuLate)
         Choreographer.getInstance().removeFrameCallback(frameCallback)
         ticking = false
         super.onDetachedFromWindow()
@@ -206,28 +243,91 @@ class CarStage(context: Context) : FrameLayout(context) {
         zoomTarget = 0f
         redraw()
         introFirst = Math.floorMod(start.roundToInt(), n)
-        if (glOn || CarFrames.frameNow(introFirst) != null) { runIntro(start, delayMs); return }
-        // The CPU draws until the GPU's frames are in, and a spin begun without its first frame showed the floor light
-        // alone, then the car popping in already turned: it waits for that frame or the GPU (at most INTRO_WAIT_MS),
-        // its delay still counted from now.
-        CarFrames.request(introFirst)
+        if (glOn) { runIntro(start, delayMs); return }
+        // (the spin's frames go into the GPU first, also when the CPU starts it: the GPU may come in at any point of it)
+        val d = home.roundToInt()
+        glView?.firstFrames = IntArray(CarFrames.introFrames() + 3) { k -> Math.floorMod(d - dir * (k - 1), n) }
+        val gpuFirst = glView != null && CarEtc.readyNow(context, Palette.dark, Palette.bg)
+        startPath = if (gpuFirst) PATH_GPU else PATH_CPU
+        if (!gpuFirst && CarFrames.frameNow(introFirst) != null) { runIntro(start, delayMs); return }
+        // A spin begun without its first frame showed the floor light alone, then the car popping in already turned: it
+        // waits for that frame, its delay still counted from now.
         val asked = SystemClock.uptimeMillis()
         val go = object : Runnable {
             override fun run() {
                 if (introWait !== this) return
                 introWait = null
                 removeCallbacks(this)
+                removeCallbacks(gpuLate)
                 runIntro(start, (delayMs - (SystemClock.uptimeMillis() - asked)).coerceAtLeast(0L))
             }
         }
         introWait = go
-        postDelayed(go, INTRO_WAIT_MS)
+        if (gpuFirst) {
+            // The frame file is there: the GPU draws the whole spin, and nothing else is prepared for it. The car is
+            // faded out until then, so only the wait shows, not a car popping in: the GPU's first frame starts the
+            // spin. Should it be late, the wait ends on the car at rest ([onGpuLate]), counted from the screen's first
+            // frame: nothing can be seen before that anyway, and a slow start must not use the wait up.
+            cpuDraws = false
+            afterNextDraw {
+                firstDrawAt = SystemClock.uptimeMillis()
+                if (introWait === go) postDelayed(gpuLate, GPU_WAIT_MS)
+            }
+        } else {
+            // The CPU draws until the GPU's frames are in: at most INTRO_WAIT_MS for the first one or the GPU.
+            CarFrames.request(introFirst)
+            postDelayed(go, INTRO_WAIT_MS)
+        }
     }
 
     /** Starts the waiting intro once its first frame is there (or the GPU draws). */
     private fun introReady() {
         val go = introWait ?: return
-        if (glOn || CarFrames.frameNow(introFirst) != null) go.run()
+        if (glOn || (cpuDraws && CarFrames.frameNow(introFirst) != null)) go.run()
+    }
+
+    /**
+     * The GPU's first frame has not come in [GPU_WAIT_MS]. There is nothing to turn the car with, and frames decoded
+     * for a spin are what this path saves: no spin, the car fades in at rest from one frame, on the CPU. The GPU then
+     * takes over in place, from the same view.
+     */
+    private fun onGpuLate() {
+        val go = introWait ?: return
+        if (glOn) return
+        removeCallbacks(go)
+        introWait = null
+        startPath = PATH_LATE
+        cpuDraws = true
+        pos = home
+        zoom = 0f
+        zoomTarget = 0f
+        motionDir = 0
+        restFadeDue = true
+        CarFrames.setFocus(Math.floorMod(home.roundToInt(), n))
+        CarFrames.request(Math.floorMod(home.roundToInt(), n))
+        restFadeReady()
+        redraw()
+    }
+
+    private fun restFadeReady() {
+        if (!restFadeDue || !(glOn || CarFrames.frameNow(Math.floorMod(home.roundToInt(), n)) != null)) return
+        restFadeDue = false
+        stopAnim()
+        anim = ValueAnimator.ofFloat(shown, 1f).apply {
+            duration = Motion.LONG
+            interpolator = Motion.STANDARD
+            addUpdateListener { shown = it.animatedValue as Float; redraw() }
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(a: Animator) {
+                    if (anim !== a) return
+                    anim = null
+                    shown = 1f
+                    redraw()
+                    glView?.loadRest()
+                }
+            })
+            start()
+        }
     }
 
     private fun runIntro(start: Float, delayMs: Long) {
@@ -251,6 +351,7 @@ class CarStage(context: Context) : FrameLayout(context) {
                     shown = 1f
                     zoom = 0f
                     redraw()
+                    glView?.loadRest()
                 }
             })
         }
@@ -266,7 +367,13 @@ class CarStage(context: Context) : FrameLayout(context) {
      * handlers' `anim !== a` guard only works if the reference is cleared first.)
      */
     private fun stopAnim() {
-        introWait?.let { removeCallbacks(it); introWait = null; shown = 1f }
+        introWait?.let {
+            removeCallbacks(it)
+            removeCallbacks(gpuLate)
+            introWait = null
+            shown = 1f
+            cpuDraws = true // (the car as it is, now: the GPU may not be there yet)
+        }
         val a = anim
         anim = null
         if (a != null && !a.isStarted) shown = 1f // (the intro waiting for the next frame: the car as it is)
@@ -371,9 +478,12 @@ class CarStage(context: Context) : FrameLayout(context) {
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 removeCallbacks(goHome)
+                glView?.loadRest() // (a finger may take it anywhere: the frames the intro did not need)
+                restFadeDue = false
                 // a touch that only stops the car (mid-spin, swinging home, intro) is not a tap on it
                 wasMoving = vel != 0f || anim != null || introWait != null
                 if (anim != null || introWait != null) { stopAnim(); shown = 1f; kick() }
+                if (shown < 1f) { shown = 1f; kick() } // (the GPU was late and the one frame is still decoding)
                 vel = 0f
                 dragTo = pos
                 dragging = true
@@ -463,15 +573,19 @@ class CarStage(context: Context) : FrameLayout(context) {
             pushGl()
             if (glOn) return
         }
+        // (the intro is waiting for the GPU: the car is faded out, and no frame is decoded for it)
+        if (!cpuDraws) return
 
         // the CPU path: until the raw frame file is there, frames are decoded: requests go last-in-first-out, so the
         // look-ahead in the direction of motion is queued farthest first, then the frame being left, then the frame on screen
+        // (a car standing with no motion yet, as on a rebuilt screen, needs its one frame)
         if (!CarFrames.instant) {
             CarFrames.setFocus(a)
             val dir = if (vel != 0f) sign(vel).toInt() else motionDir
-            if (dir != 0) for (k in lookAhead downTo 1) CarFrames.request(Math.floorMod(a + dir * k, n))
-            else CarFrames.request(Math.floorMod(a - 1, n))
-            CarFrames.request(b)
+            if (dir != 0) {
+                for (k in lookAhead downTo 1) CarFrames.request(Math.floorMod(a + dir * k, n))
+                CarFrames.request(b)
+            }
             CarFrames.request(a)
         }
 
@@ -553,7 +667,8 @@ class CarStage(context: Context) : FrameLayout(context) {
         private const val MIN_DEG_S = 6.4f        // slower than this the spin stops
         private const val FRICTION = 2.4f         // per second (exponential decay of the spin)
         private const val IDLE_MS = 3200L
-        private const val INTRO_WAIT_MS = 400L    // longest the intro waits for its first frame
+        private const val INTRO_WAIT_MS = 400L    // longest the intro waits for its first frame on the CPU
+        private const val GPU_WAIT_MS = 2000L     // longest it waits for the GPU's, after the screen's first frame
         private const val FOLLOW = 24f            // per second: how fast the car catches up with the finger
         const val FLOOR_Y = 262f / 360f           // the turntable floor's centre, as a fraction of the frame height
         const val FLOOR_R = 0.34f                 // radius of the floor light, as a fraction of the frame width
@@ -564,5 +679,30 @@ class CarStage(context: Context) : FrameLayout(context) {
         /** Diagnostics: is the GPU drawing the car, and how fast it drew while the car last turned. */
         @Volatile var gpuDrawing = false
         @Volatile var lastFps = 0f
+
+        // How this start's car came on screen (for reports from the unit, where none of this could be tried)
+        const val PATH_GPU = 1        // the GPU's first frame started the spin
+        const val PATH_CPU = 2        // no frame file known yet (the first start of this APK): the CPU drew the spin
+        const val PATH_LATE = 3       // the GPU was late: the car faded in at rest from one frame
+        const val PATH_FAILED = 4     // the GPU failed: the CPU drew the spin
+        @Volatile var startPath = 0
+        @Volatile var gpuFirstMs = -1L      // from the GL thread's start to the first frames being in
+        @Volatile var gpuAllMs = -1L        // from then until all frames were in (-1: not yet, or some did not come)
+        @Volatile var gpuAfterDrawMs = -1L  // from the screen's first frame to the GPU's
+
+        /** How this start's car came on screen, and the GPU's times (for Settings → About). */
+        fun startNote(c: Context): String {
+            val path = when (startPath) {
+                PATH_GPU -> com.abdllh.aura.R.string.about_car_start_gpu
+                PATH_CPU -> com.abdllh.aura.R.string.about_car_start_cpu
+                PATH_LATE -> com.abdllh.aura.R.string.about_car_start_late
+                PATH_FAILED -> com.abdllh.aura.R.string.about_car_start_failed
+                else -> return ""
+            }
+            val first = if (gpuFirstMs >= 0L) "\n" + c.getString(com.abdllh.aura.R.string.about_car_start_first, gpuFirstMs) else ""
+            val all = if (gpuAllMs >= 0L) " · " + c.getString(com.abdllh.aura.R.string.about_car_start_all, gpuAllMs) else ""
+            val after = if (gpuAfterDrawMs >= 0L) " · " + c.getString(com.abdllh.aura.R.string.about_car_start_after, gpuAfterDrawMs) else ""
+            return c.getString(path) + first + all + after
+        }
     }
 }

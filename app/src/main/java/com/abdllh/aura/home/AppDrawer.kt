@@ -19,6 +19,7 @@ import android.widget.GridView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import com.abdllh.aura.R
+import com.abdllh.aura.system.IdleGc
 import com.abdllh.aura.ui.AText
 import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.MATCH
@@ -42,8 +43,9 @@ import com.abdllh.aura.util.dp
 
 /**
  * All apps: a sheet that slides up over the home screen, with search. Long-press an app to pin it to the dock.
- * Closed, it stays laid out (invisible instead of gone): [prewarm] builds its cells and loads their icons a few seconds
- * after the home screen starts, so the first open has nothing to create in the frames the sheet moves in.
+ * Closed, it stays laid out (invisible instead of gone): [prewarm] reads the list, builds its cells and loads their icons
+ * a few seconds after the home screen starts, so the first open has nothing to create in the frames the sheet moves in.
+ * Reading names and icons maps the other apps' files until a garbage collection: one follows ([IdleGc]).
  */
 class AppDrawer(ctx: Context, private val host: HomeHost) : Sheet(ctx, true) {
     private val search: EditText
@@ -124,11 +126,18 @@ class AppDrawer(ctx: Context, private val host: HomeHost) : Sheet(ctx, true) {
         grid.numColumns = ((w - 72.dp) / 126.dp).coerceIn(4, 12)
     }
 
-    /** The cells built and their icons loaded while closed (some seconds after the home screen starts). */
+    /** The list read, the cells built and their icons loaded while closed (some seconds after the home screen starts). */
     fun prewarm() {
         if (isOpen || all.isNotEmpty()) return
-        all = AppRepo.cached ?: return
-        applyFilter("")
+        val cached = AppRepo.cached
+        if (cached != null) { all = cached; applyFilter(""); return }
+        AppRepo.loadAsync(context) { fresh ->
+            if (!isOpen && all.isEmpty() && fresh.isNotEmpty()) {
+                all = fresh
+                applyFilter("")
+            }
+            IdleGc.request("app list", GC_AFTER_MS)
+        }
     }
 
     override fun onOpen() {
@@ -156,6 +165,7 @@ class AppDrawer(ctx: Context, private val host: HomeHost) : Sheet(ctx, true) {
     override fun onClose() {
         try { (context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(windowToken, 0) } catch (_: Throwable) { }
         search.clearFocus()
+        IdleGc.request("app drawer", GC_AFTER_MS) // (opening it read the list again)
     }
 
     private fun applyFilter(q: String) {
@@ -254,5 +264,6 @@ class AppDrawer(ctx: Context, private val host: HomeHost) : Sheet(ctx, true) {
     private companion object {
         const val ICON = 68 // dp, an app's icon
         const val LEAVE_CHECK_MS = 1000L
+        const val GC_AFTER_MS = 3000L // after the list came (its cells' icons are asked for at the next layout)
     }
 }

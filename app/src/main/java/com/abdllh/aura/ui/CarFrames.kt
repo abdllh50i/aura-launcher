@@ -76,6 +76,7 @@ object CarFrames {
     @Volatile private var raw: MappedByteBuffer? = null
     private var rawStarted = false
     @Volatile private var introSet = IntArray(0)    // the frames of the intro spin, read in before the file is used
+    @Volatile private var gpuOn = false             // the GPU draws the car: nothing here is wanted (see gpuDraws)
 
     private val cache = object : LruCache<Int, Bitmap>(CACHE_FRAMES) {
         override fun entryRemoved(evicted: Boolean, key: Int, oldValue: Bitmap, newValue: Bitmap?) {
@@ -103,12 +104,14 @@ object CarFrames {
     }
 
     /**
-     * Starts decoding the frames the home screen shows first (the intro spin), for drawing them on the CPU. Also when
-     * the GPU's frames were built before: loading them takes longer than the spin (1.2-1.5 s on the emulator), and a
-     * spin decoded only on demand lost the car for a frame.
+     * Starts decoding the frames the home screen shows first (the intro spin), for drawing them on the CPU: only when
+     * the GPU's frames cannot be drawn at this start (their file is not there yet, or the GPU failed). A spin decoded
+     * only on demand lost the car for a frame. With the file there, the stage waits for the GPU instead ([CarStage.playIntro]):
+     * this cost up to 37 MB of bitmaps, and as much again in the view drawing's texture cache, at every start.
      */
     fun warmUp(ctx: Context, rtl: Boolean) {
         val m = meta(ctx) ?: return
+        gpuOn = false // (a new home screen in a running process, or the GPU just failed)
         val d = if (rtl) m.defaultFrameRtl else m.defaultFrame
         val dir = introDirection(rtl)
         val intro = introFrames()
@@ -134,6 +137,20 @@ object CarFrames {
                 ?.forEach { if (it.delete()) Log.i(TAG, "dropped ${it.name}") }
             c.cacheDir.listFiles()?.filter { it.name.startsWith("car-") }?.forEach { it.delete() }
         }, "car-drop").apply { isDaemon = true; start() }
+    }
+
+    /**
+     * The GPU draws the car ([on]) or does not any more. While it does, nothing of this path stays: not the decoded
+     * frames, not the encoded ones, nothing queued, and not what a decoding thread still has in hand (until 1.19 the last
+     * two frames came in after the trim and stayed).
+     */
+    fun gpuDraws(on: Boolean) {
+        gpuOn = on
+        if (!on) return
+        queue.clear()
+        queued.clear()
+        trim(emptyList())
+        encoded = arrayOfNulls(encoded.size)
     }
 
     fun frameAsset(i: Int) = "car/f_%03d.webp".format(java.util.Locale.ROOT, i)
@@ -190,7 +207,7 @@ object CarFrames {
 
     fun request(i: Int) {
         val m = meta ?: return
-        if (raw != null) return // copied when drawn
+        if (raw != null || gpuOn) return // copied when drawn; not drawn at all
         if (i < 0 || i >= m.count || cache.get(i) != null || !queued.add(i)) return
         startWorkers()
         queue.offerFirst(i)
@@ -232,15 +249,18 @@ object CarFrames {
             main.post {
                 queued.remove(i)
                 if (bmp != null) {
-                    cache.put(i, bmp)
-                    for (l in listeners) l()
+                    if (gpuOn) bmp.recycle() // (never drawn)
+                    else {
+                        cache.put(i, bmp)
+                        for (l in listeners) l()
+                    }
                 }
             }
         }
     }
 
     private fun bytesOf(ctx: Context, i: Int): ByteArray? = encoded[i] ?: try {
-        ctx.assets.open(frameAsset(i)).use { it.readBytes() }.also { if (raw == null) encoded[i] = it }
+        ctx.assets.open(frameAsset(i)).use { it.readBytes() }.also { if (raw == null && !gpuOn) encoded[i] = it }
     } catch (t: Throwable) {
         Log.w(TAG, "frame $i: $t")
         null

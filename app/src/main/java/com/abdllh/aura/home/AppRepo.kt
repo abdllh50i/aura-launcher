@@ -13,6 +13,7 @@ import android.util.LruCache
 import com.abdllh.aura.util.Prefs
 import java.text.Collator
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 
 data class AppInfo(val pkg: String, val cls: String, val label: String, val system: Boolean)
 
@@ -55,19 +56,24 @@ object AppRepo {
     var cached: List<AppInfo>? = null
         private set
 
+    private val loading = AtomicInteger()
+
+    /** A list is being read (each app's name maps that app's files for a while: see [com.abdllh.aura.system.IdleGc]). */
+    val busy: Boolean get() = loading.get() > 0
+
     /** Queries the package manager on a background thread and delivers the list on the main thread. */
     fun loadAsync(ctx: Context, done: (List<AppInfo>) -> Unit) {
         // in the app's own language: the application context is not wrapped like the activities, so Aura's own Maps
         // and Music came out in English in the Arabic UI
         val app = com.abdllh.aura.util.LocaleHelper.wrap(ctx.applicationContext)
+        loading.incrementAndGet()
         worker.execute {
             val list = try { load(app) } catch (_: Throwable) { emptyList() }
             if (list.isNotEmpty()) cached = list
+            loading.decrementAndGet()
             main.post { done(list) }
         }
     }
-
-    fun preload(ctx: Context) = loadAsync(ctx) { }
 
     /** The language changed: the names in [cached] are the old language's. */
     fun clear() { cached = null }
@@ -169,11 +175,16 @@ object IconLoader {
     private val cache = object : LruCache<String, Bitmap>(80) {}
     private val pool = Executors.newFixedThreadPool(2)
     private val main = Handler(Looper.getMainLooper())
+    private val loading = AtomicInteger()
+
+    /** Icons are being read (each maps its app's files for a while: see [com.abdllh.aura.system.IdleGc]). */
+    val busy: Boolean get() = loading.get() > 0
 
     fun get(ctx: Context, pkg: String, sizePx: Int, onReady: (Bitmap?) -> Unit) {
         val key = "$pkg@$sizePx"
         cache.get(key)?.let { onReady(it); return }
         val app = ctx.applicationContext
+        loading.incrementAndGet()
         pool.execute {
             val bmp = try {
                 // Aura's own apps ("aura:maps"...) and the known head-unit apps get Aura's coloured tile
@@ -182,6 +193,7 @@ object IconLoader {
                 null
             }
             if (bmp != null) cache.put(key, bmp)
+            loading.decrementAndGet()
             main.post { onReady(bmp) }
         }
     }

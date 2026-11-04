@@ -1,7 +1,9 @@
 """The car on the map (1.14): the owner's car, the same model as the home screen's, seen the way the map sees it.
 
-    python pack_map.py TILTDIR TOPDIR ASSETDIR [--size 176] [--quality 88]
+    python pack_map.py TILTDIR TOPDIR ASSETDIR [--size 96] [--quality 88]
 
+--size: the pixels of a frame in the app. The view is 92 dp (CarMarker.SIZE) and 1 dp is 1 px on the panel; 176 until 1.19
+was 3.7 times the pixels shown, and the app keeps all 73 frames decoded for as long as it runs (9.04 MB against 2.69 MB).
 TILTDIR: a turntable baked by CarBakerActivity for the navigating map (72 frames, 5 degrees apart, camera 38 degrees
 above the road: the map's 52 degree tilt), e.g. bake.ps1 -Params "frames=72`nwidth=176`nheight=176`nss=4`nelevation=38`n
 target=0.0`nmargin=0.9`nshadow=0.7`nexposure=0.8`nclearcoat=1.4`ndirs=48`ntile=512". target=0 puts the point under the
@@ -24,7 +26,7 @@ def shrink(src, size):
 
 def main():
     tilt, top, dst = sys.argv[1], sys.argv[2], sys.argv[3]
-    size = int(sys.argv[sys.argv.index("--size") + 1]) if "--size" in sys.argv else 176
+    size = int(sys.argv[sys.argv.index("--size") + 1]) if "--size" in sys.argv else 96
     quality = int(sys.argv[sys.argv.index("--quality") + 1]) if "--quality" in sys.argv else 88
     os.makedirs(dst, exist_ok=True)
     names = sorted(n for n in os.listdir(tilt) if n.startswith("frame_") and n.endswith(".png"))

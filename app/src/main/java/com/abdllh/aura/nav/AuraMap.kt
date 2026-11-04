@@ -1298,6 +1298,9 @@ object MapGuard {
         return sp.getInt("fails", 0) < 2
     }
 
+    /** No failed start on record, and none just now. Counts nothing, unlike [homeMapAllowed], so any thread may ask. */
+    fun looksFine(c: Context): Boolean = !marker(c).exists() && sp(c).let { !it.getBoolean("starting", false) && it.getInt("fails", 0) == 0 }
+
     fun starting(c: Context) {
         try { marker(c).writeText("") } catch (_: Throwable) { }
     }

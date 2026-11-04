@@ -566,6 +566,8 @@ class AboutPage(private val act: SettingsActivity) : Page(R.string.set_about, R.
         info(R.drawable.ic_car, R.string.about_car_view, ctx.getString(
             if (com.abdllh.aura.ui.CarStage.gpuDrawing) R.string.about_car_gpu else R.string.about_car_cpu) +
             if (fps > 0f) " · ${Math.round(fps)} fps" else "")
+        // how the car came on screen at this start (the unit is the first place the real timings can be seen)
+        com.abdllh.aura.ui.CarStage.startNote(ctx).takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_car, R.string.about_car_start, it) }
         info(R.drawable.ic_shield, R.string.about_role, ctx.getString(
             when {
                 Device.isSystemApp(ctx) && Device.isPrivileged(ctx) -> R.string.role_system
@@ -589,6 +591,10 @@ class AboutPage(private val act: SettingsActivity) : Page(R.string.set_about, R.
         com.abdllh.aura.link.PhoneLinkCard.aboutLine(ctx).takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_smartphone, R.string.link_title, it) }
         // what navigation last did on its own: a late route taken, the route left, a trip resumed or not (and why)
         com.abdllh.aura.nav.NavNote.text.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_nav, R.string.about_nav, it) }
+        // the start-up cuts of 2.0's foundations, none of which could be tried before the unit
+        com.abdllh.aura.nav.MapLib.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_layers, R.string.about_map_lib, it) }
+        com.abdllh.aura.system.IdleGc.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_cpu, R.string.about_idle_gc, it) }
+        com.abdllh.aura.system.DexCompile.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_cpu, R.string.about_compile, it) }
         col.addRow(ctx.group(*rows.toTypedArray()))
 
         // the first real numbers from this unit: a page of its own, nothing runs until its button is pressed
