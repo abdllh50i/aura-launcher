@@ -56,6 +56,8 @@ object NavSession {
         private set
     const val ARRIVED_HOLD_MS = 30_000L
     private const val TAG = "AuraNav"
+    /** Beside the destination with this much of the route left, the car is not there yet. */
+    private const val ARRIVE_NEAR_M = 300.0
     /** A route that came late ([takeBetter]) is given up when the car is this far from it. */
     private const val BETTER_GONE_M = 300.0
     /** Moving this fast, the car's course must agree with it this closely. */
@@ -171,7 +173,9 @@ object NavSession {
             if (speed < 3) 0 else speed.roundToInt(), off)
 
         val dest = destination
-        if (remaining < 25 || (dest != null && Geo.distance(here, dest.pos) < 30)) {
+        // (in a straight line only when the route agrees, or the car has left it: a place seen across a divided road, with
+        // the way round to it still ahead, has not been reached)
+        if (remaining < 25 || (dest != null && Geo.distance(here, dest.pos) < 30 && (off || remaining < ARRIVE_NEAR_M))) {
             arrive()
             return
         }
