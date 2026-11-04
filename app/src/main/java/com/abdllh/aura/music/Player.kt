@@ -351,8 +351,10 @@ object Player {
         if (Device.isNwd) setKeyRouting(c, false)
         focus?.let { (c.getSystemService(Context.AUDIO_SERVICE) as AudioManager).abandonAudioFocusRequest(it) }
         sendPlayInfo(c, inOut = 1)
-        // (or a media key meant for whatever plays next finds this session, and starts the old local song)
-        session?.isActive = false
+        // Released, not only set inactive: Android keeps the last session that played as the one that gets the media keys,
+        // active or not (seen on the emulator), and a key meant for whatever plays next would start the old local song
+        session?.release()
+        session = null
         MusicService.stop(c)
     }
 
