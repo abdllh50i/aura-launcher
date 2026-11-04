@@ -268,18 +268,20 @@ internal object Collect {
         o.put("threads", first("^Threads:\\s+(\\d+)", status)?.toIntOrNull() ?: -1)
         o.put("vmRssKb", first("^VmRSS:\\s+(\\d+)", status)?.toLongOrNull() ?: -1L)
         o.put("vmPeakRssKb", first("^VmHWM:\\s+(\\d+)", status)?.toLongOrNull() ?: -1L)
-        // twice, 3 s apart: the first call reports the natural state, and the GC it runs is what the second one shows
-        val pkg = c.packageName
-        val one = Sh.text("dumpsys meminfo $pkg | head -c 20000", 10_000)
+        // twice, 3 s apart: the first call reports the natural state, and the GC it runs is what the second one shows.
+        // By pid: by name, Android sometimes answers with the whole system's list and no app summary (seen on the emulator
+        // with one process of that name running, and the same call by pid right)
+        val pid = android.os.Process.myPid()
+        val one = Sh.text("dumpsys meminfo $pid | head -c 20000", 10_000)
         Thread.sleep(3000)
-        val two = Sh.text("dumpsys meminfo $pkg | head -c 20000", 10_000)
+        val two = Sh.text("dumpsys meminfo $pid | head -c 20000", 10_000)
         if (one.isEmpty()) o.put("available", false)
         else {
             o.put("available", true)
             o.put("first", summary(one)).put("second", summary(two))
             o.put("firstRaw", Num.cut(one, 9000)).put("secondRaw", Num.cut(two, 9000))
         }
-        val gfx = Sh.text("dumpsys gfxinfo $pkg | head -c 40000", 8000)
+        val gfx = Sh.text("dumpsys gfxinfo $pid | head -c 40000", 8000)
         if (gfx.isNotEmpty()) {
             o.put("gfxinfo", Num.cut(gfx.lineSequence().filter { !it.startsWith("HISTOGRAM") }.joinToString("\n"), 8000))
             first("^\\s*([\\d,]+ bytes, [\\d.]+ MB.*)$", gfx)?.let { o.put("hwuiGpuMemory", it) }
@@ -359,7 +361,8 @@ internal object Collect {
         "volumeHud", "musicKeysAura", "btCoverOnline", "lyricsWords", "replaceStockMusic", "btDelayMs", "lyricsListen", "callCard", "auraRing",
         "hideAndroidNotices", "showPhoneMessages", "showMessageText", "builtInMaps", "navPackage", "offlineMapState", "offlineMapUpdated",
         "mapExtrasFetched", "markCameraButton", "wifiKeeper", "wifiOnStart", "zlinkGuard", "fullOffOnAccOff", "amriOn", "amriSens", "amriSpeak",
-        "amriMic", "navVoice", "musicSource", "tripRecOn", "handbrakeSeen", "handbrakeFake")
+        "amriMic", "navVoice", "musicSource", "musicSourceOwn", "musicLyrics", "musicLyricsFull", "keyRouting", "tripRecOn", "handbrakeSeen", "handbrakeFake",
+        "adbBridge", "setupDone", "crashes", "crashDisabled", "stockMusicApplied", "volumeHudStockOff", "callWindowStockOff", "lastUpdateCheck", "availableTag")
 
     fun settings(c: Context): JSONObject {
         val o = JSONObject()

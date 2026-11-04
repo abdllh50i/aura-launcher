@@ -264,6 +264,7 @@ class ScreenCheckActivity : Activity() {
                 "cancel" -> getString(R.string.diag_stopped_cancel)
                 "moving" -> getString(R.string.diag_stopped_moving)
                 "left" -> getString(R.string.diag_stopped_left)
+                "call" -> getString(R.string.diag_stopped_call)
                 ScreenCheck.DIED_MAIN -> getString(R.string.diag_stopped_main)
                 ScreenCheck.DIED_UNIT -> getString(R.string.diag_stopped_unit)
                 else -> why
@@ -658,6 +659,7 @@ internal class ReportText(private val c: Context, private val r: JSONObject) {
             else row(name, statusWords(o.optString("status"), o.optString("why").takeIf { it.isNotEmpty() }))
         }
         row(R.string.diag_tests_ok, ok.toString())
+        r.optJSONArray("processDeaths")?.let { row(R.string.diag_process_deaths, it.length().toString()) }
         row(R.string.diag_took, "${r.optInt("tookSec")} s")
         (r.optString("previousRunDiedIn")).takeIf { it.isNotEmpty() }?.let { row(R.string.diag_previous_died, it) }
     }

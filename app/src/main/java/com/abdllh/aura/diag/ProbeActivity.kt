@@ -225,7 +225,7 @@ class ProbeActivity : Activity() {
         if (p.firstOrNull() != name) return
         if (p.getOrNull(1) == "hang") { Thread.sleep(3_600_000L); return }
         Process.sendSignal(Process.myPid(), 11) // SIGSEGV: as a driver would die, with no Java left to catch it
-        Thread.sleep(5000L)
+        Thread.sleep(120_000L) // (it lands on the main thread and the dump takes seconds: this test does not go on meanwhile)
     }
 
     private fun run(name: String): JSONObject = when (name) {
@@ -303,7 +303,7 @@ class ProbeActivity : Activity() {
         pause(1500L) // (the camera starts where the car was left, and flies to the road)
         ui { r.frames.watchFully() }
         // the road's tiles; the numbers are of a map that has them, or say that it had none
-        val got = waitFor(12_000L) { r.frames.fullyAt != 0L }
+        val got = waitFor(20_000L) { r.frames.fullyAt != 0L }
         o.put("tilesCame", got)
         if (got) o.put("tilesMs", r.frames.fullyAt - r.cameraAt)
         return r

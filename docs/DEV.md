@@ -1684,15 +1684,16 @@ unless it is pressed; with its switch off the trip recorder is one preference re
   it". Android may start a dead process's top activity again by itself, and only `ScreenCheck` starts tests: `ProbeActivity`
   gives up at once when there is no plan or a marker is there. Tried on the emulator with `setprop
   debug.aura.diagtrouble <test>` (SIGSEGV, debug builds) and `<test>:hang`: Home's pid stays the same.
-* **Stops at once, keeps what it has:** the car moving (`Gear`), reverse, Cancel, Back, Home, anything over the test
-  (`onStop`). Then nothing is sent; the page offers to. The main process dying is found by the next opening of the page
+* **Stops at once, keeps what it has:** the car moving (`Gear`), reverse, a call, Cancel, Back, Home, anything over the
+  test (`onStop`). Then nothing is sent; the page offers to. The main process dying is found by the next opening of the page
   (`run.json`), which makes a report of what was left and says so. The step that asks for the wheel's keys is the one
   exception: a key may open its firmware screen, the music keys are held quiet (`MusicKeys.quietUntil`) and the page is
   brought back when the step ends (needs background starts: the unit has them, the emulator needs `appops set
   com.abdllh.aura SYSTEM_ALERT_WINDOW allow`).
-* **Every shell call has an end** (`Sh`): `LocalAdb`'s timeout is per read, so a command that keeps talking would never
-  end by it; and once the shell failed, later calls answer at once, so a unit without root does not spend seconds on each.
-  What needs root says so in the report instead of being silently empty.
+* **Everything has an end.** `Sh`: `LocalAdb`'s timeout is per read, so a command that keeps talking would never end by
+  it; once the shell failed, later calls answer at once, so a unit without root does not spend seconds on each. Each part
+  in the main process has 45 s (`ScreenCheck.part`), each test its `budgetMs`. What needs root says so in the report
+  instead of being silently empty.
 * **Measured as the car would show it.** `MapRig` is the app's own `AuraMap`, style and tiles, full-bleed, with two static
   translucent panels above it, fed one fix a second along a stored Dammam road at 60 km/h in the navigating camera; first
   capped at 60 (it falls to 30 by itself when it cannot keep up: `perSecond` shows it), then at 30; then the same as

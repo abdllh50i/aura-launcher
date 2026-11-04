@@ -57,6 +57,7 @@
     <string name="diag_stopped_cancel">أنت ألغيته</string>
     <string name="diag_stopped_moving">السيارة تحركت</string>
     <string name="diag_stopped_left">طلعت من الصفحة أو جات شاشة فوقها</string>
+    <string name="diag_stopped_call">جاتك مكالمة</string>
     <string name="diag_stopped_main">مات برنامج عمري نفسه وقت الفحص</string>
     <string name="diag_stopped_unit">الجهاز طفى أو اشتغل من جديد وقت الفحص</string>
     <string name="diag_send_title">الإرسال لخادمك</string>
@@ -201,6 +202,7 @@
     <string name="diag_trip_lines">الأسطر</string>
     <string name="diag_trip_last">آخر سطر: المعالج · PSS · المتاح</string>
     <string name="diag_tests_ok">تمت</string>
+    <string name="diag_process_deaths">عملية الفحص ماتت بين الاختبارات (مرات)</string>
     <string name="diag_took">أخذ</string>
     <string name="diag_previous_died">الفحص اللي قبله مات في</string>
     <!-- كلمات بدل قيم التقرير الإنجليزية -->

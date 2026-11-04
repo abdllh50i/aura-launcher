@@ -24,6 +24,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import java.util.concurrent.Callable
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 
 /**
  * The screen check, in the main process: one press of the button in Settings › About runs it, parked, for about two
@@ -44,6 +47,7 @@ import java.util.TimeZone
 object ScreenCheck {
     private const val TAG = "AuraDiag"
     private const val WHEEL_SECONDS = 10
+    private const val PART_MS = 45_000L
     const val DIED_MAIN = "the main process died during the check"
     const val DIED_UNIT = "the unit restarted during the check"
 
@@ -166,18 +170,33 @@ object ScreenCheck {
             doneSeconds.toFloat() / totalSeconds, wheelLeft, keys))
     }
 
-    /** One part of the report: whatever goes wrong in it stays in it. */
+    /**
+     * One part of the report: whatever goes wrong in it stays in it, and it has an end (a disk or a firmware call that
+     * never returns must not leave the page saying "cancelling" for good).
+     */
     private fun part(what: () -> JSONObject): JSONObject = try {
-        what()
+        val f = Sh.pool.submit(Callable { what() })
+        try {
+            f.get(PART_MS, TimeUnit.MILLISECONDS)
+        } catch (t: TimeoutException) {
+            f.cancel(true)
+            JSONObject().put("error", "no answer in ${PART_MS / 1000} s")
+        }
     } catch (t: Throwable) {
         Log.w(TAG, "part: $t")
-        JSONObject().put("error", t.toString())
+        JSONObject().put("error", (t.cause ?: t).toString())
+    }
+
+    /** What the check gives way to, wherever it stands. */
+    private fun giveWay() {
+        if (com.abdllh.aura.phone.Calls.busy) cancel("call")
     }
 
     private fun work(app: Context, texts: Context) {
         val startedAt = System.currentTimeMillis()
         val t0 = SystemClock.elapsedRealtime()
         doneSeconds = 0
+        deaths = JSONArray()
         val r = JSONObject()
         begin(app, r)
         DiagFiles.write(DiagFiles.run(app), JSONObject().put("pid", Process.myPid()).put("at", startedAt).put("boot", Marker.bootId()))
@@ -248,6 +267,7 @@ object ScreenCheck {
         val rawThread = Thread({ raw = try { Collect.rawKeys(WHEEL_SECONDS) } catch (_: Throwable) { "" } }, "aura-diag-keys").apply { isDaemon = true; start() }
         val until = SystemClock.elapsedRealtime() + WHEEL_SECONDS * 1000L
         while (cancelWhy == null) {
+            giveWay()
             val left = until - SystemClock.elapsedRealtime()
             if (left <= 0) break
             secondsLeft = ((left + 999) / 1000).toInt()
@@ -270,6 +290,7 @@ object ScreenCheck {
 
     // ---- a group of tests in :diag, watched from here
     private enum class Ended { DONE, CANCELLED, DIED, HUNG }
+    private var deaths = JSONArray()
 
     private fun group(app: Context, texts: Context, tests: List<Checks.Test>) {
         var left = tests.map { it.name }.filter { !skipped(app, it) }
@@ -294,6 +315,9 @@ object ScreenCheck {
                         addSkip(app, test, why)
                         DiagFiles.write(DiagFiles.result(app, test), JSONObject().put("test", test).put("status", why).put("evidence", evidence()))
                         Marker.clear(app)
+                    } else {
+                        // no test to blame (between two of them, or something else ended it): the report still says it happened
+                        deaths.put(JSONObject().put("beforeTests", JSONArray(left)).put("evidence", evidence()))
                     }
                     left = left.filter { !DiagFiles.result(app, it).isFile && !skipped(app, it) }
                     // a process that died with no test running, twice with nothing new to show for it: enough
@@ -363,6 +387,7 @@ object ScreenCheck {
         var seen = false
         while (true) {
             Thread.sleep(300L)
+            giveWay()
             val now = SystemClock.elapsedRealtime()
             if (cancelWhy != null || DiagFiles.cancel(app).exists()) {
                 cancel("cancel")
@@ -457,6 +482,7 @@ object ScreenCheck {
             }
         }
         r.put("tests", tests).put("c_gpu", gl).put("e_map", map).put("f_motion", motion)
+        if (deaths.length() > 0) r.put("processDeaths", deaths)
         val trip = TripRecorder.recorded(app)
         if (trip.length() > 0) r.put("trip", trip)
         write(app, r)
@@ -527,8 +553,9 @@ object ScreenCheck {
             }
             try {
                 DiagFiles.write(DiagFiles.sent(app), out)
-                // its lines went with it (a recording still on starts a new file)
-                if (out.optString("result") == "ok") DiagFiles.trip(app).delete()
+                // its lines went with it (a recording still on starts a new file); lines newer than the report wait for the next
+                val trip = DiagFiles.trip(app)
+                if (out.optString("result") == "ok" && trip.lastModified() <= DiagFiles.report(app).lastModified()) trip.delete()
             } catch (t: Throwable) {
                 Log.w(TAG, "sent: $t")
             }

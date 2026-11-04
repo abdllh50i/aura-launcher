@@ -51,6 +51,7 @@
     <string name="diag_stopped_cancel">you cancelled it</string>
     <string name="diag_stopped_moving">the car moved</string>
     <string name="diag_stopped_left">the page was left, or a screen came over it</string>
+    <string name="diag_stopped_call">a call came</string>
     <string name="diag_stopped_main">AMRI itself died during the check</string>
     <string name="diag_stopped_unit">the unit went off or restarted during the check</string>
     <string name="diag_send_title">Sending to your server</string>
@@ -195,6 +196,7 @@
     <string name="diag_trip_lines">Lines</string>
     <string name="diag_trip_last">Last line: CPU · PSS · free</string>
     <string name="diag_tests_ok">Completed</string>
+    <string name="diag_process_deaths">Test process died between tests (times)</string>
     <string name="diag_took">Took</string>
     <string name="diag_previous_died">The check before this died in</string>
     <!-- Words instead of the report's own English values -->

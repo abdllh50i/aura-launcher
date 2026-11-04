@@ -73,7 +73,7 @@ internal object DiagFiles {
 internal object Sh {
     class Out(val ok: Boolean, val text: String)
 
-    private val pool = Executors.newCachedThreadPool { r -> Thread(r, "aura-diag-sh").apply { isDaemon = true } }
+    val pool = Executors.newCachedThreadPool { r -> Thread(r, "aura-diag-sh").apply { isDaemon = true } }
     @Volatile private var known: Boolean? = null
 
     /** The shell works, as root. Asks once. */
