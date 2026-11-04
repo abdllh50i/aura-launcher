@@ -104,7 +104,9 @@ internal object ShareParser {
     private val URL_RE = Regex("""(?i)(?:https?://|geo:|\bmaps\.app\.goo\.gl/|\bgoo\.gl/maps|\bmaps\.apple/|\bmaps\.apple\.com/|\bmaps\.google\.[a-z.]+/|\bwww\.google\.[a-z.]+/maps|\bwaze\.com/ul)[^\s<>"'«»]*""")
 
     private fun urls(s: String): List<String> = URL_RE.findAll(s).map { m ->
-        val u = m.value.trimEnd('.', ',', ';', ':', ')', ']', '!', '?', '،')
+        var u = m.value.trimEnd('.', ',', ';', ':', ']', '!', '?', '،')
+        // (the bracket of a sentence around the link goes; a geo: URI's own "(label)" stays)
+        if (u.endsWith(")") && '(' !in u) u = u.trimEnd(')', '.', ',')
         if (u.startsWith("http", ignoreCase = true) || u.startsWith("geo:", ignoreCase = true)) u else "https://$u"
     }.toList()
 

@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="format-detection" content="telephone=no">
+<title>عمري</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #f2f3f6; --card: #ffffff; --card2: #e9ebf0; --text: #14161b; --text2: #565c68; --stroke: #dfe2e8;
+  --accent: #2f6df6; --on-accent: #ffffff; --ok: #0e8a4f; --warn: #b4610a; --bad: #c62a2a;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0c0d10; --card: #17191e; --card2: #23262d; --text: #f3f4f6; --text2: #a2a8b4; --stroke: #2a2d35;
+    --accent: #4c82ff; --on-accent: #ffffff; --ok: #39c47d; --warn: #e8a13c; --bad: #ff6b6b;
+  }
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; padding: max(14px, env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom));
+  background: var(--bg); color: var(--text);
+  font: 17px/1.4 -apple-system, BlinkMacSystemFont, "SF Arabic", "Geeza Pro", "Segoe UI", Tahoma, sans-serif;
+}
+h1 { font-size: 22px; font-weight: 700; margin: 0; }
+h2 { font-size: 14px; font-weight: 600; color: var(--text2); margin: 18px 6px 8px; }
+.head { display: flex; align-items: center; gap: 8px; margin: 0 6px 10px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--text2); flex: none; }
+.dot.on { background: var(--ok); }
+.dot.off { background: var(--bad); }
+.status {
+  background: var(--card); border: 1px solid var(--stroke); border-radius: 16px; padding: 12px 14px; margin-bottom: 12px;
+  min-height: 52px; font-size: 17px;
+}
+.status small { display: block; color: var(--text2); font-size: 14px; margin-top: 2px; white-space: pre-line; }
+.status.ok { border-color: var(--ok); }
+.status.warn { border-color: var(--warn); }
+.status.bad { border-color: var(--bad); }
+.card { background: var(--card); border: 1px solid var(--stroke); border-radius: 16px; padding: 12px; }
+input {
+  width: 100%; height: 56px; border: 1px solid var(--stroke); border-radius: 12px; background: var(--bg); color: var(--text);
+  padding: 0 14px; font: inherit; font-size: 17px; outline: none;
+}
+input:focus { border-color: var(--accent); }
+button {
+  font: inherit; font-weight: 600; color: var(--text); background: var(--card2); border: 0; border-radius: 12px;
+  min-height: 56px; padding: 0 14px; cursor: pointer; touch-action: manipulation;
+}
+button:active { opacity: .7; }
+button:disabled { opacity: .45; }
+button.primary { background: var(--accent); color: var(--on-accent); }
+button.danger { background: transparent; color: var(--bad); border: 1px solid var(--bad); }
+.row { display: flex; gap: 8px; }
+.row > * { flex: 1 1 0; min-width: 0; }
+.send { margin-top: 8px; width: 100%; }
+.place {
+  display: block; width: 100%; text-align: start; background: var(--card); border: 1px solid var(--stroke);
+  padding: 10px 14px; margin-top: 6px; font-weight: 400; min-height: 60px;
+}
+.place b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.place span { display: block; color: var(--text2); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.saved b { display: block; font-size: 17px; }
+.saved span { display: block; color: var(--text2); font-size: 13px; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trip { margin-top: 12px; }
+.trip button { width: 100%; }
+.song { padding: 2px 4px 10px; min-height: 52px; }
+.song b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.song span { display: block; color: var(--text2); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctl button { padding: 0; display: flex; align-items: center; justify-content: center; }
+.ctl svg { width: 26px; height: 26px; fill: currentColor; }
+.flip { transform: scaleX(-1); }
+.vol { margin-top: 8px; align-items: center; }
+.vol output { text-align: center; font-variant-numeric: tabular-nums; color: var(--text2); flex: 0 0 74px; font-size: 15px; }
+.hidden { display: none !important; }
+.note { color: var(--text2); font-size: 14px; margin: 8px 6px 0; }
+</style>
+</head>
+<body>
+<div class="head"><span class="dot" id="dot"></span><h1>عمري</h1></div>
+<div class="status" id="status" role="status" aria-live="polite">أتصل بالشاشة…</div>
+
+<section id="pair" class="card hidden">
+  <div>الجوال مو مربوط. في الشاشة: الإعدادات ← السيارة والنظام ← ربط الجوال، وامسح الرمز أو اكتبه هنا.</div>
+  <div class="row" style="margin-top:8px">
+    <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="الرمز من الشاشة" aria-label="رمز الربط">
+    <button id="pairGo" class="primary" style="flex:0 0 96px">اربط</button>
+  </div>
+  <div class="note">بدون ربط تقدر ترسل موقع، والشاشة تسأل قبل ما تبدأ.</div>
+</section>
+
+<section class="card" style="margin-top:12px">
+  <input id="box" autocomplete="off" autocapitalize="off" autocorrect="off" enterkeyhint="send" placeholder="الصق رابط الموقع أو اكتب اسم المكان" aria-label="رابط أو اسم مكان">
+  <button id="send" class="primary send">أرسل للشاشة</button>
+</section>
+<div id="found"></div>
+
+<div class="trip hidden" id="trip"><button id="stop" class="danger">أنهِ الرحلة</button></div>
+
+<section id="savedBox" class="hidden">
+  <h2>أماكنك</h2>
+  <div class="row">
+    <button id="home" class="saved"><b>البيت</b><span id="homeName"></span></button>
+    <button id="work" class="saved"><b>الدوام</b><span id="workName"></span></button>
+  </div>
+  <div id="recents"></div>
+</section>
+
+<section id="musicBox" class="hidden">
+  <h2>الموسيقى</h2>
+  <div class="card">
+    <div class="song"><b id="songTitle">ما فيه شي شغّال</b><span id="songArtist"></span></div>
+    <div class="row ctl">
+      <button id="prev" aria-label="اللي قبل"><svg class="flip" viewBox="0 0 24 24"><path d="M6 6h2v12H6zM9.5 12 18 6v12z"/></svg></button>
+      <button id="toggle" class="primary" aria-label="شغّل أو وقّف"><svg viewBox="0 0 24 24"><path id="toggleIcon" d="M8 5v14l11-7z"/></svg></button>
+      <button id="next" aria-label="اللي بعد"><svg class="flip" viewBox="0 0 24 24"><path d="M16 6h2v12h-2zM6 18l8.5-6L6 6z"/></svg></button>
+    </div>
+    <div class="row vol">
+      <button id="volDown" aria-label="وطّ الصوت">−</button>
+      <output id="vol">الصوت</output>
+      <button id="volUp" aria-label="ارفع الصوت">+</button>
+    </div>
+  </div>
+</section>
+
+<script>
+"use strict";
+// AMRI Link v2, the web remote. What the status line says comes from the unit's own answers and events, nothing else:
+// "sent" until the unit answers, "started" only after its event. A token is kept per address (localStorage).
+var $ = function (id) { return document.getElementById(id); };
+var token = "";
+try { token = localStorage.getItem("amriToken") || ""; } catch (e) {}
+var streamOn = false, streamAbort = null, reachable = false, paired = false, lastId = "", navName = "";
+
+function newId() {
+  var b = new Uint8Array(9), s = "", i;
+  (window.crypto || {getRandomValues: function (a) { for (i = 0; i < a.length; i++) a[i] = Math.random() * 256; }}).getRandomValues(b);
+  for (i = 0; i < b.length; i++) s += (b[i] + 256).toString(16).slice(1);
+  return s;
+}
+
+function say(text, sub, kind) {
+  var el = $("status");
+  el.textContent = text;
+  if (sub) { var small = document.createElement("small"); small.textContent = sub; el.appendChild(small); }
+  el.className = "status" + (kind ? " " + kind : "");
+}
+
+function dot(on) {
+  reachable = on;
+  $("dot").className = "dot " + (on ? "on" : "off");
+}
+
+// One request, with a time limit. {status, json}; status 0 when the unit did not answer.
+function call(method, path, body, ms) {
+  var ctl = new AbortController();
+  var timer = setTimeout(function () { ctl.abort(); }, ms || 4000);
+  var headers = {};
+  if (token) headers.Authorization = "Bearer " + token;
+  var init = {method: method, headers: headers, signal: ctl.signal, cache: "no-store"};
+  if (body) { headers["Content-Type"] = "application/json"; init.body = JSON.stringify(body); }
+  return fetch(path, init).then(function (r) {
+    return r.text().then(function (t) {
+      clearTimeout(timer);
+      dot(true);
+      var j = {};
+      try { j = JSON.parse(t); } catch (e) {}
+      if (r.status === 401 && token) forget();
+      return {status: r.status, json: j};
+    });
+  }).catch(function () {
+    clearTimeout(timer);
+    dot(false);
+    return {status: 0, json: {}};
+  });
+}
+
+// A request that may start something: the same id on every try, so the unit does it once. Three tries over 20 s: the
+// hotspot freezes for 5 to 8 s when it re-associates.
+function send(path, body, ms) {
+  var waits = [0, 5000, 10000], i = 0;
+  function next() {
+    return new Promise(function (ok) { setTimeout(ok, waits[i]); }).then(function () {
+      return call("POST", path, body, ms);
+    }).then(function (r) {
+      i++;
+      if (r.status === 0 && i < waits.length) {
+        say("ما ردت الشاشة، أحاول مرة ثانية…", null, "warn");
+        return next();
+      }
+      return r;
+    });
+  }
+  return next();
+}
+
+function forget() {
+  token = "";
+  try { localStorage.removeItem("amriToken"); } catch (e) {}
+  setPaired(false);
+}
+
+function setPaired(on) {
+  paired = on;
+  $("pair").classList.toggle("hidden", on);
+  $("savedBox").classList.toggle("hidden", !on);
+  $("musicBox").classList.toggle("hidden", !on);
+  if (!on) { $("trip").classList.add("hidden"); if (streamAbort) streamAbort.abort(); }
+}
+
+// ---------------------------------------------------------------- what the unit says
+function km(m) { return m >= 950 ? (m / 1000).toFixed(m >= 10000 ? 0 : 1).replace(/\.0$/, "") + " كم" : Math.round(m / 10) * 10 + " م"; }
+function mins(s) {
+  var m = Math.max(1, Math.round(s / 60));
+  if (m < 60) return m + (m >= 3 && m <= 10 ? " دقائق" : " دقيقة");
+  return Math.floor(m / 60) + " س" + (m % 60 ? " " + (m % 60) + " د" : "");
+}
+var FAILS = {no_route: "ما لقى طريق. الموقع باقي على الشاشة، جرّب منها", no_fix: "ما عنده موقع السيارة. الموقع باقي على الشاشة", timeout: "طوّل وما لقى طريق. الموقع باقي على الشاشة", address_not_found: "ما لقى العنوان المحفوظ"};
+var UNREAD = {dead_link: "الرابط ميت، ما يوصل لمكان", network: "ما قدرت الشاشة تفتح الرابط: تأكد من الإنترنت", no_redirect: "ما قدرت الشاشة تفهم الرابط", not_a_map: "هذا مو رابط موقع", no_place: "الرابط ما فيه موقع محدد", empty: "ما فيه شي أرسله"};
+
+function onNav(e) {
+  var p = e.place || {};
+  if (p.name) navName = p.name;
+  var to = navName ? " إلى " + navName : "";
+  switch (e.state) {
+    case "routing": say("أحسب الطريق" + to + "…"); break;
+    case "waiting_fix": say("أنتظر موقع السيارة" + to + "…", "تبدأ الاتجاهات أول ما يوصل", "warn"); break;
+    case "card":
+      if (e.kind === "replace") say("على الشاشة: تبدل الرحلة الحالية؟", "تنتظر ضغطة منك، وبدونها تكمل رحلتك", "warn");
+      else if (e.kind === "map") say("الموقع على الخريطة في الشاشة", "اضغط انطلق هناك", "warn");
+      else say("على الشاشة: ينتظر موافقتك", "اضغط ابدأ هناك", "warn");
+      break;
+    case "held": say(e.reason === "reverse" ? "السيارة على الريوس: الموقع ينتظر" : "فيه مكالمة: الموقع ينتظر لين تخلص", null, "warn"); break;
+    case "started": say("بدأت الاتجاهات" + to, [e.distanceM != null ? km(e.distanceM) : "", e.durationS != null ? mins(e.durationS) : "", e.etaLocal ? "توصل " + e.etaLocal : ""].filter(Boolean).join(" · "), "ok"); refreshPlaces(); break;
+    case "navigating":
+    case "progress":
+      say("في الطريق" + to, [e.remainingM != null ? "باقي " + km(e.remainingM) : "", e.timeLeftS != null ? mins(e.timeLeftS) : "", e.etaLocal ? "توصل " + e.etaLocal : ""].filter(Boolean).join(" · ") + (e.nextText ? "\n" + e.nextText : ""), "ok");
+      break;
+    case "arrived": say("وصلت" + to, null, "ok"); break;
+    case "failed": say("ما بدأت الاتجاهات" + to, FAILS[e.reason] || e.reason, "bad"); break;
+    case "cancelled": say("انلغت" + to, e.by === "phone" ? "من الجوال" : "من الشاشة", "warn"); break;
+    case "ignored": say(e.kept ? "خلّى رحلته الحالية" : "انرفض من الشاشة", null, "warn"); break;
+    case "expired": say("ما أحد رد على الشاشة، ما بدأت", null, "warn"); break;
+    case "replaced": say("جا مكان أحدث مكانه", null, "warn"); break;
+    case "handed": say("راح لتطبيق الملاحة في الشاشة", "ما يقول لي هل بدأ", "warn"); break;
+    case "idle": say("ما فيه رحلة الحين"); navName = ""; break;
+    default: return;
+  }
+  var active = e.state === "navigating" || e.state === "progress" || e.state === "started" || e.state === "arrived" || e.state === "routing" || e.state === "waiting_fix";
+  var ended = e.state === "idle" || e.state === "failed" || e.state === "cancelled" || e.state === "expired";
+  if (active) $("trip").classList.remove("hidden");
+  else if (ended) $("trip").classList.add("hidden");
+}
+
+function onMusic(m) {
+  $("musicBox").classList.toggle("hidden", !paired);
+  $("songTitle").textContent = m.title || "ما فيه شي شغّال";
+  $("songArtist").textContent = m.artist || "";
+  $("toggleIcon").setAttribute("d", m.playing ? "M7 5h4v14H7zM13 5h4v14h-4z" : "M8 5v14l11-7z");
+  if (m.volume != null) $("vol").textContent = m.muted ? "مكتوم" : "الصوت " + m.volume;
+}
+
+// Events: fetch's stream and not EventSource, which cannot carry the token.
+function stream() {
+  if (streamOn || !token) return;
+  streamOn = true;
+  var ctl = new AbortController();
+  streamAbort = ctl;
+  var done = function () {
+    streamOn = false;
+    streamAbort = null;
+    if (token) { dot(false); setTimeout(stream, 3000); }
+  };
+  fetch("/v1/events", {headers: {Authorization: "Bearer " + token}, signal: ctl.signal, cache: "no-store"}).then(function (r) {
+    if (r.status === 401 || r.status === 403) { forget(); return; }
+    if (!r.ok || !r.body) throw new Error("no stream");
+    dot(true);
+    var reader = r.body.getReader(), dec = new TextDecoder(), buf = "";
+    function pump() {
+      return reader.read().then(function (x) {
+        if (x.done) return;
+        buf += dec.decode(x.value, {stream: true});
+        var at;
+        while ((at = buf.indexOf("\n\n")) >= 0) {
+          var chunk = buf.slice(0, at), ev = "", data = "";
+          buf = buf.slice(at + 2);
+          chunk.split("\n").forEach(function (l) {
+            if (l.indexOf("event: ") === 0) ev = l.slice(7);
+            else if (l.indexOf("data: ") === 0) data += l.slice(6);
+          });
+          if (!ev || !data) continue;
+          try {
+            var o = JSON.parse(data);
+            if (ev === "nav") onNav(o);
+            else if (ev === "music") onMusic(o);
+          } catch (e) {}
+        }
+        return pump();
+      });
+    }
+    return pump();
+  }).then(done, done);
+}
+
+// ---------------------------------------------------------------- what the phone asks
+function placeButton(p, onTap) {
+  var b = document.createElement("button");
+  b.className = "place";
+  var t = document.createElement("b");
+  t.textContent = p.name;
+  b.appendChild(t);
+  var d = [p.detail, p.distanceM != null ? km(p.distanceM) : ""].filter(Boolean).join(" · ");
+  if (d) { var s = document.createElement("span"); s.textContent = d; b.appendChild(s); }
+  b.addEventListener("click", onTap);
+  return b;
+}
+
+function goTo(p, src) {
+  var id = lastId = newId();
+  $("found").textContent = "";
+  navName = p.name || "";
+  say("أرسلت" + (navName ? " " + navName : "") + "، أنتظر رد الشاشة…");
+  send("/v1/nav/go", {id: id, place: {name: p.name, detail: p.detail || "", lat: p.lat, lon: p.lon, src: src}, mode: "start"}).then(answered);
+}
+
+function answered(r) {
+  var j = r.json;
+  if (r.status === 0) { say("ما قدرت أوصل للشاشة", "تأكد إن الجوال والشاشة على نفس الشبكة", "bad"); return; }
+  if (r.status === 202 && j.place && j.place.name) navName = j.place.name;
+  if (r.status === 202) {
+    if (j.state === "duplicate") return;
+    if (j.needs === "tap") say("وصل للشاشة: ينتظر ضغطة منك", navName, "warn");
+    else if (!paired) say("وصل للشاشة");
+    else say("وصل للشاشة" + (navName ? ": " + navName : ""));
+    return;
+  }
+  if (r.status === 200 && j.state === "search") { search(j.q); return; }
+  if (r.status === 422) {
+    say(UNREAD[j.reason] || "ما قدرت أفهم اللي أرسلته", null, "bad");
+    if (j.q) offerSearch(j.q);
+    return;
+  }
+  if (r.status === 403) { say("الشاشة رفضت الطلب", "اربط الجوال من شاشة السيارة", "bad"); return; }
+  if (r.status === 409) { say("ما تقدر الشاشة الحين", j.reason === "not_set" ? "هذا المكان ما انحفظ في الشاشة" : j.reason, "warn"); return; }
+  say("ردت الشاشة بخطأ (" + r.status + ")", j.reason, "bad");
+}
+
+function offerSearch(q) {
+  var f = $("found");
+  f.textContent = "";
+  f.appendChild(placeButton({name: "دوّر على: " + q}, function () { search(q); }));
+}
+
+function search(q) {
+  if (!paired) { say("البحث يبي الجوال مربوط", "ترسل رابط أو إحداثيات بدون ربط", "warn"); return; }
+  say("أدوّر على " + q + "…");
+  call("POST", "/v1/search", {q: q, on: "phone"}, 12000).then(function (r) {
+    var f = $("found");
+    f.textContent = "";
+    if (r.status === 0) { say("ما قدرت أوصل للشاشة", null, "bad"); return; }
+    if (r.json.state === "offline") { say("الشاشة ما قدرت تبحث: ما فيه إنترنت ولا خريطة بدونه", null, "bad"); return; }
+    var list = r.json.results || [];
+    if (!list.length) { say("ما لقيت " + q, null, "warn"); return; }
+    say("اختر المكان", list.length + " نتيجة من الشاشة");
+    list.forEach(function (p) { f.appendChild(placeButton(p, function () { goTo(p, "search.unit"); })); });
+  });
+}
+
+function submit() {
+  var v = $("box").value.trim();
+  if (!v) { $("box").focus(); return; }
+  // a link or coordinates are read on the unit; a name goes to its search
+  var looksShared = /(https?:\/\/|geo:|maps\.|goo\.gl|\d+[.٫]\d+\s*[,،\s]\s*\d+[.٫]\d+|\d+°)/i.test(v);
+  $("found").textContent = "";
+  if (!looksShared && paired) { search(v); return; }
+  navName = "";
+  lastId = newId();
+  say("أرسلت، أنتظر رد الشاشة…");
+  send("/v1/share", {id: lastId, text: v}, 16000).then(answered);
+  $("box").value = "";
+}
+
+function refreshPlaces() {
+  if (!paired) return;
+  call("GET", "/v1/places").then(function (r) {
+    if (r.status !== 200) return;
+    var j = r.json;
+    [["home", j.home], ["work", j.work]].forEach(function (x) {
+      $(x[0] + "Name").textContent = x[1] ? x[1].name : "ما انحفظ";
+      $(x[0]).disabled = !x[1];
+    });
+    var box = $("recents");
+    box.textContent = "";
+    (j.recents || []).slice(0, 6).forEach(function (p) {
+      box.appendChild(placeButton(p, function () { goTo(p, "recent"); }));
+    });
+  });
+}
+
+function saved(which) {
+  lastId = newId();
+  navName = $(which + "Name").textContent;
+  say("أرسلت " + navName + "، أنتظر رد الشاشة…");
+  send("/v1/nav/saved", {id: lastId, which: which}).then(answered);
+}
+
+function remote(cmd) {
+  send("/v1/remote", {id: newId(), cmd: cmd}).then(function (r) {
+    if (r.status === 0) { say("ما قدرت أوصل للشاشة", null, "bad"); return; }
+    if (r.json.volume != null) $("vol").textContent = r.json.muted ? "مكتوم" : "الصوت " + r.json.volume;
+    if (r.status !== 200) say("الشاشة ما سوتها", r.json.reason, "warn");
+  });
+}
+
+function pair(code) {
+  say("أربط الجوال…");
+  return call("POST", "/v1/pair", {code: code, device: /iPhone/.test(navigator.userAgent) ? "iPhone" : "متصفح"}, 6000).then(function (r) {
+    if (r.status === 200 && r.json.token) {
+      token = r.json.token;
+      try { localStorage.setItem("amriToken", token); } catch (e) {}
+      say("انربط الجوال", null, "ok");
+      start();
+      return;
+    }
+    if (r.status === 0) { say("ما قدرت أوصل للشاشة", null, "bad"); return; }
+    say(r.json.reason === "bad_code" ? "الرمز غلط" : "ما فيه رمز ظاهر على الشاشة", "افتح رمز الربط في الشاشة وجرّب", "bad");
+  });
+}
+
+function start() {
+  call("GET", "/v1/ping").then(function (p) {
+    if (p.status !== 200) { dot(false); say("ما قدرت أوصل للشاشة", "تأكد إن الجوال والشاشة على نفس الشبكة", "bad"); return; }
+    if (!token) { setPaired(false); say("الشاشة موجودة: " + (p.json.name || p.json.unit), "الجوال مو مربوط"); return; }
+    call("GET", "/v1/state").then(function (s) {
+      if (s.status !== 200) { if (!token) { say("الجوال مو مربوط"); } return; }
+      setPaired(true);
+      onNav(s.json.nav);
+      onMusic(s.json.music);
+      refreshPlaces();
+      stream();
+    });
+  });
+}
+
+$("send").addEventListener("click", submit);
+$("box").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); submit(); } });
+$("pairGo").addEventListener("click", function () { var c = $("code").value.trim(); if (c) pair(c); });
+$("home").addEventListener("click", function () { saved("home"); });
+$("work").addEventListener("click", function () { saved("work"); });
+$("stop").addEventListener("click", function () {
+  send("/v1/nav/stop", {id: newId()}).then(function (r) {
+    if (r.status === 0) say("ما قدرت أوصل للشاشة", null, "bad");
+    else if (r.json.state === "idle") say("ما فيه رحلة الحين");
+    else if (r.status !== 200) say("الشاشة ما وقفتها", r.json.reason, "warn");
+  });
+});
+[["prev", "music.prev"], ["toggle", "music.toggle"], ["next", "music.next"], ["volDown", "volume.down"], ["volUp", "volume.up"]].forEach(function (x) {
+  $(x[0]).addEventListener("click", function () { remote(x[1]); });
+});
+document.addEventListener("visibilitychange", function () { if (!document.hidden && !streamOn) start(); });
+
+// Opened from the QR code: /p/123456 pairs at once, and the address goes back to the plain one (a bookmark, a reload).
+var m = location.pathname.match(/^\/p\/(\d{6})$/);
+if (m) {
+  var code = m[1];
+  try { history.replaceState(null, "", "/"); } catch (e) {}
+  if (token) start(); else pair(code).then(function () { if (!token) { setPaired(false); } });
+} else {
+  start();
+}
+</script>
+</body>
+</html>

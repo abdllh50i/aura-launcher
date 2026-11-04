@@ -643,6 +643,7 @@ object Amri {
                 decided = true
                 placeSearching = false
                 val winner = latest?.let { places.clearWinner(query, it, near) }
+                Log.i(TAG, "place '$query': ${winner?.name ?: "no clear one"} of ${latest?.size ?: -1}")
                 if (winner == null) {
                     openMapSearch(c, query)
                     give(Answer(c.getString(R.string.amri_search_place, query)))

@@ -177,7 +177,9 @@ internal object PlaceInbox {
     private fun where(x: Incoming): String {
         val arabic = Locale.getDefault().language == "ar"
         val far = CarLocation.lastKnown()?.let { Units.distance(Geo.distance(it, x.place.pos), arabic) }
-        return listOfNotNull(x.place.detail.ifBlank { null }, far).joinToString(" · ")
+        // (each part whole: an Arabic address beside "12 km" must not take the number into its own direction)
+        val bidi = android.text.BidiFormatter.getInstance(arabic)
+        return listOfNotNull(x.place.detail.ifBlank { null }, far).joinToString(" · ") { bidi.unicodeWrap(it) }
     }
 
     private fun askCard(c: Context, x: Incoming) {
@@ -248,6 +250,7 @@ internal object PlaceInbox {
         main.removeCallbacks(tick)
         // (Apple's terms keep its place data off the unit's lists: companion.md 2.6)
         val mayKeep = !x.src.contains("apple", ignoreCase = true)
+        shownPhase = null // ([tripsListener] tells each phase, the first one too, and shows the card)
         Trips.goTo(c, x.place, x.from, if (x.voice) Trips.VOICE else Trips.PHONE, waitForFix = true, remember = mayKeep) { outcome, why ->
             if (current === x) when (outcome) {
                 Trips.Outcome.STARTED -> started(c, x)
@@ -255,13 +258,8 @@ internal object PlaceInbox {
                 Trips.Outcome.DROPPED -> cancelled(x, why ?: "dropped")
             }
         }
-        val a = Trips.attempt
-        if (a != null && a.place === x.place) {
-            shownPhase = a.phase
-            tellPhase(x, a.phase)
-            MapsActivity.open(c) // the way it has always come forward; it shows the place while the route is found
-            progressCard(c, x, a.phase)
-        }
+        // the way it has always come forward; it shows the place while the route is found
+        if (Trips.attempt?.place === x.place) MapsActivity.open(c)
     }
 
     private fun tellPhase(x: Incoming, phase: Trips.Phase) =

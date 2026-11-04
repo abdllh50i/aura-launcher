@@ -40,6 +40,8 @@ object Places {
     /** [clearWinner]: how well a name must answer ([TextMatch.score]), and how close two answers are the same answer. */
     private const val STRONG_NAME = 0.85
     private const val SAME_ANSWER = 0.02
+    private const val SAME_NAME = 0.95
+    private const val SAME_SPOT_M = 300.0
     private val generation = AtomicInteger()
     const val USER_AGENT = "Aura/${BuildConfig.VERSION_NAME} (car head unit; github.com/abdllh50i/aura-launcher)"
 
@@ -129,10 +131,12 @@ object Places {
         val nearest = strong.minOfOrNull { band(it.first) } ?: return null
         val here = strong.filter { band(it.first) == nearest }
         val best = here.maxOf { it.second }
-        val rivals = here.filter { it.second >= best - SAME_ANSWER }
-        if (rivals.map { TextMatch.norm(it.first.name) }.distinct().size > 1) return null
         if (nearest == 3 && best < 0.99) return null
-        return rivals.minByOrNull { Geo.distance(near, it.first.pos) }?.first
+        val rivals = here.filter { it.second >= best - SAME_ANSWER }.map { it.first }
+        val winner = rivals.minByOrNull { Geo.distance(near, it.pos) } ?: return null
+        // (another spelling of the name, or the map data's second entry for the same spot, is no rival)
+        val clear = rivals.all { TextMatch.score(it.name, winner.name) >= SAME_NAME || Geo.distance(it.pos, winner.pos) < SAME_SPOT_M }
+        return if (clear) winner else null
     }
 
     /** Photon's results first, then the offline ones it did not have (the same name within 200 m is the same place). */

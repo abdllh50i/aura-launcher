@@ -1,0 +1,814 @@
+#!/usr/bin/env python3
+"""
+Real HTTP calls against link/PhoneServer.kt on an emulator, through adb forward (docs/DEV.md, "A place from the phone").
+
+    python scripts/phone-server-test.py [--serial emulator-5572] [--port 47101] [--only name,name] [--list]
+
+Needs the debug build installed and on the screen, with the overlay permission:
+    adb shell appops set com.abdllh.aura SYSTEM_ALERT_WINDOW allow
+Sets its own debug properties and switches the server on. Exit code 1 when something failed.
+
+It never touches anything but the given serial. A route needs OSRM (or the offline map): a run without internet shows
+the route's failure path instead, and says so.
+"""
+import argparse
+import base64
+import http.client
+import json
+import os
+import socket
+import subprocess
+import sys
+import threading
+import time
+
+ADB = r"E:\Android\Sdk\platform-tools\adb.exe"
+HERE = os.path.dirname(os.path.abspath(__file__))
+FIXTURES = os.path.join(HERE, "..", "tools", "link-fixtures", "share.json")
+
+results = []
+RUN = str(int(time.time()))
+
+
+def I(name):
+    """An id for this run: the server remembers the last 64 for as long as it lives."""
+    return name + "-" + RUN
+
+
+def check(name, ok, detail=""):
+    results.append((name, bool(ok)))
+    print(("PASS " if ok else "FAIL ") + name + (("   " + str(detail)) if detail and not ok else ""))
+    return ok
+
+
+def adb(*args):
+    return subprocess.run([ADB, "-s", SERIAL] + list(args), capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
+
+
+def shell(cmd):
+    return adb("shell", cmd)
+
+
+def req(method, path, body=None, token=None, headers=None, timeout=10, raw_body=None):
+    c = http.client.HTTPConnection("127.0.0.1", PORT, timeout=timeout)
+    h = dict(headers or {})
+    data = None
+    if raw_body is not None:
+        data = raw_body
+    elif body is not None:
+        data = json.dumps(body, ensure_ascii=False).encode("utf-8")
+        h.setdefault("Content-Type", "application/json")
+    if token:
+        h["Authorization"] = "Bearer " + token
+    c.request(method, path, body=data, headers=h)
+    r = c.getresponse()
+    raw = r.read()
+    c.close()
+    try:
+        j = json.loads(raw.decode("utf-8"))
+    except Exception:
+        j = None
+    return r.status, j, raw, dict(r.getheaders())
+
+
+class Events:
+    """GET /v1/events on a thread: every event seen, with when."""
+
+    def __init__(self, token):
+        self.events = []
+        self.heartbeats = 0
+        self.alive = True
+        self.sock = socket.create_connection(("127.0.0.1", PORT), timeout=40)
+        self.sock.sendall(("GET /v1/events HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nAuthorization: Bearer %s\r\n\r\n" % (PORT, token)).encode())
+        self.thread = threading.Thread(target=self.run, daemon=True)
+        self.thread.start()
+
+    def run(self):
+        buf = b""
+        try:
+            while True:
+                d = self.sock.recv(4096)
+                if not d:
+                    break
+                buf += d
+                while b"\n\n" in buf:
+                    chunk, buf = buf.split(b"\n\n", 1)
+                    text = chunk.decode("utf-8", "replace")
+                    if text.startswith(":") or "\n:" in text:
+                        self.heartbeats += 1
+                    ev, data = None, None
+                    for line in text.split("\n"):
+                        if line.startswith("event: "):
+                            ev = line[7:]
+                        elif line.startswith("data: "):
+                            data = line[6:]
+                    if ev and data:
+                        self.events.append((time.time(), ev, json.loads(data)))
+        except Exception:
+            pass
+        self.alive = False
+
+    def nav(self):
+        return [e[2] for e in self.events if e[1] == "nav"]
+
+    def wait(self, pred, timeout=20):
+        end = time.time() + timeout
+        while time.time() < end:
+            for e in self.nav():
+                if pred(e):
+                    return e
+            time.sleep(0.1)
+        return None
+
+    def close(self):
+        try:
+            self.sock.close()
+        except Exception:
+            pass
+
+
+def set_debug(value):
+    shell("setprop debug.aura.phoneserver %s" % (value if value else "''"))
+
+
+def fix(lat=26.40, lon=50.09):
+    # the emulator's own GPS (it reports again by itself), and the debug hook for a fix right now
+    adb("emu", "geo", "fix", str(lon), str(lat))
+    shell("am start -n com.abdllh.aura/.nav.MapsActivity --es mock_loc %s,%s" % (lat, lon))
+    time.sleep(1.5)
+
+
+def home():
+    shell("input keyevent HOME")
+    time.sleep(1)
+
+
+def stop_trip(token):
+    req("POST", "/v1/nav/stop", {"id": I("t") + str(time.time())}, token)
+    time.sleep(0.5)
+
+
+def shot(name):
+    subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", os.path.join(HERE, "shot.ps1"),
+                    "-Name", name, "-Serial", SERIAL], capture_output=True)
+
+
+def tap_card(which):
+    """The card's buttons, by position on the 1024 x 600 screen (the card is at the top, its buttons at the left in Arabic, the right in English)."""
+    x, y = which
+    shell("input tap %d %d" % (x, y))
+
+
+# --------------------------------------------------------------------------------------------------- the tests
+def t_peers():
+    set_debug("")
+    time.sleep(0.2)
+    try:
+        s, j, _, _ = req("GET", "/v1/ping")
+        check("loopback refused without the debug property", s == 403 and j == {"reason": "refused"}, (s, j))
+    except Exception as e:
+        check("loopback refused without the debug property", False, e)
+    set_debug("1")
+    s, j, _, _ = req("GET", "/v1/ping")
+    check("ping for a private peer, no secrets", s == 200 and j["app"] == "AMRI" and j["proto"] == 2 and "unit" in j and "token" not in j, j)
+    for method, path, body in [("GET", "/v1/state", None), ("GET", "/v1/events", None), ("GET", "/v1/places", None), ("GET", "/v1/diag", None),
+                               ("POST", "/v1/nav/go", {"id": I("p1"), "place": {"lat": 26.3, "lon": 50.2}}), ("POST", "/v1/share", {"text": "26.3,50.2"}),
+                               ("POST", "/v1/nav/stop", {}), ("POST", "/v1/nav/saved", {"which": "home"}), ("POST", "/v1/search", {"q": "abc"}),
+                               ("POST", "/v1/remote", {"cmd": "music.toggle"}), ("PUT", "/v1/places", {})]:
+        s, j, _, _ = req(method, path, body)
+        check("other peer refused: %s %s" % (method, path), s == 403, (s, j))
+    s, _, raw, h = req("GET", "/")
+    check("the page for any private peer", s == 200 and b"<html" in raw and "Content-Security-Policy" in h, s)
+    check("the page is under 50 KB", len(raw) < 50 * 1024, len(raw))
+    s, j, _, _ = req("POST", "/v1/pair", {"code": "000000", "device": "x"})
+    check("no pairing while no code shows", s == 403 and j["reason"] == "no_code", (s, j))
+    # the rule itself, with the addresses a real network has
+    for addr, gw, expect in [("172.20.10.1", "172.20.10.1", "GATEWAY"), ("172.20.10.3", "172.20.10.1", "PRIVATE"), ("192.168.1.7", None, "PRIVATE"),
+                             ("10.1.2.3", None, "PRIVATE"), ("169.254.1.1", None, "PRIVATE"), ("172.32.0.1", None, "REFUSED"), ("8.8.8.8", "172.20.10.1", "REFUSED"),
+                             ("fe80::1", None, "PRIVATE"), ("fd00::1", None, "PRIVATE"), ("2001:4860::1", None, "REFUSED"), ("::ffff:172.20.10.1", "172.20.10.1", "GATEWAY"),
+                             ("127.0.0.1", None, "REFUSED")]:
+        s, j, _, _ = req("POST", "/debug/peer", {"address": addr, "gateway": gw or ""})
+        check("peer %s is %s" % (addr, expect), s == 200 and j["peer"] == expect, j)
+    set_debug("gateway")
+    s, j, _, _ = req("GET", "/v1/state")
+    check("gateway without a token: pair first (401)", s == 401, (s, j))
+
+
+def t_web_safety():
+    set_debug("gateway")
+    s, j, _, _ = req("POST", "/v1/nav/go", raw_body=json.dumps({"place": {"lat": 26.3, "lon": 50.2}}).encode(), headers={"Content-Type": "text/plain"})
+    check("POST as text/plain refused (415)", s == 415, (s, j))
+    s, j, _, _ = req("POST", "/v1/nav/go", raw_body=b"{}", headers={"Content-Type": "application/x-www-form-urlencoded"})
+    check("POST as a form refused (415)", s == 415, (s, j))
+    s, j, _, h = req("OPTIONS", "/v1/nav/go", headers={"Origin": "http://evil.example", "Access-Control-Request-Method": "POST"})
+    check("preflight fails, no CORS allowance", s in (403, 405) and not any(k.lower().startswith("access-control") for k in h), (s, h))
+    s, j, _, _ = req("POST", "/v1/share", {"text": "26.3,50.2"}, headers={"Origin": "http://evil.example"})
+    check("a mismatched Origin refused", s == 403 and j["reason"] == "origin", (s, j))
+    s, j, _, _ = req("POST", "/v1/share", {"text": "26.3,50.2"}, headers={"Origin": "null"})
+    check("Origin null refused", s == 403 and j["reason"] == "origin", (s, j))
+    s, j, _, _ = req("GET", "/v1/ping", headers={"Host": "evil.example"})
+    check("another Host refused (DNS rebinding)", s == 403 and j["reason"] == "host", (s, j))
+    s, j, _, _ = req("GET", "/v1/ping", headers={"Host": "127.0.0.1:47101", "Origin": "http://127.0.0.1:47101"})
+    check("the page's own Origin passes", s == 200, (s, j))
+    s, j, _, _ = req("GET", "/v1/ping", headers={"Host": "[fe80::1]:47101"})
+    check("an IPv6 Host passes", s == 200, (s, j))
+
+
+def t_bad_bodies(token):
+    s, j, _, _ = req("POST", "/v1/nav/go", raw_body=b"{not json", headers={"Content-Type": "application/json"}, token=token)
+    check("bad JSON: 400", s == 400 and j["reason"] == "bad_json", (s, j))
+    s, j, _, _ = req("POST", "/v1/nav/go", raw_body=b"[" * 60000, headers={"Content-Type": "application/json"}, token=token)
+    check("deep JSON does not hurt: 400", s == 400, (s, j))
+    for place in [None, {"lat": 95, "lon": 50}, {"lat": 26, "lon": 190}, {"lat": "x", "lon": 50}, {"lat": 0, "lon": 0}, {"name": "no coordinates"}]:
+        s, j, _, _ = req("POST", "/v1/nav/go", {"id": I("bad"), "place": place} if place else {"id": I("bad")}, token)
+        check("bad place %s: 400" % place, s == 400 and j["reason"] == "bad_place", (s, j))
+    s, j, _, _ = req("POST", "/v1/nav/go", {"id": I("x") * 65, "place": {"lat": 26.3, "lon": 50.2}}, token)
+    check("too long an id: 400", s == 400, (s, j))
+    s, j, _, _ = req("POST", "/v1/nav/go", {"id": I("m"), "place": {"lat": 26.3, "lon": 50.2}, "mode": "launch"}, token)
+    check("unknown mode: 400", s == 400, (s, j))
+    s, j, _, _ = req("POST", "/v1/remote", {"cmd": "self.destruct"}, token)
+    check("unknown remote command: 400", s == 400, (s, j))
+    s, j, _, _ = req("POST", "/v1/nav/saved", {"which": "gym"}, token)
+    check("unknown saved place: 400", s == 400, (s, j))
+    s, j, _, _ = req("POST", "/v1/search", {"q": ""}, token)
+    check("empty search: 400", s == 400, (s, j))
+    s, j, _, _ = req("POST", "/v1/share", {"text": ""}, token)
+    check("empty share: 400", s == 400, (s, j))
+    s, j, _, _ = req("POST", "/v1/nav/go", raw_body=b"x" * 70000, headers={"Content-Type": "application/json"}, token=token)
+    check("a body over 64 KB: 413", s == 413, (s, j))
+    c = socket.create_connection(("127.0.0.1", PORT), timeout=10)
+    c.sendall(b"POST /v1/nav/go HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\n\r\n")
+    a = c.recv(200)
+    c.close()
+    check("no length: 411", b" 411 " in a, a)
+    c = socket.create_connection(("127.0.0.1", PORT), timeout=10)
+    c.sendall(b"NOT HTTP\r\n\r\n")
+    a = c.recv(200)
+    c.close()
+    check("not HTTP: 400", b" 400 " in a, a)
+    c = socket.create_connection(("127.0.0.1", PORT), timeout=10)
+    c.sendall(b"GET /v1/ping HTTP/1.1\r\nHost: 127.0.0.1\r\n" + b"X-Long: " + b"a" * 20000 + b"\r\n\r\n")
+    a = c.recv(200)
+    c.close()
+    check("a head over the limit: 431", b" 431 " in a, a)
+
+
+def t_pair():
+    set_debug("1")
+    req("POST", "/debug/forget", {})
+    s, j, _, _ = req("POST", "/debug/code", {})
+    code = j["code"]
+    check("a six digit code", len(code) == 6 and code.isdigit(), code)
+    s, j, _, _ = req("POST", "/v1/pair", {"code": "000000" if code != "000000" else "111111", "device": "test"})
+    check("a wrong code refused, tries counted", s == 403 and j["reason"] == "bad_code" and j["triesLeft"] == 4, (s, j))
+    s, j, _, _ = req("POST", "/v1/pair", {"code": code, "device": "test phone"})
+    check("the code gives a token", s == 200 and len(j["token"]) == 64 and "unit" in j and "name" in j, (s, j))
+    token = j["token"]
+    s, j, _, _ = req("POST", "/v1/pair", {"code": code, "device": "again"})
+    check("the code works once", s == 403, (s, j))
+    s, j, _, _ = req("GET", "/v1/state", token=token)
+    check("the token works, from any private peer", s == 200 and "nav" in j and "music" in j and "car" in j and "link" in j, (s, j))
+    s, j, _, _ = req("GET", "/v1/state", token="f" * 64)
+    check("another token does not", s == 403, (s, j))
+    # five wrong tries end a code
+    s, j, _, _ = req("POST", "/debug/code", {})
+    code = j["code"]
+    wrong = "000000" if code != "000000" else "111111"
+    for i in range(5):
+        req("POST", "/v1/pair", {"code": wrong, "device": "x"})
+    s, j, _, _ = req("POST", "/v1/pair", {"code": code, "device": "x"})
+    check("five wrong tries end the code", s == 403, (s, j))
+    req("POST", "/debug/hidecode", {})
+    pf = shell("run-as com.abdllh.aura cat shared_prefs/aura.xml")
+    check("the token itself is not on the disk", token not in pf and "phoneTokens" in pf, "see prefs")
+    log = adb("logcat", "-d", "-t", "3000")
+    check("the token is not in the log", token not in log, "in the log!")
+    return token
+
+
+def t_endpoints(token):
+    s, j, raw, h = req("GET", "/v1/diag", token=token)
+    check("diag: a text report", s == 200 and b"AMRI" in raw and "text/plain" in h.get("Content-Type", "") and token.encode() not in raw, raw[:100])
+    s, j, _, _ = req("GET", "/v1/places", token=token)
+    check("places: all four lists", s == 200 and all(k in j for k in ("home", "work", "favourites", "recents")), j)
+    old_home = j["home"]
+    s, j, _, _ = req("PUT", "/v1/places", {"favourites": [{"name": "مكان", "detail": "تفصيل", "lat": 26.3, "lon": 50.1}, {"name": "bad", "lat": 99, "lon": 1}, {"name": "apple", "lat": 26.1, "lon": 50.1, "src": "share.apple"}]}, token)
+    check("PUT places: favourites kept, the bad and Apple's left out", s == 200 and [p["name"] for p in j["favourites"]] == ["مكان"], j)
+    s, j, _, _ = req("PUT", "/v1/places", {"home": {"name": "البيت", "lat": 26.31, "lon": 50.21}}, token)
+    check("PUT places: home set", s == 200 and j["home"]["name"] == "البيت", j)
+    s, j, _, _ = req("PUT", "/v1/places", {"home": {"name": "x", "lat": 26.31, "lon": 50.21, "src": "share.apple"}}, token)
+    check("PUT places: Apple's place not kept", s == 409 and j["reason"] == "apple_not_kept", (s, j))
+    s, j, _, _ = req("PUT", "/v1/places", {"work": None}, token)
+    check("PUT places: work cleared with null", s == 200 and j["work"] is None, j)
+    s, j, _, _ = req("POST", "/v1/nav/saved", {"which": "work"}, token)
+    check("saved: a place not set says so (409)", s == 409 and j["reason"] == "not_set", (s, j))
+    for cmd in ["volume.up", "volume.down", "voice.mute", "voice.mute", "music.toggle", "music.next", "music.prev"]:
+        s, j, _, _ = req("POST", "/v1/remote", {"cmd": cmd}, token)
+        check("remote %s" % cmd, s == 200 and j["state"] == "ok" and "volume" in j, (s, j))
+    s, j, _, _ = req("POST", "/v1/search", {"q": "pharmacy", "on": "phone"}, token, timeout=15)
+    check("search for the phone answers with results, or that it cannot", s == 200 and j["state"] in ("ok", "offline"), (s, j))
+    print("     search: %s" % (json.dumps(j, ensure_ascii=False)[:200]))
+    return old_home
+
+
+def t_share_fixtures():
+    f = json.load(open(FIXTURES, encoding="utf-8"))
+    print("     %d fixtures" % len(f["cases"]))
+    for case in f["cases"]:
+        red = {}
+        for k, v in case.get("redirects", {}).items():
+            if v != "error":
+                red[k] = v
+        s, j, _, _ = req("POST", "/debug/parse", {"text": case["input"]["text"], "redirects": red})
+        e = case["expect"]
+        ok = s == 200 and j["kind"] == e["kind"]
+        if ok:
+            for k, v in e.items():
+                if k in ("kind", "tolerance"):
+                    continue
+                if k in ("lat", "lon"):
+                    ok = ok and abs(j[k] - v) <= e.get("tolerance", 0.000001)
+                else:
+                    ok = ok and j.get(k, "") == v
+        check("share: " + case["name"], ok, json.dumps(j, ensure_ascii=False))
+
+
+def t_share_live():
+    """The real redirects of the report's links, when this emulator has the internet."""
+    s, j, _, _ = req("POST", "/debug/parse", {"text": "https://maps.app.goo.gl/Q6ZugPBVWvuiVb8e8", "network": True}, timeout=20)
+    print("     live google short link: %s" % json.dumps(j, ensure_ascii=False))
+    if j["kind"] == "unresolved" and j["reason"] == "network":
+        print("     (no internet from this emulator: the live links were not tried)")
+        return
+    check("live: Google's short link gives the report's place", j["kind"] == "place" and abs(j["lat"] - 42.5784957) < 1e-6 and abs(j["lon"] - 1.8955661) < 1e-6, j)
+    s, j, _, _ = req("POST", "/debug/parse", {"text": "https://maps.app.goo.gl/jVuuNEZ_-FQ3UGhX7", "network": True}, timeout=20)
+    check("live: the dead link says so", j["kind"] == "unresolved", j)
+    print("     live dead link: %s" % json.dumps(j, ensure_ascii=False))
+    s, j, _, _ = req("POST", "/debug/parse", {"text": "https://maps.apple/p/7E-Brjrk_THN14", "network": True}, timeout=20)
+    print("     live apple short link: %s" % json.dumps(j, ensure_ascii=False))
+    check("live: Apple's short link gives the report's place", j["kind"] == "place" and abs(j["lat"] - 52.4737758) < 1e-6, j)
+
+
+def qr_decode(png):
+    import cv2
+    import numpy as np
+    img = cv2.imdecode(np.frombuffer(png, np.uint8), cv2.IMREAD_GRAYSCALE)
+    data, points, _ = cv2.QRCodeDetector().detectAndDecode(img)
+    return data
+
+
+def t_qr():
+    import random
+    import string
+    # every version (M, byte mode) by its capacity limits, the real pairing address, Arabic, and random fill for the masks
+    caps = [14, 26, 42, 62, 84, 106, 122, 152, 180, 213]
+    texts = ["http://172.20.10.3:47101/p/123456", "http://192.168.1.100:47101/p/000000", "مرحبا عمري"]
+    for i, cap in enumerate(caps):
+        rng = random.Random(i)
+        texts.append("".join(rng.choice(string.ascii_letters + string.digits) for _ in range(cap)))
+        texts.append("x" * (cap if i == 0 else caps[i - 1] + 1))
+    for i in range(16):
+        rng = random.Random(100 + i)
+        texts.append("http://10.%d.%d.%d:47101/p/%06d" % (rng.randint(0, 255), rng.randint(0, 255), rng.randint(1, 254), rng.randint(0, 999999)))
+    sizes = set()
+    for t in texts:
+        s, j, raw, h = req("POST", "/debug/qr", {"text": t, "scale": 6})
+        if s != 200:
+            check("qr: encodes %r" % t[:30], False, (s, j))
+            continue
+        sizes.add(int(h["X-Qr-Size"]))
+        got = qr_decode(raw)
+        check("qr: reads back (%d bytes, %s modules)" % (len(t.encode()), h["X-Qr-Size"]), got == t, repr(got)[:60])
+    check("qr: versions 1 to 10 all made", sizes >= {21 + 4 * v for v in range(10)}, sorted(sizes))
+    s, j, _, _ = req("POST", "/debug/qr", {"text": "y" * 214})
+    check("qr: over version 10 says so", s == 422, (s, j))
+
+
+def t_retries(token, routes):
+    home()
+    fix()
+    ev = Events(token)
+    time.sleep(0.5)
+    body = {"id": I("retry-1"), "place": {"name": "اختبار الإعادة", "detail": "الدمام", "lat": 26.3, "lon": 50.2, "src": "test"}, "mode": "start"}
+    s1, j1, _, _ = req("POST", "/v1/nav/go", body, token)
+    check("a place: 202 accepted", s1 == 202 and j1 == {"id": I("retry-1"), "state": "accepted"}, (s1, j1))
+    answers = []
+    def again():
+        answers.append(req("POST", "/v1/nav/go", body, token))
+    th = [threading.Thread(target=again) for _ in range(3)]
+    for t in th:
+        t.start()
+    for t in th:
+        t.join()
+    check("the same id again: duplicate, at once and in parallel", all(a[0] == 202 and a[1]["state"] == "duplicate" for a in answers), [a[1] for a in answers])
+    e = ev.wait(lambda x: x.get("id") == I("retry-1") and x["state"] in ("started", "failed"), 45)
+    check("then started or failed, for that id", e is not None, ev.nav())
+    print("     %s" % e)
+    routing = [x for x in ev.nav() if x.get("id") == I("retry-1") and x["state"] == "routing"]
+    check("routing was said once", len(routing) == 1, routing)
+    final = [x for x in ev.nav() if x.get("id") == I("retry-1") and x["state"] in ("started", "failed")]
+    check("one trip: started or failed once", len(final) == 1, final)
+    s, j, _, _ = req("POST", "/v1/nav/go", body, token)
+    check("a retry afterwards says what became of it", s == 202 and j["state"] == "duplicate" and j["last"] == (e or {}).get("state"), (s, j))
+    ev.close()
+    stop_trip(token)
+    return e is not None and e["state"] == "started"
+
+
+def t_flow(token, routes):
+    """The whole thing, with screenshots: POST a place, the route starts on the screen, cancel, stop."""
+    home()
+    fix()
+    home()
+    ev = Events(token)
+    time.sleep(0.5)
+    place = {"name": "الراشد مول", "detail": "الخبر", "lat": 26.290457, "lon": 50.184555, "src": "test"}
+    s, j, _, _ = req("POST", "/v1/nav/go", {"id": I("flow-1"), "place": place, "mode": "start"}, token)
+    check("flow: accepted", s == 202, (s, j))
+    time.sleep(0.4)
+    shot("v2-link-flow-routing")
+    e = ev.wait(lambda x: x.get("id") == I("flow-1") and x["state"] in ("started", "failed"), 45)
+    check("flow: an answer", e is not None, ev.nav())
+    print("     %s" % e)
+    time.sleep(1.0)
+    shot("v2-link-flow-started" if e and e["state"] == "started" else "v2-link-flow-failed")
+    front = shell("dumpsys activity activities | grep mResumedActivity")
+    check("flow: Maps came forward", "MapsActivity" in front, front)
+    s, j, _, _ = req("GET", "/v1/state", token=token)
+    print("     state nav: %s" % json.dumps(j["nav"], ensure_ascii=False))
+    if e and e["state"] == "started":
+        check("flow: started has the route's numbers", all(k in e for k in ("distanceM", "durationS", "etaLocal")), e)
+        check("flow: the state says navigating", j["nav"]["state"] in ("navigating", "arrived"), j["nav"])
+        time.sleep(6)  # the cancel window goes
+        shot("v2-link-flow-after-window")
+        s, j, _, _ = req("POST", "/v1/nav/stop", {"id": I("flow-stop")}, token)
+        check("flow: stop ends the trip", s == 200 and j["state"] == "stopped", (s, j))
+        time.sleep(0.5)
+        s, j, _, _ = req("GET", "/v1/state", token=token)
+        check("flow: idle after the stop", j["nav"]["state"] == "idle", j["nav"])
+        s, j, _, _ = req("POST", "/v1/nav/stop", {"id": I("flow-stop-2")}, token)
+        check("flow: a second stop says idle", s == 200 and j["state"] == "idle", (s, j))
+    ev.close()
+
+
+def t_cancel_card(token, routes):
+    """The five seconds' visible cancel: a tap on the card's cancel button."""
+    if not routes:
+        print("     (no route on this emulator: the cancel window was not tried)")
+        return
+    home()
+    fix()
+    ev = Events(token)
+    time.sleep(0.5)
+    s, j, _, _ = req("POST", "/v1/nav/go", {"id": I("cancel-1"), "place": {"name": "اختبار الإلغاء", "lat": 26.29, "lon": 50.18}, "mode": "start"}, token)
+    e = ev.wait(lambda x: x.get("id") == I("cancel-1") and x["state"] == "started", 45)
+    check("cancel: started", e is not None, ev.nav())
+    time.sleep(0.5)
+    shot("v2-link-cancel-window")
+    # the button (English: the card's end, right; the emulator runs in the app's language: see the shot)
+    tap_card(CARD_NARROW_CANCEL)
+    e = ev.wait(lambda v: v.get("id") == I("cancel-1") and v["state"] == "cancelled", 5)
+    check("cancel: the tap cancelled it", e is not None and e.get("by") == "card", ev.nav())
+    time.sleep(0.5)
+    s, j, _, _ = req("GET", "/v1/state", token=token)
+    check("cancel: nothing is running after it", j["nav"]["state"] == "idle", j["nav"])
+    shot("v2-link-cancel-done")
+    ev.close()
+
+
+def t_navigating(token, routes):
+    """A place while on a trip: the card; nobody answers: the trip goes on. Never a silent change."""
+    if not routes:
+        print("     (no route on this emulator: the trip was not tried)")
+        return
+    home()
+    fix()
+    ev = Events(token)
+    time.sleep(0.5)
+    req("POST", "/v1/nav/go", {"id": I("nav-1"), "place": {"name": "الرحلة الأولى", "lat": 26.29, "lon": 50.18}, "mode": "start"}, token)
+    check("on a trip: first started", ev.wait(lambda x: x.get("id") == I("nav-1") and x["state"] == "started", 45) is not None, ev.nav())
+    time.sleep(6)
+    req("POST", "/v1/nav/go", {"id": I("nav-2"), "place": {"name": "المكان الثاني", "lat": 26.35, "lon": 50.15}, "mode": "start"}, token)
+    e = ev.wait(lambda x: x.get("id") == I("nav-2") and x["state"] == "card", 5)
+    check("on a trip: a card, kind replace", e is not None and e.get("kind") == "replace", ev.nav())
+    time.sleep(0.5)
+    shot("v2-link-replace-card")
+    s, j, _, _ = req("GET", "/v1/state", token=token)
+    check("on a trip: the trip has not changed", j["nav"]["place"]["name"] == "الرحلة الأولى", j["nav"])
+    t0 = time.time()
+    e = ev.wait(lambda x: x.get("id") == I("nav-2") and x["state"] == "ignored", 24)
+    check("on a trip: after 20 s it keeps the trip", e is not None and e.get("kept") and 17 < time.time() - t0 < 24, (e, time.time() - t0))
+    s, j, _, _ = req("GET", "/v1/state", token=token)
+    check("on a trip: still the first trip", j["nav"]["place"]["name"] == "الرحلة الأولى", j["nav"])
+    # and answered: replace
+    req("POST", "/v1/nav/go", {"id": I("nav-3"), "place": {"name": "المكان الثالث", "lat": 26.35, "lon": 50.15}, "mode": "start"}, token)
+    ev.wait(lambda x: x.get("id") == I("nav-3") and x["state"] == "card", 5)
+    time.sleep(0.5)
+    tap_card(CARD_REPLACE)
+    e = ev.wait(lambda x: x.get("id") == I("nav-3") and x["state"] in ("started", "failed"), 45)
+    check("on a trip: Replace starts the new one", e is not None and e["state"] == "started", ev.nav())
+    s, j, _, _ = req("GET", "/v1/state", token=token)
+    check("on a trip: now the new trip", j["nav"]["place"]["name"] == "المكان الثالث", j["nav"])
+    ev.close()
+    stop_trip(token)
+
+
+def t_held(token, routes):
+    """In a call and in reverse the place waits, then the card asks."""
+    home()
+    fix()
+    home()
+    ev = Events(token)
+    time.sleep(0.5)
+    shell("am broadcast -a com.bt.ACTION_BT_INCOMING_CALL --es extra_phone_number 0500000000")
+    time.sleep(0.5)
+    s, j, _, _ = req("POST", "/v1/nav/go", {"id": I("held-1"), "place": {"name": "أثناء المكالمة", "lat": 26.29, "lon": 50.18}, "mode": "start"}, token)
+    e = ev.wait(lambda x: x.get("id") == I("held-1") and x["state"] == "held", 4)
+    check("in a call: held", e is not None and e.get("reason") == "call", ev.nav())
+    time.sleep(1.5)
+    front = shell("dumpsys activity activities | grep mResumedActivity")
+    check("in a call: nothing came forward", "MapsActivity" not in front, front)
+    shell("am broadcast -a com.bt.ACTION_BT_END_CALL")
+    e = ev.wait(lambda x: x.get("id") == I("held-1") and x["state"] == "card", 4)
+    check("after the call: the card asks", e is not None and e.get("kind") == "ask", ev.nav())
+    time.sleep(0.5)
+    shot("v2-link-after-call-card")
+    tap_card(CARD_SECOND)
+    e = ev.wait(lambda x: x.get("id") == I("held-1") and x["state"] == "ignored", 4)
+    check("after the call: No is no", e is not None, ev.nav())
+    # reverse
+    shell("am broadcast -a com.abdllh.aura.debug.GEAR --ez reverse true")
+    time.sleep(0.5)
+    s, j, _, _ = req("POST", "/v1/nav/go", {"id": I("held-2"), "place": {"name": "أثناء الريوس", "lat": 26.29, "lon": 50.18}, "mode": "start"}, token)
+    e = ev.wait(lambda x: x.get("id") == I("held-2") and x["state"] == "held", 4)
+    check("in reverse: held", e is not None and e.get("reason") == "reverse", ev.nav())
+    s, j, _, _ = req("POST", "/v1/remote", {"cmd": "open.maps"}, token)
+    check("in reverse: nothing opens over the camera", s == 409 and j.get("reason") == "reversing", (s, j))
+    shell("am broadcast -a com.abdllh.aura.debug.GEAR --ez reverse false")
+    e = ev.wait(lambda x: x.get("id") == I("held-2") and x["state"] == "card", 4)
+    check("after reverse: the card asks", e is not None, ev.nav())
+    time.sleep(0.5)
+    if routes:
+        tap_card(CARD_PRIMARY)
+        e = ev.wait(lambda x: x.get("id") == I("held-2") and x["state"] in ("started", "failed"), 45)
+        check("after reverse: Start starts it", e is not None and e["state"] == "started", ev.nav())
+        stop_trip(token)
+    else:
+        tap_card(CARD_SECOND)
+    ev.close()
+
+
+def t_unpaired(token, routes):
+    """No token, from the gateway: always the card. From another peer: refused."""
+    home()
+    fix()
+    home()
+    set_debug("gateway")
+    ev = Events(token)
+    time.sleep(0.5)
+    s, j, _, _ = req("POST", "/v1/nav/go", {"id": I("gw-1"), "place": {"name": "من غير ربط", "lat": 26.29, "lon": 50.18}, "mode": "start"})
+    check("gateway, no token: accepted, needs a tap", s == 202 and j.get("needs") == "tap", (s, j))
+    e = ev.wait(lambda x: x.get("id") == I("gw-1") and x["state"] == "card", 4)
+    check("gateway, no token: a card", e is not None and e.get("kind") == "ask", ev.nav())
+    time.sleep(0.5)
+    shot("v2-link-ask-card")
+    front = shell("dumpsys activity activities | grep mResumedActivity")
+    check("gateway, no token: the screen under it stays", "MapsActivity" not in front, front)
+    s, j, _, _ = req("GET", "/v1/state", token=token)
+    check("gateway, no token: nothing started", j["nav"]["state"] == "idle", j["nav"])
+    tap_card(CARD_SECOND)
+    e = ev.wait(lambda x: x.get("id") == I("gw-1") and x["state"] == "ignored", 4)
+    check("gateway, no token: No", e is not None, ev.nav())
+    s, j, _, _ = req("POST", "/v1/share", {"id": I("gw-2"), "text": "الراشد مول\nhttps://maps.google.com/?q=26.290457,50.184555"})
+    check("gateway share: read here, the place back", s == 202 and j["place"]["name"] == "الراشد مول" and j.get("needs") == "tap", (s, j))
+    e = ev.wait(lambda x: x.get("id") == I("gw-2") and x["state"] == "card", 4)
+    check("gateway share: a card", e is not None, ev.nav())
+    # a newer place replaces one still waiting
+    s, j, _, _ = req("POST", "/v1/share", {"id": I("gw-3"), "text": "26.31, 50.21"})
+    e = ev.wait(lambda x: x.get("id") == I("gw-2") and x["state"] == "replaced", 4)
+    check("a newer place replaces one waiting", e is not None, ev.nav())
+    time.sleep(0.5)
+    tap_card(CARD_SECOND)
+    s, j, _, _ = req("POST", "/v1/share", {"id": I("gw-4"), "text": "https://example.com/nothing"})
+    check("share of no place: says so", s == 422 and j["reason"] == "not_a_map", (s, j))
+    s, j, _, _ = req("POST", "/v1/share", {"id": I("gw-5"), "text": "مكان بالاسم"})
+    check("share of a name, no token: no search on the screen", s == 200 and j["state"] == "search" and j["onScreen"] is False, (s, j))
+    s, j, _, _ = req("POST", "/v1/share", {"id": I("gw-6"), "text": "https://www.google.com/maps/@26.29,50.18,15z"}, token)
+    check("a guess asks even a paired phone", s == 202 and j.get("needs") == "tap" and j["confidence"] == "guess", (s, j))
+    e = ev.wait(lambda x: x.get("id") == I("gw-6") and x["state"] == "card", 4)
+    check("a guess: a card", e is not None, ev.nav())
+    time.sleep(0.5)
+    tap_card(CARD_SECOND)
+    ev.close()
+    set_debug("1")
+
+
+def t_events(token):
+    ev = Events(token)
+    time.sleep(1.5)
+    kinds = [e[1] for e in ev.events]
+    check("events: a snapshot on connect (nav, music, car)", kinds[:3] == ["nav", "music", "car"], kinds)
+    t0 = time.time()
+    while ev.heartbeats == 0 and time.time() - t0 < 18:
+        time.sleep(0.2)
+    check("events: a heartbeat within 15 s", ev.heartbeats >= 1 and time.time() - t0 < 17, ev.heartbeats)
+    req("POST", "/v1/remote", {"cmd": "volume.up"}, token)
+    time.sleep(0.8)
+    music = [e for e in ev.events if e[1] == "music"]
+    check("events: a volume change reaches them", len(music) >= 2 and "volume" in music[-1][2], music[-1:])
+    req("POST", "/v1/remote", {"cmd": "volume.down"}, token)
+    ev2 = Events(token)
+    time.sleep(0.7)
+    ev3 = Events(token)
+    time.sleep(1.5)
+    check("events: the third stream drops the oldest", (not ev.alive) and ev2.alive and ev3.alive, (ev.alive, ev2.alive, ev3.alive))
+    s, j, _, _ = req("GET", "/v1/ping")
+    check("with two streams open a request still gets in", s == 200, s)
+    ev2.close()
+    ev3.close()
+    time.sleep(1)
+
+
+def t_slow(token):
+    # sends a byte a second: closed at 10 s, not a second later
+    c = socket.create_connection(("127.0.0.1", PORT), timeout=20)
+    t0 = time.time()
+    closed = None
+    try:
+        for b in b"GET /v1/ping HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Slow: " + b"a" * 30:
+            c.sendall(bytes([b]))
+            c.settimeout(0.9)
+            try:
+                if c.recv(100) == b"":
+                    closed = time.time() - t0
+                    break
+            except socket.timeout:
+                pass
+    except OSError:
+        closed = time.time() - t0
+    c.close()
+    check("a slow client is cut at 10 s", closed is not None and 9 <= closed <= 12, closed)
+    # says nothing at all
+    c = socket.create_connection(("127.0.0.1", PORT), timeout=14)
+    t0 = time.time()
+    try:
+        d = c.recv(100)
+    except OSError:
+        d = b""
+    took = time.time() - t0
+    c.close()
+    check("a silent client is cut at 10 s", d == b"" and 9 <= took <= 12, (d, took))
+    # sends a head and half a body
+    c = socket.create_connection(("127.0.0.1", PORT), timeout=14)
+    c.sendall(b"POST /v1/share HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n{\"text\":")
+    t0 = time.time()
+    try:
+        d = c.recv(100)
+    except OSError:
+        d = b""
+    took = time.time() - t0
+    c.close()
+    check("half a body is cut at 10 s", d == b"" and 8 <= took <= 12, (d, took))
+    # meanwhile the screen answered
+    s, j, _, _ = req("GET", "/v1/ping")
+    check("after them it still answers", s == 200, s)
+
+
+def t_many(token):
+    # 5 at once with nobody sending anything: 4 are in, the fifth is told 503 at once
+    socks = [socket.create_connection(("127.0.0.1", PORT), timeout=12) for _ in range(4)]
+    time.sleep(0.3)
+    c5 = socket.create_connection(("127.0.0.1", PORT), timeout=5)
+    t0 = time.time()
+    d = c5.recv(200)
+    took = time.time() - t0
+    c5.close()
+    check("the fifth connection: 503 at once", b" 503 " in d and took < 1.5, (d, took))
+    for s in socks:
+        s.close()
+    time.sleep(0.5)
+    s, j, _, _ = req("GET", "/v1/ping")
+    check("after they go it answers again", s == 200, s)
+    # and a crowd of real requests: nobody hangs, each gets 200 or 503
+    out = []
+    def one():
+        try:
+            out.append(req("GET", "/v1/state", token=token, timeout=10)[0])
+        except Exception as e:
+            out.append(str(e))
+    th = [threading.Thread(target=one) for _ in range(20)]
+    for t in th:
+        t.start()
+    for t in th:
+        t.join()
+    check("a crowd of 20: each gets an answer", all(x in (200, 503) for x in out) and 200 in out, out)
+    print("     crowd: %s" % out)
+
+
+def t_idle():
+    # one thread at rest
+    time.sleep(7)
+    pid = shell("pidof com.abdllh.aura").strip()
+    threads = shell("ls /proc/%s/task | while read t; do cat /proc/%s/task/$t/comm; done" % (pid, pid))
+    names = [l for l in threads.split("\n") if "aura-phone" in l]
+    check("at rest: one thread of the server's", len(names) == 1 and "acce" in names[0], names)
+
+
+def t_off():
+    shell("am broadcast -a com.abdllh.aura.debug.LINK --ez on false")
+    time.sleep(1)
+    listening = shell("netstat -lnt | grep 47101")
+    check("switched off: the port is closed", "47101" not in listening, listening)
+    try:
+        req("GET", "/v1/ping", timeout=3)
+        check("switched off: nothing answers", False)
+    except Exception:
+        check("switched off: nothing answers", True)
+    pid = shell("pidof com.abdllh.aura").strip()
+    threads = shell("ls /proc/%s/task | while read t; do cat /proc/%s/task/$t/comm; done" % (pid, pid))
+    check("switched off: no thread of the server's", "aura-phone-acce" not in threads, "still there")
+    shell("am broadcast -a com.abdllh.aura.debug.LINK --ez on true")
+    time.sleep(1.5)
+    s, j, _, _ = req("GET", "/v1/ping")
+    check("switched on again: it answers", s == 200, s)
+
+
+def main():
+    global SERIAL, PORT, CARD_NARROW_CANCEL, CARD_REPLACE, CARD_PRIMARY, CARD_SECOND
+    p = argparse.ArgumentParser()
+    p.add_argument("--serial", default="emulator-5572")
+    p.add_argument("--port", type=int, default=47101)
+    p.add_argument("--only", default="")
+    a = p.parse_args()
+    SERIAL = a.serial
+    PORT = a.port
+    only = set(filter(None, a.only.split(",")))
+    want = lambda n: not only or n in only
+    # where the card's buttons are: read from the screen, both languages
+    CARD_NARROW_CANCEL, CARD_REPLACE, CARD_PRIMARY, CARD_SECOND = card_buttons()
+
+    adb("forward", "tcp:%d" % PORT, "tcp:47101")
+    shell("appops set com.abdllh.aura SYSTEM_ALERT_WINDOW allow")
+    set_debug("1")
+    shell("am broadcast -a com.abdllh.aura.debug.LINK --ez on true")
+    time.sleep(1.5)
+
+    if want("peers"):
+        t_peers()
+    if want("safety"):
+        t_web_safety()
+    set_debug("1")
+    token = t_pair()
+    if want("bad"):
+        t_bad_bodies(token)
+    if want("endpoints"):
+        t_endpoints(token)
+    if want("fixtures"):
+        t_share_fixtures()
+    if want("live"):
+        t_share_live()
+    if want("qr"):
+        t_qr()
+    if want("events"):
+        t_events(token)
+    if want("slow"):
+        t_slow(token)
+    if want("many"):
+        t_many(token)
+    routes = True
+    if want("retries"):
+        routes = t_retries(token, routes)
+        print("     routes on this emulator: %s" % routes)
+    if want("flow"):
+        t_flow(token, routes)
+    if want("cancel"):
+        t_cancel_card(token, routes)
+    if want("navigating"):
+        t_navigating(token, routes)
+    if want("held"):
+        t_held(token, routes)
+    if want("unpaired"):
+        t_unpaired(token, routes)
+    if want("idle"):
+        t_idle()
+    if want("off"):
+        t_off()
+
+    failed = [n for n, ok in results if not ok]
+    print("\n%d checks, %d failed" % (len(results), len(failed)))
+    for n in failed:
+        print("  FAILED: " + n)
+    sys.exit(1 if failed else 0)
+
+
+def card_buttons():
+    """Where the buttons of the cards are on the 1024 x 600 screen, by the app's language (Arabic is the mirror image): Cancel
+    and Replace on the narrow card beside a trip's banner, Start and No on the wide one."""
+    lang = shell("run-as com.abdllh.aura cat shared_prefs/aura.xml")
+    arabic = 'name="lang">ar' in lang or shell("getprop persist.sys.locale").startswith("ar")
+    at = [(945, 77), (790, 137), (735, 62), (820, 62)]
+    return [(1024 - x, y) for x, y in at] if arabic else at
+
+
+if __name__ == "__main__":
+    main()
