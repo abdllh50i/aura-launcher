@@ -362,7 +362,7 @@ internal object Collect {
         "hideAndroidNotices", "showPhoneMessages", "showMessageText", "builtInMaps", "navPackage", "offlineMapState", "offlineMapUpdated",
         "mapExtrasFetched", "markCameraButton", "wifiKeeper", "wifiOnStart", "zlinkGuard", "fullOffOnAccOff", "amriOn", "amriSens", "amriSpeak",
         "amriMic", "navVoice", "musicSource", "musicSourceOwn", "musicLyrics", "musicLyricsFull", "keyRouting", "tripRecOn", "handbrakeSeen", "handbrakeFake",
-        "adbBridge", "setupDone", "crashes", "crashDisabled", "stockMusicApplied", "volumeHudStockOff", "callWindowStockOff", "lastUpdateCheck", "availableTag")
+        "crashes", "crashDisabled", "stockMusicApplied", "volumeHudStockOff", "callWindowStockOff", "lastUpdateCheck", "availableTag")
 
     fun settings(c: Context): JSONObject {
         val o = JSONObject()
