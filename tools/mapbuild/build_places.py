@@ -3,9 +3,9 @@
 
   python build_places.py --work D:\\k2501-work\\mapbuild\\places --out D:\\k2501-work\\mapbuild\\out\\places.db
       --overture-places <parquet of Overture places rows> --overture-dir D:\\k2501-work\\mapbuild\\src\\overture
-      [--additions additions.json]
+      [--additions additions.json] [--prefix=]
 
-Needs osm_extract.py's files in --work and fetch_overture.py's in --overture-dir. numpy and pyarrow, nothing else.
+build_all_places.ps1 runs this and every check after it. Needs osm_extract.py's files in --work and fetch_overture.py's in --overture-dir. numpy and pyarrow, nothing else.
 The merge follows section 8.3 of the plan: Overture + OSM POIs + named roads + divisions + place nodes; names split by script;
 duplicates merged; area by point in polygon; rank; category tokens; Arabic for Latin names and the reverse in the index only.
 """
@@ -38,7 +38,7 @@ import pyarrow.parquet as pq
 
 import places_tables as T
 from geo_index import Points, parse_wkb, rings_area_km2, rings_bbox
-from search_ref import CT, NORM_VERSION, SK, base, is_ar, latin_base, norm, skeleton, skeletons
+from search_ref import ABD_LATIN, CT, NORM_VERSION, SK, base, is_ar, latin_base, norm, skeleton, skeletons
 from translit import latin_forms
 
 KIND_REGION, KIND_CITY, KIND_TOWN, KIND_VILLAGE, KIND_DISTRICT, KIND_POI, KIND_ROAD = 1, 2, 3, 4, 5, 6, 7
@@ -51,17 +51,66 @@ CAT_ICON = {c[0]: c[3] for c in T.CATS}
 CAT_WEIGHT = {c[0]: c[4] for c in T.CATS}
 STOP = {k for k, v in T.ROLES.items() if v[0] == 3}
 OPTIONAL = {k for k, v in T.ROLES.items() if v[0] in (1, 2, 4)}
-ABD_LATIN = re.compile(r"^(?:abdul|abdel|abdal|abdol|abdur|abdus|abdu)(.{3,})$")
 AR_RANGE = re.compile(r"[\u0600-\u06FF]")
 LAT_RANGE = re.compile(r"[A-Za-z]")
 FOREIGN = re.compile(r"[\u0370-\u03FF\u0400-\u052F\u0590-\u05FF\u0900-\u0DFF\u0E00-\u0FFF\u1000-\u109F\u1100-\u11FF\u3040-\u30FF\u3400-\u9FFF\uAC00-\uD7AF]")
 URLISH = re.compile(r"(?:https?:|www\.|\.com\b|\.net\b|\.org\b|\.sa\b|\.in\b|\.co\b)", re.I)
 HARAKAT = re.compile(r"[\u064B-\u065F\u0670\u0640\u06D6-\u06ED\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]")
 COUNTRYISH = re.compile(r"\b(?:kingdom of saudi arabia|saudi arabia|ksa)\s*$", re.I)
+COUNTRY_TAIL = re.compile(r"[\s,،-]+(?:kingdom of saudi arabia|saudi arabia|ksa|السعودية|المملكة العربية السعودية)\s*$", re.I)
+COUNTRY_ALONE = re.compile(r"\s*(?:kingdom of saudi arabia|saudi arabia|ksa|السعودية|المملكة العربية السعودية)\s*", re.I)
+
+
+PHONE_IN_NAME = re.compile(r"\+?\d[\d\s-]{6,}\d")
+MAX_INDEX_WORDS = 10  # a longer "name" is an advertisement: its first words are the name, the rest would answer every search
+WEAK_CATS = {"other", "shop", "office", "building", "real_estate", "community"}
+# words of table syn that often begin a name without saying what the place is ("محطة توزيع المياه", "Riyadh Gas")
+NOT_A_KIND = {"محطه", "محطات", "مغسله", "مغاسل", "غسيل", "استراحه", "استراحات", "عدد", "ماركت", "بحر", "gas", "cash", "post", "club", "food", "market", "home", "gold", "medical", "lab", "park"}
 
 
 def log(*a):
     print(time.strftime("%H:%M:%S"), *a, flush=True)
+
+
+def phone_out_of_name(name):
+    """(name without the phone numbers an advertisement put in it, the first number in ASCII digits)."""
+    found = PHONE_IN_NAME.findall(name)
+    if not found:
+        return name, ""
+    rest = " ".join(PHONE_IN_NAME.sub(" ", name).split()).strip(" -_|.,:/+،")
+    if len(rest) < 3:
+        return name, ""
+    return rest, "".join(str(unicodedata.digit(c)) for c in found[0] if c.isdigit())
+
+
+def syn_words():
+    """Table syn's words and phrases to category keys, the way a name's words are written after norm and base."""
+    out = {}
+    for words, phrases, cats in T.SYNONYMS:
+        for w in list(words.split()) + phrases:
+            k = " ".join(base(x) for x in norm(w).split())
+            if k and k not in NOT_A_KIND:
+                out.setdefault(k, list(cats))
+    return out
+
+
+def kind_from_name(r, words_to_cats, stats):
+    """Sources file many shops under a word that says nothing (office, building, other). When such a row's name says what it is, in the
+    place a name says it (first in Arabic: "مكتبة جهينة"; last in Latin: "Techno Paints"), the name's word decides."""
+    if r.kind != KIND_POI or r.cat not in WEAK_CATS:
+        return
+    for nm in (r.name, r.alt):
+        ws = [base(w) for w in norm(nm).split()] if nm else []
+        if not ws:
+            continue
+        if is_ar(ws[0]):
+            hit = words_to_cats.get(" ".join(ws[:2])) or words_to_cats.get(ws[0])
+        else:
+            hit = words_to_cats.get(" ".join(ws[-2:])) or words_to_cats.get(ws[-1])
+        if hit:
+            stats["rows whose category came from their name"] += 1
+            r.cat = hit[0]
+            return
 
 
 # ------------------------------------------------------------------------------------------------------- names
@@ -81,7 +130,9 @@ def clean_display(s):
         else:
             out.append(" ")
     s = " ".join("".join(out).split())
-    return s.strip(" -_|.,:/+،")
+    s = s.strip(" -_|.,:/+،")
+    t = COUNTRY_TAIL.sub("", s)  # "King Abdul Aziz street, Jubail, saudi arabia"
+    return t if len(t) >= 3 else s
 
 
 SEPARATORS = re.compile(r"\s*(?:\||｜|/|\\|–|—|\s-\s|-\s|\s-|\(|\)|\[|\]|،|:|,)\s*")
@@ -341,7 +392,7 @@ def _lev1(a, b):
 
 class Row:
     __slots__ = ("kind", "name", "alt", "others", "cat", "lat", "lon", "phone", "conf", "nsrc", "brand", "src", "generic", "website", "wiki", "area_poly", "cls", "pop",
-                 "rank", "area", "mkeys", "sks", "toks", "merged", "oid", "brand_ok")
+                 "rank", "area", "mkeys", "sks", "toks", "merged", "oid", "brand_ok", "ad")
 
     def __init__(self, kind, name, alt, cat, lat, lon, src):
         self.kind = kind
@@ -370,6 +421,7 @@ class Row:
         self.merged = 0
         self.oid = ""
         self.brand_ok = False
+        self.ad = False
 
 
 def names_of_osm(t):
@@ -719,10 +771,19 @@ def overture_rows(cache, lex, stats):
         if not AR_RANGE.search(raw) and not LAT_RANGE.search(raw):
             stats["overture: no Arabic or Latin"] += 1
             continue
-        if COUNTRYISH.search(raw):
+        whole = o.get("name") or ""
+        if COUNTRY_ALONE.fullmatch(raw):
             stats["overture: a name that is only a country"] += 1
             continue
+        # "Al Rakah, Dammam, Ksa" filed as lodging is an address someone checked in at. "Anarkali Restaurant KSA" is a restaurant
+        address_like = bool(COUNTRYISH.search(whole)) and ("," in raw or "،" in raw) and o.get("basic") in (None, "lodging", "mountain", "travel_and_transportation", "accommodation")
+        if address_like:
+            stats["overture: an address as a name"] += 1
+            continue
         raw = FOREIGN.sub("", raw).strip()
+        raw, name_phone = phone_out_of_name(raw)
+        if name_phone:
+            stats["overture: phone number taken out of the name"] += 1
         ar, la = split_dual(raw)
         common = o.get("common") or {}
         ar = ar or clean_display(common.get("ar") or "")
@@ -737,7 +798,8 @@ def overture_rows(cache, lex, stats):
             cat = "mosque"
         r = Row(KIND_POI, ar or la, la if ar else "", cat, o["lat"], o["lon"], SRC_OVERTURE)
         r.conf = conf
-        r.phone = clean_phone(o.get("phone"))
+        r.phone = clean_phone(o.get("phone")) or name_phone
+        r.ad = bool(name_phone)
         r.website = bool(o.get("web"))
         r.nsrc = max(1, len(o.get("src") or []))
         br = clean_display(o.get("brand") or "")
@@ -1130,10 +1192,13 @@ def rank_rows(rows):
                 v += 2
             if r.website:
                 v += 2
-            v += CAT_WEIGHT.get(r.cat, 0)
+            weight = CAT_WEIGHT.get(r.cat, 0)
+            if r.cat == "airport" and r.src == SRC_OVERTURE:
+                weight = 10  # one source only: a check-in spot, a lounge or an airline's desk more often than an airport
+            v += weight
             if r.generic:
                 v -= 14
-            if URLISH.search(r.name or ""):
+            if URLISH.search(r.name or "") or r.ad:
                 v -= 18
             if len(r.name or "") > 50:
                 v -= 6
@@ -1167,12 +1232,12 @@ def index_tokens(r, lex, stats):
         if not nm:
             continue
         m, e = canon_tokens(nm)
-        main += m
-        extra += e
+        main += m[:MAX_INDEX_WORDS]
+        extra += e[:MAX_INDEX_WORDS]
         extra += hyphen_joined(nm)
     for nm in r.others:
         m, e = canon_tokens(nm)
-        extra += m + e
+        extra += m[:MAX_INDEX_WORDS] + e[:MAX_INDEX_WORDS]
     words = list(dict.fromkeys(main + extra))
     has_ar = any(is_ar(w) for w in words)
     has_la = any(not is_ar(w) and not w.isdigit() for w in words)
@@ -1226,7 +1291,7 @@ T_AR_WORDS = set()
 
 
 def area_tokens(a):
-    """The a column: the words of a district and a town in both scripts, and their skeletons."""
+    """The a column: the words of a district and a town in both scripts."""
     words = []
     for part in a[1:5]:
         if part:
@@ -1235,13 +1300,7 @@ def area_tokens(a):
                     words.append(w)
             for w in canon_tokens(part)[1]:
                 words.append(w)
-    words = list(dict.fromkeys(words))
-    sks = []
-    for w in words:
-        for s in skeletons(w):
-            if len(s) >= 2:
-                sks.append(SK + s)
-    return " ".join(words + list(dict.fromkeys(sks)))
+    return " ".join(dict.fromkeys(words))
 
 
 # ------------------------------------------------------------------------------------------------- the file
@@ -1263,6 +1322,10 @@ def syn_rows():
             for i in ids:
                 if i not in e[0]:
                     e[0].append(i)
+    for w in T.SPECIFIC:
+        e = table.get(key(w))
+        if e is not None:
+            e[1] = 5
     for w, (role, canon) in T.ROLES.items():
         k = key(w)
         e = table.setdefault(k, [[], 0, ""])
@@ -1271,20 +1334,21 @@ def syn_rows():
     return [(k, " ".join(map(str, v[0])), v[1], v[2]) for k, v in sorted(table.items())]
 
 
-def write_db(path, rows, area_rows, spots, stats, meta):
+def write_db(path, rows, area_rows, spots, stats, meta, prefix):
     if os.path.exists(path):
         os.remove(path)
     db = sqlite3.connect(path)
+    prefix_opt = f", prefix='{prefix}'" if prefix else ""
     db.execute("PRAGMA page_size=4096")
     db.execute("PRAGMA journal_mode=OFF")
     db.execute("PRAGMA synchronous=OFF")
     db.execute("PRAGMA cache_size=-300000")
     db.execute("PRAGMA temp_store=MEMORY")
-    db.executescript("""
+    db.executescript(f"""
         CREATE TABLE area(id INTEGER PRIMARY KEY, ar TEXT, en TEXT, city_ar TEXT, city_en TEXT);
         CREATE TABLE cat(id INTEGER PRIMARY KEY, key TEXT, ar TEXT, en TEXT, icon INT);
         CREATE TABLE p(id INTEGER PRIMARY KEY, kind INT, name TEXT NOT NULL, alt TEXT, cat INT, lat INT, lon INT, area INT, phone TEXT, rank INT, src INT);
-        CREATE VIRTUAL TABLE f USING fts4(content='', k, a, prefix='2,4', matchinfo=fts3);
+        CREATE VIRTUAL TABLE f USING fts4(content='', k, a{prefix_opt}, matchinfo=fts3);
         CREATE TABLE spot(kind INT, lat INT, lon INT, dir INT, kmh INT, src INT);
         CREATE TABLE syn(w TEXT PRIMARY KEY, cats TEXT, role INT, canon TEXT) WITHOUT ROWID;
         CREATE TABLE meta(k TEXT PRIMARY KEY, v TEXT) WITHOUT ROWID;
@@ -1311,6 +1375,8 @@ def main():
     ap.add_argument("--overture-places", required=True)
     ap.add_argument("--overture-dir", required=True)
     ap.add_argument("--additions")
+    ap.add_argument("--prefix", default="", help="FTS4 prefix= list; bytes, so an Arabic letter counts 2. Empty: no prefix tables")
+    ap.add_argument("--osm-stamp", default="2026-11-02T21:21:26Z", help="data stamp of the PBF that osm_extract.py read")
     a = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8")
     t00 = time.time()
@@ -1365,13 +1431,30 @@ def main():
     del ov, osm
     log("pois after merging", len(pois), "merged", stats["pois merged"], "across sources", stats["pois merged across sources"])
 
+    # names decide weak categories
+    w2c = syn_words()
+    for r in pois:
+        kind_from_name(r, w2c, stats)
+
+    # one source's "airport" far from any airport OpenStreetMap knows is a check-in somewhere else: it stays findable, not as an airport
+    fields = Grid(0.25)
+    for r in pois:
+        if r.cat == "airport" and r.src & SRC_OSM:
+            fields.add(r.lat, r.lon, r)
+    for r in pois:
+        if r.cat == "airport" and r.src == SRC_OVERTURE and not any(dist_m(r.lat, r.lon, la, lo) < 12000.0 for la, lo, _ in fields.near(r.lat, r.lon, 1)):
+            r.cat = "travel"
+            stats["overture airports far from any airport"] += 1
+
     # a Latin-only row whose whole name is a brand the data often writes in Arabic on the same kind of place shows that Arabic too
     shown = 0
+    shown_pairs = collections.Counter()
     for r in pois:
         if not r.alt and not AR_RANGE.search(r.name):
             key = " ".join(latin_base(w) for w in canon_tokens(r.name)[0] if not is_ar(w))
             arabic = lex.display_arabic(key, r.cat)
             if arabic:
+                shown_pairs[f"{r.name} = {arabic}"] += 1
                 r.alt = r.name
                 r.name = arabic
                 r.brand_ok = True
@@ -1445,14 +1528,14 @@ def main():
 
     meta = {
         "schema": "1", "norm_version": str(NORM_VERSION), "built": time.strftime("%Y-%m-%dT%H:%MZ", time.gmtime()), "overture": release,
-        "osm_pbf": os.path.basename(a.work), "additions": add_src,
+        "osm_data": a.osm_stamp, "additions": add_src,
         "attribution": "© OpenStreetMap contributors (ODbL), © Overture Maps Foundation. Places from Overture: CDLA Permissive 2.0, Apache 2.0 for Foursquare data; "
                        "Foursquare data was transformed to the Overture schema. Copyright 2024 Foursquare Labs, Inc. All rights reserved.",
         "rank": "0-100, higher is more important",
     }
-    log("writing", args_out := a.out)
+    log("writing", a.out)
     t0 = time.time()
-    db = write_db(a.out, rows, area_rows, spots, stats, meta)
+    db = write_db(a.out, rows, area_rows, spots, stats, meta, a.prefix)
     log(f"tables written {time.time() - t0:.1f} s, file {os.path.getsize(a.out) / 1e6:.1f} MB before the index")
     t0 = time.time()
     db.execute("BEGIN")
@@ -1493,11 +1576,11 @@ def main():
         "by_kind": {str(k): v for k, v in sorted(by_kind.items())}, "poi_by_source (1 Overture, 2 OSM, 3 both)": {str(k): v for k, v in sorted(by_src.items())},
         "poi_by_category": dict(by_cat.most_common()), "areas": len(area_rows), "spots": dict(sc), "spot_rows": len(spots), "stats": dict(stats),
         "seconds": round(time.time() - t00), "latin_only_rows_given_arabic_brand_display": shown,
-        "lexicon_word_pairs_kept": kept, "brand_pairs": nb,
+        "lexicon_word_pairs_kept": kept, "brand_pairs": nb, "brand_display_pairs": dict(shown_pairs.most_common()),
     }
     with open(os.path.join(a.work, "build-report.json"), "w", encoding="utf-8") as f:
         json.dump(report, f, ensure_ascii=False, indent=1)
-    log(json.dumps({k: v for k, v in report.items() if k not in ("poi_by_category", "stats")}, ensure_ascii=False))
+    log(json.dumps({k: v for k, v in report.items() if k not in ("poi_by_category", "stats", "brand_display_pairs")}, ensure_ascii=False))
 
 
 if __name__ == "__main__":

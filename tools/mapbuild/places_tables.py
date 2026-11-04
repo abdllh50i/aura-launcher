@@ -500,11 +500,32 @@ SYNONYMS = [
     ("مخرج exit", [], ["exit"]),
     ("دوار دوارات دوّار roundabout", [], ["roundabout"]),
     ("مبنى برج أبراج tower", [], ["building"]),
+    # more of how it is said here
+    ("بوفيه بوفية بوفيات كافتيريا كفتيريا كافيتريا cafeteria", [], ["fast_food", "restaurant", "breakfast"]),
+    ("مطبخ مطابخ", [], ["restaurant"]),
+    ("دواجن poultry", [], ["chicken", "butcher"]),
+    ("تمور تمر dates", [], ["sweets", "grocery"]),
+    ("جوازات إمارة امارة وزارة passports", ["احوال مدنيه", "الأحوال المدنية"], ["gov"]),
+    ("ممشى ممشي walkway", [], ["park", "beach"]),
+    ("حراج", [], ["market", "car_dealer"]),
+    ("مكيفات تكييف", [], ["electronics", "hardware"]),
+    ("كهربائيات سباك نجارة حدادة زجاج", [], ["hardware"]),
+    ("مطبعة طباعة printing", [], ["office", "books"]),
+    ("محامي محاماة lawyer", [], ["office"]),
+    ("سطحة سطحات", [], ["car_repair"]),
 ]
+
+# Words for one thing within a kind: the category is only a fallback for these, a place with the word in its name comes first (role 5, see syn).
+# "شاورما" should not answer KFC while a shawarma shop is near.
+SPECIFIC = """شاورما شورما شاورمة shawarma مشويات مشاوي كباب مندي مظبي كبسة grill بروست broast فوال فول تميس كرك karak شيشة معسل hookah shisha
+    عود بخور oud سمسا ارامكس سابتكو كورنيش corniche ممشى ممشي walkway بوفيه بوفية بوفيات كافتيريا كفتيريا كافيتريا cafeteria تمور تمر dates مطبخ مطابخ دواجن poultry
+    جوازات إمارة امارة وزارة passports حراج مكيفات تكييف كهربائيات سباك نجارة حدادة زجاج مطبعة طباعة printing محامي محاماة lawyer سطحة سطحات عسل
+    عبايات عباية سجاد carpet كمبيوتر حاسب computer سكراب تشليح زيتي""".split()
 
 # Words that are never required. role: 1 road word (a hint that a road is meant), 2 optional word (titles, company words),
 # 3 stop word (dropped), 4 district word (a hint). canon: the one spelling compared when ranking, never shown.
 ROLES = {
+    "محل": (2, "محل"), "محلات": (2, "محل"), "متجر": (2, "محل"), "shop": (2, "محل"), "store": (2, "محل"), "مركز": (2, "مركز"), "center": (2, "مركز"), "centre": (2, "مركز"), "مجمع": (2, "مجمع"),
     "شارع": (1, "طريق"), "طريق": (1, "طريق"), "street": (1, "طريق"), "st": (1, "طريق"), "road": (1, "طريق"), "rd": (1, "طريق"), "جادة": (1, "طريق"),
     "highway": (1, "طريق"), "expressway": (1, "طريق"), "hwy": (1, "طريق"), "avenue": (1, "طريق"), "ave": (1, "طريق"),
     "جسر": (1, "جسر"), "كوبري": (1, "جسر"), "bridge": (1, "جسر"), "نفق": (1, "نفق"), "tunnel": (1, "نفق"),

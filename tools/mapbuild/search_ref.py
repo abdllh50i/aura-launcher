@@ -14,11 +14,12 @@ import argparse
 import json
 import math
 import os
+import re
 import sqlite3
 import sys
 import unicodedata
 
-NORM_VERSION = 1
+NORM_VERSION = 2
 SK = "§"  # a token that starts with this is a consonant skeleton
 CT = "¤"  # a token that starts with this is a category id
 
@@ -98,6 +99,34 @@ def latin_base(w):
         if w[1] == w[2] and w[1] in "rsdtnz":
             return w[2:]
     return w
+
+
+ABD_LATIN = re.compile(r"^(?:abdul|abdel|abdal|abdol|abdur|abdus|abdu)(.{3,})$")
+
+
+def query_words(text):
+    """The words of a text as the index holds them: norm, base, and joined names apart ("عبدالعزيز" is عبد + عزيز, "Abdulaziz" is abd + aziz,
+    "ابوبكر" is ابو + بكر), so that a name written either way finds the other."""
+    out = []
+    for w in norm(text).split():
+        b = base(w)
+        if is_ar(b):
+            if b.startswith("عبد") and len(b) > 4:
+                out.append("عبد")
+                out.append(base(b[3:]))
+                continue
+            if b.startswith("ابو") and len(b) >= 6:
+                out.append("ابو")
+                out.append(base(b[3:]))
+                continue
+        else:
+            m = ABD_LATIN.match(b)
+            if m:
+                out.append("abd")
+                out.append(latin_base(m.group(1)))
+                continue
+        out.append(b)
+    return out
 
 
 SK_AR = {
@@ -181,7 +210,7 @@ def lev1(a, b):
 class Syn:
     """Table syn: normalised word or phrase to categories, role and canonical word."""
 
-    __slots__ = ("words", "max_len")
+    __slots__ = ("words", "max_len", "airport")
 
     def __init__(self, db):
         self.words = {}
@@ -189,6 +218,8 @@ class Syn:
         for w, cats, role, canon in db.execute("SELECT w, cats, role, canon FROM syn"):
             self.words[w] = ([int(x) for x in cats.split()] if cats else [], role, canon or "")
             self.max_len = max(self.max_len, w.count(" ") + 1)
+        row = db.execute("SELECT id FROM cat WHERE key='airport'").fetchone()
+        self.airport = row[0] if row else -1
 
     def get(self, w):
         return self.words.get(w)
@@ -215,7 +246,7 @@ class Plan:
 def plan_query(q, syn):
     """Groups of a query. Words that only a road, a title or a company name carry are optional; stop words vanish."""
     typing = not q[-1:].isspace()
-    ws = [base(w) for w in norm(q).split()]
+    ws = query_words(q)
     p = Plan()
     p.groups = []
     p.road_hint = False
@@ -259,18 +290,24 @@ def _term(w, prefix):
     return w + "*" if star else w
 
 
-def fts_string(plan, loose=False):
-    """The MATCH string. Standard query syntax: OR binds tighter than the implicit AND."""
+def fts_string(plan, loose=False, in_names=False, no_cats=False):
+    """The MATCH string. Standard query syntax: OR binds tighter than the implicit AND.
+    in_names: every word must be in the name. FTS4 cannot put a column on a quoted phrase, so a phrase stays as it is.
+    no_cats: the words themselves, without the kinds of place they also mean."""
     parts = []
-    single = len(plan.required) == 1
+    single = in_names or len(plan.required) == 1
     for g in plan.required:
         alts = []
         if len(g.words) == 1:
-            alts.append(_term(g.words[0], g.prefix))
+            w = g.words[0]
+            alts.append(_term(w, g.prefix))
+            if not is_ar(w) and latin_base(w) != w:  # "alkhobar" also finds "Al Khobar"
+                alts.append(_term(latin_base(w), g.prefix))
         else:
             alts.append('"' + " ".join(g.words) + '"')
-        for c in g.cats:
-            alts.append(CT + str(c))
+        if not no_cats:
+            for c in g.cats:
+                alts.append(CT + str(c))
         if loose:
             for i, s in enumerate(g.sks):
                 if len(s) >= 2:
@@ -336,15 +373,27 @@ def km_between(la1, lo1, la2, lo2):
 
 
 def word_set(name):
-    return [base(w) for w in norm(name).split()] if name else []
+    return query_words(name) if name else []
 
 
 KIND_WEIGHT = {1: 8.0, 2: 30.0, 3: 22.0, 4: 10.0, 5: 14.0, 6: 10.0, 7: 8.0}
 KIND_REGION, KIND_CITY, KIND_TOWN, KIND_VILLAGE, KIND_DISTRICT, KIND_POI, KIND_ROAD = 1, 2, 3, 4, 5, 6, 7
 
 
-def group_quality(g, names, name_sks, area_words, area_sks, cat, syn):
-    """How well a row answers one group, 0..1: what the driver can see counts more than what only the index knew."""
+def group_quality(g, names, name_sks, area_words, area_sks, cat, syn, cat_query=False):
+    """How well a row answers one group, 0..1: what the driver can see counts more than what only the index knew.
+    In a query that only asks for a kind of place, being that kind is most of the answer, and the word in the name as well is all of it.
+    A word for one thing within a kind (role 5: شاورما, كرك, سمسا) works the other way: the name first, the kind only when no name has it."""
+    if cat_query:
+        in_cat = cat in g.cats
+        named = all(w in names for w in g.words)
+        if in_cat and named:
+            return 1.0
+        if in_cat:
+            return 0.4 if g.role == 5 else 0.9
+        if named:
+            return 0.95 if g.role == 5 else 0.8
+        return min(0.7, group_quality(g, names, name_sks, area_words, area_sks, cat, syn))
     if len(g.words) > 1:
         if all(w in names for w in g.words):
             return 1.0
@@ -354,7 +403,7 @@ def group_quality(g, names, name_sks, area_words, area_sks, cat, syn):
             return 0.6
         return 0.5
     w = g.words[0]
-    if w in names:
+    if w in names or (not is_ar(w) and latin_base(w) in names):
         return 1.0
     canon = syn.get(w)
     if canon and canon[2]:
@@ -366,13 +415,15 @@ def group_quality(g, names, name_sks, area_words, area_sks, cat, syn):
     if len(w) >= 2:
         for n in names:
             if n.startswith(w):
-                best = max(best, 0.85 + 0.1 * len(w) / len(n))
+                best = max(best, 0.8 + 0.09 * len(w) / len(n))
     if cat in g.cats:
         best = max(best, 0.8)
     for s in g.sks:
         if len(s) >= 2:
             if s in name_sks:
-                best = max(best, 0.75)
+                # the same consonants: a long word in another spelling or script is that word (Jubail, Jubayl; ستاربكس, Starbucks)
+                other_script = is_ar(w) != any(is_ar(n) for n in names)
+                best = max(best, 0.92 if len(s) >= 3 else 0.85 if other_script else 0.75)
             elif g.prefix and len(s) >= 3 and any(x.startswith(s) for x in name_sks):
                 best = max(best, 0.65)
     if best >= 0.75:
@@ -395,23 +446,40 @@ def score_row(r, plan, near, area, syn):
     n1 = word_set(name)
     n2 = word_set(alt)
     names = set(n1) | set(n2)
+    names |= {latin_base(w) for w in names if not is_ar(w)}
     name_sks = set()
     for w in names:
         name_sks.update(skeletons(w))
     area_words = set()
     area_sks = set()
+    names_town = False
     if area:
         for part in area[1:5]:
             for w in word_set(part):
                 area_words.add(w)
                 area_sks.update(skeletons(w))
-    qual = [group_quality(g, names, name_sks, area_words, area_sks, cat, syn) for g in plan.required]
-    t = sum(qual) / len(qual) if qual else 0.0
+        if len(plan.required) > 1:
+            asked_words = {w for g in plan.required for w in g.words}
+            for part in area[3:5]:  # the query holds the whole name of the row's town
+                town = [w for w in word_set(part) if (syn.get(w) or (0, 0))[1] != 3]
+                if town and all(w in asked_words for w in town):
+                    names_town = True
+    cat_query = bool(plan.required) and all(g.cats for g in plan.required)
+    qual = [group_quality(g, names, name_sks, area_words, area_sks, cat, syn, cat_query) for g in plan.required]
+
+    def says_where(g, q):
+        """The group only says where: its word is in the row's district or town, and not in its name."""
+        return q < 0.75 and any(w in area_words or (len(w) >= 2 and any(a.startswith(w) for a in area_words)) for w in g.words)
+
+    where = [says_where(g, q) for g, q in zip(plan.required, qual)]
+    named_q = [q for q, x in zip(qual, where) if not x]
+    t = sum(named_q) / len(named_q) if named_q else (sum(qual) / len(qual) if qual else 0.0)
     # how much of a name the query covers, in the script it covers best
     asked = set()
     ask_sks = set()
     for g in plan.groups:
         asked.update(g.words)
+        asked.update(latin_base(w) for w in g.words if not is_ar(w))
         ask_sks.update(g.sks)
 
     def covered(words):
@@ -425,23 +493,37 @@ def score_row(r, plan, near, area, syn):
                 hit += 1
             else:
                 e = syn.get(w)
-                if e is not None and e[1] != 0:  # road words and titles do not make a name longer
+                if e is not None and e[1] in (1, 2, 3, 4):  # road words and titles do not make a name longer
                     hit += 1
         return hit / len(words)
 
     c = max(covered(n1), covered(n2))
-    exact = 1.0 if c >= 1.0 and t >= 0.99 else 0.0
-    if exact and plan.required and all(g.cats for g in plan.required) and not any(cat in g.cats for g in plan.required):
-        exact = 0.0  # a shop called "قهوة" that is no coffee shop
-    s = 55.0 * t + 15.0 * c + 25.0 * exact + 15.0 * rank / 100.0 + KIND_WEIGHT.get(kind, 8.0)
+    # the name answers: the row is of the kind asked for, and every word that is not there for the kind or for the area is in the name, in full.
+    # "مطعم البيك الخبر": البيك, a restaurant. "مطار": a street called طريق المطار is no answer of this sort
+    in_name = [q for g, q, x in zip(plan.required, qual, where) if not g.cats and not x]
+    of_kind = all(cat in g.cats for g in plan.required if g.cats)
+    exact = 1.0 if c >= 1.0 and of_kind and in_name and min(in_name) >= 0.9 else 0.0
+    rank_weight = 15.0
+    if cat_query:  # "صيدلية": the nearest good pharmacy, not the one that happens to be called only that
+        c = 0.0
+        exact = 0.0
+        rank_weight = 30.0
+    s = 55.0 * t + 15.0 * c + 25.0 * exact + rank_weight * rank / 100.0 + KIND_WEIGHT.get(kind, 8.0)
     if plan.road_hint and kind == KIND_ROAD:
         s += 20.0
     if plan.district_hint and kind == KIND_DISTRICT:
-        s += 25.0
+        s += 40.0
     km = None
     if near:
         km = km_between(near[0], near[1], lat / 1e6, lon / 1e6)
-        s -= min(75.0, 11.0 * math.log(1.0 + km))
+        away = min(75.0, 11.0 * math.log(1.0 + km))
+        if exact and kind in (KIND_CITY, KIND_TOWN):  # a town's name asks for the town, however far: not for a street named after it
+            away = min(away, 6.0)
+        if cat_query and cat == syn.airport:  # one drives far to an airport: the real one before a check-in spot that is nearer
+            away *= 0.3
+        if names_town:
+            away = min(away, 15.0)  # "مطار الدمام": the driver said which town, so how far it is from him says little
+        s -= away
     return s, km, t
 
 
@@ -496,11 +578,22 @@ def search(db, query, near=None, limit=12, syn=None, debug=None):
     if not plan.required:
         return []
     letters = sum(len(w) for g in plan.required for w in g.words)
-    if letters < 2:
+    if letters < 2 and not (plan.road_hint and plan.required[0].words[0].isdigit()):  # one letter says nothing; "شارع 9" does
         return []
     rows = {}
     stages = []
     m = fts_string(plan)
+    if any(g.role == 5 for g in plan.required):
+        # شاورما: the shops called that, or the many near restaurants would crowd them out of the candidates
+        m0 = fts_string(plan, in_names=True, no_cats=True)
+        stages.append(m0)
+        rows.update(candidates(db, m0, near))
+    if len(plan.required) > 1:
+        # first the rows that hold all the words in their name, so that a thing itself is never crowded out by the many rows that are merely in it
+        m1 = fts_string(plan, in_names=True)
+        if m1 != m:
+            stages.append(m1)
+            rows.update(candidates(db, m1, near))
     stages.append(m)
     rows.update(candidates(db, m, near))
     if len(rows) < 6:
@@ -588,6 +681,13 @@ def check(case, results, cat_ids):
         return (not results), f"expected nothing, got {len(results)}"
     if not results:
         return False, "no results"
+    only = [cat_ids.get(c) for c in exp.get("all_cat", [])]
+    if only:
+        bad = [r for r in results[:top] if r["cat"] not in only]
+        if bad:
+            return False, "not all of the kind: " + " / ".join(f"{r['name']} [c{r['cat']}]" for r in bad)
+        if within is None:
+            return True, "all of the kind"
     for i, r in enumerate(results[:top]):
         if kinds and r["kind"] not in kinds:
             continue
@@ -603,9 +703,24 @@ def check(case, results, cat_ids):
     return False, "not in top %d: %s" % (top, " / ".join(f"{r['name']} [{r['km']}]" for r in results[:top]))
 
 
+def check_reverse(case, got):
+    exp = case.get("expect", {})
+    what = got["what"] if got else "none"
+    if exp.get("what") and what != exp["what"]:
+        return False, f"got {what}: {got}"
+    if exp.get("what_any") and what not in exp["what_any"]:
+        return False, f"got {what}: {got}"
+    if exp.get("name_any"):
+        text = norm(((got or {}).get("name") or "") + " " + ((got or {}).get("alt") or ""))
+        if not any(norm(x) in text for x in exp["name_any"]):
+            return False, f"got {got}"
+    return True, "ok"
+
+
 def run_tests(db, path, golden=None, verbose=True):
     with open(path, encoding="utf-8") as f:
-        cases = json.load(f)["cases"]
+        doc = json.load(f)
+    cases = doc["cases"]
     syn = Syn(db)
     cat_ids = {k: i for i, k in db.execute("SELECT id,key FROM cat")}
     passed = 0
@@ -625,9 +740,20 @@ def run_tests(db, path, golden=None, verbose=True):
     print(f"{passed} of {len(cases)} pass")
     for k, (a, b) in sorted(by_group.items()):
         print(f"  {k}: {a}/{b}")
+    rev = doc.get("reverse", [])
+    rev_ok = 0
+    rev_gold = []
+    for c in rev:
+        got = reverse(db, c["at"][0], c["at"][1])
+        ok, why = check_reverse(c, got)
+        rev_ok += ok
+        rev_gold.append({"at": c["at"], "got": got, "ok": bool(ok)})
+        if verbose and not ok:
+            print(f"FAIL [reverse] {c['at']}: {why}")
+    print(f"reverse: {rev_ok}/{len(rev)}")
     if golden:
         with open(golden, "w", encoding="utf-8") as f:
-            json.dump(gold, f, ensure_ascii=False, indent=0)
+            json.dump({"search": gold, "reverse": rev_gold}, f, ensure_ascii=False, indent=0)
     return passed, len(cases)
 
 

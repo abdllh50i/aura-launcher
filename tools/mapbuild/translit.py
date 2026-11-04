@@ -4,8 +4,9 @@ forms only ever go into the index, never into p.name or p.alt.
 Rule based. No model: a transliteration model on the PC's GPU would mean a download that was not on the approved list, so it
 stays a later option. tests/test_translit.py and the build's log say how often the rules give a real spelling.
 
-Two forms per word, because Arabic writes foreign names and Arabic names differently: a "full" form with every vowel written
-(Baskin -> باسكين) and a "sparse" one with only the long vowels (Fanateer -> فناتير, Burger -> برجر).
+Up to four forms per word, because Arabic writes foreign names and Arabic names differently: a "full" form with every vowel written
+(Baskin -> باسكين), a "sparse" one with only the long vowels (Burger -> برجر), one that drops only the first short vowel
+(Fanateer -> فناتير, Ramada -> رمادا, Petromin -> بترومين), and hard g written both ways (ق and ج).
 """
 DIGRAPHS = {
     "sh": "ش", "kh": "خ", "gh": "غ", "th": "ث", "dh": "ظ", "ph": "ف", "ck": "ك", "ch": "تش", "qu": "كو",
@@ -21,9 +22,11 @@ VOWELS = "aeiou"
 
 
 def _forms(w):
-    """(full, sparse) Arabic letters of a lower-case Latin word."""
+    """(full, sparse, first short vowel dropped) Arabic letters of a lower-case Latin word."""
     full = []
     sparse = []
+    third = []
+    dropped = False
     i = 0
     n = len(w)
     while i < n:
@@ -33,6 +36,7 @@ def _forms(w):
         if two in DIGRAPHS:
             full.append(DIGRAPHS[two])
             sparse.append(DIGRAPHS[two])
+            third.append(DIGRAPHS[two])
             i += 2
             continue
         if two in LONG_VOWELS:
@@ -41,12 +45,14 @@ def _forms(w):
                 v = "ا" + v.lstrip("ا")
             full.append(v)
             sparse.append(v)
+            third.append(v)
             i += 2
             continue
         if c in VOWELS:
             if i == 0:
                 full.append("ا")
                 sparse.append("ا")
+                third.append("ا")
             elif i == n - 1:
                 if c == "e":
                     pass  # silent, as in Dose
@@ -54,11 +60,16 @@ def _forms(w):
                     v = {"a": "ا", "i": "ي", "o": "و", "u": "و"}[c]
                     full.append(v)
                     sparse.append(v)
+                    third.append(v)
             else:
                 v = {"a": "ا", "e": "ي", "i": "ي", "o": "و", "u": "و"}[c]
                 full.append(v)
                 if c == "o":
                     sparse.append(v)
+                if dropped:
+                    third.append(v)
+                else:
+                    dropped = True
             i += 1
             continue
         if c == "c":
@@ -71,17 +82,22 @@ def _forms(w):
             if not (full and full[-1] == ch and i > 0 and w[i - 1] == c):  # a doubled letter is written once
                 full.append(ch)
                 sparse.append(ch)
+                third.append(ch)
         i += 1
-    return "".join(full), "".join(sparse)
+    return "".join(full), "".join(sparse), "".join(third)
 
 
 def latin_forms(word):
     """Arabic spellings of one Latin word, or [] for words that should not be guessed at (digits, very short)."""
     if len(word) < 3 or not word.isascii() or not word.isalpha():
         return []
-    a, b = _forms(word)
+    a, b, c = _forms(word)
     out = []
-    for f in (b, a):
+    for f in (b, c, a):
         if len(f) >= 2 and f not in out:
             out.append(f)
-    return out
+    if "g" in word.replace("gh", "") and out:
+        j = out[0].replace("ق", "ج")
+        if j not in out:
+            out.append(j)
+    return out[:4]

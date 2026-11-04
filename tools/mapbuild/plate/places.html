@@ -1,0 +1,50 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>places plate</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<style>html,body,#m{margin:0;width:100%;height:100%;background:#000}.maplibregl-ctrl-attrib,.maplibregl-ctrl-logo{display:none!important}</style>
+<div id="m"></div>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script>
+// Our own POI tiles over a plain map, to see them decode and draw in MapLibre GL JS. A copy of the design kit's idea (map.html), with one more source.
+// The base is OpenFreeMap as in the kit, unless window.__job.base names a local tile URL. window.__job: { tiles, center:[lon,lat], zoom, base }
+const J = window.__job;
+const rtl = maplibregl.setRTLTextPlugin('https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.2.3/mapbox-gl-rtl-text.min.js', false);
+if (rtl && rtl.catch) rtl.catch(e => { window.__rtlErr = String(e); });
+// icon groups of table cat (places_tables.py): OTHER, FOOD, CAFE, SHOP, FUEL, TRANSPORT, HEALTH, WORSHIP, LODGING, BANK, SCHOOL, PARK, SIGHT, PUBLIC
+const COLORS = ['#8a8f98', '#e8743b', '#a0683a', '#3a7be8', '#d13b3b', '#5b6b7b', '#d6336c', '#2f9e44', '#7048e8', '#0ca678', '#e8a33b', '#51a34a', '#be4bdb', '#495057'];
+const iconOf = J.iconOf; // cat id -> icon group, read from table cat by the script that renders this
+const color = ['match', ['get', 'cat']];
+for (const [cat, icon] of Object.entries(iconOf)) { color.push(+cat, COLORS[icon]); }
+color.push('#8a8f98');
+const name = ['coalesce', ['get', 'name']];
+const src = {
+  places: { type: 'vector', tiles: [J.tiles], minzoom: 12, maxzoom: 14 },
+  omt: J.base ? { type: 'vector', tiles: [J.base], minzoom: 0, maxzoom: 14 } : { type: 'vector', url: 'https://tiles.openfreemap.org/planet' },
+};
+const layers = [
+  { id: 'bg', type: 'background', paint: { 'background-color': '#f4f1ea' } },
+  { id: 'water', type: 'fill', source: 'omt', 'source-layer': 'water', paint: { 'fill-color': '#b5d3e7' } },
+  { id: 'park', type: 'fill', source: 'omt', 'source-layer': 'park', paint: { 'fill-color': '#d8e8c8' } },
+  { id: 'roads-minor', type: 'line', source: 'omt', 'source-layer': 'transportation', filter: ['in', ['get', 'class'], ['literal', ['minor', 'service', 'tertiary']]], paint: { 'line-color': '#ffffff', 'line-width': 1.2 } },
+  { id: 'roads-major', type: 'line', source: 'omt', 'source-layer': 'transportation', filter: ['in', ['get', 'class'], ['literal', ['motorway', 'trunk', 'primary', 'secondary']]], paint: { 'line-color': '#f2c879', 'line-width': 2.4 } },
+  { id: 'poi-dot', type: 'circle', source: 'places', 'source-layer': 'places', paint: { 'circle-color': color, 'circle-radius': ['interpolate', ['linear'], ['get', 'rank'], 14, 2.5, 90, 6], 'circle-stroke-color': '#fff', 'circle-stroke-width': 1 } },
+  { id: 'poi-name', type: 'symbol', source: 'places', 'source-layer': 'places', minzoom: 12,
+    layout: { 'text-field': name, 'text-font': ['Noto Sans Regular'], 'text-size': 13, 'text-anchor': 'top', 'text-offset': [0, .6], 'text-padding': 6, 'symbol-sort-key': ['-', 100, ['get', 'rank']] },
+    paint: { 'text-color': '#222', 'text-halo-color': '#fff', 'text-halo-width': 1.4 } },
+];
+const style = { version: 8, glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf', sources: src, layers };
+const map = new maplibregl.Map({ container: 'm', style, center: J.center, zoom: J.zoom, attributionControl: false, canvasContextAttributes: { preserveDrawingBuffer: true, antialias: true }, fadeDuration: 0, pixelRatio: 1, interactive: false });
+const errors = [];
+map.on('error', e => errors.push(e.error && e.error.message));
+map.on('load', () => {
+  map.once('idle', () => {
+    setTimeout(() => {
+      const fs = map.queryRenderedFeatures({ layers: ['poi-dot'] });
+      const named = map.queryRenderedFeatures({ layers: ['poi-name'] });
+      window.__info = { zoom: map.getZoom(), center: map.getCenter(), dots: fs.length, labels: named.length, sample: named.slice(0, 8).map(f => ({ name: f.properties.name, cat: f.properties.cat, rank: f.properties.rank, id: f.properties.id, en: f.properties['name:en'] })), rtl: maplibregl.getRTLTextPluginStatus(), rtlErr: window.__rtlErr, errors };
+      window.__ready = true;
+    }, 400);
+  });
+});
+</script>
