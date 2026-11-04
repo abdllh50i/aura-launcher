@@ -25,7 +25,7 @@ meta(k, v)                                    -- schema, norm_version, built, ov
 `f` is contentless: `SELECT` only `docid` and use `MATCH`. Tokens in `k` that start with `§` are consonant skeletons, with `¤` a category id. They are never shown.
 `p.lat` has an index, `spot.lat` too: a box is a `lat BETWEEN` with a `lon` filter.
 
-There are no prefix tables in `f` on purpose: they took a third of the file and measured no gain worth it (see the build report's numbers).
+There are no prefix tables in `f` on purpose. Measured on the same rows: `prefix='2,4'` 65.0 MB, `prefix='4'` 53.8 MB, none 39.4 MB, and on the PC a two-letter search took the same time in all three (`مط`: 12.4, 13.2, 11.1 ms), because the time goes into reading rows from `p`, not into the index. (FTS4's prefix lengths are bytes: an Arabic letter counts 2.)
 
 ## 2. Text
 
@@ -42,7 +42,7 @@ NFKD already folds `أ إ آ ؤ ئ` to `ا ا ا و ي` and the presentation for
 
 **`latin_base(w)`**: `al`/`el` off a Latin word of 5+ letters; `ashsh…`, `adhdh…`, `athth…` lose their first 3 letters and `arr… ass… add… att… ann… azz…` their first 2 if the word has 6+ letters.
 
-**`query_words(text)`**: `norm`, split, `base`, then joined names apart: an Arabic word that starts with `عبد` and has 5+ letters is `عبد` + `base(rest)`; one that starts with `ابو` and has 6+ letters is `ابو` + `base(rest)`; a Latin word matching `^(abdul|abdel|abdal|abdol|abdur|abdus|abdu)(.{3,})$` is `abd` + `latin_base(rest)`. Used for queries and for the names a result is compared with.
+**`query_words(text)`**: `norm`, split, `base`, then joined names apart: an Arabic word that starts with `عبد` and has 5+ letters is `عبد` + `base(rest)`; one that starts with `ابو` and has 6+ letters is `ابو` + `base(rest)`; a Latin word matching `^(abdul|abdel|abdal|abdol|abdur|abdus|abdu)(.{3,})$` is `abd` + `latin_base(rest)`. Single Latin letters in a row become one word: `H&M` is `hm`. Used for queries and for the names a result is compared with.
 
 **`skeleton(w)`**, of a word after `base` or `latin_base`, gives the consonants in one alphabet. A word with a digit has none.
 - Arabic: `ب`b; `ت ث ط`t; `ج ق ك خ غ`k; `ح ه`h; `د ذ ض ظ ز`d; `ر`r; `س ش ص`s; `ف`f; `ل`l; `م`m; `ن`n; the rest (ا و ي ع) nothing. Doubles are kept in Arabic.

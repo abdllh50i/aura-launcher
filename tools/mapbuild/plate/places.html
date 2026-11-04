@@ -7,7 +7,7 @@
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script>
 // Our own POI tiles over a plain map, to see them decode and draw in MapLibre GL JS. A copy of the design kit's idea (map.html), with one more source.
-// The base is OpenFreeMap as in the kit, unless window.__job.base names a local tile URL. window.__job: { tiles, center:[lon,lat], zoom, base }
+// The base is OpenFreeMap as in the kit, unless window.__job.base names a local tile URL (serve_tiles.py can serve out\base.mbtiles too). window.__job: { tiles, center:[lon,lat], zoom, base }
 const J = window.__job;
 const rtl = maplibregl.setRTLTextPlugin('https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.2.3/mapbox-gl-rtl-text.min.js', false);
 if (rtl && rtl.catch) rtl.catch(e => { window.__rtlErr = String(e); });

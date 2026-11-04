@@ -517,7 +517,7 @@ SYNONYMS = [
 
 # Words for one thing within a kind: the category is only a fallback for these, a place with the word in its name comes first (role 5, see syn).
 # "شاورما" should not answer KFC while a shawarma shop is near.
-SPECIFIC = """شاورما شورما شاورمة shawarma مشويات مشاوي كباب مندي مظبي كبسة grill بروست broast فوال فول تميس كرك karak شيشة معسل hookah shisha
+SPECIFIC = """دواء أدوية شاورما شورما شاورمة shawarma مشويات مشاوي كباب مندي مظبي كبسة grill بروست broast فوال فول تميس كرك karak شيشة معسل hookah shisha
     عود بخور oud سمسا ارامكس سابتكو كورنيش corniche ممشى ممشي walkway بوفيه بوفية بوفيات كافتيريا كفتيريا كافيتريا cafeteria تمور تمر dates مطبخ مطابخ دواجن poultry
     جوازات إمارة امارة وزارة passports حراج مكيفات تكييف كهربائيات سباك نجارة حدادة زجاج مطبعة طباعة printing محامي محاماة lawyer سطحة سطحات عسل
     عبايات عباية سجاد carpet كمبيوتر حاسب computer سكراب تشليح زيتي""".split()

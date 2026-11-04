@@ -108,6 +108,7 @@ def query_words(text):
     """The words of a text as the index holds them: norm, base, and joined names apart ("عبدالعزيز" is عبد + عزيز, "Abdulaziz" is abd + aziz,
     "ابوبكر" is ابو + بكر), so that a name written either way finds the other."""
     out = []
+    spelled = 0  # how many single Latin letters the last word of out was built from
     for w in norm(text).split():
         b = base(w)
         if is_ar(b):
@@ -125,6 +126,12 @@ def query_words(text):
                 out.append("abd")
                 out.append(latin_base(m.group(1)))
                 continue
+        # single Latin letters belong together: H&M, K.F.C
+        if len(b) == 1 and b.isalpha() and b.isascii() and out and out[-1].isascii() and out[-1].isalpha() and len(out[-1]) == spelled + 0 and spelled > 0:
+            out[-1] += b
+            spelled += 1
+            continue
+        spelled = 1 if len(b) == 1 and b.isalpha() and b.isascii() else 0
         out.append(b)
     return out
 

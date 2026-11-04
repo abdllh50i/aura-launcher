@@ -95,6 +95,7 @@
   {"group": "brand", "q": "النهدي", "near": [27.01, 49.66], "expect": {"top": 3, "name_any": ["nahdi", "النهدي", "النهدى"], "within_km": 3}},
   {"group": "brand", "q": "nahdi", "near": [27.01, 49.66], "expect": {"top": 3, "name_any": ["nahdi", "النهدي", "النهدى"], "within_km": 3}},
   {"group": "brand", "q": "صيدلية الدواء", "near": [27.01, 49.66], "expect": {"top": 3, "name_any": ["dawa", "الدواء"], "cat_any": ["pharmacy"], "within_km": 5}},
+  {"group": "brand", "q": "H&M", "near": [26.29, 50.20], "expect": {"top": 3, "name_any": ["اتش اند ام", "h m"], "within_km": 10}},
   {"group": "brand", "q": "الراجحي", "near": [26.42, 50.09], "expect": {"top": 3, "name_any": ["rajhi", "الراجحي"], "within_km": 5}},
   {"group": "brand", "q": "بترومين", "near": [27.01, 49.66], "expect": {"top": 3, "name_any": ["petromin", "بترومين"], "within_km": 5}},
   {"group": "brand", "q": "ارامكو", "near": [26.29, 50.20], "expect": {"top": 3, "name_any": ["aramco", "ارامكو"]}},
