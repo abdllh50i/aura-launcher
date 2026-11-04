@@ -1,0 +1,50 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>the app's real style on the pack's tiles</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<style>html,body,#m{margin:0;width:100%;height:100%;background:#000}.maplibregl-ctrl-attrib,.maplibregl-ctrl-logo{display:none!important}</style>
+<div id="m"></div>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script>
+// window.__job: { style (the JSON MapStyle.kt wrote), lang, tiles, glyphs, center, zoom, bearing, pitch }
+const J = window.__job;
+const rtl = maplibregl.setRTLTextPlugin('https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.2.3/mapbox-gl-rtl-text.min.js', false);
+if (rtl && rtl.catch) rtl.catch(e => { window.__rtlErr = String(e); });
+const style = JSON.parse(JSON.stringify(J.style).replaceAll('TILES_URL', J.tiles).replaceAll('GLYPHS_URL', J.glyphs));
+const errors = [], missingImages = [];
+window.addEventListener('unhandledrejection', e => errors.push('rejection: ' + String(e.reason && e.reason.message || e.reason)));
+const map = new maplibregl.Map({ container: 'm', style, center: J.center, zoom: J.zoom, bearing: J.bearing || 0, pitch: J.pitch || 0, attributionControl: false,
+  preserveDrawingBuffer: true, antialias: false, fadeDuration: 0, pixelRatio: 1, interactive: false, maxPitch: 75 });
+// MapStyle.poiDot(): a white disc as a signed distance field, r 6, buffer 8; added as an SDF image like AuraMap.kt:281
+(function () {
+  const r = 6, buffer = 8, size = (r + buffer) * 2, mid = size / 2, data = new Uint8Array(size * size * 4);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const d = Math.hypot(x + .5 - mid, y + .5 - mid) - r, a = Math.max(0, Math.min(1, 1 - (d / buffer + .25))), i = (y * size + x) * 4;
+    data[i] = data[i + 1] = data[i + 2] = 255; data[i + 3] = Math.floor(a * 255);
+  }
+  map.on('style.load', () => { if (!map.hasImage('poi-dot')) map.addImage('poi-dot', { width: size, height: size, data }, { sdf: true }); });
+})();
+map.on('error', e => errors.push((e.error && e.error.message) || String(e)));
+map.on('styleimagemissing', e => missingImages.push(e.id));
+const AR = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/;
+const label = p => J.lang === 'ar' ? (p['name:ar'] || p.name || p.ref || p.housenumber || '') : (p['name:en'] || p['name:latin'] || p.name || p.ref || p.housenumber || '');
+function finish() {
+  const byLayer = {}, labels = {}, chars = new Set();
+  let total = 0, arabic = 0, latin = 0, empty = 0;
+  for (const f of map.queryRenderedFeatures()) {
+    const id = f.layer.id; byLayer[id] = (byLayer[id] || 0) + 1;
+    if (f.layer.type !== 'symbol') continue;
+    const t = String(label(f.properties)); total++;
+    if (!t) empty++; else if (AR.test(t)) arabic++; else latin++;
+    for (const ch of t) chars.add(ch.codePointAt(0));
+    (labels[id] = labels[id] || []); if (labels[id].length < 12 && t && !labels[id].includes(t)) labels[id].push(t);
+  }
+  const res = performance.getEntriesByType('resource').filter(r => r.name.includes('/base/'));
+  const tiles = { n: res.length, s200: res.filter(r => r.responseStatus === 200).length, s204: res.filter(r => r.responseStatus === 204).length, bytes: res.reduce((a, r) => a + (r.encodedBodySize || 0), 0) };
+  tiles.other = tiles.n - tiles.s200 - tiles.s204;
+  window.__info = { zoom: map.getZoom(), center: map.getCenter(), rtl: maplibregl.getRTLTextPluginStatus(), rtlErr: window.__rtlErr, errors, missingImages, tiles, byLayer, symbols: { total, arabic, latin, empty }, labels, chars: [...chars] };
+  window.__ready = true;
+}
+map.on('load', () => { map.once('idle', () => setTimeout(finish, 300)); });
+setTimeout(() => { if (!window.__ready) { errors.push('never idle in 60 s'); finish(); } }, 60000);
+</script>

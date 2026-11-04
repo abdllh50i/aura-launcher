@@ -1,0 +1,93 @@
+{
+ "about": "Exact vectors for the text functions of SEARCH_SPEC.md. Hand-checked, not generated from the code. The Kotlin port must give the same output for every input. In fts, {key} stands for the category token of that key in the file's table cat.",
+ "norm": [
+  ["مُسْتَشْفَى", "مستشفي"],
+  ["أرامكو", "ارامكو"],
+  ["إبراهيم", "ابراهيم"],
+  ["آل سعود", "ال سعود"],
+  ["مؤسسة", "موسسه"],
+  ["شاطئ", "شاطي"],
+  ["صيدلية", "صيدليه"],
+  ["ـــقهـــوة", "قهوه"],
+  ["ﺍﻟﺒﻴﻚ", "البيك"],
+  ["گهوة", "قهوه"],
+  ["ڤيلا", "فيلا"],
+  ["چاي", "جاي"],
+  ["پيتزا", "بيتزا"],
+  ["کافیه", "كافيه"],
+  ["ماء", "ما"],
+  ["٢٠", "20"],
+  ["۲۰", "20"],
+  ["شارع٢٠", "شارع 20"],
+  ["McDonald's", "mcdonalds"],
+  ["Al-Rashed  Mall!", "al rashed mall"],
+  ["Café", "cafe"],
+  ["Kadi Mall كادي مول", "kadi mall كادي مول"],
+  ["صيدليةNahdi", "صيدليه nahdi"],
+  ["", ""]
+ ],
+ "base": [
+  ["البيك", "بيك"],
+  ["الله", "الله"],
+  ["الف", "الف"],
+  ["للبيع", "بيع"],
+  ["بو", "ابو"],
+  ["abdul", "abd"],
+  ["um", "umm"],
+  ["starbucks", "starbucks"]
+ ],
+ "latin_base": [
+  ["alkhobar", "khobar"],
+  ["elmadina", "madina"],
+  ["arriyadh", "riyadh"],
+  ["ashsharqiyah", "sharqiyah"],
+  ["adhdhahran", "dhahran"],
+  ["ali", "ali"],
+  ["albaik", "baik"],
+  ["ahmed", "ahmed"]
+ ],
+ "query_words": [
+  ["شارع الملك عبدالعزيز", ["شارع", "ملك", "عبد", "عزيز"]],
+  ["عبد العزيز", ["عبد", "عزيز"]],
+  ["ابوبكر", ["ابو", "بكر"]],
+  ["بو سعيد", ["ابو", "سعيد"]],
+  ["King Abdulaziz Rd", ["king", "abd", "aziz", "rd"]],
+  ["abdul aziz", ["abd", "aziz"]],
+  ["المدينة المنورة", ["مدينه", "منوره"]],
+  ["H&M", ["hm"]],
+  ["K.F.C", ["kfc"]],
+  ["A b", ["ab"]],
+  ["ab c", ["ab", "c"]]
+ ],
+ "skeletons": [
+  ["ستاربكس", ["strbks"]],
+  ["starbucks", ["strbks"]],
+  ["البيك", ["bk"]],
+  ["رحمة", ["rhm"]],
+  ["rawdat", ["rdt", "rd"]],
+  ["جامعة", ["km"]],
+  ["ظهران", ["dhrn"]],
+  ["dhahran", ["dhrn"]],
+  ["kuwait", ["kt"]],
+  ["20", []]
+ ],
+ "lev1": [
+  ["ستاربكس", "ستاربكسس", true],
+  ["ماكدونلدز", "ماكدونالدز", true],
+  ["abc", "abd", true],
+  ["abc", "abc", true],
+  ["abc", "xyz", false],
+  ["abcd", "ab", false]
+ ],
+ "fts": [
+  ["صيدلية", "k:صيدليه* OR k:{pharmacy}"],
+  ["بنك ", "k:بنك* OR k:{bank}"],
+  ["البيك", "k:بيك*"],
+  ["ستاربكس", "k:ستاربكس*"],
+  ["مطعم البيك الخبر", "مطعم* OR {restaurant} OR {fast_food} OR {pizza} OR {burger} OR {chicken} OR {seafood} OR {breakfast} بيك* خبر*"],
+  ["طريق الملك فهد", "k:فهد*"],
+  ["شارع ٢٠", "k:20*"],
+  ["شارع ٢٠ ", "k:20"],
+  ["مغسلة سيارات", "\"مغسله سيارات\" OR k:{car_wash}"]
+ ]
+}
