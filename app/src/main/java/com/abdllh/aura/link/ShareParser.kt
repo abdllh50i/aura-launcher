@@ -15,7 +15,9 @@ import java.net.URLDecoder
  * says why. The only network step is the short link's own redirect (maps.app.goo.gl, maps.apple/p/...): one request per
  * hop, its Location header read and nothing else, never the page behind it, whose body holds the requester's region and
  * not the place (companion.md, measured). A browser's User-Agent gets Google's preview page instead of the redirect: an
- * app's is sent ([USER_AGENT]). Only the hosts in [isShort] are ever asked, over https.
+ * app's is sent ([USER_AGENT]). Only the hosts in [SHORT_HOSTS] are ever asked, over https, at the address rebuilt from
+ * the host that passed ([follow]): a link whose authority a URL parser could read another way ("@", "\") is never asked
+ * for ([link]). At most [MAX_FETCHES] requests for one shared text, whatever it holds.
  *
  * Text comes from outside, and a thread in a regular expression cannot be stopped: the server's watchdog only closes
  * its socket. So nothing here may backtrack on a run of anything: [coordinates] looks at a bounded text with its
@@ -46,14 +48,25 @@ internal object ShareParser {
 
     const val USER_AGENT = "AMRI (car head unit)"
     private const val MAX_HOPS = 2
+    /** Requests for one shared text, over all its links and hops: at 3 s + 3 s each, well inside the time the server gives an answer. */
+    private const val MAX_FETCHES = 3
     private const val MAX_TEXT = 4096
     /** What [coordinates] looks at. A place's text is a few lines; a long message's first lines are the ones that count. */
     private const val MAX_COORD_TEXT = 512
     private const val MAX_NAME = 120
 
+    /** The only hosts ever asked for anything. */
+    private val SHORT_HOSTS = setOf("maps.app.goo.gl", "share.google", "maps.apple", "goo.gl", "www.goo.gl", "app.goo.gl", "g.co")
+
     /** The real thing: a GET, no redirect followed, nothing read. A short link answers in well under a second. */
     val network = Fetch { url ->
-        val c = URL(url).openConnection() as HttpURLConnection
+        val u = URL(url)
+        // (asked of the address as the connection will read it: [follow] builds it from a checked host, and this is what
+        // stands if that ever changes)
+        if (u.protocol != "https" || u.host.lowercase() !in SHORT_HOSTS || u.userInfo != null || (u.port != -1 && u.port != 443)) {
+            throw java.io.IOException("not a short link's address")
+        }
+        val c = u.openConnection() as HttpURLConnection
         try {
             c.instanceFollowRedirects = false
             c.connectTimeout = 3000
@@ -66,8 +79,17 @@ internal object ShareParser {
         }
     }
 
+    /** What one shared text may still ask of the network. */
+    private class Budget(private val fetch: Fetch) {
+        private var left = MAX_FETCHES
+        fun take(): Boolean = left-- > 0
+        fun hop(url: String) = fetch.hop(url)
+    }
+
     /** [text]: all that was shared, the link included. [fetch] null: no network, a short link stays unresolved. */
-    fun parse(text: String, fetch: Fetch? = network): Result {
+    fun parse(text: String, fetch: Fetch? = network): Result = read(text, fetch?.let { Budget(it) })
+
+    private fun read(text: String, fetch: Budget?): Result {
         val clean = normalize(text.take(MAX_TEXT))
         if (clean.isBlank()) return Result.Nothing("empty")
         val links = urls(clean)
@@ -191,7 +213,11 @@ internal object ShareParser {
     }
 
     // ------------------------------------------------------------------------------------------ the links
-    private class Link(val raw: String, val scheme: String, val host: String, val path: String, val query: Map<String, String>)
+    /**
+     * [tail]: what follows the host, as it was written. [plain]: the authority is a host and perhaps a port and nothing else: "x@host:y@other" and
+     * "other\@host" name one host here and another to java.net.URL, so such a link is never asked for.
+     */
+    private class Link(val raw: String, val scheme: String, val host: String, val path: String, val query: Map<String, String>, val tail: String, val plain: Boolean)
 
     private fun decode(s: String): String = try { URLDecoder.decode(s, "UTF-8") } catch (_: Throwable) { s }
 
@@ -200,7 +226,8 @@ internal object ShareParser {
         val scheme = u.substringBefore("://", "").lowercase()
         if (scheme != "http" && scheme != "https") return null
         val rest = u.substringAfter("://").substringBefore('#')
-        val hostPort = rest.substringBefore('/').substringBefore('?').substringAfter('@')
+        val authority = rest.substringBefore('/').substringBefore('?')
+        val hostPort = authority.substringAfter('@')
         val host = hostPort.substringBefore(':').lowercase()
         val afterHost = rest.substring(rest.indexOf(hostPort) + hostPort.length)
         val path = afterHost.substringBefore('?')
@@ -211,7 +238,7 @@ internal object ShareParser {
             // (the first value of a name counts: a later one is tracking or a repeat)
             if (k !in query) query[k] = decode(kv.substringAfter('=', ""))
         }
-        return if (host.isEmpty()) null else Link(u, scheme, host, path, query)
+        return if (host.isEmpty()) null else Link(u, scheme, host, path, query, afterHost, '@' !in authority && '\\' !in authority)
     }
 
     /** A place's or a query's name, tidy: "Al Rashid Mall, King Khalid St" to the name and the rest. */
@@ -224,7 +251,7 @@ internal object ShareParser {
 
     private fun isGoogleHost(h: String) = Regex("""^(?:www\.|maps\.)?google\.[a-z]{2,3}(?:\.[a-z]{2})?$""").matches(h)
 
-    private fun isShort(l: Link): Boolean = when (l.host) {
+    private fun isShort(l: Link): Boolean = l.plain && l.host in SHORT_HOSTS && when (l.host) {
         "maps.app.goo.gl", "share.google", "maps.apple" -> true
         "goo.gl", "www.goo.gl", "app.goo.gl" -> l.path.startsWith("/maps") || l.host == "app.goo.gl"
         "g.co" -> l.path.startsWith("/kgs")
@@ -233,7 +260,7 @@ internal object ShareParser {
 
     private fun srcOf(l: Link) = if (l.host == "maps.apple" || l.host.endsWith("maps.apple.com")) "share.apple" else "share.google"
 
-    private fun fromUrl(u: String, around: String, fetch: Fetch?, hops: Int): Result {
+    private fun fromUrl(u: String, around: String, fetch: Budget?, hops: Int): Result {
         if (u.startsWith("geo:", ignoreCase = true)) return geo(u, around)
         val l = link(u) ?: return Result.Unresolved("not_a_map", u, around.ifEmpty { null })
         // links inside links: a short link's own, Google's consent page, a redirect wrapper, WhatsApp's "send this"
@@ -242,7 +269,7 @@ internal object ShareParser {
             ?.let { if (hops <= MAX_HOPS) return fromUrl(it, around, fetch, hops + 1) }
         if (l.host == "wa.me" || l.host == "api.whatsapp.com") {
             val inner = l.query["text"].orEmpty()
-            if (inner.isNotBlank() && hops <= MAX_HOPS) return parse(inner, fetch)
+            if (inner.isNotBlank() && hops <= MAX_HOPS) return read(inner, fetch)
             return Result.Unresolved("not_a_map", u, around.ifEmpty { null })
         }
         return when {
@@ -254,13 +281,17 @@ internal object ShareParser {
         }
     }
 
-    /** One request, its Location read, and that link parsed as if it had been the one shared. */
-    private fun follow(l: Link, around: String, fetch: Fetch?, hops: Int): Result {
+    /**
+     * One request, its Location read, and that link parsed as if it had been the one shared. The request goes to the host
+     * that was checked, on https, with the path as written: never to the link's own text, which another parser may read
+     * differently.
+     */
+    private fun follow(l: Link, around: String, fetch: Budget?, hops: Int): Result {
         val q = around.ifEmpty { null }
         if (fetch == null) return Result.Unresolved("network", l.raw, q)
         if (hops >= MAX_HOPS) return Result.Unresolved("no_redirect", l.raw, q)
-        val secure = if (l.scheme == "https") l.raw else "https://" + l.raw.substringAfter("://")
-        val hop = try { fetch.hop(secure) } catch (_: Throwable) { return Result.Unresolved("network", l.raw, q) }
+        if (!fetch.take()) return Result.Unresolved("network", l.raw, q)
+        val hop = try { fetch.hop("https://${l.host}${l.tail}") } catch (_: Throwable) { return Result.Unresolved("network", l.raw, q) }
         val to = hop.location?.takeIf { hop.code in 300..399 && it.isNotBlank() }
             ?: return Result.Unresolved(if (hop.code == 404 || hop.code == 410) "dead_link" else "no_redirect", l.raw, q)
         val next = if (to.startsWith("/")) "https://${l.host}$to" else to

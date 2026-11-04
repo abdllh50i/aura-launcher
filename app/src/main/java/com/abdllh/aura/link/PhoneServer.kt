@@ -77,7 +77,7 @@ object PhoneServer {
     private const val HEAD_CAP = 16 * 1024
     private const val HEARTBEAT_S = 15L
     private const val MAX_IDS = 64
-    /** A short link's redirect, at most two hops of 3 s + 3 s: the parser's own limit. An answer may take that long. */
+    /** A shared text's short links: at most 3 requests of 3 s + 3 s in all, the parser's own limit. An answer may take that long. */
     private const val WORK_MS = 30_000L
 
     /** Who is asking. */
