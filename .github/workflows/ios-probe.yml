@@ -1,0 +1,15 @@
+# Temporary: can macos-26 be had again?
+name: Amri runner probe
+on:
+  push:
+    branches: [ios-app]
+    paths:
+      - '.github/workflows/ios-probe.yml'
+jobs:
+  probe:
+    runs-on: macos-26
+    timeout-minutes: 5
+    steps:
+      - run: |
+          sw_vers; uname -m
+          xcodebuild -version
