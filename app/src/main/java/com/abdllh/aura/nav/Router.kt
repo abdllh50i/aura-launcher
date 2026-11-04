@@ -47,6 +47,8 @@ class Route(val line: Polyline, val steps: List<Step>, val distance: Double, val
     var better: Route? = null
     /** [duration] and the steps' times were scaled by a table fitted against another router, not real drives ([com.abdllh.aura.nav.route.EtaScale]). */
     var etaEstimate = false
+    /** Its words and what lies along it ([com.abdllh.aura.nav.guide.Guidance]), once a route from the pack is taken; null: the old wording ([Instructions]). */
+    var guide: com.abdllh.aura.nav.guide.Guidance? = null
 
     /** Time left from a distance along the route, scaled by the steps' own speeds. */
     fun timeLeft(along: Double): Double {

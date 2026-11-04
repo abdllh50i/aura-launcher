@@ -1945,6 +1945,72 @@ preference below is on. Nothing here has run on the unit: every number is from t
   Typing, 30 queries, 279 letters through the real entry: at 40 ms a letter 5 searches were stopped in the middle (67 on a busier run); at no pause 248 never began; the last answer was the whole query's own 30 of 30 at every speed, median about 9 ms after the last letter, worst 185 on the busy run.
   Bad files (`-Failures`), 9 kinds, the same process throughout: search empty with the reason, the search box on its old road, every file still there, the one with holes (it opens, a read meets the damage) too. On this AVD that old road has no offline store and the network was off, so it was seen answering "no internet", not rows.
 
+## The words of the guidance (`nav/guide/`, for 2.0)
+Pure logic, no Android classes, no screen: nothing here reaches the driver until it is wired (the list is in the part's report, the
+hook is `Route.guide`). It works from the engine's answer (`GuideAnswer.parse`, `format: osrm`) and from `RouteWorld`, the small
+interface the search part implements over `places.db`. Everything fails towards plainer words: a world that throws is no world
+(`Guidance.build`), an answer of an unknown shape is null, and `Guidance.safely` is null on anything else, so the old
+`Instructions` remain. All of it was measured on reference answers on the PC; nobody has heard or driven a word of it.
+
+* **Tests:** `app/src/test/.../nav/guide`, 155 tests on JVM. Fixtures: the 30 reference trips cut from real answers and the pack's
+  own `places.db` by `tools/mapbuild/tests/guide_fixtures.py`, 1.4 MB, 3 answers byte for byte beside them. `GoldenTest` writes all
+  their words to `tools/mapbuild/tests/guide-golden.md` for a person to read, and fails when the words change and that file did not:
+  run it with `GUIDE_GOLDEN_UPDATE=1`, read the diff. A wording change is a diff in that file. When a new `places.db` comes, run
+  the cutter too.
+* **The words are one table** (`Words.TABLE`): sign, voice, English, all from it, and the ids are the clips' names (maps.md section 12).
+  A prompt is a list of `Part`s: `Clip` a word of the table, `Name` free text with the word that leads to it. `Speech.withoutNames`
+  is what a clip voice with no engine says, and every sentence still stands. They are in Kotlin and not in `res/values`: the JVM tests
+  must read them, and `Instructions` before it was code too. The register follows the owner's own phrases: "لف يمين", "الزم اليسار",
+  "كمّل على طول", "خذ المخرج", "وجهتك قدامك". His to change; nobody has heard Google's voice read them (a shadda on "كمّل" for it).
+* **Names** (`Names.pick`): Valhalla's joined list ("طريق الملك فهد; King Fahd Road") by script, then the other script, then the number.
+  A `ref` is often no number ("King Abdul Aziz street, Jubail, saudi arabia", 3 ways). A Latin name's Arabic comes from the index when it
+  has one (`RouteWorld.arabicRoadName`). The voice calls "الخرمة" "شارع الخرمة" and leaves out over 38 letters; the sign shows the name.
+  **How often, in an Arabic UI, on the 382 told manoeuvres of the 30 trips:** Arabic name 152 (40 %, 5 of them by the index), Latin only 24
+  (6 %: the banner shows it, the voice does not read it; 8 have a landmark instead, 16 are a plain instruction), a number only 31 (8 %),
+  **no name at all 175 (46 %)**, of which 23 have a landmark. So half the turns are "لف يمين" and the distance. That is the data.
+* **Landmarks**, in the plan's order: a signal (`spot.j` counted, nodes of one junction once, from where the car is at that moment, so the
+  second becomes "the signal" once the first is passed; past the third no ordinal), a roundabout, after a flyover or tunnel at most 150 m
+  back, onto one at most 120 m ahead, and only when there is no name to read, a place within 35 m (50 for what has a yard) on the side
+  of the turn. Fired on the 382: 24 at a signal, 44 roundabouts, 3 places. Turns with anything at all within 35 m on their side: 30 of 242.
+  Places: a short list of kinds and chains, rank 45 or more, never a coarse position; tenants of a mall sit on the mall's point. OSM misses
+  signals, so an ordinal can be off by one: the distance is always said with it when far. Flyovers need `trace_attributes`
+  (`RoadFacts`): the answer has no bridge class. Only 6 fixtures have facts for their very line, and on those 6 none fired.
+* **Roundabouts** (`Ring`): the router's number counts driveways (8 of 60 rings differ from OSM's road exits). The answer does not say which
+  arm is what, but where they are: two arms under 17 m apart are never two roads. Number said only with its arms apart, at most the fourth, and
+  not for a first exit that runs straight on. On all 60: said on 46, of which 2 differ from OSM (a first exit OSM calls a service road:
+  still the first arm met); 6 of the 8 bad ones gone, 1 good one with them. Else the direction measured on the line, 60 to 15 m before and 15 to
+  60 m after, past the splitter's flare. A check that the number fits the direction (1 right, 2 straight, 3 left) was tried and does not
+  separate them: d3's third does lead left. Recounting by class needs `node.intersecting_edge` from `trace_attributes`: not built, no answer
+  with it here to test on.
+* **U-turn honesty:** "الدوران بعد 600 متر" as a place ahead from 300 m, then "لف وارجع من الدوران". **Ferry:** a change of `mode` is told ("اركب
+  العبّارة", "انزل من العبّارة وكمّل"), its time is the timetable's. **Ramps and forks** with a straight modifier say no side, also in
+  `Instructions` (19 steps said "على اليمين" with a straight arrow).
+* **ETA** (`EtaTable`): route-request.json's table by each step's speed, an estimate fitted against OSRM and no real drive. One place,
+  `EtaTable.parse` takes his own logged drives in the same form. Jubail-Dammam 50.0 min raw, 60.8 estimate (OSRM 59). `Choices.rank`: fastest
+  by that time first, with the differences in words; the router's own first was not the fastest on Khobar corniche to Dammam corniche.
+  Warning 401 (`relaxed`) is a second search: log it, nothing to say.
+* **On the road** (`AlongRoad`, `Guidance.nextAlert`): a spot counts within 25 m of the line going its way, 15 m when it has no `dir`; distance
+  along the road, twice on a road driven out and back. A bump's `kmh` is its road's and is never said. **The limit** (`Limits.pick`): his, then the
+  road's `speed_limit`, then by class, `LimitNow.source` says which ("من الخريطة", "تقريبي"). The class table is what OSM says most by length over
+  the 56 test trips; his to confirm.
+* **Before a trip** (`TripCheck`): SEARCH_SPEC section 1 with one change: primary counts as a public road beside motorway and trunk, or the spec's
+  own example warns (Jubail-Dammam runs 93 points inside the naval base's ring on King Abdul Aziz street, primary). gate-air, on tertiary and
+  residential, warns. An end inside must be 150 m from the ring's edge: the rings are simplified to about 24 points, and that base's
+  wedge takes in Jubail Center, a mall in town, 74 m in. **Data to fix at the next build:** keep more points for kinds 3 and 4; OSM's "Border
+  Exclusion Zone" is kind 3, so a route to the Salwa post is told it ends in a military area. The causeway goes by place
+  (`CAUSEWAY_SEA`): "طريق جسر الملك فهد" runs on land for kilometres. `Haram.plan`: the zone he goes to or comes from is not excluded
+  (NoRoute otherwise) and he is told.
+* **Prayer times** (`PrayerTimes`): new. The "Umm al-Qura code" the plan points to is `Amri.kt`'s Hijri date; there were no times in the app. From
+  `Daylight.altitude`: Fajr 18.5, Asr Shafi'i, Maghrib -0.833, Isha 90 or 120 minutes. Within 2 min of praytimes.org's formulas worked out in
+  Python on 8 days and places, which is another computation and not the official calendar: compare before trusting it to the minute.
+  `Guidance.prayerStop`: during the trip, the first mosque past where the car will be by then. A stop before the time is no stop.
+* **Stops** (`nextFuel`): on a motorway only the driver's own side within 300 m, else either side within 200 m, trips of 30 km and more; 13 stations
+  in 359 km to Al Batha and a gap of 224 km are what the data has, not a measure of the road. **Arrival:** the answer's side (48 of 66 routes have one),
+  else from the line; parking within 400 m.
+* **Cost:** the largest reference answer (890 KB, Dammam-Jeddah) parses in 15 ms and `Guidance.build` over a list of rows takes 7 ms, warm on this PC. `build` belongs on a worker all the same: on an A53, with SQLite answering about 680 boxes for that trip, nobody has measured it.
+* **Fast loop:** kotlin-compiler-embeddable from Gradle's cache over `nav/guide`, `Geo.kt`, `Instructions.kt`, `RouteLimits.kt`, `Daylight.kt` and a stub of
+  `Router.kt`'s classes, then `JUnitCore`: 20 s against a Gradle build's minutes while reading the words. `tests/wording/run_wording.py` shows how.
+
 ## Facts about the firmware (from the dump)
 * No `avb` flag in the vendor fstab → no dm-verity on system/vendor/product; vbmeta uses the public AOSP test keys.
 * `persist.nwd.launcher.default=<pkg>` makes the patched PackageManager return that package as HOME.
