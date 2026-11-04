@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleDisplayName</key><string>عمري</string>
+  <key>CFBundleLocalizations</key><array><string>ar</string><string>en</string></array>
+  <key>CFBundleURLTypes</key><array><dict>
+    <key>CFBundleURLName</key><string>com.abdllh.amri</string>
+    <key>CFBundleURLSchemes</key><array><string>amri</string></array>
+  </dict></array>
+  <key>NSLocalNetworkUsageDescription</key><string>عمري يوصل لشاشة سيارتك عبر هوتسبوت جوالك، عشان يرسل لها المكان ويبدأ الاتجاهات ويعرض حالتها.</string>
+  <key>NSBonjourServices</key><array><string>_amri._tcp</string></array>
+  <key>NSAppTransportSecurity</key><dict>
+    <key>NSAllowsLocalNetworking</key><true/>
+  </dict>
+  <key>NSCameraUsageDescription</key><string>عشان تمسح رمز الربط اللي يطلع على شاشة السيارة.</string>
+  <key>NSLocationWhenInUseUsageDescription</key><string>عشان يبحث عن الأماكن حولك، ويعطي الشاشة نقطة البداية لو ما عندها إشارة بعد.</string>
+  <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string></array>
+  <key>UILaunchScreen</key><dict><key>UIColorName</key><string>LaunchBackground</string></dict>
+  <key>ITSAppUsesNonExemptEncryption</key><false/>
+</dict></plist>

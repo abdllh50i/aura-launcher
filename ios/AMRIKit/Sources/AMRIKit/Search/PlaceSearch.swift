@@ -1,7 +1,7 @@
 import Foundation
 import MapKit
 
-/// The owner's choice: the app searches in Saudi Arabia only.
+/// The app searches in Saudi Arabia only, as the unit's own search does. A place shared from anywhere still goes through.
 public enum SaudiArea {
     public static let center = CLLocationCoordinate2D(latitude: 24.0, longitude: 45.0)
     public static let region = MKCoordinateRegion(center: center, span: MKCoordinateSpan(latitudeDelta: 18, longitudeDelta: 22))

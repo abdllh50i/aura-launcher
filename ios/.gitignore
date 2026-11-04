@@ -1,0 +1,8 @@
+Amri.xcodeproj/
+DerivedData/
+Payload*/
+evidence/
+*.ipa
+.build/
+AMRIKit/.build/
+AMRIKit/.swiftpm/

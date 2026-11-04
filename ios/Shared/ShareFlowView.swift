@@ -12,9 +12,9 @@ struct ShareFlowView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Space.l) {
                     if let place = model.stage.place {
-                        placeHeader(place)
+                        SendPlaceHeader(place: place, snapshot: model.snapshot)
                     }
-                    stageContent
+                    SendStageView(model: model, onClose: onClose)
                     details
                 }
                 .padding(Theme.Space.l)
@@ -31,212 +31,6 @@ struct ShareFlowView: View {
                     .accessibilityIdentifier("shareClose")
                 }
             }
-        }
-    }
-
-    private func placeHeader(_ place: PhonePlace) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Space.s) {
-            snapshotView
-            Text(verbatim: place.name)
-                .font(Theme.Fonts.title)
-                .foregroundStyle(Theme.ink)
-                .accessibilityIdentifier("sharePlaceName")
-            if let detail = place.detail, !detail.isEmpty {
-                Text(verbatim: detail)
-                    .font(Theme.Fonts.note)
-                    .foregroundStyle(Theme.ink2)
-            }
-        }
-    }
-
-    private var snapshotView: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
-                .fill(Theme.sunken)
-            if let image = model.snapshot {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-            }
-            Image(systemName: "mappin.circle.fill")
-                .font(.system(size: 34))
-                .symbolRenderingMode(.palette)
-                .foregroundStyle(Color.white, Theme.signal)
-                .shadow(radius: 3)
-        }
-        .frame(height: 150)
-        .frame(maxWidth: .infinity)
-        .clipped()
-        .accessibilityHidden(true)
-    }
-
-    @ViewBuilder
-    private var stageContent: some View {
-        switch model.stage {
-        case .reading:
-            progressRow("أقرأ اللي شاركته…")
-        case .confirm(let place):
-            Text("تأكد إن هذا المكان هو اللي تبيه.")
-                .font(Theme.Fonts.body)
-                .foregroundStyle(Theme.ink2)
-            sendKey(place)
-        case .pick(let places, _):
-            Text("اختر المكان")
-                .font(Theme.Fonts.title)
-                .foregroundStyle(Theme.ink)
-            ForEach(Array(places.prefix(12).enumerated()), id: \.element.id) { index, place in
-                Button {
-                    model.send(place)
-                } label: {
-                    PlaceRowLabel(place: place, distance: nil)
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("sharePick-\(index)")
-            }
-        case .nothing:
-            result(symbol: "questionmark.circle.fill", color: Theme.warn, title: "ما لقيت مكان في اللي شاركته")
-            Text("شارك من الخرائط، أو انسخ الإحداثيات أو العنوان المختصر.")
-                .font(Theme.Fonts.body)
-                .foregroundStyle(Theme.ink2)
-            closeKey
-        case .locating:
-            progressRow("أدور على السيارة…")
-        case .sending(_, let attempt, let total):
-            progressRow("أرسل للسيارة…", note: attempt > 1 ? Formats.attempts(attempt, of: total) : nil)
-        case .waiting:
-            progressRow("وصل للسيارة، الشاشة تحسب الطريق…")
-            closeSecondary
-        case .card:
-            result(symbol: "hand.tap.fill", color: Theme.ink, title: "وصل للشاشة. اضغط «ابدأ» على شاشة السيارة.")
-            Text("الجوال ما عنده رمز ربط هنا، فالشاشة تطلب تأكيدك. وما أقدر أشوف من هنا إذا بدأت الاتجاهات.")
-                .font(Theme.Fonts.note)
-                .foregroundStyle(Theme.ink2)
-            closeKey
-        case .started(_, let nav):
-            result(symbol: "checkmark.circle.fill", color: Theme.signal, title: "بدأت الاتجاهات")
-            let line = Formats.dotted([nav.durationS.map { Formats.duration(seconds: $0) }, nav.etaLocal.map { Formats.arrival($0) }, nav.distanceM.map { Formats.distance(meters: $0) }])
-            if !line.isEmpty {
-                Text(verbatim: line)
-                    .font(Theme.Fonts.headline)
-                    .foregroundStyle(Theme.ink)
-                    .accessibilityIdentifier("shareTripLine")
-            }
-            closeKey
-        case .routeFailed(let place, let reason):
-            result(symbol: "exclamationmark.triangle.fill", color: Theme.bad, title: "الشاشة ما قدرت تحسب الطريق")
-            reasonText(reason)
-            sendKey(place, title: "حاول مرة ثانية")
-        case .refused(let place, let reason):
-            result(symbol: "xmark.octagon.fill", color: Theme.bad, title: "الشاشة ما قبلت")
-            reasonText(reason)
-            sendKey(place, title: "حاول مرة ثانية")
-        case .notPaired:
-            result(symbol: "link.badge.plus", color: Theme.warn, title: "الجوال مو مربوط بهذي الشاشة")
-            Text("افتح عمري واربط السيارة، أو شغّل الهوتسبوت من الجوال نفسه عشان الشاشة تطلب تأكيدك.")
-                .font(Theme.Fonts.body)
-                .foregroundStyle(Theme.ink2)
-            copyKey
-            closeSecondary
-        case .unreachable(let place, let denied, let saved):
-            if denied {
-                result(symbol: "lock.fill", color: Theme.bad, title: "الشبكة المحلية مقفلة على عمري")
-                Text("الإعدادات ← الخصوصية والأمان ← الشبكة المحلية، وفعّل عمري.")
-                    .font(Theme.Fonts.body)
-                    .foregroundStyle(Theme.ink2)
-            } else {
-                result(symbol: "antenna.radiowaves.left.and.right.slash", color: Theme.warn, title: "ما لقيت السيارة")
-                Text("تأكد إن الهوتسبوت شغّال والشاشة متصلة فيه.")
-                    .font(Theme.Fonts.body)
-                    .foregroundStyle(Theme.ink2)
-            }
-            if saved {
-                Text("حفظت المكان. لما تفتح عمري وأنت في السيارة ترسله بضغطة، خلال ١٢ ساعة.")
-                    .font(Theme.Fonts.note)
-                    .foregroundStyle(Theme.ink2)
-            }
-            sendKey(place, title: "حاول مرة ثانية")
-            copyKey
-        case .noWord:
-            result(symbol: "questionmark.circle.fill", color: Theme.warn, title: "وصل للسيارة، بس ما جاني تأكيد إن الاتجاهات بدأت")
-            Text("شوف الشاشة.")
-                .font(Theme.Fonts.body)
-                .foregroundStyle(Theme.ink2)
-            closeKey
-        }
-    }
-
-    private func sendKey(_ place: PhonePlace, title: LocalizedStringKey = "أرسل للسيارة") -> some View {
-        Button {
-            model.send(place)
-        } label: {
-            Text(title)
-        }
-        .buttonStyle(MainKeyStyle())
-        .accessibilityIdentifier("shareSend")
-    }
-
-    private var closeKey: some View {
-        Button("تم") { onClose() }
-            .buttonStyle(MainKeyStyle())
-            .accessibilityIdentifier("shareDone")
-    }
-
-    private var closeSecondary: some View {
-        Button("إغلاق") {
-            model.cancel()
-            onClose()
-        }
-        .buttonStyle(SecondKeyStyle())
-    }
-
-    private var copyKey: some View {
-        Button {
-            model.copyPlace()
-        } label: {
-            Label(model.copied ? "تم النسخ" : "انسخ المكان", systemImage: model.copied ? "checkmark" : "doc.on.doc")
-        }
-        .buttonStyle(SecondKeyStyle())
-        .accessibilityIdentifier("shareCopy")
-    }
-
-    private func progressRow(_ title: LocalizedStringKey, note: String? = nil) -> some View {
-        HStack(spacing: Theme.Space.m) {
-            ProgressView()
-            VStack(alignment: .leading, spacing: Theme.Space.xs) {
-                Text(title)
-                    .font(Theme.Fonts.headline)
-                    .foregroundStyle(Theme.ink)
-                if let note {
-                    Text(verbatim: note)
-                        .font(Theme.Fonts.note)
-                        .foregroundStyle(Theme.ink2)
-                }
-            }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("shareStatus")
-    }
-
-    private func result(symbol: String, color: Color, title: LocalizedStringKey) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: Theme.Space.m) {
-            Image(systemName: symbol)
-                .foregroundStyle(color)
-            Text(title)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .font(Theme.Fonts.title)
-        .foregroundStyle(Theme.ink)
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("shareStatus")
-    }
-
-    @ViewBuilder
-    private func reasonText(_ reason: String?) -> some View {
-        if let reason, !reason.isEmpty {
-            Text(verbatim: reason)
-                .font(Theme.Fonts.body)
-                .foregroundStyle(Theme.ink2)
         }
     }
 
@@ -274,14 +68,264 @@ struct ShareFlowView: View {
     }
 }
 
+/// The place on its way: a still map and its name.
+struct SendPlaceHeader: View {
+    let place: PhonePlace
+    let snapshot: UIImage?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.s) {
+            ZStack {
+                RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+                    .fill(Theme.sunken)
+                if let snapshot {
+                    Image(uiImage: snapshot)
+                        .resizable()
+                        .scaledToFill()
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+                }
+                Image(systemName: "mappin.circle.fill")
+                    .font(.system(size: 34))
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(Color.white, Theme.signal)
+                    .shadow(radius: 3)
+            }
+            .frame(height: 130)
+            .frame(maxWidth: .infinity)
+            .clipped()
+            .accessibilityHidden(true)
+            Text(verbatim: place.name)
+                .font(Theme.Fonts.title)
+                .foregroundStyle(Theme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("sharePlaceName")
+            if let detail = place.detail, !detail.isEmpty {
+                Text(verbatim: detail)
+                    .font(Theme.Fonts.note)
+                    .foregroundStyle(Theme.ink2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
+/// Each stage of a send in plain words, with the one action that fits it. Shared by the share sheet and the app.
+struct SendStageView: View {
+    @ObservedObject var model: ShareFlowModel
+    var onClose: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.l) {
+            content
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch model.stage {
+        case .reading:
+            progressRow("أقرأ اللي شاركته…")
+        case .confirm(let place):
+            note("تأكد إن هذا المكان هو اللي تبيه.")
+            sendKey(place)
+        case .pick(let places, _):
+            Text("اختر المكان")
+                .font(Theme.Fonts.title)
+                .foregroundStyle(Theme.ink)
+            ForEach(Array(places.prefix(12).enumerated()), id: \.element.id) { index, place in
+                Button {
+                    model.send(place)
+                } label: {
+                    PlaceRowLabel(place: place, distance: nil)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("sharePick-\(index)")
+            }
+        case .nothing:
+            result(symbol: "questionmark.circle.fill", color: Theme.warn, title: "ما لقيت مكان في اللي شاركته")
+            note("شارك من الخرائط، أو انسخ الإحداثيات أو العنوان المختصر.")
+            closeKey
+        case .locating:
+            progressRow("أدور على السيارة…")
+        case .sending(_, let attempt, let total):
+            progressRow("أرسل للسيارة…", caption: attempt > 1 ? Formats.attempts(attempt, of: total) : nil)
+        case .waiting:
+            waitingRow
+            closeSecondary
+        case .card:
+            result(symbol: "hand.tap.fill", color: Theme.ink, title: "وصل للشاشة. اضغط «ابدأ» على شاشة السيارة.")
+            small("الجوال ما عنده رمز ربط هنا، فالشاشة تطلب تأكيدك. وما أقدر أشوف من هنا إذا بدأت الاتجاهات.")
+            closeKey
+        case .started(_, let nav):
+            result(symbol: "checkmark.circle.fill", color: Theme.signal, title: "بدأت الاتجاهات")
+            let line = Formats.dotted([nav.durationS.map { Formats.duration(seconds: $0) }, nav.etaLocal.map { Formats.arrival($0) }, nav.distanceM.map { Formats.distance(meters: $0) }])
+            if !line.isEmpty {
+                Text(verbatim: line)
+                    .font(Theme.Fonts.headline)
+                    .foregroundStyle(Theme.ink)
+                    .accessibilityIdentifier("shareTripLine")
+            }
+            closeKey
+        case .handed:
+            result(symbol: "arrow.up.forward.app.fill", color: Theme.ink, title: "راح المكان لتطبيق الملاحة اللي مختاره على الشاشة")
+            small("ذاك التطبيق ما يرد على عمري، فما أقدر أقول إذا بدأت الاتجاهات.")
+            closeKey
+        case .ignored:
+            result(symbol: "arrow.uturn.backward.circle.fill", color: Theme.warn, title: "الشاشة كملت الرحلة اللي كانت فيها")
+            closeKey
+        case .cancelled(let place):
+            result(symbol: "xmark.circle.fill", color: Theme.warn, title: "انلغى على الشاشة")
+            sendKey(place, title: "أرسله مرة ثانية")
+        case .routeFailed(let place, let reason):
+            result(symbol: "exclamationmark.triangle.fill", color: Theme.bad, title: "الشاشة ما قدرت تحسب الطريق")
+            reasonText(reason)
+            sendKey(place, title: "حاول مرة ثانية")
+        case .refused(let place, let reason):
+            result(symbol: "xmark.octagon.fill", color: Theme.bad, title: "الشاشة ما قبلت")
+            reasonText(reason)
+            sendKey(place, title: "حاول مرة ثانية")
+        case .notPaired:
+            result(symbol: "link.badge.plus", color: Theme.warn, title: "الجوال مو مربوط بهذي الشاشة")
+            note("افتح عمري واربط السيارة، أو شغّل الهوتسبوت من الجوال نفسه عشان الشاشة تطلب تأكيدك.")
+            copyKey
+            closeSecondary
+        case .unreachable(let place, let denied, let saved):
+            if denied {
+                result(symbol: "lock.fill", color: Theme.bad, title: "الشبكة المحلية مقفلة على عمري")
+                note("الإعدادات ← الخصوصية والأمان ← الشبكة المحلية، وفعّل عمري.")
+            } else {
+                result(symbol: "antenna.radiowaves.left.and.right.slash", color: Theme.warn, title: "ما لقيت السيارة")
+                note("تأكد إن الهوتسبوت شغّال والشاشة متصلة فيه.")
+            }
+            if saved {
+                small("حفظت المكان. لما تفتح عمري وأنت في السيارة ترسله بضغطة، خلال ١٢ ساعة.")
+            }
+            sendKey(place, title: "حاول مرة ثانية")
+            copyKey
+        case .noWord:
+            result(symbol: "questionmark.circle.fill", color: Theme.warn, title: "وصل للسيارة، بس ما جاني تأكيد إن الاتجاهات بدأت")
+            note("شوف الشاشة.")
+            closeKey
+        }
+    }
+
+    /// What the unit last said about this send. Never more than that.
+    @ViewBuilder
+    private var waitingRow: some View {
+        switch model.unitWord?.kind {
+        case .card?:
+            progressRow("الشاشة تسألك: تبدّل الرحلة الحالية؟ جاوب على الشاشة.")
+        case .held?:
+            progressRow("الشاشة ماسكة المكان لين تخلص المكالمة أو الرجوع للخلف.")
+        case .waitingFix?:
+            progressRow("الشاشة تنتظر إشارة الموقع عشان تحسب الطريق…")
+        default:
+            progressRow("وصل للسيارة، الشاشة تحسب الطريق…")
+        }
+    }
+
+    private func note(_ text: LocalizedStringKey) -> some View {
+        Text(text)
+            .font(Theme.Fonts.body)
+            .foregroundStyle(Theme.ink2)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func small(_ text: LocalizedStringKey) -> some View {
+        Text(text)
+            .font(Theme.Fonts.note)
+            .foregroundStyle(Theme.ink2)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func sendKey(_ place: PhonePlace, title: LocalizedStringKey = "أرسل للسيارة") -> some View {
+        Button {
+            model.send(place)
+        } label: {
+            Text(title)
+        }
+        .buttonStyle(MainKeyStyle())
+        .accessibilityIdentifier("shareSend")
+    }
+
+    private var closeKey: some View {
+        Button("تم") { onClose() }
+            .buttonStyle(MainKeyStyle())
+            .accessibilityIdentifier("shareDone")
+    }
+
+    private var closeSecondary: some View {
+        Button("إغلاق") {
+            model.cancel()
+            onClose()
+        }
+        .buttonStyle(SecondKeyStyle())
+        .accessibilityIdentifier("shareCloseSecondary")
+    }
+
+    private var copyKey: some View {
+        Button {
+            model.copyPlace()
+        } label: {
+            Label(model.copied ? "تم النسخ" : "انسخ المكان", systemImage: model.copied ? "checkmark" : "doc.on.doc")
+        }
+        .buttonStyle(SecondKeyStyle())
+        .accessibilityIdentifier("shareCopy")
+    }
+
+    private func progressRow(_ title: LocalizedStringKey, caption: String? = nil) -> some View {
+        HStack(spacing: Theme.Space.m) {
+            ProgressView()
+            VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                Text(title)
+                    .font(Theme.Fonts.headline)
+                    .foregroundStyle(Theme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let caption {
+                    Text(verbatim: caption)
+                        .font(Theme.Fonts.note)
+                        .foregroundStyle(Theme.ink2)
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("shareStatus")
+    }
+
+    private func result(symbol: String, color: Color, title: LocalizedStringKey) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: Theme.Space.m) {
+            Image(systemName: symbol)
+                .foregroundStyle(color)
+            Text(title)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .font(Theme.Fonts.title)
+        .foregroundStyle(Theme.ink)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("shareStatus")
+    }
+
+    @ViewBuilder
+    private func reasonText(_ reason: String?) -> some View {
+        if let text = Formats.reason(reason) {
+            Text(verbatim: text)
+                .font(Theme.Fonts.body)
+                .foregroundStyle(Theme.ink2)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("shareReason")
+        }
+    }
+}
+
 /// A place in a list: name, address, distance if known.
 struct PlaceRowLabel: View {
     let place: PhonePlace
     let distance: Double?
+    var symbol = "mappin.circle.fill"
 
     var body: some View {
         HStack(spacing: Theme.Space.m) {
-            Image(systemName: "mappin.circle.fill")
+            Image(systemName: symbol)
                 .font(.title2)
                 .foregroundStyle(Theme.ink3)
             VStack(alignment: .leading, spacing: 2) {

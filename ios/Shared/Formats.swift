@@ -95,4 +95,23 @@ enum Formats {
     static func dotted(_ parts: [String?]) -> String {
         parts.compactMap { $0 }.joined(separator: " · ")
     }
+
+    /// The unit's reasons are short codes. In plain words when known, as they came when not.
+    static func reason(_ raw: String?) -> String? {
+        guard let raw, !raw.isEmpty else { return nil }
+        switch raw {
+        case "no_fix": return String(localized: "الشاشة ما عندها إشارة موقع")
+        case "no_route": return String(localized: "ما لقت طريق لهذا المكان")
+        case "timeout": return String(localized: "طال حساب الطريق")
+        case "address_not_found": return String(localized: "ما لقت هذا العنوان")
+        case "reversing": return String(localized: "السيارة ترجع للخلف")
+        case "busy": return String(localized: "الشاشة مشغولة، حاول بعد شوي")
+        case "not_set": return String(localized: "هذا المكان مو محدد على الشاشة")
+        case "pair", "refused": return String(localized: "الجوال مو مربوط بهذي الشاشة")
+        case "apple_not_kept": return String(localized: "الشاشة ما تحفظ أماكن خرائط أبل")
+        case "no_code": return String(localized: "افتح صفحة الربط على شاشة السيارة أول")
+        case "bad_code": return String(localized: "الرمز غلط")
+        default: return raw
+        }
+    }
 }

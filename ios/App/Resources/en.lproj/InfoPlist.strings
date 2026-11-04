@@ -1,0 +1,4 @@
+"CFBundleDisplayName" = "Amri";
+"NSLocalNetworkUsageDescription" = "Amri reaches your car's screen over your phone's hotspot, to send it a place, start directions and show its status.";
+"NSCameraUsageDescription" = "To scan the pairing code shown on the car's screen.";
+"NSLocationWhenInUseUsageDescription" = "To search for places around you, and to give the screen a starting point if it has no signal yet.";

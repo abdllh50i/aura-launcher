@@ -30,10 +30,123 @@ jobs:
       - name: Test AMRIKit (parsers, discovery on loopback, retries)
         run: |
           set -o pipefail
-          swift test --package-path ios/AMRIKit 2>&1 | tee kit-tests.log
+          swift test --package-path ios/AMRIKit 2>&1 | tee kit-tests.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: kit-logs
-          path: kit-tests.log
+          path: kit-tests.txt
           retention-days: 7
+
+  app:
+    name: The app, its IPA, screens and UI tests
+    runs-on: macos-26
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: ios
+          filter: blob:none
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Every Arabic string has its English
+        run: python3 tools/check_strings.py
+      - name: Generate project
+        run: xcodegen generate
+      - name: Build iPhone application
+        run: |
+          set -o pipefail
+          mkdir -p evidence
+          xcodebuild -project Amri.xcodeproj -scheme Amri -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath DerivedData \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' \
+            build 2>&1 | tee evidence/build.txt | grep -E 'error:|BUILD |\*\* ' || true
+          grep -q 'BUILD SUCCEEDED' evidence/build.txt
+      - name: Package the IPAs for Sideloadly
+        run: sh tools/package_ipa.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Amri-IPA
+          path: |
+            ios/Amri-unsigned.ipa
+            ios/Amri-nogroup-unsigned.ipa
+          retention-days: 30
+      - name: Build for the simulator
+        run: |
+          set -o pipefail
+          xcodebuild -project Amri.xcodeproj -scheme Amri -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO build-for-testing 2>&1 \
+            | tee evidence/simulator-build.txt | grep -E 'error:|BUILD |\*\* ' || true
+          grep -q 'SUCCEEDED' evidence/simulator-build.txt
+      - name: Capture every screen
+        run: python3 tools/capture_simulator.py
+      - name: Start the fake unit
+        run: |
+          node tools/fake_unit.mjs --port 47101 --adb 15555:K2501 --adb "15556:Pixel 7" --route-delay 1500 --progress-ms 3000 --eta 9:41 > evidence/fake-unit.txt 2>&1 &
+          echo "127.0.0.1:47101" > /tmp/amri-fake-unit
+          sleep 1
+          curl -s http://127.0.0.1:47101/v1/ping
+      - name: UI tests against the fake unit, in Arabic
+        run: |
+          set -o pipefail
+          UDID=$(cat evidence/simulator-udid.txt)
+          xcrun simctl terminate "$UDID" com.abdllh.amri || true
+          xcodebuild -project Amri.xcodeproj -scheme Amri -configuration Debug \
+            -destination "platform=iOS Simulator,id=$UDID" -derivedDataPath DerivedData \
+            -resultBundlePath evidence/Flows.xcresult -only-testing:AmriUITests/AmriFlowUITests \
+            -parallel-testing-enabled NO -test-timeouts-enabled YES -maximum-test-execution-time-allowance 300 \
+            CODE_SIGNING_ALLOWED=NO test-without-building 2>&1 | tee evidence/ui-tests.txt \
+            | grep -E "error:|Test Case .*(passed|failed)|\*\* |Executed " || true
+          grep -q "\*\* TEST EXECUTE SUCCEEDED \*\*\|\*\* TEST SUCCEEDED \*\*" evidence/ui-tests.txt
+      - name: The extension through the real share sheet
+        if: always()
+        continue-on-error: true
+        run: |
+          UDID=$(cat evidence/simulator-udid.txt)
+          xcodebuild -project Amri.xcodeproj -scheme Amri -configuration Debug \
+            -destination "platform=iOS Simulator,id=$UDID" -derivedDataPath DerivedData \
+            -resultBundlePath evidence/Share.xcresult -only-testing:AmriUITests/ShareSheetUITests \
+            -test-timeouts-enabled YES -maximum-test-execution-time-allowance 180 \
+            CODE_SIGNING_ALLOWED=NO test-without-building > evidence/share-test.txt 2>&1
+      - name: Live MapKit probe
+        if: always()
+        continue-on-error: true
+        run: |
+          UDID=$(cat evidence/simulator-udid.txt)
+          perl -e 'alarm 240; exec @ARGV' xcrun simctl launch --console-pty --terminate-running-process "$UDID" com.abdllh.amri \
+            -AppleLanguages "(ar)" -AppleLocale ar_SA -mapProbe -skipLocation -screen probe > evidence/map-probe.txt 2>&1
+          sed -n '/MAP-PROBE-BEGIN/,/MAP-PROBE-END/p' evidence/map-probe.txt | head -200
+      - name: Name the UI tests' screenshots
+        if: always()
+        run: |
+          for bundle in Flows Share; do
+            if [ -d "evidence/$bundle.xcresult" ]; then
+              xcrun xcresulttool export attachments --path "evidence/$bundle.xcresult" --output-path "evidence/$bundle-attachments" || true
+              python3 tools/export_attachments.py "evidence/$bundle-attachments" evidence/flow || true
+              rm -rf "evidence/$bundle-attachments"
+            fi
+          done
+          du -sh evidence || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Amri-evidence
+          path: |
+            ios/evidence/screens/
+            ios/evidence/flow/
+            ios/evidence/*.txt
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: Amri-xcresult
+          path: ios/evidence/*.xcresult
+          retention-days: 5
