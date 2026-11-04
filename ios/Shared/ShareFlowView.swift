@@ -233,8 +233,11 @@ struct SendStageView: View {
             progressRow("الشاشة ماسكة المكان لين تخلص المكالمة أو الرجوع للخلف.")
         case .waitingFix?:
             progressRow("الشاشة تنتظر إشارة الموقع عشان تحسب الطريق…")
-        default:
+        case .routing?:
             progressRow("وصل للسيارة، الشاشة تحسب الطريق…")
+        default:
+            // It took the place, and has not said what it is doing with it yet.
+            progressRow("وصل للسيارة، أنتظر رد الشاشة…")
         }
     }
 
