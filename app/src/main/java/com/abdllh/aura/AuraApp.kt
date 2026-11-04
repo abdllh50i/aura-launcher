@@ -35,18 +35,17 @@ class AuraApp : Application() {
         // nothing of AMRI is wanted yet but that one waiting screen
         if (process.endsWith(":boot")) return
         // the guard's process: it must stand when everything below is what fails, so none of it runs there
-        if (process.endsWith(":guard")) return
+        if (process.endsWith(":guard")) {
+            if (BuildConfig.DEBUG) testShell()
+            return
+        }
         // first of all, before anything native is loaded: a crash that no handler sees is told by this mark, unanswered
         com.abdllh.aura.guard.GuardMarks.started(this)
         CrashGuard.install(this) // first: a crash while the rest of the start-up runs must be counted as well
-        if (BuildConfig.DEBUG) com.abdllh.aura.guard.GuardTest.atStart()
+        if (BuildConfig.DEBUG) testShell()
+        // right here, not in HomeActivity: a throw further down this method would never get there
         if (CrashGuard.isCrashLoop()) { CrashGuard.bailOutAtStart(this); return }
-        if (BuildConfig.DEBUG) {
-            // emulator tests: the root shell through scripts/fake_adbd.py  (setprop debug.aura.adb 10.0.2.2:15555)
-            SystemProps.get("debug.aura.adb").split(":").takeIf { it.size == 2 }?.let { (h, p) ->
-                p.toIntOrNull()?.let { com.abdllh.aura.system.LocalAdb.host = h; com.abdllh.aura.system.LocalAdb.port = it }
-            }
-        }
+        if (BuildConfig.DEBUG) com.abdllh.aura.guard.GuardTest.atStart()
         com.abdllh.aura.home.BootHome.ensure(this) // AMRI's home screen for the moment after a power-on (the unit only)
         Dp.init(this)
         Prefs.init(this)
@@ -90,6 +89,13 @@ class AuraApp : Application() {
             AssistiveBall.offOnce(this) // the stock floating circle the owner switched on by accident
             com.abdllh.aura.system.AppRemover.removeRequestedOnce(this) // the "Vivid" launcher the owner asked to remove
             com.abdllh.aura.voice.Amri.init(this) // the voice assistant (its wake word listener when switched on)
+        }
+    }
+
+    /** Emulator tests: the root shell through scripts/fake_adbd.py  (setprop debug.aura.adb 10.0.2.2:15555). */
+    private fun testShell() {
+        SystemProps.get("debug.aura.adb").split(":").takeIf { it.size == 2 }?.let { (h, p) ->
+            p.toIntOrNull()?.let { com.abdllh.aura.system.LocalAdb.host = h; com.abdllh.aura.system.LocalAdb.port = it }
         }
     }
 

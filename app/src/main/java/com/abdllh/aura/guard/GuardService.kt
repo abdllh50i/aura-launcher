@@ -18,7 +18,6 @@ import android.util.Log
 import com.abdllh.aura.BuildConfig
 import com.abdllh.aura.R
 import com.abdllh.aura.system.Device
-import com.abdllh.aura.system.LocalAdb
 import com.abdllh.aura.system.SystemProps
 import com.abdllh.aura.system.WifiStep
 import com.abdllh.aura.update.Rollback
@@ -65,12 +64,6 @@ class GuardService : Service() {
             .setContentTitle(getString(R.string.guard_channel))
             .setOngoing(true)
             .build())
-        if (BuildConfig.DEBUG) {
-            // emulator tests: the root shell through scripts/fake_adbd.py, as in AuraApp
-            SystemProps.get("debug.aura.adb").split(":").takeIf { it.size == 2 }?.let { (h, p) ->
-                p.toIntOrNull()?.let { LocalAdb.host = h; LocalAdb.port = it }
-            }
-        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -134,6 +127,7 @@ internal class GuardWatch(private val c: Context, private val h: Handler) {
     private var beatSeq = Long.MIN_VALUE
     private var beatSince = upAt
     private var noDrawSince = upAt
+    private var drawPid = 0
     private var killPid = 0
 
     fun start(why: String) {
@@ -172,7 +166,7 @@ internal class GuardWatch(private val c: Context, private val h: Handler) {
         val live = cur != null && alive(cur.pid)
         // (the kill switch on: the stock launcher is the home screen, there is nothing to guard)
         if (SystemProps.get(Device.DISABLED_PROP) != "1" && cur != null) {
-            if (live) { beat(cur, now, dt); draw(cur, now) }
+            if (live) { beat(cur, now, dt); draw(cur, now) } else noDrawSince = now
             kill()
             judge()
         } else {
@@ -269,6 +263,7 @@ internal class GuardWatch(private val c: Context, private val h: Handler) {
 
     /** Home wanted, nothing drawn: a black screen. Only while the screen is on and home is what should be showing (the firmware says what is in front, where it does). */
     private fun draw(cur: Start, now: Long) {
+        if (cur.pid != drawPid) { drawPid = cur.pid; noDrawSince = now }
         if (!cur.home || cur.ok || cur.frozen) { noDrawSince = now; return }
         val front = try { Settings.System.getString(c.contentResolver, "activity_starting") } catch (_: Throwable) { null }
         if (!interactive() || (front != null && !front.contains("HomeActivity"))) { noDrawSince = now; return }
@@ -373,9 +368,17 @@ internal class GuardWatch(private val c: Context, private val h: Handler) {
         if (!Device.isNwd && !(BuildConfig.DEBUG && SystemProps.get("debug.aura.unit") == "1")) { wifiDone = true; return }
         if (!interactive() || linkActive()) return // (going to sleep, or ZLink has the Wi-Fi: looked at again)
         wifiDone = true
+        if (!wifiWanted()) return
         GuardMarks.add(c, GuardMarks.GUARD_WIFI)
         val o = WifiStep.run(c, "guard")
         if (o.acted) GuardLog.add(c, "wifi: the main process did not get there. airplane was ${if (o.airplane) "on" else "off"}, wifi ${if (o.ok) "on now" else "still off"}")
+    }
+
+    /** The owner's switch for this step: WifiOnStart reads the same key. Read here, late: a first read in this process comes from the disk. */
+    private fun wifiWanted(): Boolean = try {
+        c.getSharedPreferences("aura", Context.MODE_PRIVATE).getBoolean("wifiOnStart", true)
+    } catch (_: Throwable) {
+        true
     }
 
     private fun linkActive(): Boolean {

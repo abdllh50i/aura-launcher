@@ -261,6 +261,9 @@ object Rollback {
             } catch (e: UpdateException) {
                 Log.w(TAG, "fetching $BASE_VERSION: ${e.kind} ${e.message}")
                 state(c) { put("why", Why.FAILED); put("detail", "${e.kind}") }
+            } catch (e: java.io.IOException) {
+                Log.w(TAG, "fetching $BASE_VERSION: $e")
+                state(c) { put("why", Why.FAILED); put("detail", "io") }
             }
             Thread.sleep(FETCH_RETRY_MS)
         }
@@ -299,15 +302,17 @@ object Rollback {
     }
 
     /**
-     * From Settings: [done] gets the reason on the main thread if the way back failed; on success this process ends.
-     * The channel goes back to stable and the release found by the last check is forgotten (with commit: the install
-     * ends this process), so the version left behind is not offered as "an update" a moment later. Not for a test, which
-     * is meant to be followed by that update.
+     * From Settings: [done] gets the reason on the main thread if the way back failed, and whether the script ran and
+     * so has fallen back to the stock launcher (a test or a script that never ran leaves everything as it was); on success
+     * this process ends. The channel goes back to stable and the release found by the last check is forgotten (with
+     * commit: the install ends this process), so the version left behind is not offered as "an update" a moment later.
+     * Not for a test, which is meant to be followed by that update.
      */
-    fun goBack(ctx: Context, test: Boolean, done: (String) -> Unit) {
+    fun goBack(ctx: Context, test: Boolean, done: (reason: String, fellBack: Boolean) -> Unit) {
         val c = ctx.applicationContext
         val main = Handler(Looper.getMainLooper())
         Thread({
+            var ran = false
             val reason = try {
                 val p = payload()
                 if (!usable(p)) "no-copy"
@@ -316,6 +321,7 @@ object Rollback {
                     else com.abdllh.aura.util.Prefs.raw.edit().putBoolean("updateBeta", false).putString("availableTag", "").putString("releaseCache", "").commit()
                     if (!runScript(c, test)) "no-root"
                     else {
+                        ran = true
                         val r = awaitResult()
                         report(c)
                         if (failed(r) || r == null) failureText(r) else null
@@ -326,7 +332,8 @@ object Rollback {
             }
             if (reason != null) {
                 try { File(c.filesDir, FILE_PENDING).delete() } catch (_: Throwable) { }
-                main.post { try { done(reason) } catch (_: Throwable) { } }
+                val fellBack = ran && !test
+                main.post { try { done(reason, fellBack) } catch (_: Throwable) { } }
             }
         }, "AuraRollback").start()
     }

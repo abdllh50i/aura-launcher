@@ -83,9 +83,9 @@ internal object WaybackCard {
         val go = ctx.getString(if (test) R.string.wayback_test_btn else R.string.wayback_back_btn)
         Confirm.show(act, title, text, go, danger = !test) {
             Snack.show(ctx, R.string.wayback_going, long = true, outlives = true)
-            Rollback.goBack(ctx, test) { why ->
-                // (the script has already fallen back to the stock launcher, unless this was a test: everything stays in step with that)
-                if (!test) try { CrashGuard.setAuraEnabled(ctx, false, "rollback") } catch (_: Throwable) { }
+            Rollback.goBack(ctx, test) { why, fellBack ->
+                // (the script has fallen back to the stock launcher: everything stays in step with that)
+                if (fellBack) try { CrashGuard.setAuraEnabled(ctx, false, "rollback") } catch (_: Throwable) { }
                 Snack.show(ctx, ctx.getString(R.string.wayback_failed, why), long = true, outlives = true)
                 if (!act.isDestroyed) act.rebuild()
             }
