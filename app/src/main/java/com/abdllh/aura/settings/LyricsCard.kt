@@ -39,7 +39,7 @@ import kotlin.math.roundToInt
  * for timing lyrics by listening ([com.abdllh.aura.music.LyricsSync], on by default since 1.15). Kept in a file of its
  * own so the music section of [DisplaySoundPage] has one line for it.
  */
-class LyricsCard private constructor(private val act: SettingsActivity, private val ctx: Context) {
+class LyricsCard private constructor(private val act: SettingsPanel, private val ctx: Context) {
     private val status: AText = ctx.label(Type.FOOTNOTE, Palette.text2, lines = 3)
     private val test = ABtn(ctx).apply {
         kind = ABtn.Kind.TONAL
@@ -192,7 +192,7 @@ class LyricsCard private constructor(private val act: SettingsActivity, private 
 
     companion object {
         /** The card and its hint, at the end of the music section ([DisplaySoundPage]'s one line for it). */
-        fun addTo(act: SettingsActivity, ctx: Context, col: LinearLayout) {
+        fun addTo(act: SettingsPanel, ctx: Context, col: LinearLayout) {
             col.addRow(LyricsCard(act, ctx).view)
             col.addHint(ctx.getString(R.string.lyr_srv_hint))
         }

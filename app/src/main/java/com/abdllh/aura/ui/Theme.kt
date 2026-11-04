@@ -28,11 +28,14 @@ object Theme {
         return true
     }
 
-    /** Window background and system bar colours for the current theme. */
+    /**
+     * Window background and system bar colours for the current theme. [fill] false: no background at all, what is in the
+     * window draws its own (the one window of 2.0: its panels' rooms, and the map where they leave it).
+     */
     @Suppress("DEPRECATION")
-    fun window(a: Activity, navBar: Int = Palette.bg) {
+    fun window(a: Activity, navBar: Int = Palette.bg, fill: Boolean = true) {
         val w = a.window
-        w.setBackgroundDrawable(ColorDrawable(Palette.bg))
+        w.setBackgroundDrawable(if (fill) ColorDrawable(Palette.bg) else null)
         w.statusBarColor = Palette.bg
         w.navigationBarColor = navBar
         var flags = w.decorView.systemUiVisibility

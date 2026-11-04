@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.Looper
 import android.util.Log
 import com.abdllh.aura.BuildConfig
 import com.abdllh.aura.music.MusicActivity
@@ -17,10 +18,10 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * The one way to AMRI's own screens: nothing else in the app names their classes to start them. Today each screen is
- * an activity and [open] starts it, as every caller did by itself until now. When a screen becomes a panel of the home
- * activity (the single window of 2.0), [open] is the only thing that changes: the callers already say which screen
- * they want and with what, not how it is reached.
+ * The one way to AMRI's own screens: nothing else in the app names their classes to start them. The callers say which
+ * screen they want and with what, not how it is reached. A screen that is a panel of the home activity (the single window
+ * of 2.0; [PANELS]) is shown in place when that window is in front, with no activity start at all, and otherwise through a
+ * home intent that names it. The others are still activities, and [open] starts them, as every caller did by itself.
  *
  * The home screen is always reached through a home intent limited to this package, never by its class. The firmware
  * makes an activity of the home type only when no component was named in the start (ActivityRecord.setActivityType;
@@ -42,25 +43,37 @@ object Screens {
     const val MUSIC = "music"
     const val SETTINGS = "settings"
 
-    /** Which screen a home intent is for: the home screen itself until there are panels to ask for. */
-    private const val EXTRA_PANEL = "panel"
+    /** The screens that are panels of the home activity. */
+    private val PANELS = setOf(SETTINGS)
+
+    /** Which screen a home intent is for. */
+    const val EXTRA_PANEL = "panel"
     /** Who sent it: for the log and for [note]; nothing depends on it. */
     private const val EXTRA_FROM = "from"
     const val FROM_BOOT = "boot"
     private const val FROM_BY_NAME = "by name"
 
     // ------------------------------------------------------------------------------------------ the home screen
-    /** AMRI's home screen to the front, from anywhere (AMRI may start screens from the background). */
-    fun home(c: Context, from: String): Boolean = try {
+    /** AMRI's home screen to the front (with panel [panel] on top of it), from anywhere (AMRI may start screens from the background). */
+    fun home(c: Context, from: String, panel: String = HOME, args: Bundle? = null): Boolean = try {
         // (not the home app, by the kill switch or before it is chosen: no home start ever finds AMRI, so there is no
         // trap, and a home intent would build a second home activity beside the ordinary one that may be running)
-        c.startActivity(if (Device.isDefaultHome(c)) homeIntent(c, from)
-            else Intent(c, HomeActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra(EXTRA_FROM, from))
+        val i = if (Device.isDefaultHome(c)) homeIntent(c, from) else Intent(c, HomeActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (args != null) i.putExtras(args)
+        c.startActivity(i.putExtra(EXTRA_PANEL, panel).putExtra(EXTRA_FROM, from))
         Log.i(TAG, "home, from $from")
         true
     } catch (t: Throwable) {
         Log.w(TAG, "home, from $from: $t")
         false
+    }
+
+    /** The panel an intent to the home activity asks for (null: none, the home screen itself). */
+    fun panelIn(i: Intent?): String? = try {
+        // (from Recents, a by-name start's first intent comes back: it asked for this once)
+        if (i == null || i.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) null else i.getStringExtra(EXTRA_PANEL)
+    } catch (_: Throwable) {
+        null // (extras from outside that do not unpack)
     }
 
     /** The intent itself, for who must look at what it finds before sending it ([BootHome]). */
@@ -77,7 +90,7 @@ object Screens {
         if (a.intent?.hasCategory(Intent.CATEGORY_HOME) == true || !Device.isDefaultHome(a)) false
         else {
             a.finish()
-            home(a, FROM_BY_NAME)
+            home(a, FROM_BY_NAME, panelIn(a.intent) ?: HOME, a.intent?.extras)
             true
         }
     } catch (t: Throwable) {
@@ -154,17 +167,25 @@ object Screens {
     fun pending(c: Context, panel: String, request: Int): PendingIntent =
         PendingIntent.getActivity(c, request, intentOf(c, panel, null), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
-    /** The name of the screen [a] is ("" for none of them, which does not happen). */
+    /** The name of the screen [a] shows ("" for none of them: a screen of its own that is not one of these). */
     fun panelOf(a: Activity): String = when (a) {
-        is HomeActivity -> HOME
+        is HomeActivity -> a.topPanel
         is MapsActivity -> MAPS
         is MusicActivity -> MUSIC
-        is SettingsActivity -> SETTINGS
         else -> ""
     }
 
+    /** From an [Entry]: what a start by its old name asks for. */
+    fun forward(c: Context, panel: String, args: Bundle?) = open(c, panel, args)
+
     private fun open(c: Context, panel: String, args: Bundle? = null): Boolean = try {
-        c.startActivity(intentOf(c, panel, args))
+        if (panel in PANELS) {
+            // Only with the window in front: anything over it (even an Entry, or a translucent panel of Android's) means
+            // a home intent, which brings the shell forward and clears what is above it, as the Home key does.
+            val s = HomeActivity.current
+            if (s != null && s.resumedNow && Looper.myLooper() == Looper.getMainLooper()) s.panels.show(panel, args)
+            else home(c, "$panel panel", panel, args)
+        } else c.startActivity(intentOf(c, panel, args))
         Log.i(TAG, "$panel ${args?.keySet()?.joinToString().orEmpty()}") // (the names only: a search is the owner's own)
         true
     } catch (t: Throwable) {
@@ -178,8 +199,7 @@ object Screens {
             MUSIC -> MusicActivity::class.java
             else -> SettingsActivity::class.java
         })
-        // (Settings opened from a screen is that screen's next step in its task, as it always was)
-        if (panel != SETTINGS || c !is Activity) i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         if (args != null) i.putExtras(args)
         return i
     }

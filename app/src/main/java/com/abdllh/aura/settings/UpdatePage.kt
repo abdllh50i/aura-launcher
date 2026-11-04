@@ -30,7 +30,7 @@ import com.abdllh.aura.util.Prefs
 import com.abdllh.aura.util.dp
 
 /** Software update screen: check GitHub, show release notes, download, verify, install. */
-class UpdatePage(private val act: SettingsActivity) : Page(R.string.set_update, R.drawable.ic_download) {
+class UpdatePage(private val act: SettingsPanel) : Page(R.string.set_update, R.drawable.ic_download) {
     private lateinit var holder: LinearLayout
     private lateinit var ctx: Context
     private var observer: ((UpdateManager.State) -> Unit)? = null

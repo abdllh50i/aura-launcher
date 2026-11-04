@@ -6,5 +6,13 @@
             android:name=".debug.CarBakerActivity"
             android:exported="true"
             android:screenOrientation="landscape" />
+        <!-- The panel stack under quick changes of mind: am broadcast -a com.abdllh.aura.debug.PANELS (ProbePanel.kt) -->
+        <receiver
+            android:name=".debug.PanelStress"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.abdllh.aura.debug.PANELS" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

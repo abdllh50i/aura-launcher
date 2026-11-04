@@ -26,7 +26,7 @@ import java.util.Locale
  * with its progress, pause, and delete. The bar is the update page's (it glides between reports; until 1.11 a
  * weighted pair of views that jumped and laid the card out again at every report).
  */
-class OfflineCard(private val act: SettingsActivity, private val ctx: Context) {
+class OfflineCard(private val act: SettingsPanel, private val ctx: Context) {
     private val status: AText = ctx.label(Type.FOOTNOTE, Palette.text2, lines = 2)
     private val bar = ProgressBar(ctx)
     private val main = ABtn(ctx).apply { kind = ABtn.Kind.PRIMARY }

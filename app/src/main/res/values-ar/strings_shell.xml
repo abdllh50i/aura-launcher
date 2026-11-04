@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="panel_failed">تعذّر فتح هذه الشاشة</string>
+    <string name="about_panel_open">آخر شاشة فُتحت</string>
+    <string name="about_panel_failed">آخر شاشة تعذّر فتحها</string>
+</resources>

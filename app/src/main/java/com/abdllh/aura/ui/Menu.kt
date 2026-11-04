@@ -78,6 +78,7 @@ object Menu {
         box.pivotX = (centre - x).toFloat().coerceIn(0f, w.toFloat())
         box.pivotY = if (above) h.toFloat() else 0f
         popup.showAtLocation(anchor, Gravity.TOP or Gravity.LEFT, x - room, y - room) // window coordinates: LEFT
+        com.abdllh.aura.home.Panel.own(ctx, { popup.isShowing }, { popup.dismiss() }) // (it goes when the panel under it does)
         box.enter(scaleFrom = 0.94f)
     }
 }

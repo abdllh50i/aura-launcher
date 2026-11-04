@@ -22,7 +22,7 @@ import com.abdllh.aura.util.dp
  * at the end of it.
  * Build the card with [card], fill it, then `Modal(ctx, card).show()`.
  */
-class Modal(ctx: Context, private val card: View, widthDp: Int = 560) {
+class Modal(private val ctx: Context, private val card: View, widthDp: Int = 560) {
     val dialog = Dialog(ctx)
     private val scrim = object : View(ctx) { override fun hasOverlappingRendering() = false }
         .apply { setBackgroundColor(Palette.scrim) }
@@ -54,6 +54,8 @@ class Modal(ctx: Context, private val card: View, widthDp: Int = 560) {
 
     fun show(): Modal {
         dialog.show()
+        // (its window is on top of every panel: it goes when the panel under it does)
+        com.abdllh.aura.home.Panel.own(ctx, { dialog.isShowing }, { dialog.dismiss() })
         scrim.alpha = 0f
         scrim.fadeTo(1f)
         card.enter(scaleFrom = 0.96f)

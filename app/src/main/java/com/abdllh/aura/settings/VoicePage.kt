@@ -30,7 +30,7 @@ import com.abdllh.aura.voice.VoiceSetup
  * "عمري": the wake word (on/off, the owner's recordings, sensitivity, the sounds it learned to ignore), the answers,
  * the microphone, a try.
  */
-class VoicePage(private val act: SettingsActivity) : Page(R.string.set_voice, R.drawable.ic_mic) {
+class VoicePage(private val act: SettingsPanel) : Page(R.string.set_voice, R.drawable.ic_mic) {
     override fun build(ctx: Context): View {
         val col = ctx.pageColumn()
 
@@ -90,13 +90,13 @@ class VoicePage(private val act: SettingsActivity) : Page(R.string.set_voice, R.
                 // on only with the microphone and the owner's voice
                 withMic {
                     if (VoiceSetup.enrolled(ctx)) { Amri.enabled = true; act.rebuild() }
-                    else VoiceSetup.enroll(act) { ok -> if (ok) Amri.enabled = true; act.rebuild() }
+                    else VoiceSetup.enroll(act.shell) { ok -> if (ok) Amri.enabled = true; act.rebuild() }
                 }
             },
             ctx.settingRow(R.drawable.ic_user, ctx.getString(R.string.voice_enroll),
                 ctx.getString(if (enrolled) R.string.voice_enroll_sub_done else R.string.voice_enroll_sub_none), ctx.chevron()) {
                 // (set even when it already was: the setter starts the listener with the new recordings)
-                withMic { VoiceSetup.enroll(act) { ok -> if (ok) Amri.enabled = true; act.rebuild() } }
+                withMic { VoiceSetup.enroll(act.shell) { ok -> if (ok) Amri.enabled = true; act.rebuild() } }
             },
             ctx.block(R.drawable.ic_sliders, ctx.getString(R.string.voice_sens), ctx.getString(R.string.voice_sens_sub), sens),
             if (enrolled) learnedRow else null
@@ -137,7 +137,7 @@ class VoicePage(private val act: SettingsActivity) : Page(R.string.set_voice, R.
             val tick = if (taught) ctx.iconView(R.drawable.ic_check, 24, Palette.accentFg) else ctx.chevron()
             ctx.settingRow(null, ctx.getString(R.string.voice_cmd_quoted, ctx.getString(item.label)),
                 ctx.getString(if (taught) R.string.voice_cmd_taught else R.string.voice_cmd_untaught), tick) {
-                withMic { VoiceSetup.teach(act, item) { act.rebuild() } }
+                withMic { VoiceSetup.teach(act.shell, item) { act.rebuild() } }
             }
         }
         col.addRow(ctx.group(*rows.toTypedArray()))
