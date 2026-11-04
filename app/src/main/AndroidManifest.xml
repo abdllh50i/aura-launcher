@@ -106,6 +106,41 @@
             </intent-filter>
         </receiver>
 
+        <!-- The guard: a process apart, which sees the crashes that end the main process before it can say anything
+             (see guard/GuardService.kt). AuraApp does nothing there. Also started by the main process at each start. -->
+        <receiver
+            android:name=".guard.GuardReceiver"
+            android:exported="true"
+            android:process=":guard">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <service
+            android:name=".guard.GuardService"
+            android:exported="false"
+            android:process=":guard" />
+
+        <!-- AMRI Rescue: a second icon, for the stock launcher's app list after a bail-out (AMRI's own list leaves its own
+             package out). In the guard's process, with plain Android views. -->
+        <activity
+            android:name=".guard.RescueActivity"
+            android:configChanges="orientation|keyboard|keyboardHidden|screenSize|smallestScreenSize|screenLayout|uiMode|density|fontScale"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:label="@string/rescue_name"
+            android:process=":guard"
+            android:screenOrientation="landscape"
+            android:taskAffinity="com.abdllh.aura.rescue"
+            android:theme="@style/Theme.Aura.Boot">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
         <activity
             android:name=".settings.SettingsActivity"
             android:configChanges="orientation|keyboard|keyboardHidden|screenSize|smallestScreenSize|screenLayout|uiMode|density|fontScale"

@@ -4,8 +4,11 @@ import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.os.Handler
+import android.os.Looper
 import android.os.Process
 import android.os.SystemClock
+import android.util.Log
 import android.widget.Toast
 import com.abdllh.aura.R
 import com.abdllh.aura.util.Prefs
@@ -21,24 +24,42 @@ import java.io.StringWriter
  * units set their wall clock late (GPS / network time) and a wall-clock window would then forget or invent crashes.
  */
 object CrashGuard {
+    private const val TAG = "AuraCrash"
     private const val WINDOW_MS = 3 * 60_000L
     private const val LIMIT = 3
     private const val KEY = "crashes"
     private const val KEY_DISABLED = "crashDisabled"
     private const val MARKER = "disable_home"
+    /** Time for the give-backs, each on its own worker through the root shell. */
+    private const val LEAVE_AFTER_MS = 8_000L
 
     private var sp: SharedPreferences? = null
+
+    /** AuraApp found a crash loop and has handed the home role over: this process is on its way out ([bailOutAtStart]). */
+    @Volatile var bailedOut = false
+        private set
 
     /** Must be the very first thing the app does, so a crash while the other singletons start up is counted too. */
     fun install(app: Application) {
         sp = app.getSharedPreferences("aura_crash", Context.MODE_PRIVATE)
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->
+            var again = false
             try {
                 record(app, e)
+                again = recent(SystemClock.elapsedRealtime()).size >= 2 || SystemProps.get(Device.DISABLED_PROP) == "1"
             } catch (_: Throwable) {
             }
-            previous?.uncaughtException(t, e) ?: Process.killProcess(Process.myPid())
+            // From the second crash in a row Android puts "keeps stopping" over the screen, and this process waits for
+            // the answer, 5 minutes if nobody gives one. The next start, which would find the crash loop, waits with it (seen
+            // on the emulator): so from there on it leaves without asking. With the kill switch on, a crash behind the
+            // stock launcher has no business on the screen at all.
+            if (again) {
+                Log.e(TAG, "crashed again, leaving", e)
+                Process.killProcess(Process.myPid())
+            } else {
+                previous?.uncaughtException(t, e) ?: Process.killProcess(Process.myPid())
+            }
         }
     }
 
@@ -91,6 +112,8 @@ object CrashGuard {
             if (enabled) marker.delete() else marker.writeText("$why ${System.currentTimeMillis()}")
         } catch (_: Throwable) {
         }
+        // AMRI is the home screen again: the guard counts failed starts from nothing
+        if (enabled) com.abdllh.aura.guard.GuardMarks.add(ctx, com.abdllh.aura.guard.GuardMarks.RESET)
         sp?.edit()?.putBoolean(KEY_DISABLED, !enabled && why == "crash")?.apply()
         SystemProps.set(Device.DISABLED_PROP, if (enabled) "0" else "1")
         // the hidden status bar belongs to Aura's home screen: the stock launcher gets it back (and the firmware's
@@ -119,6 +142,20 @@ object CrashGuard {
             clear()
             setAuraEnabled(ctx, true, "update")
         }
+    }
+
+    /**
+     * The crash loop as AuraApp finds it, right after [install]. Until 1.19 only HomeActivity looked, which a throw in
+     * AuraApp's own start-up never reaches: the home screen crashed for ever. Nothing of the start-up runs now, since one
+     * of its steps is what crashes; the settings are opened as far as they can be, because the give-backs read what to
+     * give back from them (Prefs keeps the file even when its first read is what throws). The process then leaves, a
+     * moment later: without its singletons it cannot serve anything, and the next start finds the kill switch on.
+     */
+    fun bailOutAtStart(app: Application) {
+        bailedOut = true
+        try { Prefs.init(app) } catch (_: Throwable) { }
+        if (SystemProps.get(Device.DISABLED_PROP) == "1") clear() else bailOut(app) // (a crash loop behind the stock launcher: nothing to hand over)
+        Handler(Looper.getMainLooper()).postDelayed({ Process.killProcess(Process.myPid()) }, LEAVE_AFTER_MS)
     }
 
     /** Give the home role back to the stock launcher and open it. */

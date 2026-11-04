@@ -30,21 +30,28 @@ import com.abdllh.aura.util.Prefs
 class AuraApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        val process = processName()
         // BootHome's process, right after a power-on: the user's storage is still closed (settings would throw) and
         // nothing of AMRI is wanted yet but that one waiting screen. The screen check's process (diag/): only its own
         // tests, which bring up what they use; a crash there is theirs to report, not the crash guard's to count.
-        val process = processName()
         if (process.endsWith(":boot") || process.endsWith(":diag")) return
-        CrashGuard.install(this) // first: a crash while the rest of the start-up runs must be counted as well
-        if (BuildConfig.DEBUG) {
-            // emulator tests: the root shell through scripts/fake_adbd.py  (setprop debug.aura.adb 10.0.2.2:15555)
-            SystemProps.get("debug.aura.adb").split(":").takeIf { it.size == 2 }?.let { (h, p) ->
-                p.toIntOrNull()?.let { com.abdllh.aura.system.LocalAdb.host = h; com.abdllh.aura.system.LocalAdb.port = it }
-            }
+        // the guard's process: it must stand when everything below is what fails, so none of it runs there
+        if (process.endsWith(":guard")) {
+            com.abdllh.aura.guard.GuardLog.quietCrashes(this)
+            if (BuildConfig.DEBUG) testShell()
+            return
         }
+        // first of all, before anything native is loaded: a crash that no handler sees is told by this mark, unanswered
+        com.abdllh.aura.guard.GuardMarks.started(this)
+        CrashGuard.install(this) // first: a crash while the rest of the start-up runs must be counted as well
+        if (BuildConfig.DEBUG) testShell()
+        // right here, not in HomeActivity: a throw further down this method would never get there
+        if (CrashGuard.isCrashLoop()) { CrashGuard.bailOutAtStart(this); return }
+        if (BuildConfig.DEBUG) com.abdllh.aura.guard.GuardTest.atStart()
         com.abdllh.aura.home.BootHome.ensure(this) // AMRI's home screen for the moment after a power-on (the unit only)
         Dp.init(this)
         Prefs.init(this)
+        if (BuildConfig.DEBUG) com.abdllh.aura.system.PrefTypes.check(this)
         Theme.refresh()
         Fonts.init(this)
         // the map's own tile server and the offline map (before any map style is built)
@@ -71,6 +78,7 @@ class AuraApp : Application() {
         Power.init(this) // after an "off now": the ACC-off behaviour goes back to the user's choice
         Front.init(this)
         com.abdllh.aura.diag.TripRecorder.init(this) // (does nothing unless its switch is on)
+        com.abdllh.aura.update.Rollback.prepare(this) // the way back in place, a while after the start
         if (!disabled) {
             VolumeHud.init(this)
             MusicKeys.init(this)
@@ -84,6 +92,13 @@ class AuraApp : Application() {
             AssistiveBall.offOnce(this) // the stock floating circle the owner switched on by accident
             com.abdllh.aura.system.AppRemover.removeRequestedOnce(this) // the "Vivid" launcher the owner asked to remove
             com.abdllh.aura.voice.Amri.init(this) // the voice assistant (its wake word listener when switched on)
+        }
+    }
+
+    /** Emulator tests: the root shell through scripts/fake_adbd.py  (setprop debug.aura.adb 10.0.2.2:15555). */
+    private fun testShell() {
+        SystemProps.get("debug.aura.adb").split(":").takeIf { it.size == 2 }?.let { (h, p) ->
+            p.toIntOrNull()?.let { com.abdllh.aura.system.LocalAdb.host = h; com.abdllh.aura.system.LocalAdb.port = it }
         }
     }
 

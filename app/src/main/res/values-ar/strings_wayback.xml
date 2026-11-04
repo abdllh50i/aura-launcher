@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="wayback_title">طريق الرجوع</string>
+    <string name="wayback_back">رجوع للنسخة السابقة</string>
+    <string name="wayback_back_sub">يرجع لنسخة ⁨%1$s⁩. إعداداتك وخرائطك تبقى مثل ما هي.</string>
+    <string name="wayback_back_btn">رجوع</string>
+    <string name="wayback_confirm_title">ترجع لنسخة ⁨%1$s⁩؟</string>
+    <string name="wayback_confirm_text">الشاشة تختفي لحظة ويرجع عمري بنسخة ⁨%1$s⁩. إعداداتك وخرائطك تبقى، والتحديث يقدر يرجّع لك النسخة الجديدة متى ما بغيت.</string>
+    <string name="wayback_going">جاري الرجوع. الشاشة تختفي لحظة…</string>
+    <string name="wayback_failed">ما قدر يرجع: ⁨%1$s⁩</string>
+    <string name="wayback_this_one">النسخة المحفوظة هي نفس النسخة الشغّالة (⁨%1$s⁩): لسا ما فيه أقدم منها ترجع لها.</string>
+    <string name="wayback_below_rom">النسخة المحفوظة (⁨%1$s⁩) أقدم من نسخة النظام نفسه: أول تشغيل بعدها يلغيها.</string>
+    <string name="wayback_why_looking">يدوّر على النسخة المحفوظة…</string>
+    <string name="wayback_why_no_root">لسا ما فيه نسخة محفوظة: صلاحية الروت في الشاشة ما ردّت.</string>
+    <string name="wayback_why_waiting_net">لسا ما فيه نسخة محفوظة: أول ما يجي إنترنت تنزل نسخة ⁨%1$s⁩ (١٨ ميجا).</string>
+    <string name="wayback_why_fetching">ينزّل نسخة ⁨%1$s⁩ (١٨ ميجا) عشان تكون طريق الرجوع…</string>
+    <string name="wayback_why_no_space">ما فيه نسخة محفوظة: المساحة الفاضية في الشاشة ما تكفي.</string>
+    <string name="wayback_why_failed">لسا ما فيه نسخة محفوظة: آخر محاولة فشلت (⁨%1$s⁩). يحاول مرة ثانية لحاله.</string>
+    <string name="wayback_why_not_unit">في شاشة السيارة بس.</string>
+    <string name="wayback_test">جرّب طريقة الرجوع</string>
+    <string name="wayback_test_sub">يروح الحين لنسخة ⁨%1$s⁩ عشان نتأكد إن الرجوع شغّال هنا، وبعدها صفحة التحديث ترجّع ⁨%2$s⁩ بضغطة وحدة، وبياناتك تبقى.</string>
+    <string name="wayback_test_btn">جرّب</string>
+    <string name="wayback_test_title">تجرّب طريقة الرجوع؟</string>
+    <string name="wayback_test_text">عمري يروح الحين لنسخة ⁨%1$s⁩. بعدها افتح الإعدادات ← التحديث واضغط مرة وحدة: ترجع ⁨%2$s⁩. إعداداتك وخرائطك تبقى في الحالتين. لو ما زبطت ما يتغيّر شي، وهذي الصفحة تقول لك السبب.</string>
+    <string name="wayback_last">آخر مرة</string>
+    <string name="wayback_last_ok">راح من ⁨%1$s⁩ إلى ⁨%2$s⁩، والبيانات بقيت.</string>
+    <string name="wayback_last_lost">راح من ⁨%1$s⁩ إلى ⁨%2$s⁩، لكن البيانات ما بقيت.</string>
+    <string name="wayback_last_failed">من ⁨%1$s⁩ إلى ⁨%2$s⁩ ما زبط: ⁨%3$s⁩</string>
+    <string name="guard_title">الحارس</string>
+    <string name="guard_watching">في هذي النسخة يراقب بس: فوق اللي شافه، واللي كان بيسويه.</string>
+    <string name="guard_empty">لسا ما انكتب شي.</string>
+    <string name="guard_channel">حارس عمري</string>
+    <string name="rescue_name">إنقاذ عمري</string>
+    <string name="rescue_now">هذا عمري ⁨%1$s⁩.</string>
+    <string name="rescue_stock_on">عمري مطفي: اللانشر الأصلي هو الشاشة الرئيسية.</string>
+    <string name="rescue_back">رجوع للنسخة السابقة</string>
+    <string name="rescue_back_to">رجوع لنسخة ⁨%1$s⁩</string>
+    <string name="rescue_stock">فتح اللانشر الأصلي</string>
+    <string name="rescue_retry">حاول مرة ثانية</string>
+    <string name="rescue_data">إعداداتك وخرائطك تبقى مثل ما هي.</string>
+    <string name="rescue_no_copy">ما فيه نسخة أقدم محفوظة في هذي الشاشة.</string>
+    <string name="rescue_no_root">صلاحية الروت في الشاشة ما ردّت.</string>
+    <string name="rescue_going">جاري الرجوع. الشاشة تختفي لحظة…</string>
+    <string name="rescue_failed">ما قدر يرجع (⁨%1$s⁩). اللانشر الأصلي صار الشاشة الرئيسية.</string>
+</resources>

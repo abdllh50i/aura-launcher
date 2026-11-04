@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="wayback_title">The way back</string>
+    <string name="wayback_back">Back to the previous version</string>
+    <string name="wayback_back_sub">Goes back to version %1$s. Your settings and maps stay as they are.</string>
+    <string name="wayback_back_btn">Go back</string>
+    <string name="wayback_confirm_title">Go back to version %1$s?</string>
+    <string name="wayback_confirm_text">The screen goes away for a moment and AMRI comes back as version %1$s. Your settings and maps stay, and the updater can bring the newer version back whenever you want.</string>
+    <string name="wayback_going">Going back. The screen goes away for a moment…</string>
+    <string name="wayback_failed">Could not go back: %1$s</string>
+    <string name="wayback_this_one">The saved copy is this very version (%1$s): nothing older to go back to yet.</string>
+    <string name="wayback_below_rom">The saved copy (%1$s) is older than the system\'s own copy: the next start would undo it.</string>
+    <string name="wayback_why_looking">Looking for the saved copy…</string>
+    <string name="wayback_why_no_root">No saved copy yet: the unit\'s root shell did not answer.</string>
+    <string name="wayback_why_waiting_net">No saved copy yet: version %1$s (18 MB) comes down as soon as there is internet.</string>
+    <string name="wayback_why_fetching">Downloading version %1$s (18 MB) to keep as the way back…</string>
+    <string name="wayback_why_no_space">No saved copy: not enough free space on the unit.</string>
+    <string name="wayback_why_failed">No saved copy yet: the last try failed (%1$s). It tries again by itself.</string>
+    <string name="wayback_why_not_unit">Only on the car unit.</string>
+    <string name="wayback_test">Try the way back</string>
+    <string name="wayback_test_sub">Goes to version %1$s now, to prove the way back works here. The Update page then brings %2$s back with one tap, and your data stays.</string>
+    <string name="wayback_test_btn">Try it</string>
+    <string name="wayback_test_title">Try the way back?</string>
+    <string name="wayback_test_text">AMRI goes to version %1$s now. Then open Settings → Update and tap once: %2$s comes back. Your settings and maps stay through both. If it does not work nothing changes, and this page will say why.</string>
+    <string name="wayback_last">Last time</string>
+    <string name="wayback_last_ok">Went from %1$s to %2$s. The data stayed.</string>
+    <string name="wayback_last_lost">Went from %1$s to %2$s, but the data did not stay.</string>
+    <string name="wayback_last_failed">From %1$s to %2$s failed: %3$s</string>
+    <string name="guard_title">The guard</string>
+    <string name="guard_watching">In this version it only watches: above is what it saw, and what it would have done.</string>
+    <string name="guard_empty">Nothing written yet.</string>
+    <string name="guard_channel">AMRI guard</string>
+    <string name="rescue_name">AMRI Rescue</string>
+    <string name="rescue_now">This is AMRI %1$s.</string>
+    <string name="rescue_stock_on">AMRI is switched off: the stock launcher is the home screen.</string>
+    <string name="rescue_back">Back to the previous version</string>
+    <string name="rescue_back_to">Back to version %1$s</string>
+    <string name="rescue_stock">Open stock launcher</string>
+    <string name="rescue_retry">Try again</string>
+    <string name="rescue_data">Your settings and maps stay as they are.</string>
+    <string name="rescue_no_copy">There is no older version saved on this unit.</string>
+    <string name="rescue_no_root">The unit\'s root shell did not answer.</string>
+    <string name="rescue_going">Going back. The screen goes away for a moment…</string>
+    <string name="rescue_failed">Could not go back (%1$s). The stock launcher is the home screen now.</string>
+</resources>

@@ -1722,6 +1722,158 @@ unless it is pressed; with its switch off the trip recorder is one preference re
   (`Device.isNwd`). Parsing of `dumpsys SurfaceFlinger` and the Mali paths have only met the emulator: the raw text goes
   in the JSON for that reason (`surfaceFlinger.raw`, `d_memory.mali`).
 
+## The way back and the guard (1.19.1: `update/Rollback.kt`, `assets/rollback.sh`, `guard/`)
+Until 1.19 the only way back from a version that went wrong on the unit was the PC restore, which wipes AMRI's data. A
+redesign needs better, and nothing can be tried on the unit before a release, so everything here also says what it did.
+
+### The way back
+* What the firmware allows (from its bytecode): `ro.debuggable=1` lets `pm install -r -d` downgrade any package, and the
+  data stays. `pm uninstall` never: with an older ROM copy under the /data copy it deletes the data, `-k` or not. A ROM copy
+  newer than the /data copy wins at the next boot and removes the /data code, so a way back is only real while the version
+  it goes to is not older than the ROM's (`Rollback.usable`, `ro.aura.rom.version`), and 2.0 must stay a /data update.
+* `/data/local/tmp/amri-rollback/rollback.sh` (`assets/rollback.sh`, copied there as root by `Rollback.ensureScript` at
+  every start, `LF` whatever the checkout did). Any root caller may run it: Settings, the guard, AMRI Rescue, a PC
+  (`rollback.bat`, `./install-linux.sh rollback`, or `adb connect <ip>:5555`, `adb shell sh
+  /data/local/tmp/amri-rollback/rollback.sh`). It starts itself detached, because replacing the package kills whoever
+  asked; checks the saved copy's hash; clears the kill switch and its markers (a new process must not read the home screen
+  as not its own); `pm install -r -d` under a 5-minute `timeout`; writes `EXIT=n` to `result`, then `HOME=`/`NOW=`, `DONE`.
+  Success: home property back to AMRI, a home intent. Failure: `to_stock` (kill switch, stock launcher as home, what a
+  dead AMRI cannot give back: volume bar, call window, key rules, `policy_control`). `--test` leaves everything as it was
+  on failure. `--stock` does only `to_stock`.
+* The race that cost a test: adbd sends SIGHUP to the whole process group when the shell it started ends. `nohup … &`
+  followed by `exit` lost that race on a loaded emulator: "started", and then nothing at all. So the launcher ignores HUP
+  before it forks (children are born ignoring it) and only ends once the child has written `running`; it says
+  `failed-to-start` if that never comes. `WifiKeeper`'s restart (`nohup sh -c … & echo started`) has the same shape and can
+  lose the same race, with no word in its log; it is not changed here.
+* The saved copy, `aura-prev.apk` + `aura-prev.json` (version, code, SHA-256, size, source), takes no room in the APK (the
+  betas' bundled copy cost 12.6 MB). Two ways in: `Rollback.saveRunning`, called by the updater after it verified the
+  download and before it installs, copies what `pm path` names; `Rollback.prepare`, 45 s after every start, fetches the
+  published 1.19.0 when there is no copy, a real unit (`Device.isNwd`) and a network, with the updater's own
+  `GitHub.download` (resumes, 15 min between tries, 8 tries a start) against the pinned size and hash. Debug:
+  `setprop debug.aura.rollback.url http://…`. A version still on trial does not replace a saved copy that works: a bad beta
+  updated to the next beta must not take the way back with it.
+* The caller clears `availableTag` and `releaseCache` and sets `updateBeta` off first, with `commit()`, or the version left
+  behind is offered as an update a moment later. A test is meant to be followed by that update, so it clears the check
+  times instead: the version it goes to looks as soon as home opens, and the Update page offers it for one tap.
+* Settings → About shows it from a small file (`files/rollback-state`), so the page needs no root shell to open: the
+  version it would go to or why there is none, "Try the way back" while the copy is 1.19.0 on a 1.x (both ends known-good
+  code, so it proves the way on the real unit before 2.0 needs it), and how the last use ended, whoever pulled it. "The data
+  stayed" is seen, not assumed: every start leaves a small mark in the app's data (`files/rollback-data-mark`), and the first
+  start after a way back looks for it before it writes it again.
+
+### The guard (`guard/`, process `:guard`)
+CrashGuard dies with what it guards: a native crash, a throw in `AuraApp`, a frozen main thread or a home screen that
+never draws leave it nothing to count. So a process of its own: `GuardReceiver` (BOOT_COMPLETED, MY_PACKAGE_REPLACED) and
+`GuardService` (foreground, the quietest channel, or Android stops it once the app leaves the screen). No native code, no
+design system, no singleton of the main process; `AuraApp.onCreate` returns at once there; a throw in it ends the process
+quietly, with no "keeps stopping" over the car's screen.
+* What the main process leaves: `files/guard-marks`, one line per event in one append (`S` start with the versionCode,
+  first thing in `AuraApp`, before anything native; `H` home wanted; `O` home drawn and 20 s later still here; `B` alive 60 s
+  without home to show; `W` its Wi-Fi step ran), and `files/guard-beat`: a counter the main thread moves every 5 s, written by
+  a thread of its own so a slow disk never holds the screen. Each line carries the boot id and `elapsedRealtime`: never the
+  wall clock, which head units set late. The beat is compared in `uptimeMillis`, which stands still while the unit sleeps.
+* What counts: starts of **this version in this boot** with no `O`, dead by now or frozen, newest first. An update is not
+  a failure (the old version's starts are another versionCode), a power cut is not (another boot id), the start still
+  running is not, a process that lived on with no home to show is not. Limit 3 in a row, or 3 freezes since the last
+  verdict. A verdict is once, until a healthy start: a new failure after that is a new story. `rollback.sh` leaves a reset
+  mark (`R`) in the file: a version that comes back in the same boot starts its count anew, since the older one between
+  leaves no marks.
+* The slow first start: while a version has never reached `O` (`GuardTrial.neverOk`) the limit is 4, and a stale beat or
+  an undrawn home takes 5 minutes instead of 90 s and 2 minutes: the first start after an install runs on code still being
+  compiled (3 minutes and more on the unit).
+* Staged by one constant, `GuardService.ACTS_FROM_CODE` = 2000000: below it the guard writes what it would have done to
+  `files/guard-log.txt` (the end of it is in Settings → About) and touches nothing. From 2.0, during the trial
+  (`GuardTrial`: 3 healthy starts and 30 min of use, `files/guard-trial`, per versionCode), and never in a call or in reverse:
+  ends a frozen process, and after the limit goes back to the saved copy, or with none takes the kill switch and the stock
+  launcher. After the trial it only opens AMRI Rescue. Debug: `debug.aura.guard.throw`, `.hangstart`, `.hang`, `.slow`,
+  `.trialmin` (`guard/GuardTest.kt`).
+* The Wi-Fi step: after a cold boot airplane mode stays on until `WifiOnStart` clears it, and a home screen that dies first
+  would leave the unit unreachable for a phone or a PC. `system/WifiStep.kt` is that one step, without anything of the main
+  process; the guard runs it 45 s after it came up when the boot has no `W` mark, also in 1.x, unless the owner's
+  `wifiOnStart` is off, the screen is off or ZLink holds the Wi-Fi.
+* AMRI Rescue (`guard/RescueActivity.kt`): a second launcher icon in the guard's process with plain Android views, for the
+  stock launcher's app list: back to the saved version, open the stock launcher, try again. AMRI's own drawer leaves its
+  own package out (`AppRepo`). HomeActivity is first in the manifest, so `getLaunchIntentForPackage` still gives home.
+* `CrashGuard.isCrashLoop` now also runs right after `install` in `AuraApp`: before, a throw in `AuraApp.onCreate` was
+  counted but the check lived in `HomeActivity`, which never ran. `bailOutAtStart`: nothing of the start-up runs (one of its
+  steps is what crashes), the give-backs get their 8 s, the process leaves, and the next start finds the kill switch on.
+* That move alone was not enough, as the emulator showed: from the second crash in a row Android 10 puts "AMRI keeps
+  stopping" over the screen and the crashed process waits for the answer, 5 minutes if nobody gives one, so the start
+  that would find the loop never comes. From the second crash on (and always with the kill switch on, behind the stock
+  launcher) CrashGuard's handler now leaves by itself, with the stack in the log and in `last_crash.txt`: a throw in
+  `AuraApp` went from 5 minutes under a dialog to kill switch on in under a second. A native crash cannot be helped that
+  way: the dialog still comes over the home screen, but the process is dead by then and home restarts under it.
+
+### The data rule of a way back
+1.19.0 must start on whatever a newer version left in `/data/data/com.abdllh.aura`. `Prefs.init` reads `accent` with
+`getInt` in `AuraApp.onCreate`: the same key stored as anything else throws there on every start, and until 1.19.1 nothing
+catches that, so the way back would have bricked the home screen.
+* A key in prefs files `aura`, `aura_crash`, `aura_music` or `aura_mapguard` never changes type. New settings go in new
+  files. `system/PrefTypes.kt` holds what 1.19.0 reads (`scripts/prefkeys.py` lists it from any tree); a debug build stops
+  at its start and at OK when a stored value has another type. R8 drops the check from a release.
+* `scripts/test-data-compat.ps1 -Old <1.19.0 with x86_64>` is the written test: let the newer build run, go down the way the
+  script does, and ask whether 1.19.0 comes up, home stays in front, and nothing crashed. Build the old APK from the tag:
+  the published asset is ARM only.
+* **The undo journal must stay live, same names and types, in prefs `aura`**: 1.19 and the restore use it to give back what is
+  taken. `barsAdded`, `barsReplacedStatus`; `replaceStockMusic`, `stockMusicApplied`, `stockMusicWasDisabled`; `volumeHud`,
+  `volumeHudStockOff`; `callCard`, `callWindowStockOff`; `auraRing`, `auraRingInstalled`; `musicKeysAura`, `musicKeyRulesOut`,
+  `musicKeyNote`; `fullOffOnAccOff`, `accOffModeSent`, `powerOffAskedAt`, `powerOffAskedBoot`; `zlinkGuard`, `zlinkOrigStyle`,
+  `zlinkSession`, `zlinkWifiWasOn`; `bootAnimCheckedFor`, `bootAnimInstalledMd5`, `bootAnimTries`; `circlesOff1`,
+  `circlesOffTries`, `removedRequested1`, `removedRequestedTries`, `betaLeftoversGone`, `wifiOnStart`, `wifiOnStartBoot`,
+  `wifiKeeper`, `nwdBootId`, `hideAndroidNotices`, `showPhoneMessages`, `showMessageText`, `handbrakeSeen`, `handbrakeFake`,
+  `musicSource`. A snapshot of old settings must never overwrite these blindly.
+* Files 1.19 reads stay readable or untouched: `files/offline/`, `my-cameras.json`, `amri-wake.bin`, `amri-wake-neg.bin`,
+  `amri-cmd-*.bin`, `wifi-log.txt`, `anim-scales`, `heads-up-before`. Component names stay: `BootHome`, `HomeActivity`,
+  `MusicActivity`, `AuraNotificationListener`, `InstallResultReceiver`, `PackageReplacedReceiver`, `BootReceiver`.
+
+### What was checked, on the emulator, and what only the unit can tell
+How (2026-11-04, CarUnit3, `-writable-system`, fresh userdata): 1.19.0 built from the tag with x86_64 went into
+`/system/priv-app/Aura` with the privapp XML through `scripts/emu-system-app.ps1`. `adb remount` cannot work on this image: its
+ext4 has `shared_blocks` (`mount -o rw,remount /` says "unsupported optional features (4000)"), so it would need overlayfs through
+`disable-verity`, whose vbmeta change makes the next boot loop. The script mounts the overlay by hand, framework stopped, and the
+package scan that follows is the code a boot runs. The root shell was `scripts/fake_adbd.py`, the releases `mock/server.py`, both
+through `adb reverse` (cleartext is only allowed to 127.0.0.1). SELinux permissive, as on the unit.
+
+| Step | What it showed |
+|---|---|
+| 1.19.0 as a system app | `SYSTEM`, `PRIVILEGED`, all 5 privileged permissions `granted=true` |
+| 1.19.0 → 1.19.1, tapped through the updater | `UPDATED_SYSTEM_APP`, hidden system package 1.19.0, 5 grants true, same data dir (inode, uid), test file intact; guard up, `O` 20 s after the draw |
+| The fetch (`debug.aura.rollback.url`, the real `out/release/aura-1.19.0.apk`) | saved with the pinned hash, `source: published`. Without the property: `not-unit`, no request |
+| "Try the way back" with that ARM-only copy | `Failure [INSTALL_FAILED_NO_MATCHING_ABIS…]`, `EXIT=1`, nothing changed, the reason in About. A real failure, so also the next row |
+| `rollback.sh` without `--test`, same copy | `EXIT=1`, then `HOME=com.android.launcher DISABLED=1` |
+| "Try the way back", a copy with x86_64 | 2 s. versionCode 1190099, hidden system package still there, 5 grants true, same inode, same MD5 of `aura.xml` and the test file; 1.19.0 home in front; no crash |
+| Framework restart (new system_server, new package scan) | still the /data copy, log `ignored: updated version 1190099 better than this 1190099`, grants true |
+| Back through the updater | "Version 1.19.1 is available" without a tap, one tap installs it. About: "Went from 1.19.1 to 1.19.0. The data stayed." |
+| 1.19.1 → 2.0.0, trial not passed / passed | stays 1.19.0 (`has not finished its trial`) / `aura-prev` is 1.19.1, `source: self`, hash equal to the installed APK |
+| 1.19.1, `kill -SEGV` loop | `3 starts in a row with no OK, 0 frozen: would go back to 1.19.0 (only watching in 1.x)`, nothing touched |
+| 1.19.1, main-thread hang | 95 s after the start: `has not answered for 90 s: would end that process` |
+| 1.19.1, throw in `AuraApp` | three crashes in under a second, the fourth start takes the kill switch; before the handler's change: 5 minutes behind "keeps stopping" |
+| 2.0.0 on trial, `kill -SEGV` loop | third death: `go back to 1.19.0`, done 30 s after the first kill; same grants and data |
+| 2.0.0 on trial, throw in `AuraApp` | back on 1.19.0 in 9 s, no kill switch left |
+| 2.0.0 on trial, main-thread hang | ended 3 times, about 100 s each, then back: 305 s in all |
+| 2.0.0 on trial, no saved copy | `kill switch and stock launcher`: `DISABLED=1`, home property stock, marker `crash`, `crashDisabled=true` |
+| 2.0.0, trial over, `kill -SEGV` loop | `trial over, offering Rescue`: Rescue in front, version unchanged |
+| A slow first start (fresh record, `AuraApp` takes 150 s) | nothing fired, `O` 170 s after the start |
+| AMRI Rescue | the three buttons did what they say; a second entry in the launcher query; AMRI's drawer leaves it out by package |
+| The guard's Wi-Fi step (airplane on, main dying at its start, `debug.aura.unit`) | `airplane was on, wifi on now`, through the root shell |
+| `scripts/test-data-compat.ps1` | all passed: 1.19.0 up on 2.0.0's data, home in front, no crash |
+| `clock24` stored as a string, debug build | `Pref 'clock24' in aura is stored as 's' but 1.19 reads it as 'b'…` at the start |
+| `aura-install.py rollback` over its own ADB client (fake_adbd) | from 2.0.0: `DONE: AMRI went back`; on 1.19.0: `not older`; `rollback.bat` reaches Python, which refuses the emulator as not a K2501 |
+| `pm uninstall` (way D) | `Success`, ROM copy active, new inode, `files/` and `shared_prefs/` empty |
+| `test-flash.ps1 -Quick -Serial emulator-5574` on 2.0.0's state, current installers over the 1.19.0 patch | `ALL TESTS PASSED (quick)`; then `DISABLED=1`, home stock, `amri-rollback/` gone, ROM copy active |
+| A real reboot | new boot id, the old boot's marks count for nothing, /data copy stays, data stays. The overlay goes with a reboot, and the system flag with it: that part says nothing about the unit |
+| Release APK | 18,346,775 B, 41 KB more than 1.19.0. R8 build with x86_64: guard up, `O`, counts; `:guard` 10.7 MB PSS (debug 32 MB) |
+
+Only the unit can tell: that its own `pm` takes `-r -d` as its bytecode says (the emulator's is AOSP's, and it behaved as read); the
+real ARM 1.19.0 installing; real adbd's hangup (fake_adbd runs through `adb exec-out`); how long dexopt takes the first start; whether
+the firmware shows "keeps stopping" at all; the stock launcher listing AMRI Rescue (its own list is not on the emulator, which has no
+`com.android.launcher` either, so "the stock launcher opens" was only seen as the home property and the kill switch); airplane mode
+after a real cold boot. "Try the way back" in 1.19.1 is there to answer the first three, at no risk. Once 1.19.1 runs: the
+About page's "Last time" line and the guard's lines are the report.
+
+**What this does not have:** no snapshot of the settings for the way down (not needed while 2.0 keeps to the data rule above), no
+phone trigger (Naghm), no acting in 1.x except the Wi-Fi step.
+
 ## Facts about the firmware (from the dump)
 * No `avb` flag in the vendor fstab → no dm-verity on system/vendor/product; vbmeta uses the public AOSP test keys.
 * `persist.nwd.launcher.default=<pkg>` makes the patched PackageManager return that package as HOME.

@@ -214,6 +214,7 @@ object UpdateManager {
                 }
                 post(State.Verifying(rel))
                 verify(rel, file)
+                Rollback.saveRunning(app, file.length()) // what is running now becomes the way back
                 post(State.Installing(rel))
                 main.postDelayed(installWatchdog, INSTALL_TIMEOUT_MS)
                 ApkInstaller.install(app, file) { installSession = it }
