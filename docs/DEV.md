@@ -1686,7 +1686,8 @@ redesign needs better, and nothing can be tried on the unit before a release, so
 * The race that cost a test: adbd sends SIGHUP to the whole process group when the shell it started ends. `nohup … &`
   followed by `exit` lost that race on a loaded emulator: "started", and then nothing at all. So the launcher ignores HUP
   before it forks (children are born ignoring it) and only ends once the child has written `running`; it says
-  `failed-to-start` if that never comes. `WifiKeeper`'s `nohup` has the same shape; its caller stays connected long enough.
+  `failed-to-start` if that never comes. `WifiKeeper`'s restart (`nohup sh -c … & echo started`) has the same shape and can
+  lose the same race, with no word in its log; it is not changed here.
 * The saved copy, `aura-prev.apk` + `aura-prev.json` (version, code, SHA-256, size, source), takes no room in the APK (the
   betas' bundled copy cost 12.6 MB). Two ways in: `Rollback.saveRunning`, called by the updater after it verified the
   download and before it installs, copies what `pm path` names; `Rollback.prepare`, 45 s after every start, fetches the

@@ -164,8 +164,9 @@ internal class GuardWatch(private val c: Context, private val h: Handler) {
         wifi(now)
         val cur = marks.starts.lastOrNull()
         val live = cur != null && alive(cur.pid)
-        // (the kill switch on: the stock launcher is the home screen, there is nothing to guard)
-        if (SystemProps.get(Device.DISABLED_PROP) != "1" && cur != null) {
+        // (the kill switch on by the owner's choice: the stock launcher is the home screen, there is nothing to guard. On
+        // by CrashGuard, which is quicker on a throw in AuraApp: that is a failure, and going back still beats the stock launcher)
+        if ((SystemProps.get(Device.DISABLED_PROP) != "1" || crashOff()) && cur != null) {
             if (live) { beat(cur, now, dt); draw(cur, now) } else noDrawSince = now
             kill()
             judge()
@@ -182,6 +183,7 @@ internal class GuardWatch(private val c: Context, private val h: Handler) {
     private fun read(f: File): Marks {
         val m = Marks()
         val version = BuildConfig.VERSION_CODE.toString()
+        var run: String? = null
         for (l in try { f.readLines() } catch (_: Throwable) { emptyList<String>() }) {
             val p = l.split(' ')
             if (p.size < 4 || p[1] != boot) continue
@@ -189,8 +191,13 @@ internal class GuardWatch(private val c: Context, private val h: Handler) {
             val pid = p[3].toIntOrNull() ?: continue
             val s = m.starts.lastOrNull { it.pid == pid }
             when (p[0]) {
-                // (only this version's: a start of the version before an update says nothing about this one)
-                GuardMarks.START -> if (p.getOrNull(4) == version) m.starts.add(Start(pid, t))
+                GuardMarks.START -> {
+                    // (only the last stretch of this version: what the version before an update did says nothing about this
+                    // one, nor what this one did before a way back and an update again, in one boot)
+                    val v = p.getOrNull(4)
+                    if (v != run) { run = v; m.starts.clear(); m.verdict = false }
+                    if (v == version) m.starts.add(Start(pid, t))
+                }
                 GuardMarks.HOME -> s?.home = true
                 GuardMarks.OK -> s?.let { it.ok = true; it.okAt = t }
                 GuardMarks.ALIVE -> s?.alive = true
@@ -292,7 +299,7 @@ internal class GuardWatch(private val c: Context, private val h: Handler) {
         val limit = if (trial.neverOk) LIMIT_FIRST else LIMIT
         if (n != loggedStreak) {
             // (a loop that goes on all day must not push everything else out of the log)
-            if (n > loggedStreak && (n <= limit || n % 20 == 0)) GuardLog.add(c, "a start died without OK: $n in a row this boot (limit $limit)")
+            if (n > loggedStreak && (n <= limit || n % 20 == 0)) GuardLog.add(c, "a start died or froze with no OK: $n in a row this boot (limit $limit)")
             loggedStreak = n
         }
         if (marks.verdict) return
@@ -305,19 +312,29 @@ internal class GuardWatch(private val c: Context, private val h: Handler) {
         if (mayAct && busy()) return // looked at again next time
         GuardMarks.add(c, GuardMarks.VERDICT)
         val p = Rollback.payload()
-        val plan = if (Rollback.usable(p)) "go back to ${p?.version}" else "kill switch and stock launcher (no version to go back to)"
+        val usable = Rollback.usable(p)
+        val crashed = SystemProps.get(Device.DISABLED_PROP) == "1" && crashOff()
+        val plan = if (usable) "go back to ${p?.version}" else "kill switch and stock launcher (no version to go back to)"
         when {
             !mayAct -> GuardLog.add(c, "$why: would $plan (only watching in 1.x)")
-            !Device.isDefaultHome(c) -> GuardLog.add(c, "$why: AMRI is not the home screen, nothing to do")
+            !crashed && !Device.isDefaultHome(c) -> GuardLog.add(c, "$why: AMRI is not the home screen, nothing to do")
             trial.passed -> {
                 GuardLog.add(c, "$why: trial over, offering Rescue")
                 RescueActivity.open(c)
             }
+            crashed && !usable -> GuardLog.add(c, "$why: CrashGuard has already taken the stock launcher, and there is no version to go back to")
             else -> {
                 GuardLog.add(c, "$why: $plan")
-                act(if (Rollback.usable(p)) p else null)
+                act(if (usable) p else null)
             }
         }
+    }
+
+    /** The kill switch was CrashGuard's doing (its marker says why; the marker is a file, so another process can read it). */
+    private fun crashOff(): Boolean = try {
+        File(c.filesDir, "disable_home").readText().startsWith("crash")
+    } catch (_: Throwable) {
+        false
     }
 
     private fun act(p: Rollback.Payload?) {

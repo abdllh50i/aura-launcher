@@ -125,6 +125,9 @@ note "EXIT=$code"
 
 note "NOW=$(installed)"
 sync
+# (again: a dying AMRI's crash guard may have switched it on while the install ran)
+setprop persist.aura.disabled 0
+rm -f /data/data/$PKG/files/disable_home /data/aura_disabled
 setprop persist.nwd.launcher.default $PKG
 am start -a android.intent.action.MAIN -c android.intent.category.HOME >/dev/null 2>&1
 note DONE
