@@ -130,13 +130,13 @@ It follows "Design system (1.12)" throughout: type roles, `Radius` / `Space` / `
     `MapPanel` keeps the activity's lifecycle (created/started/resumed) and replays it on the map when it is built.
     Until then, and until the map has drawn, its last picture shows (see Aura Maps, "The home map's start").
   * The CPU path's decoding threads run at default priority (they were above the UI thread). `CarFrames.warmUp`
-    still decodes the whole intro spin at every start: even with the GPU's frame file built, loading it takes longer
-    than the spin (1.2–1.5 s on the emulator, after the window shows), so the CPU draws most of it; skipping the
-    warm-up (a 1.12 test build did) showed the floor light alone, then the car popping in already turned.
-  * `CarStage.playIntro` never starts the spin without a frame: on the CPU path it waits for the spin's first frame or
-    the GPU (`introReady`, from the frame listener, the GL `onReady` and attach), at most 400 ms, its delay still
-    counted from the call. A touch during the wait shows the car at once.
-  * The app drawer's cells are built and their icons loaded 2.5 s after the entrance (`AppDrawer.prewarm`).
+    only runs when the GPU cannot draw this start's spin (no frame file known yet, or the GPU failed): see "Memory and
+    start-up cuts" below. Until 1.19 it decoded the whole spin at every start.
+  * `CarStage.playIntro` never starts the spin without a frame: with the frame file there it waits for the GPU's first
+    frame, the car faded out; on the CPU path for the spin's first frame or the GPU (`introReady`, from the frame
+    listener, the GL `onReady` and attach), at most 400 ms, its delay still counted from the call. A touch during the
+    wait shows the car at once.
+  * The app list is read, the drawer's cells built and their icons loaded 2.5 s after the entrance (`AppDrawer.prewarm`).
   * `MapGuard`'s start mark is a file, not a preferences `commit()` (see Aura Maps).
 * **The car's background.** `CarEtc` has no copies of the theme backgrounds: `CarStage` passes `Palette.bg` to
   `CarGlView`, and the frame file's hash includes it, so a new background colour rebuilds the file on its own. The car
@@ -172,6 +172,61 @@ It follows "Design system (1.12)" throughout: type roles, `Radius` / `Space` / `
 * Checking it: force-stop and start `.home.HomeActivity` for the entrance; pin six apps (long-press in the drawer) and
   switch "names under icons" for the dock's width; the Bluetooth debug broadcast twice with different titles, after
   tapping next, for the song change.
+
+### Memory and start-up cuts (the foundations of 2.0: nothing looks different)
+Home was the heavy screen, and almost none of its weight was code: the car's CPU path, its leftovers, the map's sprites and
+other apps' files. Each cut below keeps the old way as the fallback and says in Settings → About what it did, because none
+of it could be tried on the unit first.
+* **The car comes from the GPU at start (`CarStage.playIntro`, `CarGlView`, `CarEtc.readyNow`).** `CarFrames.warmUp`
+  decoded the whole spin at every start, up to 40 frames × 921,600 bytes, and drawing them on the canvas put each into
+  HWUI's texture cache, which then stayed full (27–29 MB) for as long as Home's window lived. It was there because a 1.12
+  test without it showed the floor light alone, then the car popping in already turned: the GPU wanted all 180 frames
+  before its first frame (1.2–1.5 s then, 300–900 ms now), could only start when the window's surface came with the first
+  draw, and the spin ran on its own clock meanwhile. Now, with the frame file known:
+  * `CarEtc.readyNow` tells from a few stats and a hash kept per APK (`carEtcHash`, "<version:size:time:frames>=<hash>"),
+    no asset opened. False once after each install or update: nothing has read that APK's frames yet, so that one start
+    takes the CPU path as before.
+  * The GL thread starts at the view's attach, on a 1×1 pbuffer, and loads the spin's 47 frames (44 + 3) before there is a
+    window surface. The other 133 follow one per message after the spin, at a touch, or 3 s later at most, nearest the
+    resting view first; a draw that needs one not in yet uses the nearest that is (`texOf`).
+  * The car stays faded out until the GPU's first frame, and that frame starts the spin: a slow GPU can only show a wait,
+    never a pop. Nothing is decoded for it meanwhile (`cpuDraws` false).
+  * Fallbacks: the GPU's first frame more than 1.5 s after the screen's (`onGpuLate`): no spin, the car fades in at rest
+    from one frame on the CPU and the GPU takes over in place. The GPU failing: `warmUp` and the CPU's spin, as on a first
+    start. A driver that refuses the pbuffer: all of it on the window's surface (`noOffscreen`). A rebuilt screen (a theme
+    change): the resting frame and its neighbours first, one CPU frame until they are in.
+  * Debug builds: `setprop debug.aura.car.slow <ms>`, `debug.aura.car.fail 1`, `debug.aura.car.nooff 1`.
+* **Nothing of the CPU path stays once the GPU draws (`CarFrames.gpuDraws`).** The decoded and encoded frames and the
+  queue are dropped, and a frame still being decoded is thrown away: the two 640×360 frames found alive in the LRU came in
+  after the old trim. The layer under the car (0.9 MB) is made each time the car comes to rest, no longer kept.
+* **The map's car sprites are 96 px, not 176 (`tools/car3d/pack_map.py`, `--size`).** The view is 92 dp and 1 dp is 1 px on
+  the panel, and all 73 stay decoded for the whole process: 9.04 → 2.69 MB, and 196 KB less in the APK. Rebuild larger if a
+  new design draws the car larger.
+* **Other apps' files are let go of (`system/IdleGc.kt`).** A name or an icon of another app goes through a `Resources` of
+  that app, which maps its APK until a garbage collection, and this process can go for hours without one: 15.7 MB of PSS on
+  the emulator (clean pages, so less real pressure than that). The list is read when the drawer's cells are built (2.5 s
+  after the entrance, not during `onCreate`), and one collection runs off the main thread 3 s after that, once lists and
+  icons are all in; again after the drawer closes, at most once a minute. The drawer's first open is as it was: moving the
+  icons to the first open would have cost the frames the sheet moves in. Anything new that reads other apps' names or
+  icons should ask `IdleGc.request` too.
+* **MapLibre's library loads off the main thread (`nav/MapLib.kt`).** At process start, in `AuraApp.onCreate`, not with the
+  kill switch on, not while `MapGuard` has anything on record, and not after a load that never came back (a mark on disk,
+  `map-lib-loading`: a native crash leaves no chance to write anything); those starts leave it to the map, as before. The
+  runtime's lock means the main thread can only wait for what is left of the load, never for more than it used to.
+* **The Music screen's equalizer (`EqualizerView`).** Eight frames a second instead of eleven, and never more than one
+  redraw waiting: each draw used to post its own, so a draw for any other reason could start a second round that never
+  ended. Every frame of it redraws the window for as long as a song plays.
+* **AMRI's code is compiled once per build (`system/DexCompile.kt`).** `cmd package compile -m speed-profile` through
+  `LocalAdb`, on the unit only, off the main thread: 37 of the 38 stock privileged apps ship compiled, AMRI does not, and
+  whether the system's idle job ever runs on a unit that goes off with the car is not known. First look 5 minutes (of the
+  unit being awake) after the process started, as the profile needs a run behind it, then every minute until the gear
+  says P, the screen is on and no call is up; three attempts per build. dex2oat runs under installd and swaps its files in
+  when it ends, so the running process is left alone and the new code is used from the next start. A debuggable build
+  always ends at `quicken` and says so. Debug builds with the fake adbd: `setprop debug.aura.compile <minutes>`.
+* **What it reports.** Settings → About: how the car started, with the GPU's times; the map library's load; the last
+  collection (PSS before and after); the compile. The same in the log: `AuraCar`, `AuraMap`, `AuraGc`, `AuraCompile`.
+
+@@NUMBERS@@
 
 ## Design system (1.12)
 Everything a screen is made of comes from `ui/`: colours (`Palette.kt`), sizes (`Tokens.kt`), shapes and shadows
@@ -1350,8 +1405,9 @@ spring back to the resting view (mirrored in RTL); the car eases towards the fin
 report unevenly); with the GPU drawing, motion goes straight to it without redrawing the view tree. Until the frames are
 in the GPU (the first start builds them), and for good if the GPU path fails, the stage draws on its own canvas
 (`ui/CarFrames.kt`: frames decoded on two threads into a small LRU; after a GPU failure also a memory-mapped raw frame
-file). The feel is set in degrees, so another frame step needs no retuning. Settings → About shows how the car is drawn
-and how fast it turned last time. The model itself is not in the repo.
+file). The frames of the intro go into the GPU first and the rest one by one after it ("Memory and start-up cuts"). The
+feel is set in degrees, so another frame step needs no retuning. Settings → About shows how the car is drawn, how it came
+on screen at this start and how fast it turned last time. The model itself is not in the repo.
 
 ### The voice assistant "عمري" (`voice/`)
 * Wake word, offline and without a model to download: a personal template matcher. The owner says "عمري" 4 times
