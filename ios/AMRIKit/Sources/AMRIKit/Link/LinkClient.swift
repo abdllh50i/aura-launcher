@@ -53,10 +53,13 @@ public final class LinkClient: @unchecked Sendable {
         return URLSession(configuration: config)
     }()
 
+    static let streamSilence: TimeInterval = 25
+
     private static let streams: URLSession = {
         let config = configuration()
-        // The unit sends a heartbeat every 15 s. This much silence means the link is gone.
-        config.timeoutIntervalForRequest = 40
+        // The unit sends a heartbeat every 15 s. This much silence means the link is gone, and the phone should stop saying
+        // "connected" and look again: the hotspot freezes for 5 to 8 s now and then, which this rides out.
+        config.timeoutIntervalForRequest = LinkClient.streamSilence
         config.timeoutIntervalForResource = 60 * 60 * 24
         return URLSession(configuration: config)
     }()
@@ -180,7 +183,7 @@ public final class LinkClient: @unchecked Sendable {
 
     /// `GET /v1/events`, until the stream ends or the task is cancelled.
     public func events() -> AsyncThrowingStream<LinkEvent, Error> {
-        var request = self.request("GET", "v1/events", timeout: 40)
+        var request = self.request("GET", "v1/events", timeout: LinkClient.streamSilence)
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         let stream = streamSession
         let frozen = request

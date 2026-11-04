@@ -65,6 +65,7 @@ jobs:
           xcodebuild -project Amri.xcodeproj -scheme Amri -configuration Release \
             -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath DerivedData \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
             build 2>&1 | tee evidence/build.txt | grep -E 'error:|BUILD |\*\* ' || true
           grep -q 'BUILD SUCCEEDED' evidence/build.txt
       - name: Package the IPAs for Sideloadly
