@@ -55,7 +55,10 @@ object Amri {
     private var recognizer: SpeechRecognizer? = null
     private var tts: TextToSpeech? = null
     private var ttsReady = false
-    private var pausedMedia = false
+    /** The music this request paused, and which it was: that comes back ([WakeMusic]), nothing else starts. */
+    private var paused: MediaMonitor.Paused? = null
+    /** ...when a phone call came meanwhile, at its end. */
+    private var afterCall: MediaMonitor.Paused? = null
     private var session = 0
     /** Set while Settings records the wake word: the background listener keeps off the microphone. */
     @Volatile var enrolling = false
@@ -104,6 +107,11 @@ object Amri {
                     }
                     if (callUntil > now && state == State.LISTENING) cancel(c)
                     AmriService.resumeMic() // off the microphone for the call, on again after it
+                    if (callUntil == 0L) afterCall?.let { p ->
+                        afterCall = null
+                        // (the moment the player waits for its own music after a call)
+                        main.postDelayed({ if (!somethingElsePlays(p)) MediaMonitor.playAgain(c.applicationContext, p) }, 1200L)
+                    }
                 }
             }, IntentFilter().apply {
                 addAction("com.bt.ACTION_BT_INCOMING_CALL")
@@ -188,11 +196,7 @@ object Amri {
         wokeAt = SystemClock.elapsedRealtime()
         playingAtWake = MediaMonitor.current
         AmriService.pauseMic() // the recogniser needs the microphone
-        pausedMedia = false
-        if (MediaMonitor.current?.playing == true) {
-            MediaMonitor.send(c, MediaMonitor.Key.PLAY_PAUSE)
-            pausedMedia = true
-        }
+        paused = MediaMonitor.pauseNow(c)
         AmriOverlay.show(c, AmriOverlay.Mode.LISTEN, c.getString(R.string.amri_listening))
         Chime.play {
             if (session != s || state != State.LISTENING) return@play
@@ -206,6 +210,9 @@ object Amri {
             }
         }
     }
+
+    /** Another source plays by now: what [p] paused does not take the speakers from it. */
+    private fun somethingElsePlays(p: MediaMonitor.Paused) = MediaMonitor.current?.let { it.playing && it.sourcePkg != p.source } == true
 
     /** Is there internet now (a validated network that the car's Wi-Fi watchdog does not know to be down)? */
     private fun online(c: Context): Boolean = try {
@@ -443,12 +450,13 @@ object Amri {
         return when (cmd) {
             Command.Next -> { media(c, MediaMonitor.Key.NEXT); Answer(s(R.string.amri_next)) }
             Command.Previous -> { media(c, MediaMonitor.Key.PREV); Answer(s(R.string.amri_previous)) }
-            Command.Pause -> { pausedMedia = false; Answer(s(R.string.amri_paused)) } // paused when it started listening
+            Command.Pause -> { paused = null; Answer(s(R.string.amri_paused)) } // paused when it started listening
             Command.Play -> {
+                val p = paused
                 when {
-                    pausedMedia -> { pausedMedia = false; MediaMonitor.send(c, MediaMonitor.Key.PLAY_PAUSE) }
+                    p != null -> { paused = null; MediaMonitor.playAgain(c, p) }
                     MediaMonitor.current?.playing == true -> {}
-                    MediaMonitor.current != null -> MediaMonitor.send(c, MediaMonitor.Key.PLAY_PAUSE)
+                    MediaMonitor.current != null -> MediaMonitor.play(c)
                     else -> openMusic(c, false)
                 }
                 Answer(s(R.string.amri_playing))
@@ -632,7 +640,7 @@ object Amri {
         if (best == null || com.abdllh.aura.util.TextMatch.score(name, best.label) < 0.8 || !repo.launch(c, best.pkg)) {
             return Answer(c.getString(R.string.amri_app_missing, name), error = true)
         }
-        pausedMedia = false // another app in front: the music stays as the owner left it
+        paused = null // another app in front: the music stays as the owner left it
         return Answer(c.getString(R.string.amri_open_app, best.label))
     }
 
@@ -650,7 +658,7 @@ object Amri {
                     !yt.play(c, song) { com.abdllh.aura.music.MusicActivity.open(c) } ->
                         give(Answer(c.getString(R.string.amri_song_no_app), error = true))
                     else -> {
-                        pausedMedia = false // it plays on its own; the music paused for the request stays paused
+                        paused = null // it plays on its own; the music paused for the request stays paused
                         give(Answer(if (song.artist.isBlank()) c.getString(R.string.amri_now_playing_title, song.title)
                             else c.getString(R.string.amri_song_playing, song.title, song.artist)))
                     }
@@ -661,9 +669,10 @@ object Amri {
 
     /** Next / previous: music the assistant paused plays on with the next song. */
     private fun media(c: Context, key: MediaMonitor.Key) {
-        if (pausedMedia) {
-            pausedMedia = false
-            MediaMonitor.send(c, MediaMonitor.Key.PLAY_PAUSE)
+        val p = paused
+        if (p != null) {
+            paused = null
+            MediaMonitor.playAgain(c, p)
             main.postDelayed({ MediaMonitor.send(c, key) }, 250)
         } else {
             MediaMonitor.send(c, key)
@@ -672,7 +681,7 @@ object Amri {
 
     /** The music screen on that source, playing (as the stock music key does). */
     private fun openMusic(c: Context, bt: Boolean) {
-        pausedMedia = false // it plays itself
+        paused = null // it plays itself
         com.abdllh.aura.music.MusicActivity.openInstead(c, bt)
     }
 
@@ -686,8 +695,13 @@ object Amri {
             if (!ended && session == s) {
                 ended = true
                 // music the assistant paused plays on, unless the owner wanted it stopped or changed
-                if (pausedMedia && cmd != Command.Pause && cmd != Command.Mute) MediaMonitor.send(c, MediaMonitor.Key.PLAY_PAUSE)
-                pausedMedia = false
+                val p = paused
+                paused = null
+                when (WakeMusic.after(p != null, cmd == Command.Pause || cmd == Command.Mute, p != null && somethingElsePlays(p), inCall)) {
+                    WakeMusic.Then.PLAY -> MediaMonitor.playAgain(c, p!!)
+                    WakeMusic.Then.AFTER_CALL -> afterCall = p
+                    WakeMusic.Then.LEAVE -> {}
+                }
                 heardBy = null
                 state = State.IDLE
                 AmriService.resumeMic()
