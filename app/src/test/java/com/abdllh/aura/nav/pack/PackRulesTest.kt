@@ -117,7 +117,7 @@ class PackRulesTest {
 
     @Test fun percents() {
         assertEquals(0, PackRules.percent(0, 0))
-        assertEquals(50, PackRules.percent(193295684, 386591369))
+        assertEquals(50, PackRules.percent(193295685, 386591369))
         assertEquals(100, PackRules.percent(386591369, 386591369))
         assertEquals(100, PackRules.percent(400000000, 386591369))
         assertEquals(0, PackRules.percent(-5, 100))

@@ -229,7 +229,10 @@ object PackManager {
             if (running) { stop = true; cancelWanted = true }
             running
         }
-        if (busy) return
+        if (busy) {
+            update { it.copy(state = State.PAUSED, bytesPerSec = 0) } // (the thread's way out then settles it)
+            return
+        }
         background("aura-pack-cancel") {
             discardStaging(c)
             settle(c, null)
@@ -474,6 +477,8 @@ object PackManager {
                 }
             } catch (e: IOException) {
                 Log.i(TAG, "resume without the server's manifest: $e")
+            } catch (e: PackRefused) {
+                Log.i(TAG, "the server's manifest is refused, going on with the one begun: ${e.message}")
             }
             return staged to s
         }

@@ -54,7 +54,13 @@ internal class PackJob(private val ctx: Context, private val m: PackManifest, pr
         progress.source = source.key
         progress.save()
         for (p in m.pieces) for (c in p.chunks) if (c.url in progress.done) File(stage, c.url + ".part").delete() // (a kill between the mark and the delete)
-        for (p in m.pieces) PackFiles.allocate(File(stage, p.name), p.size)
+        try {
+            for (p in m.pieces) PackFiles.allocate(File(stage, p.name), p.size)
+        } catch (r: PackRefused) {
+            // someone took the room after the check. With nothing fetched yet, the room taken here goes back at once
+            if (progress.done.isEmpty()) PackFiles.discard(stage, PackPaths.trash(ctx))
+            throw r
+        }
         var rounds = 0
         while (true) {
             fetchChunks()
