@@ -94,7 +94,7 @@ internal object NavDebug {
         Log.i(TAG, "nav state=${NavSession.state} dest=${NavSession.destination?.name} rerouting=${NavSession.rerouting} route=${r?.let { "${it.distance.toInt()}m/${it.steps.size}steps/named$named" }} " +
             "limits=${r?.limits?.metres?.toInt()} better=${r?.better != null}")
         Log.i(TAG, "progress along=${p?.along?.toInt()} next=${p?.next} toNext=${p?.toNext?.toInt()} left=${p?.remaining?.toInt()} kmh=${p?.speedKmh} off=${p?.offRoute}")
-        Log.i(TAG, "road limit=${w.limit} fromMap=${w.limitFromMap} over=${w.over} kmh=${w.speedKmh}")
+        Log.i(TAG, "road limit=${w.limit} fromMap=${w.limitFromMap} estimate=${w.estimate} over=${w.over} kmh=${w.speedKmh} spot=${w.spot?.kind} metres=${w.metres} guide=${r?.guide?.spots?.size}")
         Log.i(TAG, "media current=${MediaMonitor.current?.let { "'${it.title}' playing=${it.playing} from=${it.sourcePkg}" }}")
         val at = CarLocation.lastKnown()
         Log.i(TAG, String.format(Locale.ROOT, "dark=%b sun=%.1f at=%s", Theme.isDarkNow(), at?.let { Daylight.altitude(it.lat, it.lon, System.currentTimeMillis()) } ?: Double.NaN, at?.let { "${it.lat},${it.lon}" }))
