@@ -151,6 +151,12 @@
             android:exported="false"
             android:process=":route" />
 
+        <!-- Valhalla over the pack: bound while routes are asked for or a trip runs (nav/route/RouteClient.kt). -->
+        <service
+            android:name=".nav.route.RouteService"
+            android:exported="false"
+            android:process=":route" />
+
         <!-- Aura Music. Exported with MAIN: the firmware's source manager starts it for app id 2 (Music/Mode keys,
              USB insertion) once replace_source_list.xml points there. -->
         <activity

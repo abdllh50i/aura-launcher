@@ -45,6 +45,8 @@ class Route(val line: Polyline, val steps: List<Step>, val distance: Double, val
      * longer than BRouter's head start. Whoever shows this route takes it over when it fits ([NavSession]). Main thread.
      */
     var better: Route? = null
+    /** [duration] and the steps' times were scaled by a table fitted against another router, not real drives ([com.abdllh.aura.nav.route.EtaScale]). */
+    var etaEstimate = false
 
     /** Time left from a distance along the route, scaled by the steps' own speeds. */
     fun timeLeft(along: Double): Double {
@@ -88,6 +90,8 @@ object Router {
 
     /** [heading] (degrees) helps the router start in the direction the car is already moving. */
     fun route(from: LatLon, to: LatLon, heading: Double?, done: (Route?, String?) -> Unit) {
+        // 2.0's order, Valhalla first, while it is tried out (a preference, off by default: nav/route/RouteChain.kt)
+        if (com.abdllh.aura.nav.route.RouteChain.on) { com.abdllh.aura.nav.route.RouteChain.route(from, to, heading, done); return }
         val ctx = com.abdllh.aura.nav.offline.OfflineMaps.context
         val offline = ctx != null && com.abdllh.aura.nav.offline.OfflineRouter.canRoute(ctx, from, to)
         if (!offline) {
@@ -135,7 +139,7 @@ object Router {
         main.postDelayed({ headStartOver = true; decide() }, ONLINE_HEAD_START_MS)
     }
 
-    private fun online(from: LatLon, to: LatLon, heading: Double?): Pair<Route?, String?> = try {
+    internal fun online(from: LatLon, to: LatLon, heading: Double?): Pair<Route?, String?> = try {
         val coords = String.format(Locale.ROOT, "%.6f,%.6f;%.6f,%.6f", from.lon, from.lat, to.lon, to.lat)
         val bearings = heading?.let { String.format(Locale.ROOT, "&bearings=%d,60;", it.toInt().coerceIn(0, 359)) } ?: ""
         val r = parse(Places.get("$osrm/route/v1/driving/$coords?overview=full&geometries=geojson&steps=true$bearings"))
@@ -148,7 +152,14 @@ object Router {
     private fun parse(body: String): Route? {
         val o = JSONObject(body)
         if (o.optString("code") != "Ok") return null
-        val r = o.getJSONArray("routes").getJSONObject(0)
+        return parseRoute(o.getJSONArray("routes").getJSONObject(0), null)
+    }
+
+    /**
+     * One route of an OSRM answer, or of Valhalla's in that format: there [tune] gives each step its one name and its scaled
+     * time, before the step is placed on the line ([com.abdllh.aura.nav.route.StepTune]).
+     */
+    internal fun parseRoute(r: JSONObject, tune: com.abdllh.aura.nav.route.StepTune?): Route? {
         val coords = r.getJSONObject("geometry").getJSONArray("coordinates")
         val pts = ArrayList<LatLon>(coords.length())
         for (i in 0 until coords.length()) {
@@ -166,9 +177,12 @@ object Router {
                 val s = ss.getJSONObject(i)
                 val m = s.getJSONObject("maneuver")
                 val loc = m.getJSONArray("location")
-                steps.add(Step(m.optString("type"), m.optString("modifier"), m.optInt("exit", 0), s.optString("name"),
-                    s.optString("ref"), LatLon(loc.getDouble(1), loc.getDouble(0)), s.optDouble("distance", 0.0),
-                    s.optDouble("duration", 0.0), lanes = lanes(s), destinations = s.optString("destinations"),
+                val metres = s.optDouble("distance", 0.0)
+                val seconds = s.optDouble("duration", 0.0)
+                steps.add(Step(m.optString("type"), m.optString("modifier"), m.optInt("exit", 0),
+                    tune?.name(s.optString("name"), s.optString("ref")) ?: s.optString("name"),
+                    tune?.ref(s.optString("ref")) ?: s.optString("ref"), LatLon(loc.getDouble(1), loc.getDouble(0)), metres,
+                    tune?.seconds(metres, seconds) ?: seconds, lanes = lanes(s), destinations = s.optString("destinations"),
                     exits = s.optString("exits")))
             }
         }
@@ -180,7 +194,8 @@ object Router {
             seg = snap.segment
         }
         prepare(line, steps)
-        return Route(line, steps, r.optDouble("distance", line.length), r.optDouble("duration", 0.0))
+        val duration = if (tune != null) steps.sumOf { it.duration } else r.optDouble("duration", 0.0)
+        return Route(line, steps, r.optDouble("distance", line.length), duration).also { it.etaEstimate = tune != null }
     }
 
     /** The lanes where the step's manoeuvre is: its first intersection is the manoeuvre's own. */

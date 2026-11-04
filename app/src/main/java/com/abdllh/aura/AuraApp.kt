@@ -52,6 +52,7 @@ class AuraApp : Application() {
         com.abdllh.aura.nav.MapExtras.init(this) // what the owner added to the map (cameras, bumps, signals, limits)
         if (BuildConfig.DEBUG) com.abdllh.aura.nav.NavDebug.init(this)
         if (BuildConfig.DEBUG) com.abdllh.aura.nav.route.RouteProbe.debugInit(this)
+        if (BuildConfig.DEBUG) com.abdllh.aura.nav.route.RouteDebug.init(this)
         UpdateManager.init(this)
         CarAudio.init(this)
         // the status bar, the volume display and the screen-change animations are Aura's to change only while Aura is
