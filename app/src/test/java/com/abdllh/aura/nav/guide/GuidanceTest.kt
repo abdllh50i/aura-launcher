@@ -121,7 +121,7 @@ class GuidanceTest {
         assertFalse(s, s.contains("الإشارة"))
         assertTrue(s, s.contains("لف يمين"))
         // nearer, the ordinal comes
-        assertTrue(Kit.said(g, 1, 1000.0).contains("الثالثة"))
+        assertTrue(Kit.said(g, 1, 1500.0).contains("الثالثة"))
     }
 
     @Test fun aSignalAwayFromTheTurnIsNoLandmark() {

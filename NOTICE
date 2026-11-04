@@ -28,6 +28,16 @@ Valhalla 3.9.1 routing engine, through valhalla-mobile 0.6.4 (app/src/main/jniLi
   LZ4 (BSD 2-Clause), Abseil (Apache License 2.0), robin-hood-hashing (MIT), RapidJSON (MIT), unordered_dense (MIT), date and tz data (MIT, public domain).
   The route probe's tiles (app/src/main/assets/probe/route-probe.tgz) are built from OpenStreetMap data (ODbL), scripts in tools/mapbuild/.
 
+The map pack (a separate download, or a USB stick: base.mbtiles, route.tar, places.db, places.mbtiles, glyphs.db), whose own NOTICE-PACK.md and licence texts come with it and are shown from it:
+  OpenStreetMap: © OpenStreetMap contributors. Open Database License 1.0, contents under the Database Contents License (https://www.openstreetmap.org/copyright). The pack is a Derivative Database and is offered under the ODbL; the scripts that make it are public in tools/mapbuild/.
+  OpenMapTiles schema: © OpenMapTiles (https://openmaptiles.org), BSD and CC-BY. OSM water polygons: ODbL. Natural Earth: public domain.
+  Overture Maps Places: Overture Maps Foundation, overturemaps.org. Community Data License Agreement Permissive 2.0; data that came from Foursquare under the Apache License 2.0.
+    Copyright 2024 Foursquare Labs, Inc. All rights reserved. Foursquare data was transformed to the Overture schema. Merged with OpenStreetMap's rows in places.db, under the ODbL with these notices kept.
+  Overture Maps Divisions: © OpenStreetMap contributors, Overture Maps Foundation. ODbL; some sources CC BY 4.0.
+  The signals, cameras and limits the owner of the unit added to the map (the repository's branch mapdata), under the same terms.
+  glyphs.db: the map's words in Readex Pro AMRI, as above, SIL Open Font License 1.1.
+  On the map, while the pack draws: © OpenStreetMap contributors · © OpenMapTiles · Overture Maps.
+
 Map data © OpenStreetMap contributors, available under the Open Database License (ODbL) — https://www.openstreetmap.org/copyright
   Vector tiles and fonts: OpenFreeMap (https://openfreemap.org). Place search: Photon by komoot (https://photon.komoot.io).
   Routing: OSRM (https://project-osrm.org). The map shows the OpenStreetMap / OpenFreeMap attribution.
