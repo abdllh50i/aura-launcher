@@ -3,8 +3,9 @@
 
   python -I pack_e2e.py --serial emulator-5578 --pack D:\\k2501-work\\mapbuild\\out\\pack --package com.abdllh.aura.standin [--lock D:\\k2501-work\\emu-emulator-5578.lock] scenario...
 
-Scenarios: refusals space full kill points drops faults update usb usbroot trip reboot powercut fulldisk all
-Needs: the debug app installed, a server on --port (started here if none answers), root on the emulator (adb root). Take the emulator's lock first. The app's files/maps2 is wiped between scenarios.
+Scenarios: refusals space full kill points drops faults update usb usbroot trip reboot powercut fulldisk hotspot misc all
+Needs: the debug app installed, a server on --port (started here if none answers), root on the emulator (adb root). Take the emulator's lock first. The app's files/maps2 and files/offline are wiped between scenarios: use a copy of the app of your own (-PstandIn), and afterwards
+uninstall it and set the home app back: a second home screen makes Android forget the chosen one (cmd package set-home-activity com.abdllh.aura/.home.HomeActivity).
 """
 import argparse
 import hashlib
@@ -292,6 +293,8 @@ def full():
         if s.get("state") in ("INSTALLED", "FAILED", "NO_SPACE"):
             break
         samples.append((time.time() - t0, s.get("state"), int(s.get("percent", 0)), int(s.get("speed", 0)), pss_kb()))
+        if not T.fg and s.get("state") == "FETCHING":
+            T.fg = sh(f"dumpsys activity services {T.pkg} | grep -E 'PackService|isForeground'")
         # (the thread's numbers are gone once it ends: the last look while it runs)
         now = proc_cpu(p)
         if cpu0 is None:
@@ -315,6 +318,8 @@ def full():
               f"served {st['served_total']} in {st['requests']} requests through {st['redirects']} redirects, If-Range seen {st['if_range_seen']}; {how}; {line[-1].split('installed ', 1)[1] if line else ''}")
     result("full install", ok and st["served_total"] == total and s.get("state") == "INSTALLED" and not fatal(t0), detail)
     T.samples = samples
+    fg_after = sh(f"dumpsys activity services {T.pkg} | grep -c PackService")
+    result("foreground while running", "isForeground=true" in T.fg and fg_after == "0", f"while fetching: {' '.join(T.fg.split())[:150]}; PackService records after: {fg_after}")
     print("    paths", T.log.since(t0, r"paths base")[-1:] or "")
 
 
@@ -861,6 +866,7 @@ def main():
     T.serial, T.pack, T.pkg, T.port, T.results = a.serial, a.pack, a.package, a.port, []
     T.lock_file = a.lock
     T.last_hash = ""
+    T.fg = ""
     if a.lock:
         threading.Thread(target=touch_lock, daemon=True).start()
     server = None

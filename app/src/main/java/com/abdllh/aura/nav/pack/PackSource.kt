@@ -20,6 +20,9 @@ internal interface PackTicker {
 /** A chunk's file on a source is not there. On a server: not published (yet), or a release that was changed. */
 internal class PackMissing(what: String) : IOException(what)
 
+/** A chunk's file on a stick that cannot be the one the manifest means: no use trying again. */
+internal class PackDamaged(what: String) : IOException(what)
+
 /** Where the chunks come from. Same names, same hashes, whichever it is. [fetch] blocks, and throws IOException on any failure: the job retries. */
 internal interface PackSource {
     /** "url:<base>" or "usb:<folder>": kept in progress.json, to go on from there after a restart. */
@@ -167,7 +170,7 @@ internal class FileSource(private val dir: File) : PackSource {
         if (have == bytes) return
         val src = File(dir, name)
         if (!src.isFile) throw PackMissing(name)
-        if (src.length() != bytes) throw IOException("$name: ${src.length()} bytes, wanted $bytes")
+        if (src.length() != bytes) throw PackDamaged("$name: ${src.length()} bytes, wanted $bytes")
         RandomAccessFile(part, "rw").use { raf ->
             raf.setLength(have)
             raf.seek(have)
@@ -202,7 +205,7 @@ internal class RootSource(private val dir: String) : PackSource {
     override val usb = true
 
     override fun manifestText(): String {
-        val r = LocalAdb.run("cat ${quote("$dir/manifest.json")}", 15_000)
+        val r = LocalAdb.run("head -c ${PackManifest.MAX_TEXT} ${quote("$dir/manifest.json")}", 15_000) // (no more than a manifest: this comes back as text, in memory)
         if (!r.ok) throw IOException("root cat: ${r.output}")
         return r.output
     }
@@ -229,7 +232,7 @@ internal class RootSource(private val dir: String) : PackSource {
             t.bytes(now - have)
             have = now
             block += COUNT
-            if (now > bytes) throw IOException("$name is longer than the manifest says")
+            if (now > bytes) { part.delete(); throw PackDamaged("$name is longer than the manifest says") }
         }
         FileInputStream(part).use { it.fd.sync() }
     }

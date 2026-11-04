@@ -139,6 +139,7 @@ internal class PackJob(private val ctx: Context, private val m: PackManifest, pr
     /** A failed fetch: decides between going on and giving up; returns the new count of failures in a row, after waiting. */
     private fun failed(e: IOException, name: String, part: File, had: Long, before: Int): Int {
         if (PackRules.noSpace(e.message)) throw PackRefused(PackProblem.SPACE, "$name: $e")
+        if (e is PackDamaged) throw PackRefused(PackProblem.USB_DAMAGED, "$name: $e")
         // it brought something: the link works, the drops are its nature, and the next wait is short again
         val attempt = if ((if (part.isFile) part.length() else 0L) > had) 1 else before + 1
         Log.i(TAG, "$name: $e (failure $attempt, part ${part.length()})")
