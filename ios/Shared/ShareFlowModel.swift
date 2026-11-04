@@ -59,7 +59,7 @@ final class ShareFlowModel: ObservableObject {
         self.resolver = resolver ?? ShareResolver(
             follow: { await ShareResolver.followOnce($0) },
             lookupPlaceID: { await PlaceQueries.lookup(placeID: $0) },
-            search: { (try? await PlaceQueries.text($0, near: nil)) ?? [] })
+            search: { (try? await PlaceQueries.best($0, near: nil)) ?? [] })
     }
 
     /// For the test and screenshot screens: start in a given stage.

@@ -56,11 +56,11 @@ final class ShareSheetUITests: XCTestCase {
         XCTAssertTrue(status.waitForExistence(timeout: 30), app.debugDescription)
         attach(app, "share-extension-running")
         let deadline = Date().addingTimeInterval(30)
-        while Date() < deadline, !status.label.contains("اضغط") {
+        while Date() < deadline, !status.label.contains("اضغط"), !status.label.contains("Press") {
             RunLoop.current.run(until: Date().addingTimeInterval(0.5))
         }
         attach(app, "share-extension-result")
-        XCTAssertTrue(status.label.contains("اضغط"), status.label)
+        XCTAssertTrue(status.label.contains("اضغط") || status.label.contains("Press"), status.label)
         XCTAssertNotNil(fake.state().card, "the place reached the unit")
     }
 

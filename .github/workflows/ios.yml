@@ -138,12 +138,15 @@ jobs:
             | tee evidence/simulator-build.txt | grep -E 'error:|BUILD |\*\* ' || true
           grep -q 'SUCCEEDED' evidence/simulator-build.txt
       - name: Boot the simulator and install
-        run: python3 tools/capture_simulator.py --boot-only
+        run: python3 tools/capture_simulator.py --boot-only --arabic-device
       - name: Start the fake unit
         run: |
           node tools/fake_unit.mjs --port 47101 --adb 15555:K2501 --adb "15556:Pixel 7" --route-delay 1500 --progress-ms 3000 --eta 9:41 > evidence/fake-unit.txt 2>&1 &
           echo "127.0.0.1:47101" > /tmp/amri-fake-unit
-          sleep 1
+          for i in $(seq 1 40); do
+            curl -s http://127.0.0.1:47101/v1/ping && break
+            sleep 0.5
+          done
           curl -s http://127.0.0.1:47101/v1/ping
       - name: UI tests
         run: |

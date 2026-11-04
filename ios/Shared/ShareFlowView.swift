@@ -82,7 +82,6 @@ struct SendPlaceHeader: View {
                     Image(uiImage: snapshot)
                         .resizable()
                         .scaledToFill()
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
                 }
                 Image(systemName: "mappin.circle.fill")
                     .font(.system(size: 34))
@@ -92,7 +91,7 @@ struct SendPlaceHeader: View {
             }
             .frame(height: 130)
             .frame(maxWidth: .infinity)
-            .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
             .accessibilityHidden(true)
             Text(verbatim: place.name)
                 .font(Theme.Fonts.title)

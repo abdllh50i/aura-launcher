@@ -72,6 +72,8 @@ final class AmriFlowUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         field.tap()
         field.typeText("الراشد")
+        XCTAssertTrue(element(app, "suggestion-0").waitForExistence(timeout: 10), app.debugDescription)
+        shot("typing")
         tap(app, "suggestion-0")
         XCTAssertTrue(element(app, "placeName").waitForExistence(timeout: 10), app.debugDescription)
     }

@@ -96,15 +96,27 @@ public enum LinkCheck {
         return NetworkInterfaces.isPrivate(bits)
     }
 
-    /// The fixed list, then each chip's category. Under Apple's roughly 50 requests a minute.
+    /// The fixed list, each four ways, then each chip's category. Under Apple's roughly 50 requests a minute.
     public static func mapProbe(near: CLLocationCoordinate2D?) async -> (rows: [MapProbeRow], categories: [MapProbeRow]) {
         var rows: [MapProbeRow] = []
         for query in queries {
             do {
-                rows.append(row(query, places: try await PlaceQueries.text(query, near: near), near: near))
+                rows.append(row("بحث عمري: \(query)", places: try await PlaceQueries.best(query, near: near), near: near))
             } catch {
-                rows.append(MapProbeRow(query: query, problem: "\(error)"))
+                rows.append(MapProbeRow(query: "بحث عمري: \(query)", problem: "\(error)"))
             }
+            do {
+                rows.append(row("نص خام: \(query)", places: try await PlaceQueries.text(query, near: near), near: near))
+            } catch {
+                rows.append(MapProbeRow(query: "نص خام: \(query)", problem: "\(error)"))
+            }
+            do {
+                rows.append(row("أماكن فقط: \(query)", places: try await PlaceQueries.pointsOfInterest(query, near: near), near: near))
+            } catch {
+                rows.append(MapProbeRow(query: "أماكن فقط: \(query)", problem: "\(error)"))
+            }
+            let suggestions = await PlaceQueries.suggestions(query, near: near)
+            rows.append(MapProbeRow(query: "اقتراحات: \(query)", count: suggestions.count, names: suggestions.prefix(3).map { "\($0.title) (\($0.subtitle))" }))
         }
         var categories: [MapProbeRow] = []
         for category in PlaceCategory.allCases {

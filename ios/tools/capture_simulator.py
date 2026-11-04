@@ -59,6 +59,14 @@ def main():
     if device["state"] != "Booted":
         run("xcrun", "simctl", "boot", udid)
     run("xcrun", "simctl", "bootstatus", udid, "-b", timeout=420)
+    if "--arabic-device" in sys.argv:
+        # The whole phone in Arabic, like his: the system's own share sheet and the extension too. Launch arguments only
+        # reach the app's own process.
+        run("xcrun", "simctl", "spawn", udid, "defaults", "write", "Apple Global Domain", "AppleLanguages", "-array", "ar")
+        run("xcrun", "simctl", "spawn", udid, "defaults", "write", "Apple Global Domain", "AppleLocale", "-string", "ar_SA")
+        run("xcrun", "simctl", "shutdown", udid)
+        run("xcrun", "simctl", "boot", udid)
+        run("xcrun", "simctl", "bootstatus", udid, "-b", timeout=420)
     run("xcrun", "simctl", "status_bar", udid, "override", "--time", "9:41", "--batteryState", "charged",
         "--batteryLevel", "100", "--wifiBars", "3", "--cellularBars", "4")
     run("xcrun", "simctl", "location", udid, "set", "26.2894,50.1975")
@@ -72,7 +80,7 @@ def main():
     launch(udid, "home", "ar")
     time.sleep(12)
 
-    only = sys.argv[1:]
+    only = [item for item in sys.argv[1:] if not item.startswith("--")]
     for screen in ARABIC:
         if not only or screen in only:
             shoot(udid, screen, "ar")

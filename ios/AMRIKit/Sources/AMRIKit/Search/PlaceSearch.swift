@@ -41,6 +41,21 @@ public enum PlaceCategory: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// A word that means the whole category. Apple's text search answers these badly in Arabic ("صيدلية" brought nothing and
+    /// "قهوة" brought a district, in the CI's probe), so typing one does what its chip does.
+    public static func meant(by text: String) -> PlaceCategory? {
+        let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch words {
+        case "بنزين", "محطة بنزين", "محطه بنزين", "محطة وقود", "محطه وقود", "وقود", "بترول", "محطة بترول": return .gas
+        case "قهوة", "قهوه", "كافيه", "كوفي", "مقهى", "كافي": return .coffee
+        case "صيدلية", "صيدليه": return .pharmacy
+        case "صراف", "صراف آلي", "صراف الي": return .atm
+        case "مستشفى", "مستشفي": return .hospital
+        case "مطعم", "مطاعم": return .restaurant
+        default: return nil
+        }
+    }
+
     public var symbol: String {
         switch self {
         case .gas: return "fuelpump.fill"
@@ -125,9 +140,7 @@ public final class MapKitSearch: NSObject, PlaceSearchEngine, MKLocalSearchCompl
     }
 
     public func search(text: String, near: CLLocationCoordinate2D?) async throws -> [PhonePlace] {
-        let request = MKLocalSearch.Request()
-        request.naturalLanguageQuery = text
-        return try await run(request, near: near)
+        try await PlaceQueries.best(text, near: near)
     }
 
     public func search(suggestion: PlaceSuggestion, near: CLLocationCoordinate2D?) async throws -> [PhonePlace] {
@@ -162,10 +175,45 @@ public enum PlaceQueries {
         return try await start(request, near: near)
     }
 
+    /// Apple's suggestions for what was typed, as the search box gets them. For the link check.
+    @MainActor
+    public static func suggestions(_ text: String, near: CLLocationCoordinate2D?, wait: TimeInterval = 3) async -> [PlaceSuggestion] {
+        await SuggestionProbe().run(text, near: near, wait: wait)
+    }
+
+    /// The words as they are, with no help. The link check reports this next to `best`.
     public static func text(_ text: String, near: CLLocationCoordinate2D?) async throws -> [PhonePlace] {
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = text
         return try await run(request, near: near)
+    }
+
+    /// The same words, asking for points of interest only: asked for both, Apple often answers with one far district.
+    public static func pointsOfInterest(_ text: String, near: CLLocationCoordinate2D?) async throws -> [PhonePlace] {
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = text
+        request.resultTypes = [.pointOfInterest]
+        if let near {
+            request.region = MKCoordinateRegion(center: near, latitudinalMeters: 60_000, longitudinalMeters: 60_000)
+            let places = try await start(request, near: near)
+            if !places.isEmpty { return places }
+        }
+        request.region = SaudiArea.region
+        return try await start(request, near: near)
+    }
+
+    /// What the search box does: a word that means a category is that category; otherwise places first, then addresses
+    /// (a short address, a district), each kept only if it is not one of the places already.
+    public static func best(_ text: String, near: CLLocationCoordinate2D?) async throws -> [PhonePlace] {
+        if let category = PlaceCategory.meant(by: text) {
+            let found = try await PlaceQueries.category(category, near: near)
+            if !found.isEmpty { return found }
+        }
+        let places = try await pointsOfInterest(text, near: near)
+        let others = (try? await PlaceQueries.text(text, near: near)) ?? []
+        return places + others.filter { other in
+            !places.contains { abs($0.lat - other.lat) < 0.0005 && abs($0.lon - other.lon) < 0.0005 }
+        }
     }
 
     /// `MKLocalPointsOfInterestRequest` needs no Arabic matching, which is why chips use it. It has a radius limit, so when
@@ -248,6 +296,41 @@ public enum PlaceQueries {
         return places.sorted { a, b in
             here.distance(from: CLLocation(latitude: a.lat, longitude: a.lon)) < here.distance(from: CLLocation(latitude: b.lat, longitude: b.lon))
         }
+    }
+}
+
+/// One question to the completer, with a time limit: it answers through a delegate, or not at all.
+@MainActor
+private final class SuggestionProbe: NSObject, MKLocalSearchCompleterDelegate {
+    private let completer = MKLocalSearchCompleter()
+    private var finish: (([PlaceSuggestion]) -> Void)?
+
+    func run(_ text: String, near: CLLocationCoordinate2D?, wait: TimeInterval) async -> [PlaceSuggestion] {
+        await withCheckedContinuation { (continuation: CheckedContinuation<[PlaceSuggestion], Never>) in
+            finish = { continuation.resume(returning: $0) }
+            completer.delegate = self
+            completer.resultTypes = [.address, .pointOfInterest, .query]
+            completer.region = near.map { MKCoordinateRegion(center: $0, latitudinalMeters: 60_000, longitudinalMeters: 60_000) } ?? SaudiArea.region
+            completer.queryFragment = text
+            Task { [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+                self?.done([])
+            }
+        }
+    }
+
+    private func done(_ list: [PlaceSuggestion]) {
+        finish?(list)
+        finish = nil
+    }
+
+    nonisolated func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
+        let list = completer.results.map { PlaceSuggestion(completion: $0) }
+        Task { @MainActor in self.done(list) }
+    }
+
+    nonisolated func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
+        Task { @MainActor in self.done([]) }
     }
 }
 
