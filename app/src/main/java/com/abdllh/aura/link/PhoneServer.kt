@@ -164,7 +164,8 @@ object PhoneServer {
         }
         val socket = ss
         if (socket == null) {
-            status = Status.FAILED
+            // (switched off and on quickly: another of these threads may hold the port by now)
+            synchronized(this) { if (server == null) status = if (enabled) Status.FAILED else Status.OFF }
             changed()
             return
         }
@@ -648,7 +649,8 @@ object PhoneServer {
         if (q.length < 2) { reply(c, 400, reason("bad_query")); return }
         if (b.optString("on", "screen") == "phone") {
             val list = NavBridge.lookup(q)
-            if (list == null) { reply(c, 200, JSONObject().put("state", "offline")); return }
+            // (the search service did not answer in time and no offline map could: not the same as "nothing found")
+            if (list == null) { reply(c, 200, JSONObject().put("state", "no_answer")); return }
             reply(c, 200, JSONObject().put("state", "ok").put("results", list))
             return
         }
@@ -687,8 +689,12 @@ object PhoneServer {
         }
         // (a key with null clears that place; a key that is not there leaves it)
         fun one(key: String): Pair<Boolean, Place?> = b.has(key) to placeOf(b.optJSONObject(key))?.let(::named)
-        NavBridge.setPlaces(one("home"), one("work"), many("favourites"), many("recents"))
-        reply(c, 200, NavBridge.places())
+        val home = one("home")
+        val work = one("work")
+        val favourites = many("favourites")
+        val recents = many("recents")
+        val now = NavBridge.ask(1500) { NavBridge.setPlaces(home, work, favourites, recents); NavBridge.places() }
+        if (now == null) reply(c, 503, reason("busy")) else reply(c, 200, now)
     }
 
     private fun remote(c: Conn, r: Request) {
@@ -803,6 +809,14 @@ object PhoneServer {
                 send(c, 200, "image/png", png.toByteArray(), "X-Qr-Size: ${m.size}\r\n")
             }
             "/debug/code" -> reply(c, 200, JSONObject().put("code", Pairing.show(SystemClock.elapsedRealtime())))
+            // what the voice would make of a sentence, and the one place it would take a search's answer to mean
+            "/debug/command" -> reply(c, 200, JSONObject().put("command", com.abdllh.aura.voice.Command.parse(b.optString("text"))?.let { it.javaClass.simpleName + " " + it }))
+            "/debug/winner" -> {
+                val a = b.optJSONArray("list") ?: JSONArray()
+                val list = (0 until a.length()).mapNotNull { placeOf(a.optJSONObject(it)) }
+                val w = com.abdllh.aura.nav.Places.clearWinner(b.optString("q"), list, placeOf(b.optJSONObject("near"))?.pos)
+                reply(c, 200, JSONObject().put("winner", w?.name ?: JSONObject.NULL))
+            }
             "/debug/hidecode" -> { Pairing.hide(); reply(c, 200, JSONObject()) }
             "/debug/forget" -> { Pairing.forgetAll(); reply(c, 200, JSONObject()) }
             "/debug/peer" -> {

@@ -143,15 +143,17 @@ internal sealed class Command {
             val go = has("ودن", "وديني", "ودينا", "خذني", "خذنا", "وصلني", "وصلنا", "روح", "نروح", "رح", "طريق", "go", "take", "navigate")
             if (has("البيت", "بيتي", "المنزل", "home") && go && !has("home screen")) return Navigate(true)
             if (has("الدوام", "الشغل", "العمل", "work") && go) return Navigate(false)
-            Place.values().firstOrNull { p -> has(*p.keys) }?.let { p ->
+            val dest = if (!go) null else after(words, "ودني", "وديني", "ودنا", "ودينا", "خذني", "خذنا", "وصلني", "وصلنا", "روح", "نروح", "رح", "take", "go", "navigate",
+                drop = setOf("على", "الى", "الي", "لين", "عند", "me", "to", "the", "يا", "لي"))
+            // (a university is no mosque: "جامعة" starts like "جامع")
+            Place.values().firstOrNull { p -> has(*p.keys) && !(p == Place.MOSQUE && word("جامعه", "الجامعه") && !has("مسجد", "المسجد")) }?.let { p ->
+                // "ودني مستشفى الموسى" names a place, which is not the nearest of its kind: that goes on below as a place
+                val kind = p.keys.flatMap { normalize(it).split(' ') } + KIND_FILLERS
+                val named = dest != null && !has("اقرب", "قريب", "nearest", "nearby") && dest.split(' ').any { d -> kind.none { d.startsWith(it) } }
                 // "وين أقرب محطة"; also the kind alone ("صيدلية؟"), or with "أبي" / "ودني"
-                if (go || words.size <= 3 || has("اقرب", "قريب", "وين", "دور", "ابي", "ابغى", "ابغي", "فيه", "find", "nearest", "nearby", "where", "need")) return Nearby(p)
+                if (!named && (go || words.size <= 3 || has("اقرب", "قريب", "وين", "دور", "ابي", "ابغى", "ابغي", "فيه", "find", "nearest", "nearby", "where", "need"))) return Nearby(p)
             }
-            if (go) {
-                val dest = after(words, "ودني", "وديني", "ودنا", "ودينا", "خذني", "خذنا", "وصلني", "وصلنا", "روح", "نروح", "رح", "take", "go", "navigate",
-                    drop = setOf("على", "الى", "الي", "لين", "عند", "me", "to", "the", "يا", "لي"))
-                if (dest != null && !mapsWord(dest)) return SearchPlace(dest)
-            }
+            if (dest != null && !mapsWord(dest)) return SearchPlace(dest)
             // ("ماب" only as a whole word: "مابي" is "I don't want")
             val maps = has("الملاحه", "ملاحه", "الخريطه", "خريطه", "الخرايط", "الخرائط", "خرائط", "navigation", "maps", "gps") ||
                 word("الماب", "ماب", "map")
@@ -193,6 +195,9 @@ internal sealed class Command {
 
         /** Apps one "plays" ("شغل يوتيوب"). */
         private val APPS = listOf("يوتيوب", "youtube", "الراديو", "راديو", "radio", "انغامي", "anghami", "سبوتيفاي", "spotify", "شاهد", "نتفلكس", "netflix")
+
+        /** Words beside a kind that name no place: "محطة بنزين", "مغسلة سيارات", "a hospital". */
+        private val KIND_FILLERS = listOf("سيار", "السيار", "اي", "a", "an", "car", "gas", "station")
 
         private fun mapsWord(s: String) = s.split(' ').any { it in setOf("الخريطه", "الملاحه", "الماب", "map", "maps") }
 

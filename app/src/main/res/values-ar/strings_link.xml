@@ -41,6 +41,7 @@
     <string name="link_started">بدأت الاتجاهات إلى %1$s</string>
     <string name="link_cancel">إلغاء</string>
     <string name="link_failed">ما لقيت طريق إلى %1$s. تقدر تعيد المحاولة من الخريطة.</string>
+    <string name="link_failed_kept">ما لقيت طريق إلى %1$s. رحلتك الحالية مستمرة.</string>
     <!-- المساعد -->
     <string name="amri_place_chosen">أبشر، أوديك إلى %1$s، تبعد %2$s</string>
     <string name="amri_place_card">%1$s: اختر من الشاشة</string>

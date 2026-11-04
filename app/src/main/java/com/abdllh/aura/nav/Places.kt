@@ -42,6 +42,11 @@ object Places {
     private const val SAME_ANSWER = 0.02
     private const val SAME_NAME = 0.95
     private const val SAME_SPOT_M = 300.0
+    private const val PARTLY = 0.4
+    /** Words that say what kind of place and not which ([TextMatch.norm]ed, without "ال"): alone they are a list to choose from. */
+    private val KIND_WORDS = setOf("شارع", "طريق", "حي", "دوار", "جسر", "كوبري", "سوق", "مول", "مجمع", "مركز", "مدرسه", "جامعه", "كليه", "مطار",
+        "ميناء", "نادي", "حديقه", "منتزه", "شاطي", "كورنيش", "شركه", "محل", "مكتبه", "مستوصف", "عياده", "street", "road", "mall", "market",
+        "airport", "school", "university", "park", "beach", "station")
     private val generation = AtomicInteger()
     const val USER_AGENT = "Aura/${BuildConfig.VERSION_NAME} (car head unit; github.com/abdllh50i/aura-launcher)"
 
@@ -111,14 +116,16 @@ object Places {
 
     /**
      * The one place a spoken name clearly means among [list] (a search's ranked answer), or null when it should stay a
-     * list to choose from. Clear: its name answers the query well (the query or a good part of it, "المطار" for "مطار
-     * الملك فهد"), and no other name answers it as well at about the same distance (branches of one name are one
-     * answer: the nearest). Beyond the region only a name that is exactly what was said: the namesake of a street or a
-     * shop 500 km away is not where a driver asks to be taken.
+     * list to choose from. Clear: its name answers the query well (the query or a good part of it, "الراشد" for "الراشد
+     * مول"), and no other name answers it as well at about the same distance (branches of one name are one answer: the
+     * nearest). Beyond the region only a name that is exactly what was said: the namesake of a street or a shop 500 km
+     * away is not where a driver asks to be taken. A word for a kind of place alone ([KIND_WORDS]) never is: "ودني
+     * المطار" must not end in the district called Al Matar, or "شارع" in the nearest Street 9.
      */
     fun clearWinner(query: String, list: List<Place>, near: LatLon?): Place? {
         if (near == null || TextMatch.norm(query).length < 3) return null
         val bare = TextMatch.norm(query).split(' ').joinToString(" ") { it.removePrefix("ال").ifEmpty { it } }
+        if (bare in KIND_WORDS) return null
         val latin = ArabicQuery.latin(query)
         fun score(p: Place): Double {
             val name = TextMatch.norm(p.name)
@@ -131,7 +138,8 @@ object Places {
         val nearest = strong.minOfOrNull { band(it.first) } ?: return null
         val here = strong.filter { band(it.first) == nearest }
         val best = here.maxOf { it.second }
-        if (nearest == 3 && best < 0.99) return null
+        // (and only when nothing nearer answers even partly: "مكتبة جرير" in another city, with "Jarir Bookstore" down the road, is a list)
+        if (nearest == 3 && (best < 0.99 || list.any { band(it) < 3 && score(it) >= PARTLY })) return null
         val rivals = here.filter { it.second >= best - SAME_ANSWER }.map { it.first }
         val winner = rivals.minByOrNull { Geo.distance(near, it.pos) } ?: return null
         // (another spelling of the name, or the map data's second entry for the same spot, is no rival)

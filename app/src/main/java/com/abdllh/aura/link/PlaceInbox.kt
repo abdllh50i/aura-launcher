@@ -62,6 +62,8 @@ internal object PlaceInbox {
     private var stage = Stage.TRIP
     private var heldSince = 0L
     private var shownPhase: Trips.Phase? = null
+    /** The card of a route being found, put away for a call or for reverse. */
+    private var cardAway = false
     private var watching = false
     /** A place whose route failed (or that waits for Go on the map): told "started" if the driver starts it there. */
     private var onMap: Incoming? = null
@@ -77,13 +79,17 @@ internal object PlaceInbox {
     }
 
     private val navListener: () -> Unit = {
-        val x = onMap
-        val d = NavSession.destination
-        if (x != null && d != null && NavSession.state == NavSession.State.NAVIGATING && samePlace(d, x.place)) {
-            onMap = null
-            if (current === x) current = null
-            tell(x, "started", trip())
-            note(x, "started")
+        try {
+            val x = onMap
+            val d = NavSession.destination
+            if (x != null && d != null && NavSession.state == NavSession.State.NAVIGATING && samePlace(d, x.place)) {
+                onMap = null
+                if (current === x) current = null
+                tell(x, "started", trip())
+                note(x, "started")
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "nav: $t")
         }
     }
 
@@ -148,7 +154,7 @@ internal object PlaceInbox {
         main.postDelayed(tick, 1000L)
     }
 
-    /** Once a second while something waits: the end of the call or of reverse; their start, while a card asks. */
+    /** Once a second while something waits or a card is up: the end of the call or of reverse; their start, which no card covers. */
     private val tick: Runnable = object : Runnable {
         override fun run() {
             try {
@@ -161,6 +167,14 @@ internal object PlaceInbox {
                         if (SystemClock.elapsedRealtime() - heldSince > HOLD_MS) { tell(x, "expired", null); note(x, "expired"); finishWith(x); return }
                     }
                     Stage.ASKING, Stage.REPLACING -> if (busy != null) { TripCard.hide(); hold(x, busy); return }
+                    // (the route goes on being found underneath; only its card makes way)
+                    Stage.TRIP -> {
+                        val a = Trips.attempt?.takeIf { it.place === x.place } ?: return
+                        if (busy != null && !cardAway) { cardAway = true; TripCard.hide() }
+                        else if (busy == null && cardAway) { cardAway = false; progressCard(c, x, a.phase) }
+                    }
+                    // (the trip has started; its cancel is on the Maps screen's End as well)
+                    Stage.CANCEL_WINDOW -> if (busy != null) { current = null; TripCard.hide(); return }
                     else -> return
                 }
                 main.postDelayed(this, 1000L)
@@ -237,6 +251,7 @@ internal object PlaceInbox {
     }
 
     private fun progressCard(c: Context, x: Incoming, phase: Trips.Phase) {
+        if (blocker() != null) { cardAway = true; return }
         val w = words(c)
         TripCard.show(c, caption(c, x), x.place.name,
             w.getString(if (phase == Trips.Phase.WAITING_FIX) R.string.maps_waiting_gps else R.string.maps_routing),
@@ -247,7 +262,9 @@ internal object PlaceInbox {
     private fun begin(c: Context, x: Incoming) {
         if (handedOver(c, x)) return
         stage = Stage.TRIP
+        cardAway = false
         main.removeCallbacks(tick)
+        main.postDelayed(tick, 1000L)
         // (Apple's terms keep its place data off the unit's lists: companion.md 2.6)
         val mayKeep = !x.src.contains("apple", ignoreCase = true)
         shownPhase = null // ([tripsListener] tells each phase, the first one too, and shows the card)
@@ -295,14 +312,19 @@ internal object PlaceInbox {
             NavSession.announce(line)
         }
         stage = Stage.CANCEL_WINDOW
-        val shown = TripCard.show(c, caption(c, x), line, where(x),
+        // (nothing over the camera or a call's card: then the trip just runs, with its End button on the Maps screen)
+        val busy = blocker()
+        val shown = busy == null && TripCard.show(c, caption(c, x), line, where(x),
             listOf(TripCard.Action(w.getString(R.string.link_cancel), false) { if (current === x) cancelled(x, "card") }), CANCEL_MS) {
             if (current === x) current = null
         }
-        // (no card here: Maps is in front with its End button, and this says what happened)
-        if (!shown) {
+        if (shown) {
+            main.removeCallbacks(tick)
+            main.postDelayed(tick, 1000L)
+        } else {
             current = null
-            Snack.show(w, line, long = true, outlives = true)
+            if (busy == null) Snack.show(w, line, long = true, outlives = true) // (no card here: this says what happened)
+            else TripCard.hide()
         }
     }
 
@@ -317,12 +339,18 @@ internal object PlaceInbox {
 
     /** No route, or no fix for too long: he hears so, and the place stays on the screen with the map's own retry. */
     private fun failed(c: Context, x: Incoming, why: String) {
-        tell(x, "failed", JSONObject().put("reason", why))
+        // (it was to replace the trip he is on: that trip goes on, with its panels, and no second place on top of them)
+        val onTrip = NavSession.state == NavSession.State.NAVIGATING
+        tell(x, "failed", JSONObject().put("reason", why).also { if (onTrip) it.put("kept", true) })
         note(x, "failed $why")
         val w = words(c)
         finishWith(x)
-        // (reversing meanwhile: not over the camera; the phone has been told)
-        if (Amri.reversing) return
+        // (a call or reverse meanwhile: not over them; the phone has been told)
+        if (blocker() != null) return
+        if (onTrip) {
+            TripCard.show(c, caption(c, x), w.getString(R.string.link_failed_kept, x.place.name), null, emptyList(), FAILED_MS, null)
+            return
+        }
         openOnMap(c, x)
         onMap = x
         TripCard.show(c, caption(c, x), w.getString(R.string.link_failed, x.place.name), null, emptyList(), FAILED_MS, null)

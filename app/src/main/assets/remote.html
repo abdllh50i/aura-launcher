@@ -239,13 +239,17 @@ function onNav(e) {
       say("في الطريق" + to, [e.remainingM != null ? "باقي " + km(e.remainingM) : "", e.timeLeftS != null ? mins(e.timeLeftS) : "", e.etaLocal ? "توصل " + e.etaLocal : ""].filter(Boolean).join(" · ") + (e.nextText ? "\n" + e.nextText : ""), "ok");
       break;
     case "arrived": say("وصلت" + to, null, "ok"); break;
-    case "failed": say("ما بدأت الاتجاهات" + to, FAILS[e.reason] || e.reason, "bad"); break;
+    case "failed": say("ما بدأت الاتجاهات" + to, e.kept ? "ما لقى طريق، ورحلتك الحالية مستمرة" : FAILS[e.reason] || e.reason, "bad"); break;
     case "cancelled": say("انلغت" + to, e.by === "phone" ? "من الجوال" : "من الشاشة", "warn"); break;
     case "ignored": say(e.kept ? "خلّى رحلته الحالية" : "انرفض من الشاشة", null, "warn"); break;
     case "expired": say("ما أحد رد على الشاشة، ما بدأت", null, "warn"); break;
     case "replaced": say("جا مكان أحدث مكانه", null, "warn"); break;
     case "handed": say("راح لتطبيق الملاحة في الشاشة", "ما يقول لي هل بدأ", "warn"); break;
-    case "idle": say("ما فيه رحلة الحين"); navName = ""; break;
+    case "idle":
+      if (e.pending && e.pending.place) say("على الشاشة: " + e.pending.place.name, e.pending.stage === "held" ? "ينتظر لين تخلص المكالمة أو الريوس" : "ينتظر ضغطة منك", "warn");
+      else say("ما فيه رحلة الحين");
+      navName = "";
+      break;
     default: return;
   }
   var active = e.state === "navigating" || e.state === "progress" || e.state === "started" || e.state === "arrived" || e.state === "routing" || e.state === "waiting_fix";
@@ -330,7 +334,12 @@ function answered(r) {
   if (r.status === 0) { say("ما قدرت أوصل للشاشة", "تأكد إن الجوال والشاشة على نفس الشبكة", "bad"); return; }
   if (r.status === 202 && j.place && j.place.name) navName = j.place.name;
   if (r.status === 202) {
-    if (j.state === "duplicate") return;
+    // an earlier try got there and only its answer was lost: what became of it, as far as the unit knows
+    if (j.state === "duplicate") {
+      if (j.last === "unresolved") say("ما قدرت أفهم اللي أرسلته", null, "bad");
+      else if (j.last && j.last !== "accepted") onNav({state: j.last});
+      return;
+    }
     if (j.needs === "tap") say("وصل للشاشة: ينتظر ضغطة منك", navName, "warn");
     else if (!paired) say("وصل للشاشة");
     else say("وصل للشاشة" + (navName ? ": " + navName : ""));
@@ -360,7 +369,7 @@ function search(q) {
     var f = $("found");
     f.textContent = "";
     if (r.status === 0) { say("ما قدرت أوصل للشاشة", null, "bad"); return; }
-    if (r.json.state === "offline") { say("الشاشة ما قدرت تبحث: ما فيه إنترنت ولا خريطة بدونه", null, "bad"); return; }
+    if (r.json.state === "no_answer") { say("البحث ما رد على الشاشة الحين", "جرّب مرة ثانية، أو الصق رابط الموقع", "bad"); return; }
     var list = r.json.results || [];
     if (!list.length) { say("ما لقيت " + q, null, "warn"); return; }
     say("اختر المكان", list.length + " نتيجة من الشاشة");

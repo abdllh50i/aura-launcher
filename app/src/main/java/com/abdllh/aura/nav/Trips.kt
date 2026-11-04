@@ -123,9 +123,14 @@ object Trips {
             when {
                 !a.wanted() -> finish(a, Outcome.DROPPED, "not wanted")
                 r == null -> finish(a, Outcome.FAILED, err ?: "no_route")
-                else -> {
+                else -> try {
                     start(c, a.place, r, a.source, a.remember)
                     finish(a, Outcome.STARTED, null)
+                } catch (t: Throwable) {
+                    // (what could not start did not start, and its asker hears that; the home screen stays up)
+                    Log.w(TAG, "start: $t")
+                    try { NavSession.stop() } catch (_: Throwable) { }
+                    finish(a, Outcome.FAILED, "start")
                 }
             }
         }

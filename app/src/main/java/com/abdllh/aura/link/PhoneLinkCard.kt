@@ -110,6 +110,8 @@ class PhoneLinkCard(private val ctx: Context) {
         showing = on
         if (on) justPaired = "" else Pairing.hide()
         refresh()
+        // (the code is what he came for: all of it into view, once it has its size)
+        if (on) qrRow.postDelayed({ qrRow.requestRectangleOnScreen(android.graphics.Rect(0, 0, qrRow.width, qrRow.height), false) }, 150L)
     }
 
     private fun refresh() {

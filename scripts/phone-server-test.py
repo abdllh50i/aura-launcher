@@ -19,6 +19,7 @@ import os
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 
@@ -306,7 +307,7 @@ def t_endpoints(token):
         s, j, _, _ = req("POST", "/v1/remote", {"cmd": cmd}, token)
         check("remote %s" % cmd, s == 200 and j["state"] == "ok" and "volume" in j, (s, j))
     s, j, _, _ = req("POST", "/v1/search", {"q": "pharmacy", "on": "phone"}, token, timeout=15)
-    check("search for the phone answers with results, or that it cannot", s == 200 and j["state"] in ("ok", "offline"), (s, j))
+    check("search for the phone answers with results, or that it cannot", s == 200 and j["state"] in ("ok", "no_answer"), (s, j))
     print("     search: %s" % (json.dumps(j, ensure_ascii=False)[:200]))
     return old_home
 
@@ -706,18 +707,24 @@ def t_many(token):
 
 
 def t_idle():
-    # one thread at rest
-    time.sleep(7)
+    # one thread at rest (a stream whose phone left without a word goes at the next heartbeat's failed write: up to 30 s)
     pid = shell("pidof com.abdllh.aura").strip()
-    threads = shell("ls /proc/%s/task | while read t; do cat /proc/%s/task/$t/comm; done" % (pid, pid))
-    names = [l for l in threads.split("\n") if "aura-phone" in l]
+    t0 = time.time()
+    while True:
+        threads = shell("ls /proc/%s/task | while read t; do cat /proc/%s/task/$t/comm; done" % (pid, pid))
+        # (aura-phonelink is Naghm's link, not this server)
+        names = [l.strip() for l in threads.split("\n") if "aura-phone" in l and "aura-phonelink" not in l]
+        if len(names) == 1 or time.time() - t0 > 40:
+            break
+        time.sleep(2)
+    print("     at rest after %.0f s: %s" % (time.time() - t0, names))
     check("at rest: one thread of the server's", len(names) == 1 and "acce" in names[0], names)
 
 
 def t_off():
     shell("am broadcast -a com.abdllh.aura.debug.LINK --ez on false")
     time.sleep(1)
-    listening = shell("netstat -lnt | grep 47101")
+    listening = shell("netstat -lnt | grep 47101 | grep LISTEN")
     check("switched off: the port is closed", "47101" not in listening, listening)
     try:
         req("GET", "/v1/ping", timeout=3)
@@ -731,6 +738,347 @@ def t_off():
     time.sleep(1.5)
     s, j, _, _ = req("GET", "/v1/ping")
     check("switched on again: it answers", s == 200, s)
+
+
+def front():
+    return shell("dumpsys activity activities | grep mResumedActivity")
+
+
+def state(token):
+    # (the main thread busy for over 1.5 s, a map opening on the emulator: told 503 "busy", asked again)
+    for _ in range(10):
+        j = req("GET", "/v1/state", token=token)[1]
+        if j and "nav" in j:
+            return j
+        time.sleep(0.5)
+    return j
+
+
+def wait_state(token, pred, timeout=20):
+    end = time.time() + timeout
+    while time.time() < end:
+        j = state(token)
+        if j and "nav" in j and pred(j):
+            return j
+        time.sleep(0.3)
+    return None
+
+
+def on_device(line):
+    """Arabic through a file on the device: the Windows command line would re-encode it (docs/DEV.md)."""
+    path = os.path.join(tempfile.gettempdir(), "aura-link-say.sh")
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(line + "\n")
+    adb("push", path, "/data/local/tmp/aura-link-say.sh")
+    shell("sh /data/local/tmp/aura-link-say.sh")
+
+
+def amri_say(text):
+    adb("logcat", "-c")
+    on_device('am broadcast -a com.abdllh.aura.debug.AMRI --es say "%s"' % text)
+
+
+def amri_log():
+    return adb("logcat", "-d", "-s", "AuraAmri:I")
+
+
+def t_voice_words():
+    """What the voice makes of a sentence, and which place of an answer it starts for: no search, no internet."""
+    for said, kind in [("ودني صيدلية", "Nearby"), ("ودني اقرب صيدلية", "Nearby"), ("ودني محطة بنزين", "Nearby"), ("ودني مغسلة سيارات", "Nearby"),
+                       ("ودني سوبر ماركت", "Nearby"), ("ودني مسجد", "Nearby"), ("ودني الجامع", "Nearby"), ("take me to a hospital", "Nearby"), ("وين اقرب محطة", "Nearby"),
+                       ("ودني مستشفى الموسى", "SearchPlace"), ("ودني جامعة الملك فهد", "SearchPlace"), ("ودني الجامعة", "SearchPlace"), ("خذني فندق الشيراتون", "SearchPlace"),
+                       ("ودني مطعم البيك", "SearchPlace"), ("ودني الراشد مول", "SearchPlace"), ("ودني المطار", "SearchPlace"), ("go to starbucks", "SearchPlace"),
+                       ("ودني البيت", "Navigate"), ("خذني الدوام", "Navigate"), ("وقف الملاحة", "StopTrip"), ("الغ الرحلة", "StopTrip"), ("افتح الخريطة", "OpenMaps")]:
+        s, j, _, _ = req("POST", "/debug/command", {"text": said})
+        check("voice words: %s is %s" % (said, kind), s == 200 and (j.get("command") or "").startswith(kind), j)
+    near = {"lat": 26.40, "lon": 50.09}
+    def p(name, lat, lon):
+        return {"name": name, "lat": lat, "lon": lon}
+    streets = [p("Street 9", 26.44, 50.10), p("Street 9", 26.44, 50.11), p("Street 8", 26.44, 50.12), p("Street 28", 26.43, 50.11)]
+    jarir = [p("Jarir Bookstore", 26.42, 50.09), p("Jarir Bookstore", 26.44, 50.10), p("Jarir Bookstore", 26.33, 50.20), p("مكتبة جرير", 25.3, 51.5)]
+    matar = [p("Al Matar", 26.31, 50.15), p("Airport Road", 26.37, 49.85), p("Airport Mosque", 26.43, 49.80), p("Airport", 26.47, 49.80)]
+    pharmacies = [p("Daan Pharmacy", 26.43, 50.09), p("AlNahdi pharmacy", 26.41, 50.10), p("Whites Pharmacy", 26.39, 50.08)]
+    for q, lst, want in [("شارع", streets, None), ("المطار", matar, None), ("مطار", matar, None), ("صيدلية", pharmacies, None), ("qwxyzz", streets, None), ("مول", [p("Mall of Dhahran", 26.30, 50.17)], None),
+                         ("مكتبة جرير", jarir, None), ("مكتبة جرير", [p("مكتبة جرير", 25.3, 51.5)], "مكتبة جرير"), ("الراشد مول", [p("al rashid mall", 26.29, 50.18), p("Rashid Road", 26.5, 50.0)], "al rashid mall"),
+                         ("ستاربكس", [p("Starbucks", 26.42, 50.10), p("Starbucks", 26.30, 50.20)], "Starbucks"),
+                         ("الراشد مول", [p("الراشد مول", 26.29, 50.18), p("الراشد للسيارات", 26.29, 50.17)], "الراشد مول"),
+                         ("مركز الراشد", [p("مركز الراشد", 26.29, 50.18), p("مركز الراشدي", 26.40, 50.09)], "مركز الراشدي"), ("الوردة", [p("الوردة", 24.7, 46.7), p("شركة الوردة الحمراء", 26.4, 50.1)], None)]:
+        s, j, _, _ = req("POST", "/debug/winner", {"q": q, "list": lst, "near": near})
+        print("     winner of %s: %s" % (q, j))
+        if q not in ("مركز الراشد", "الوردة"):
+            check("voice answer: %s is %s" % (q, want or "a list"), s == 200 and j["winner"] == want, j)
+    s, j, _, _ = req("POST", "/debug/winner", {"q": "مكتبة جرير", "list": jarir})
+    check("voice answer: no position, no choice", s == 200 and j["winner"] is None, j)
+
+
+def t_voice(token):
+    """"ودني ...": one clear place starts a route and says so, with a way to cancel; a weak or ambiguous answer stays a list."""
+    home()
+    fix()
+    home()
+    # what the unit's own search answers, whichever way each goes (the internet's data, so this part only reports)
+    for q in ["مطار الملك فهد", "المطار", "جامعة الملك فهد", "ستاربكس", "صيدلية", "شارع", "مكتبة جرير", "qwxyzz"]:
+        amri_say("ودني " + q)
+        j = wait_state(token, lambda x: x["nav"]["state"] in ("routing", "navigating") and x["nav"].get("by") == "voice", 9)
+        log = [l for l in amri_log().split("\n") if "place '" in l or "request " in l]
+        print("     %s -> %s | %s" % (q, j["nav"]["place"]["name"] if j else "(no trip)", " | ".join(l.split(": ", 1)[-1] for l in log)[:220]))
+        stop_trip(token)
+        home()
+    amri_say("ودني الراشد مول")
+    j = wait_state(token, lambda x: x["nav"]["state"] == "navigating", 15)
+    check("voice: a clear place starts a trip", j is not None and j["nav"].get("by") == "voice", amri_log()[-400:])
+    log = amri_log()
+    check("voice: it says what it chose", "request SearchPlace" in log, log[-400:])
+    print("     %s" % " | ".join(l.split(": ", 1)[-1] for l in log.split("\n") if "place '" in l or "request SearchPlace" in l))
+    time.sleep(0.5)
+    shot("v2-link-voice-started")
+    tap_card(CARD_NARROW_CANCEL)
+    j = wait_state(token, lambda x: x["nav"]["state"] == "idle", 4)
+    check("voice: the card's cancel ends it", j is not None, state(token)["nav"])
+    home()
+    amri_say("ودني صيدلية")
+    time.sleep(9)
+    j = state(token)
+    check("voice: many places of that kind: no trip", j["nav"]["state"] == "idle", j["nav"])
+    check("voice: many places of that kind: the list, on the map", "MapsActivity" in front(), front())
+    shot("v2-link-voice-list")
+    home()
+    amri_say("وقف الملاحة")
+    time.sleep(1.5)
+    check("voice: stop with no trip says so", "request StopTrip" in amri_log(), amri_log()[-300:])
+    amri_say("ودني الراشد مول")
+    wait_state(token, lambda x: x["nav"]["state"] == "navigating", 15)
+    time.sleep(6)
+    amri_say("وقف الملاحة")
+    j = wait_state(token, lambda x: x["nav"]["state"] == "idle", 5)
+    check("voice: stop ends the trip", j is not None, state(token)["nav"])
+    stop_trip(token)
+    home()
+
+
+class FakeNaghm(threading.Thread):
+    """Naghm's side of its link (CAR_LINK.md), on this PC; the emulator reaches it at 10.0.2.2."""
+
+    def __init__(self, port, answer):
+        super().__init__(daemon=True)
+        self.answer = answer
+        self.asked = []
+        self.server = socket.socket()
+        self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server.bind(("0.0.0.0", port))
+        self.server.listen(2)
+
+    def run(self):
+        try:
+            c, _ = self.server.accept()
+            self.conn = c
+            c.sendall(b'{"type":"hello","app":"Naghm","version":"test"}\n')
+            buf = b""
+            while True:
+                d = c.recv(4096)
+                if not d:
+                    return
+                buf += d
+                while b"\n" in buf:
+                    line, buf = buf.split(b"\n", 1)
+                    m = json.loads(line.decode("utf-8"))
+                    if m.get("type") == "ping":
+                        c.sendall(b'{"type":"pong"}\n')
+                    elif m.get("type") == "playSong":
+                        self.asked.append(m)
+                        if self.answer:
+                            c.sendall((json.dumps({"type": "state", "seq": 1, "id": m["id"], "title": m["title"], "artist": m["artist"], "art": m["art"],
+                                                   "duration": m["duration"], "position": 0, "playing": True, "loading": False}) + "\n").encode())
+        except OSError:
+            pass
+
+    def close(self):
+        for s in (self.server, getattr(self, "conn", None)):
+            try:
+                if s:
+                    s.close()
+            except OSError:
+                pass
+
+
+def t_naghm(token):
+    """A song asked of Amri with Naghm linked goes to Naghm (its existing playSong); with no link, as it always was."""
+    home()
+    port = 47190
+    for answer in (True, False):
+        fake = FakeNaghm(port, answer)
+        fake.start()
+        shell("setprop debug.aura.phonelink 10.0.2.2:%d" % port)
+        j = wait_state(token, lambda x: x["link"]["naghm"], 15)
+        check("naghm: linked", j is not None, state(token)["link"])
+        amri_say("شغل عبادي الجوهر")
+        end = time.time() + 15
+        while not fake.asked and time.time() < end:
+            time.sleep(0.2)
+        asked = fake.asked[0] if fake.asked else None
+        check("naghm: playSong sent, with the id of the search", asked is not None and asked["id"] and asked["title"], amri_log()[-400:])
+        print("     %s" % json.dumps(asked, ensure_ascii=False)[:200])
+        time.sleep(5 if not answer else 1.5)
+        _, _, raw, _ = req("GET", "/v1/diag", token=token)
+        word = "took playSong" if answer else "no answer to playSong"
+        check("naghm: the About note says: " + word, word.encode() in raw, raw[:400])
+        log = [l.split(": ", 1)[-1] for l in amri_log().split("\n") if "request PlaySong" in l]
+        print("     %s" % " | ".join(log))
+        shell("setprop debug.aura.phonelink ''")
+        fake.close()
+        wait_state(token, lambda x: not x["link"]["naghm"], 20)
+        home()
+    amri_say("شغل عبادي الجوهر")
+    time.sleep(6)
+    log = [l.split(": ", 1)[-1] for l in amri_log().split("\n") if "request PlaySong" in l]
+    print("     no link: %s" % " | ".join(log))
+    check("naghm: no link: today's way, nothing sent", len(log) >= 1, amri_log()[-300:])
+    home()
+
+
+def t_failed(token):
+    """No road goes there: told "failed", the place stays on the map; to replace a trip: that trip goes on."""
+    home()
+    fix()
+    home()
+    ev = Events(token)
+    time.sleep(0.5)
+    far = {"name": "لا طريق إليه", "detail": "هاواي", "lat": 19.60, "lon": -155.50}
+    req("POST", "/v1/nav/go", {"id": I("fail-1"), "place": far, "mode": "start"}, token)
+    e = ev.wait(lambda x: x.get("id") == I("fail-1") and x["state"] in ("started", "failed"), 70)
+    print("     %s" % e)
+    check("no route: told failed, never started", e is not None and e["state"] == "failed", ev.nav())
+    time.sleep(1.5)
+    shot("v2-link-failed")
+    check("no route: the place is on the map", "MapsActivity" in front(), front())
+    j = state(token)
+    check("no route: nothing runs", j["nav"]["state"] == "idle", j["nav"])
+    home()
+    fix()
+    home()
+    req("POST", "/v1/nav/go", {"id": I("fail-2"), "place": {"name": "الرحلة", "lat": 26.29, "lon": 50.18}, "mode": "start"}, token)
+    ok = ev.wait(lambda x: x.get("id") == I("fail-2") and x["state"] == "started", 45)
+    check("no route to replace with: first the trip", ok is not None, ev.nav())
+    time.sleep(6)
+    req("POST", "/v1/nav/go", {"id": I("fail-3"), "place": far, "mode": "start"}, token)
+    ev.wait(lambda x: x.get("id") == I("fail-3") and x["state"] == "card", 5)
+    time.sleep(0.5)
+    tap_card(CARD_REPLACE)
+    e = ev.wait(lambda x: x.get("id") == I("fail-3") and x["state"] == "failed", 70)
+    check("no route to replace with: failed, the trip kept", e is not None and e.get("kept") is True, ev.nav())
+    j = state(token)
+    check("no route to replace with: still the first trip", j["nav"]["state"] == "navigating" and j["nav"]["place"]["name"] == "الرحلة", j["nav"])
+    time.sleep(0.8)
+    shot("v2-link-failed-on-trip")
+    ev.close()
+    stop_trip(token)
+    home()
+
+
+def t_saved(token):
+    """Home by the phone and by the screen's button: the same way there."""
+    s, j, _, _ = req("PUT", "/v1/places", {"home": {"name": "البيت", "lat": 26.31, "lon": 50.21}}, token)
+    check("saved: home set", s == 200 and j["home"]["name"] == "البيت", j)
+    home()
+    fix()
+    home()
+    ev = Events(token)
+    time.sleep(0.5)
+    s, j, _, _ = req("POST", "/v1/nav/saved", {"id": I("saved-1"), "which": "home"}, token)
+    check("saved: accepted", s == 202, (s, j))
+    e = ev.wait(lambda x: x.get("id") == I("saved-1") and x["state"] in ("started", "failed"), 45)
+    check("saved: home from the phone starts", e is not None and e["state"] == "started", ev.nav())
+    j = state(token)
+    check("saved: started by the phone", j["nav"].get("by") == "phone" and j["nav"]["place"]["name"] == "البيت", j["nav"])
+    stop_trip(token)
+    home()
+    # the buttons' own way: a place the screen itself starts
+    shell("am start -n com.abdllh.aura/.nav.MapsActivity --es go home")
+    j = wait_state(token, lambda x: x["nav"]["state"] == "navigating", 20)
+    check("saved: the screen's Home button starts, as before", j is not None and j["nav"].get("by") == "maps", state(token)["nav"])
+    time.sleep(0.5)
+    shot("v2-link-home-button")
+    stop_trip(token)
+    home()
+
+
+def t_remote_more(token):
+    home()
+    s, j, _, _ = req("POST", "/v1/remote", {"cmd": "open.music"}, token)
+    time.sleep(1.5)
+    check("remote open.music", s == 200 and "Music" in front(), (s, j, front()))
+    s, j, _, _ = req("POST", "/v1/remote", {"cmd": "open.maps"}, token)
+    time.sleep(1.5)
+    check("remote open.maps", s == 200 and "MapsActivity" in front(), (s, j, front()))
+    home()
+
+
+def t_no_fix(token):
+    """Before the unit's first fix: the phone's own position starts the route; without one the place waits for the fix."""
+    shell("settings put secure location_mode 0")
+    shell("am force-stop com.abdllh.aura")
+    shell("am start -n com.abdllh.aura/.home.HomeActivity")
+    time.sleep(4)
+    try:
+        s, j, _, _ = req("GET", "/v1/ping")
+        check("after a restart of the app the server is back", s == 200, s)
+    except Exception as e:
+        check("after a restart of the app the server is back", False, e)
+    j = state(token)
+    if "fix" in j["car"]:
+        print("     (this emulator has a fix anyway: %s; the no-fix path was not tried)" % j["car"]["fix"])
+        shell("settings put secure location_mode 3")
+        return
+    check("no fix: the state says so", "fix" not in j["car"], j["car"])
+    ev = Events(token)
+    time.sleep(0.5)
+    place = {"name": "بدون موقع", "lat": 26.29, "lon": 50.18}
+    req("POST", "/v1/nav/go", {"id": I("nofix-1"), "place": place, "from": {"lat": 26.40, "lon": 50.09, "acc": 12, "ageSec": 8}, "mode": "start"}, token)
+    e = ev.wait(lambda x: x.get("id") == I("nofix-1") and x["state"] in ("started", "failed", "waiting_fix"), 45)
+    check("no fix, the phone's position: the route starts from it", e is not None and e["state"] == "started", ev.nav())
+    print("     %s" % e)
+    j = state(token)
+    check("no fix, the phone's position: navigating, the whole way left", j["nav"]["state"] == "navigating" and j["nav"].get("remainingM", 0) > 1000, j["nav"])
+    time.sleep(0.5)
+    shot("v2-link-from-phone-fix")
+    stop_trip(token)
+    home()
+    req("POST", "/v1/nav/go", {"id": I("nofix-2"), "place": place, "from": {"lat": 26.40, "lon": 50.09, "acc": 12, "ageSec": 300}, "mode": "start"}, token)
+    e = ev.wait(lambda x: x.get("id") == I("nofix-2") and x["state"] in ("started", "failed", "waiting_fix"), 8)
+    check("no fix, a stale position from the phone: it waits for the fix", e is not None and e["state"] == "waiting_fix", ev.nav())
+    time.sleep(1.5)
+    shot("v2-link-waiting-fix")
+    check("no fix: Maps came forward", "MapsActivity" in front(), front())
+    check("no fix: nothing said started", not [x for x in ev.nav() if x.get("id") == I("nofix-2") and x["state"] == "started"], ev.nav())
+    shell("am start -n com.abdllh.aura/.nav.MapsActivity --es mock_loc 26.40,50.09")
+    e = ev.wait(lambda x: x.get("id") == I("nofix-2") and x["state"] in ("started", "failed"), 45)
+    check("no fix: the first fix starts it", e is not None and e["state"] == "started", ev.nav())
+    ev.close()
+    stop_trip(token)
+    shell("settings put secure location_mode 3")
+    home()
+
+
+def t_kill():
+    """The ROM's restore in progress (persist.aura.disabled): nothing new starts here."""
+    shell("setprop persist.aura.disabled 1")
+    try:
+        c = socket.create_connection(("127.0.0.1", PORT), timeout=3)
+        c.sendall(b"GET /v1/ping HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+        c.settimeout(3)
+        d = c.recv(100)
+        c.close()
+    except OSError:
+        d = b""
+    check("kill switch: no answer", d == b"", d)
+    time.sleep(0.5)
+    listening = shell("netstat -lnt | grep 47101 | grep LISTEN")
+    check("kill switch: the port closes", "47101" not in listening, listening)
+    shell("setprop persist.aura.disabled 0")
+    shell("am broadcast -a com.abdllh.aura.debug.LINK --ez on true")
+    time.sleep(1.5)
+    s, _, _, _ = req("GET", "/v1/ping")
+    check("kill switch off: it answers again", s == 200, s)
 
 
 def main():
@@ -789,6 +1137,22 @@ def main():
         t_held(token, routes)
     if want("unpaired"):
         t_unpaired(token, routes)
+    if want("remote"):
+        t_remote_more(token)
+    if want("saved"):
+        t_saved(token)
+    if want("failed"):
+        t_failed(token)
+    if want("nofix"):
+        t_no_fix(token)
+    if want("voicewords"):
+        t_voice_words()
+    if want("voice"):
+        t_voice(token)
+    if want("naghm"):
+        t_naghm(token)
+    if want("kill"):
+        t_kill()
     if want("idle"):
         t_idle()
     if want("off"):

@@ -41,6 +41,7 @@
     <string name="link_started">Directions started to %1$s</string>
     <string name="link_cancel">Cancel</string>
     <string name="link_failed">Found no route to %1$s. You can try again on the map.</string>
+    <string name="link_failed_kept">No route to %1$s. Your trip goes on.</string>
     <!-- The assistant -->
     <string name="amri_place_chosen">Taking you to %1$s, %2$s away</string>
     <string name="amri_place_card">%1$s: choose on the screen</string>
