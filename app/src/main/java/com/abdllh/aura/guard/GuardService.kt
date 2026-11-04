@@ -120,6 +120,7 @@ internal class GuardWatch(private val c: Context, private val h: Handler) {
     private var marks = Marks()
     private var lastLook = upAt
     private var lastSave = upAt
+    private var savedPassed = false
     private var wifiDone = false
     private var seenStarts = 0
     private var loggedStreak = 0
@@ -174,9 +175,11 @@ internal class GuardWatch(private val c: Context, private val h: Handler) {
             beatSince = now
             noDrawSince = now
         }
-        if (!trial.passed && now - lastSave >= SAVE_MS) {
+        // (also the one save after it passed: the main process reads the file to know whether this version has earned its place)
+        if (!savedPassed && now - lastSave >= SAVE_MS) {
             lastSave = now
             trial.save(c)
+            savedPassed = trial.passed
         }
     }
 

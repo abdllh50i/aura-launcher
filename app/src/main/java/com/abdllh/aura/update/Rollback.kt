@@ -55,7 +55,7 @@ object Rollback {
     private const val SPARE_BYTES = 32L * 1024 * 1024
 
     private const val FILE_STATE = "rollback-state"
-    private const val FILE_PENDING = "rollback-pending"
+    private const val FILE_MARK = "rollback-data-mark"
     private const val FILE_SCRIPT = "rollback.sh"
 
     /** The saved copy, as its JSON describes it (its hash was checked when it was read). */
@@ -206,9 +206,12 @@ object Rollback {
         Thread({
             try {
                 Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
+                val mark = File(c.filesDir, FILE_MARK)
+                val dataStayed = mark.exists()
+                if (!dataStayed) mark.writeText("${BuildConfig.VERSION_NAME}\n")
                 Thread.sleep(PREPARE_AFTER_MS)
                 if (!ensureScript(c)) { state(c) { put("why", Why.NO_ROOT) }; return@Thread }
-                report(c)
+                report(c, dataStayed)
                 val saved = refreshState(c)
                 if (saved == null) {
                     if (mayFetch) fetchBase(c) else state(c) { put("why", Why.NOT_UNIT) }
@@ -322,13 +325,12 @@ object Rollback {
                 val p = payload()
                 if (!usable(p)) "no-copy"
                 else {
-                    if (test) File(c.filesDir, FILE_PENDING).writeText("${BuildConfig.VERSION_NAME} ${p?.version}\n")
-                    else com.abdllh.aura.util.Prefs.raw.edit().putBoolean("updateBeta", false).putString("availableTag", "").putString("releaseCache", "").commit()
+                    if (!test) com.abdllh.aura.util.Prefs.raw.edit().putBoolean("updateBeta", false).putString("availableTag", "").putString("releaseCache", "").commit()
                     if (!runScript(c, test)) "no-root"
                     else {
                         ran = true
                         val r = awaitResult()
-                        report(c)
+                        report(c, true)
                         if (failed(r) || r == null) failureText(r) else null
                     }
                 }
@@ -336,7 +338,6 @@ object Rollback {
                 t.toString()
             }
             if (reason != null) {
-                try { File(c.filesDir, FILE_PENDING).delete() } catch (_: Throwable) { }
                 val fellBack = ran && !test
                 main.post { try { done(reason, fellBack) } catch (_: Throwable) { } }
             }
@@ -364,26 +365,23 @@ object Rollback {
 
     // -------------------------------------------------------------------------------------------------- the report
     /**
-     * What the last use of the way back came to, once, at the first start after it. rollback-pending, written in this
-     * app's data just before a test, tells "the data stayed": a test that went there and back and no longer finds it lost
-     * the data. The outcome file lives outside the app and survives whatever happened to the data.
+     * What the last use of the way back came to, whoever pulled it, once, at the first start after it. The outcome file
+     * lives outside the app and survives whatever happened to the data; [dataStayed] is whether this start still found the
+     * small mark every start leaves in the app's data (files/rollback-data-mark), so "the data stayed" is seen, not assumed.
      */
-    private fun report(c: Context) {
+    private fun report(c: Context, dataStayed: Boolean) {
         val out = sh("cat $RESULT 2>/dev/null", 8_000) ?: return
         val lines = out.lines().map { it.trim() }
         if (lines.none { it.startsWith("EXIT=") } || lines.contains("SEEN")) return
         fun value(key: String) = lines.firstOrNull { it.startsWith("$key=") }?.substringAfter('=').orEmpty()
-        val pending = File(c.filesDir, FILE_PENDING)
-        val test = value("MODE") == "test"
         state(c) {
             put("lastExit", value("EXIT"))
             put("lastFrom", Regex("versionName=(\\S+)").find(value("FROM"))?.groupValues?.get(1).orEmpty())
             put("lastTo", value("TO"))
-            put("lastTest", test)
-            put("lastDataStayed", !test || pending.exists())
+            put("lastTest", value("MODE") == "test")
+            put("lastDataStayed", dataStayed)
             put("lastPm", failureText(out))
         }
-        try { pending.delete() } catch (_: Throwable) { }
         sh("echo SEEN >> $RESULT")
     }
 
