@@ -526,7 +526,8 @@ internal class ReportText(private val c: Context, private val r: JSONObject) {
         row(R.string.diag_tiles, m.optString("tiles").takeIf { it.isNotEmpty() }?.let {
             s(when { it.startsWith("offline") -> R.string.diag_tiles_offline; it.endsWith("directly") -> R.string.diag_tiles_direct; else -> R.string.diag_tiles_server })
         })
-        if (m.has("tilesCame") && !m.optBoolean("tilesCame") || m.optInt("features", 1) == 0) row(R.string.diag_warning, s(R.string.diag_map_empty))
+        if (m.optInt("features", 1) == 0) row(R.string.diag_warning, s(R.string.diag_map_empty))
+        else if (m.has("tilesCame") && !m.optBoolean("tilesCame")) row(R.string.diag_warning, s(R.string.diag_map_partial))
         else row(R.string.diag_tiles_ms, m.opt("tilesMs")?.let { "${num(it)} ms" })
         row(R.string.diag_style_ms, m.opt("styleMs")?.let { "${num(it)} ms" })
         val fast = m.optJSONObject("cap60")

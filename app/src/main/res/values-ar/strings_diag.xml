@@ -154,6 +154,7 @@
 
     <string name="diag_tiles">الخرايط منين</string>
     <string name="diag_map_empty">الخريطة ما حمّلت: الأرقام لأرضية فاضية</string>
+    <string name="diag_map_partial">الخريطة ما اكتملت في وقتها: الأرقام لخريطة ناقصة</string>
     <string name="diag_tiles_ms">وصلت الخرايط بعد</string>
     <string name="diag_style_ms">جاهزية الخريطة</string>
     <string name="diag_map_60">إطارات (حد 60)</string>

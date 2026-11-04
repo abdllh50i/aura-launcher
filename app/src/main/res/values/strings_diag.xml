@@ -148,6 +148,7 @@
 
     <string name="diag_tiles">Tiles from</string>
     <string name="diag_map_empty">The map did not load: these numbers are for an empty land colour</string>
+    <string name="diag_map_partial">The map\'s tiles were not complete in time: the numbers are for a partial map</string>
     <string name="diag_tiles_ms">Tiles came after</string>
     <string name="diag_style_ms">Map ready after</string>
     <string name="diag_map_60">Frames (cap 60)</string>
