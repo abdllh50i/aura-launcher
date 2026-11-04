@@ -22,3 +22,20 @@ Plates: `python -I serve_tiles.py --port 8799 --root plate base=$W\out\base.mbti
 (needs the design kit's headless Chrome; it loads MapLibre from unpkg.com and glyphs from tiles.openfreemap.org). Valhalla is blue, OSRM red dashes.
 
 No ground truth is here: nobody has logged a real drive. OSRM's time is a yardstick, not the road.
+
+# Search and data tests
+
+```powershell
+python -I $T\run_vectors.py $W\out\places.db                                                      # the text functions and MATCH strings
+python -I ..\search_ref.py $W\out\places.db --test $T\search_tests.json --golden $W\out\search-golden.json   # the builder's own set: a regression set, tuned against
+python -I $T\eval_search_set.py --db $W\out\places.db --set $T\search-set.json --out <file>        # the tester's 200 queries. Frozen, but the 2026-11-04 fixes were tuned against it too, so it needs a new set to measure again
+python -I $T\self_retrieval.py $W\out\places.db --n 1000                                            # random rows searched by their own name: nobody tuned for it
+python -I $T\junk_sample.py --db ... --base ... --areas ... --out <folder>                           # 200 random POIs for a person to judge; junk_tally.py adds up the judgement
+python -I $T\junk_recheck.py --sample ... --judged $T\junk-judged-200.json --db $W\out\places.db   # what became of the rows judged junk once
+& $W\venv\Scripts\python.exe -I $T\spot_check.py --db ... --pbf $W\src\probe.osm.pbf ...           # cameras, signals and bumps against the OSM file and the routes
+python -I $T\poi_density.py --tiles $W\out\places.mbtiles --db $W\out\places.db --out <file>      # densest POI tiles
+python -I $T\zone_gate_check.py $W\out\places.db $U $O\var-default <out.json>                      # the Haram ring in exclude_polygons; gates on the route to a guarded camp
+python -I $T\glyph_plate.py $W\out\glyphs.db <out.png>                                              # labels drawn from glyphs.db with no renderer, to see the letters join
+```
+
+Pack: `python -I $T\test_pack.py $W\out ..\lock.json $W\out\pack` tries make_pack.py's refusals and a damaged chunk.

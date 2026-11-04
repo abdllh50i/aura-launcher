@@ -1189,13 +1189,13 @@ def core_of(r, w2c):
             if kinds and any(CAT_ICON.get(c) == icon or c == r.cat for c in kinds):
                 continue
             for s in skeletons(w)[:1]:
-                if len(s) >= 3:
+                if len(s) >= 3 or (len(s) == 2 and len(w) >= 5):  # الراجحي, Rajhi: two consonants, but a long word
                     out.add(s)
     return out
 
 
 def scripts_differ(a, b):
-    """One row only in Arabic letters, the other only in Latin ones."""
+    """One row only in Arabic letters, the other only in Latin ones. Not a row with both names: a mall's shops share its name, "Al Rashid" beside الراشد مول, Al Rashid Mall."""
     return not a.alt and not b.alt and bool(AR_RANGE.search(a.name)) != bool(AR_RANGE.search(b.name))
 
 

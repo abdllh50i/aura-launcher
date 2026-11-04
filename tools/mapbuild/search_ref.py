@@ -436,6 +436,17 @@ def fts_all_words(plan):
     return " ".join("k:" + w for w in plan.ws if (w not in ("ال",)) and not w.isdigit())
 
 
+def place_ok(plan, r):
+    """Is a town or district found by its consonants the word that was typed? In the script of the query it must be one edit from a word of the name; only a row with no name in that script
+    goes by the consonants. (Al Malqa is Al Malga. ارامكو is not اليرموك, nor KFC Al Khafji.)"""
+    w = plan.required[0].words[0]
+    names = list(word_set(r[2])) + list(word_set(r[3]))
+    same = [n for n in names if is_ar(n) == is_ar(w)]
+    if same:
+        return any(n == w or lev1(w, n) or (latin_base(n) == latin_base(w)) or lev1(latin_base(w), latin_base(n)) for n in same)
+    return True
+
+
 def place_string(plan):
     """A word alone may be a town or district written another way ("Al Malqa", "Al Malga District"): its consonants, among places only, whatever else shares them."""
     if len(plan.required) != 1 or plan.required[0].cats or len(plan.required[0].words) != 1:
@@ -823,7 +834,9 @@ def search(db, query, near=None, limit=12, syn=None, debug=None):
     mp = place_string(plan)
     if mp:
         stages.append(mp)
-        rows.update(candidates(db, mp, near, False))
+        for rid, r in candidates(db, mp, near, False).items():
+            if place_ok(plan, r):
+                rows[rid] = r
     if few or none_near:
         m3 = fts_edit_string(plan)
         if m3 and m3 != m:
