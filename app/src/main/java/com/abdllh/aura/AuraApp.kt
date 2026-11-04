@@ -49,6 +49,8 @@ class AuraApp : Application() {
         com.abdllh.aura.nav.offline.OfflineMaps.init(this)
         com.abdllh.aura.nav.MapExtras.init(this) // what the owner added to the map (cameras, bumps, signals, limits)
         if (BuildConfig.DEBUG) com.abdllh.aura.nav.NavDebug.init(this)
+        com.abdllh.aura.nav.places.PlaceSearch.init(this) // only remembers the app: places.db is opened by the first use, off the main thread
+        if (BuildConfig.DEBUG) com.abdllh.aura.nav.places.PlacesDebug.init(this)
         UpdateManager.init(this)
         CarAudio.init(this)
         // the status bar, the volume display and the screen-change animations are Aura's to change only while Aura is
