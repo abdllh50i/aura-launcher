@@ -178,7 +178,7 @@ object Lyrics {
     private fun asks(r: Result) = r.improvable || (r.wantsWords && Words.on)
 
     /** The same lines (text, and time within a second: word times may light a line a little earlier). */
-    private fun sameLines(a: List<Line>, b: List<Line>) =
+    fun sameLines(a: List<Line>, b: List<Line>) =
         a.size == b.size && a.indices.all { Words.sameText(a[it].text, b[it].text) && abs(a[it].ms - b[it].ms) <= 2000L }
 
     /**
