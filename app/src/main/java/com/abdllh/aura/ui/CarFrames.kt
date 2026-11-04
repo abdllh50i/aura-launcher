@@ -121,6 +121,29 @@ object CarFrames {
         introSet = IntArray(intro + 2) { k -> Math.floorMod(d - dir * k, m.count) }
     }
 
+    /**
+     * One frame decoded ahead, at low priority: what the home screen shows if the GPU is late ([CarStage]). One bitmap of about a
+     * megabyte, gone with the rest ([gpuDraws]) when the GPU comes in time.
+     */
+    fun prepareQuietly(i: Int) {
+        val m = meta ?: return
+        if (raw != null || gpuOn || i < 0 || i >= m.count || cache.get(i) != null || !queued.add(i)) return
+        Thread({
+            Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
+            val bmp = decode(i)
+            main.post {
+                queued.remove(i)
+                if (bmp != null) {
+                    if (gpuOn) bmp.recycle()
+                    else {
+                        cache.put(i, bmp)
+                        for (l in listeners) l()
+                    }
+                }
+            }
+        }, "car-rest").apply { isDaemon = true; start() }
+    }
+
     /** The GPU path failed: frames come from a raw frame file from now on (built once, in the background). */
     fun startRawFallback() {
         if (rawStarted || meta == null) return

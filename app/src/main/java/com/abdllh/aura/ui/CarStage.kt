@@ -21,6 +21,7 @@ import android.view.animation.DecelerateInterpolator
 import android.view.animation.PathInterpolator
 import android.widget.FrameLayout
 import com.abdllh.aura.util.dp
+import java.io.File
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.floor
@@ -120,12 +121,13 @@ class CarStage(context: Context) : FrameLayout(context) {
                 gpuDrawing = true
                 CarFrames.dropRawFiles(context)
                 CarFrames.gpuDraws(true) // the CPU's frames are not drawn any more (tens of MB)
-                gpuAfterDrawMs = when {
-                    firstDrawAt != 0L -> SystemClock.uptimeMillis() - firstDrawAt
-                    startPath == PATH_GPU -> 0L // (it came with the screen's first frame, before that one was reported)
-                    else -> -1L
-                }
+                gpuAfterDrawMs = if (firstDrawAt != 0L) SystemClock.uptimeMillis() - firstDrawAt else 0L // (0: it came with the screen's first frame, before that one was reported)
                 android.util.Log.i("AuraCar", "GPU's first frame $gpuAfterDrawMs ms after the screen's (path $startPath)")
+                when (startPath) {
+                    PATH_GPU -> noteStart(context, false)
+                    // (the CPU's own decoding is what it competes with here: more room, or one slow start would keep it on the CPU for good)
+                    PATH_CPU_LATE -> noteStart(context, gpuAfterDrawMs > GPU_WAIT_ON_CPU_MS)
+                }
                 introReady()
                 restFadeReady()
                 if (anim == null) g.loadRest() // (else the intro's end asks for them)
@@ -247,8 +249,10 @@ class CarStage(context: Context) : FrameLayout(context) {
         // (the spin's frames go into the GPU first, also when the CPU starts it: the GPU may come in at any point of it)
         val d = home.roundToInt()
         glView?.firstFrames = IntArray(CarFrames.introFrames() + 3) { k -> Math.floorMod(d - dir * (k - 1), n) }
-        val gpuFirst = glView != null && CarEtc.readyNow(context, Palette.dark, Palette.bg)
-        startPath = if (gpuFirst) PATH_GPU else PATH_CPU
+        val ready = glView != null && CarEtc.readyNow(context, Palette.dark, Palette.bg)
+        val gpuFirst = ready && !wasLate(context)
+        startPath = if (gpuFirst) PATH_GPU else if (ready) PATH_CPU_LATE else PATH_CPU
+        afterNextDraw { firstDrawAt = SystemClock.uptimeMillis() }
         if (!gpuFirst && CarFrames.frameNow(introFirst) != null) { runIntro(start, delayMs); return }
         // A spin begun without its first frame showed the floor light alone, then the car popping in already turned: it
         // waits for that frame, its delay still counted from now.
@@ -264,14 +268,16 @@ class CarStage(context: Context) : FrameLayout(context) {
         }
         introWait = go
         if (gpuFirst) {
-            // The frame file is there: the GPU draws the whole spin, and nothing else is prepared for it. The car is
-            // faded out until then, so only the wait shows, not a car popping in: the GPU's first frame starts the
-            // spin. Should it be late, the wait ends on the car at rest ([onGpuLate]), counted from the screen's first
-            // frame: nothing can be seen before that anyway, and a slow start must not use the wait up.
+            // The frame file is there: the GPU draws the whole spin, and nothing else is prepared for it but the one frame
+            // it would stand in with. The car is faded out until then, so only the wait shows, not a car popping in: the
+            // GPU's first frame starts the spin. Should it be late, the wait ends on the car at rest ([onGpuLate]), counted
+            // from the screen's first frame: nothing can be seen before that anyway, and a slow start must not use the wait up.
             cpuDraws = false
             afterNextDraw {
-                firstDrawAt = SystemClock.uptimeMillis()
-                if (introWait === go) postDelayed(gpuLate, GPU_WAIT_MS)
+                if (introWait === go) {
+                    CarFrames.prepareQuietly(Math.floorMod(home.roundToInt(), n))
+                    postDelayed(gpuLate, GPU_WAIT_MS)
+                }
             }
         } else {
             // The CPU draws until the GPU's frames are in: at most INTRO_WAIT_MS for the first one or the GPU.
@@ -289,7 +295,7 @@ class CarStage(context: Context) : FrameLayout(context) {
     /**
      * The GPU's first frame has not come in [GPU_WAIT_MS]. There is nothing to turn the car with, and frames decoded
      * for a spin are what this path saves: no spin, the car fades in at rest from one frame, on the CPU. The GPU then
-     * takes over in place, from the same view.
+     * takes over in place, from the same view. The next start begins on the CPU spin, as until 1.19 ([wasLate]).
      */
     private fun onGpuLate() {
         val go = introWait ?: return
@@ -297,6 +303,7 @@ class CarStage(context: Context) : FrameLayout(context) {
         removeCallbacks(go)
         introWait = null
         startPath = PATH_LATE
+        noteStart(context, true)
         cpuDraws = true
         pos = home
         zoom = 0f
@@ -668,7 +675,9 @@ class CarStage(context: Context) : FrameLayout(context) {
         private const val FRICTION = 2.4f         // per second (exponential decay of the spin)
         private const val IDLE_MS = 3200L
         private const val INTRO_WAIT_MS = 400L    // longest the intro waits for its first frame on the CPU
-        private const val GPU_WAIT_MS = 2000L     // longest it waits for the GPU's, after the screen's first frame
+        private const val GPU_WAIT_MS = 700L      // longest it waits for the GPU's, after the screen's first frame
+        private const val GPU_WAIT_ON_CPU_MS = 1400L // the GPU's first frame in this time beside the CPU's spin: the next start may wait for it again
+        private const val FILE_START = "car-start" // (a file of its own: nothing an older version reads)
         private const val FOLLOW = 24f            // per second: how fast the car catches up with the finger
         const val FLOOR_Y = 262f / 360f           // the turntable floor's centre, as a fraction of the frame height
         const val FLOOR_R = 0.34f                 // radius of the floor light, as a fraction of the frame width
@@ -685,10 +694,28 @@ class CarStage(context: Context) : FrameLayout(context) {
         const val PATH_CPU = 2        // no frame file known yet (the first start of this APK): the CPU drew the spin
         const val PATH_LATE = 3       // the GPU was late: the car faded in at rest from one frame
         const val PATH_FAILED = 4     // the GPU failed: the CPU drew the spin
+        const val PATH_CPU_LATE = 5   // the GPU was late at the last start: the CPU drew this one's spin
         @Volatile var startPath = 0
         @Volatile var gpuFirstMs = -1L      // from the GL thread's start to the first frames being in
         @Volatile var gpuAllMs = -1L        // from then until all frames were in (-1: not yet, or some did not come)
         @Volatile var gpuAfterDrawMs = -1L  // from the screen's first frame to the GPU's
+
+        /** The GPU was late at the last start: this one begins on the CPU spin. Every drive is a cold boot, the busiest moment there is. */
+        private fun wasLate(c: Context): Boolean = try {
+            File(c.filesDir, FILE_START).let { it.isFile && it.readText().trim() == "late" }
+        } catch (_: Throwable) {
+            false
+        }
+
+        private fun noteStart(c: Context, late: Boolean) {
+            val a = c.applicationContext
+            Thread({
+                try { File(a.filesDir, FILE_START).writeText(if (late) "late" else "ok") } catch (_: Throwable) { }
+            }, "car-note").apply { isDaemon = true; start() }
+        }
+
+        /** This start's car begins on the CPU: no frame file for the GPU yet, or the GPU was late last time. For the frames to be ready when the home screen is built. */
+        fun startsOnCpu(c: Context, dark: Boolean, bg: Int) = !CarEtc.readyNow(c, dark, bg) || wasLate(c)
 
         /** How this start's car came on screen, and the GPU's times (for Settings → About). */
         fun startNote(c: Context): String {
@@ -697,6 +724,7 @@ class CarStage(context: Context) : FrameLayout(context) {
                 PATH_CPU -> com.abdllh.aura.R.string.about_car_start_cpu
                 PATH_LATE -> com.abdllh.aura.R.string.about_car_start_late
                 PATH_FAILED -> com.abdllh.aura.R.string.about_car_start_failed
+                PATH_CPU_LATE -> com.abdllh.aura.R.string.about_car_start_cpu_late
                 else -> return ""
             }
             val first = if (gpuFirstMs >= 0L) "\n" + c.getString(com.abdllh.aura.R.string.about_car_start_first, gpuFirstMs) else ""

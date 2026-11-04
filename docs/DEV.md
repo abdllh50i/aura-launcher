@@ -243,7 +243,7 @@ Checking it on the emulator (Android's own rules, not the firmware's: `persist.n
   process crashes. `set-home-activity` again. The note written just before the throw is lost with the process in a debug
   build (`apply()`); a release build does not throw.
 
-### Memory and start-up cuts (the foundations of 2.0: nothing looks different)
+### Memory and start-up cuts (the foundations of 2.0: nothing looks different, while the GPU keeps its time)
 Home was the heavy screen, and almost none of its weight was code: the car's CPU path, its leftovers, the map's sprites and
 other apps' files. Each cut below keeps the old way as the fallback and says in Settings → About what it did, because none
 of it could be tried on the unit first.
@@ -263,9 +263,16 @@ of it could be tried on the unit first.
     one per message after the spin, at a touch, or 3 s later at most, nearest the resting view first; a draw that needs
     one not in yet uses the nearest that is (`texOf`).
   * The car stays faded out until the GPU's first frame, and that frame starts the spin: a slow GPU can only show a wait,
-    never a pop. Nothing is decoded for it meanwhile (`cpuDraws` false).
-  * Fallbacks: the GPU's first frame more than 2 s after the screen's (`onGpuLate`; a loaded emulator came near 1.5 s, and the
-    spin is worth a longer wait): no spin, the car fades in at rest from one frame on the CPU and the GPU takes over in place.
+    never a pop. Only the resting frame is decoded meanwhile (`CarFrames.prepareQuietly`, 0.9 MB, at low priority, from the screen's first draw).
+  * Fallbacks: the GPU's first frame more than 700 ms after the screen's (`onGpuLate`): no spin, the car fades in at rest from that frame on the CPU and
+    the GPU takes over in place. So this path can look different from 1.19.0, on a GPU that is slow: an empty panel for 700 ms, and no spin at that start.
+    The first version of this waited 2 s, against "a loaded emulator came near 1.5 s"; a review measured 3.6 s under load, an empty panel for 3 s
+    and no spin, with 1.19.0 showing the car from the screen's first frame, and every drive is a cold boot.
+    `files/car-start` keeps how it went (`late`, `ok`): after a late start the next one begins on the CPU's spin, as until 1.19 (`CarStage.startsOnCpu`, `warmUp`; path 5
+    in About), and goes back to waiting for the GPU only when the GPU's first frame came within 1.4 s beside that spin. On a unit whose GPU is that slow, 2.0
+    keeps 1.19's start and its bitmaps of the first seconds, and what About shows says so.
+    Emulator, loaded (six running, the GPU's first frame 2.4-3.1 s by itself): `debug.aura.car.slow 3000`, frame sheets: the car in the panel about 1 s after
+    the full screen, at rest, the GPU 4.5 s after the screen's first frame (path 3); the next start the car spins from its first frame on the CPU (path 5).
     The GPU failing: `warmUp` and the CPU's spin, as on a first start. A rebuilt screen (a theme change): the resting frame and
     its neighbours first, one CPU frame until they are in.
   * Debug builds: `setprop debug.aura.car.slow <ms>`, `debug.aura.car.fail 1`, `debug.aura.car.noreport 1` (no frame

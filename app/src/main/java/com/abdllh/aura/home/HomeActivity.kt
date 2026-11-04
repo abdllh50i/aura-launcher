@@ -22,7 +22,7 @@ import com.abdllh.aura.nav.CarLocation
 import com.abdllh.aura.system.CarAudio
 import com.abdllh.aura.system.CrashGuard
 import com.abdllh.aura.system.NwdBridge
-import com.abdllh.aura.ui.CarEtc
+import com.abdllh.aura.ui.CarStage
 import com.abdllh.aura.ui.CarFrames
 import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.MATCH
@@ -125,7 +125,7 @@ class HomeActivity : Activity(), HomeHost {
         builtDark = Palette.dark
         Theme.window(this, Palette.dock)
         // (with the GPU's frame file there, the GPU draws the car from its first frame: see CarStage.playIntro)
-        if (!CarEtc.readyNow(this, Palette.dark, Palette.bg)) CarFrames.warmUp(this, resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL)
+        if (CarStage.startsOnCpu(this, Palette.dark, Palette.bg)) CarFrames.warmUp(this, resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL)
         setContentView(buildUi())
         if (!processStarted) {
             processStarted = true

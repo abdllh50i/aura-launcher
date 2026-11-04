@@ -4,6 +4,7 @@
     <string name="about_car_start">How the car started</string>
     <string name="about_car_start_gpu">The GPU, from its first frame</string>
     <string name="about_car_start_cpu">The CPU (first start of this version)</string>
+    <string name="about_car_start_cpu_late">The CPU (the GPU was late last time)</string>
     <string name="about_car_start_late">The GPU was late: one frame, at rest</string>
     <string name="about_car_start_failed">The GPU failed: the CPU drew it</string>
     <string name="about_car_start_first">first frames %1$d ms</string>
