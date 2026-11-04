@@ -3,4 +3,5 @@
     <string name="panel_failed">تعذّر فتح هذه الشاشة</string>
     <string name="about_panel_open">آخر شاشة فُتحت</string>
     <string name="about_panel_failed">آخر شاشة تعذّر فتحها</string>
+    <string name="about_window_lost">آخر مرة توقفت فيها الشاشة عن الرسم</string>
 </resources>

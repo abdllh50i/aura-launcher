@@ -271,6 +271,7 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
         }
         shell.windowLook(p.navBar)
         Front.setPanel(p.name)
+        if (shell.startedNow) shell.drawWatch.expect()
     }
 
     private inline fun call(p: Panel, what: String, block: () -> Unit): Boolean = try {

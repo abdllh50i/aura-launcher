@@ -299,6 +299,7 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
      * move that brings it in. What it drew last says nothing about now ([letGoOfPictures]).
      */
     override fun onShow(args: Bundle?) {
+        debugFail("show")
         if (lookStale()) buildAgain()
         root.visibility = View.INVISIBLE
         showing = true
@@ -406,6 +407,11 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
 
     private fun lookStale() = Theme.isDarkNow() != builtDark || Prefs.accent != builtAccent
 
+    /** Debug builds: the stack must drop this panel and go on (setprop debug.aura.musicfail build|show). */
+    private fun debugFail(at: String) {
+        if (com.abdllh.aura.BuildConfig.DEBUG && com.abdllh.aura.system.SystemProps.get("debug.aura.musicfail") == at) throw IllegalStateException("music: $at")
+    }
+
     /** Sunset or sunrise under "auto" (a minute's tick), or a theme or an accent chosen in Settings meanwhile. */
     override fun onLook() {
         if (!lookStale() || !showing) return
@@ -421,6 +427,7 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
     private fun buildAgain() {
         Theme.refresh()
         shell.windowLook(navBar)
+        ytHideKeyboard()
         rememberSpot()
         ytText = ytInput.text.toString()
         ytInput.removeCallbacks(ytSearchLater)
@@ -2460,6 +2467,7 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
     // out with the rest while out of sight and the first open has no more to do than a later one; the pictures and the lyrics
     // wait for it ([showing]).
     init {
+        debugFail("build")
         Theme.refresh()
         Player.init(this)
         BtMusic.init(this)
@@ -2469,6 +2477,8 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         lyricsOn = lyricsWanted // (until the song in front turns out to have none)
         lyricsFull = lyricsOn && Prefs.raw.getBoolean("musicLyricsFull", false)
         build()
+        btCover = null
+        ytCover = null
         // Asked for only where the music files are wanted (the library's own button, or choosing its source): the
         // screen opened for the phone's music used to start with a system dialog over the song.
         if (Library.hasPermission(this) && !Library.loaded) Library.load(this)
