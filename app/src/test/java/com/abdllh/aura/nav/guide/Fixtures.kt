@@ -5,7 +5,7 @@ import com.abdllh.aura.nav.LatLon
 /** One reference trip, as tools/mapbuild/tests/guide_fixtures.py cut it from a real answer and places.db. */
 internal class Trip(val id: String, val label: String, val reference: Boolean, val from: LatLon, val to: LatLon, val answer: GuideAnswer, val world: FakeWorld) {
     val route: GuideRoute get() = answer.routes[0]
-    fun guidance(arabic: Boolean, w: RouteWorld = world) = Guidance.build(route, arabic, w, answer.endSnapMetres)
+    fun guidance(arabic: Boolean, w: RouteWorld = world) = Guidance.build(route, arabic, w, answer.endSnapMetres, to)
 }
 
 /** What the search part answers from places.db, over the rows the cutter kept. */

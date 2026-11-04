@@ -164,9 +164,9 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    near: قبل شاورمر لف يمين
    en:   Just before Shawarmer, turn right | Just before Shawarmer, turn right
 22. km 25.7  [arrive]
-   sign: وجهتك قدامك
-   near: بعد 100 متر، وجهتك قدامك
-   en:   Your destination is ahead | In 100 metres, your destination is ahead
+   sign: وجهتك على يسارك
+   near: بعد 100 متر، وجهتك على يسارك
+   en:   Your destination is on the left | In 100 metres, your destination is on the left
 ```
 
 ## dammam-riyadh: Dammam to Riyadh
@@ -266,7 +266,7 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
 - choice 1, the router's 1: 948.4 km, 618.1 min: الأسرع | fastest
 - choice 2, the router's 2: 1224.9 km, 724.9 min: أبطأ بـ 1 س 47 د، أطول بـ 277 كم | slower by 1 h 47 min, longer by 277 km
 - fuel on the way: 76, longest gap 83.3 km; at the start: أقرب محطة بعد 950 م
-- on the road, going its way: 5 cameras, 0 bumps, 8 signal junctions
+- on the road, going its way: 3 cameras, 0 bumps, 8 signal junctions
 - arrival: وجهتك على يسارك، أقرب مواقف 50 م
 
 ```
@@ -396,7 +396,7 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
 - choice 1, the router's 1: 1356.7 km, 853.8 min: الأسرع | fastest
 - choice 2, the router's 2: 1623.1 km, 955.1 min: أبطأ بـ 1 س 41 د، أطول بـ 266 كم | slower by 1 h 41 min, longer by 266 km
 - fuel on the way: 119, longest gap 99.6 km; at the start: أقرب محطة بعد 3.3 كم
-- on the road, going its way: 6 cameras, 0 bumps, 7 signal junctions
+- on the road, going its way: 4 cameras, 0 bumps, 7 signal junctions
 - arrival: وجهتك على يسارك، أقرب مواقف 50 م
 
 ```
@@ -1011,9 +1011,9 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    near: بعد 150 مترًا، لف يسار
    en:   Turn left | In 150 metres, turn left
 11. km 19.5  [arrive]
-   sign: وجهتك قدامك
-   near: وجهتك قدامك
-   en:   Your destination is ahead | Your destination is ahead
+   sign: وجهتك على يمينك
+   near: وجهتك على يمينك
+   en:   Your destination is on the right | Your destination is on the right
 ```
 
 ## d5: Main Dammam Station to Prince Mohammad bin Fahd Stadium
@@ -1296,7 +1296,7 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
 - choice 1, the router's 1: 11.5 km, 12.6 min: الأسرع | fastest
 - choice 2, the router's 2: 10.7 km, 13.6 min: أبطأ بدقيقة، أقصر بـ 800 م | slower by 1 min, shorter by 800 m
 - choice 3, the router's 3: 10.8 km, 14.4 min: أبطأ بدقيقتين، أقصر بـ 750 م | slower by 2 min, shorter by 750 m
-- on the road, going its way: 1 cameras, 0 bumps, 4 signal junctions
+- on the road, going its way: 2 cameras, 0 bumps, 4 signal junctions
 - arrival: وجهتك على يمينك
 
 ```
@@ -1406,7 +1406,7 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
 - choice 1, the router's 3: 7.6 km, 8.7 min: الأسرع | fastest
 - choice 2, the router's 2: 8.9 km, 8.7 min: نفس الوقت، أطول بـ 1.3 كم | same time, longer by 1.3 km
 - choice 3, the router's 1: 9.3 km, 8.9 min: نفس الوقت، أطول بـ 1.7 كم | same time, longer by 1.7 km
-- on the road, going its way: 1 cameras, 0 bumps, 5 signal junctions
+- on the road, going its way: 2 cameras, 0 bumps, 5 signal junctions
 - arrival: وجهتك على يمينك، أقرب مواقف 220 م
 
 ```
@@ -1452,7 +1452,7 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
 - choice 1, the router's 1: 28.2 km, 25.7 min: الأسرع | fastest
 - choice 2, the router's 2: 29.4 km, 27.5 min: أبطأ بدقيقتين، أطول بـ 1.2 كم | slower by 2 min, longer by 1.2 km
 - choice 3, the router's 3: 28.7 km, 31.7 min: أبطأ بـ 6 دقائق، أطول بـ 550 م | slower by 6 min, longer by 550 m
-- on the road, going its way: 4 cameras, 0 bumps, 3 signal junctions
+- on the road, going its way: 5 cameras, 0 bumps, 3 signal junctions
 - arrival: وجهتك على يمينك
 
 ```
@@ -1614,7 +1614,7 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
 ## j1: Jubail General Hospital to Jubail Center
 
 2.3 km, Valhalla 3.2 min, estimate 3.7 min
-- on the road, going its way: 0 cameras, 0 bumps, 1 signal junctions
+- on the road, going its way: 1 cameras, 0 bumps, 1 signal junctions
 - arrival: وجهتك على يمينك، أقرب مواقف 210 م
 
 ```
@@ -1856,7 +1856,7 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
 15.7 km, Valhalla 13.2 min, estimate 14.5 min
 - choice 1, the router's 1: 15.7 km, 14.5 min: الأسرع | fastest
 - choice 2, the router's 2: 21.5 km, 17.8 min: أبطأ بـ 3 دقائق، أطول بـ 5.7 كم | slower by 3 min, longer by 5.7 km
-- on the road, going its way: 7 cameras, 0 bumps, 1 signal junctions
+- on the road, going its way: 8 cameras, 0 bumps, 1 signal junctions
 - arrival: وجهتك على يمينك، أقرب مواقف 70 م
 
 ```
@@ -1918,16 +1918,16 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    near: بعد 150 مترًا، لف يسار
    en:   Turn left | In 150 metres, turn left
 14. km 15.7  [arrive]
-   sign: وجهتك قدامك
-   near: بعد 100 متر، وجهتك قدامك
-   en:   Your destination is ahead | In 100 metres, your destination is ahead
+   sign: وجهتك على يمينك
+   near: بعد 100 متر، وجهتك على يمينك
+   en:   Your destination is on the right | In 100 metres, your destination is on the right
 ```
 
 ## causeway: Khobar to the King Fahd Causeway's passport island
 
 24.7 km, Valhalla 22.6 min, estimate 26.7 min
-- before starting: الطريق يعبر جسر الملك فهد، فيه رسوم وجوازات | The route crosses the King Fahd Causeway: toll and passports, at 12.6 km
-- on the road, going its way: 7 cameras, 0 bumps, 3 signal junctions
+- before starting: الطريق يعبر جسر الملك فهد، فيه رسوم وجوازات | The route crosses the King Fahd Causeway: toll and passports, at 15.7 km
+- on the road, going its way: 8 cameras, 0 bumps, 2 signal junctions
 - arrival: وجهتك على يمينك
 
 ```
@@ -1998,9 +1998,9 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    near: لف يمين
    en:   Turn right | Turn right
 16. km 24.7  [arrive]
-   sign: وجهتك قدامك
-   near: بعد 100 متر، وجهتك قدامك
-   en:   Your destination is ahead | In 100 metres, your destination is ahead
+   sign: وجهتك على يمينك
+   near: بعد 100 متر، وجهتك على يمينك
+   en:   Your destination is on the right | In 100 metres, your destination is on the right
 ```
 
 ## salwa: Riyadh to the Salwa post (Qatar)
@@ -2226,7 +2226,7 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
 - choice 2, the router's 2: 320.5 km, 216.1 min: أبطأ بـ 9 دقائق، أطول بـ 14 كم | slower by 9 min, longer by 14 km
 - before starting: وجهتك بعيدة عن الطريق | Your destination is away from the road, at 306.5 km
 - fuel on the way: 38, longest gap 50.2 km; at the start: أقرب محطة بعد 3.3 كم
-- on the road, going its way: 36 cameras, 0 bumps, 3 signal junctions
+- on the road, going its way: 40 cameras, 0 bumps, 3 signal junctions
 - arrival: وجهتك على يمينك
 
 ```
@@ -2318,10 +2318,10 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    near: بعد 150 مترًا، لف يمين
    en:   Turn right | In 150 metres, turn right
 21. km 306.5  [arrive]
-   sign: وجهتك قدامك
-   far:  بعد 500 متر، وجهتك قدامك
-   near: بعد 150 مترًا، وجهتك قدامك
-   en:   Your destination is ahead | In 500 metres, your destination is ahead | In 150 metres, your destination is ahead
+   sign: وجهتك على يمينك
+   far:  بعد 500 متر، وجهتك على يمينك
+   near: بعد 150 مترًا، وجهتك على يمينك
+   en:   Your destination is on the right | In 500 metres, your destination is on the right | In 150 metres, your destination is on the right
 ```
 
 # Beyond the 30: a ferry, guarded ends, the Haram
@@ -2493,8 +2493,8 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
 - choice 1, the router's 1: 21.7 km, 19.0 min: الأسرع | fastest
 - choice 2, the router's 2: 23.7 km, 22.1 min: أبطأ بـ 3 دقائق، أطول بـ 2 كم | slower by 3 min, longer by 2 km
 - choice 3, the router's 3: 23.3 km, 23.3 min: أبطأ بـ 4 دقائق، أطول بـ 1.6 كم | slower by 4 min, longer by 1.6 km
-- before starting: الطريق يدخل منطقة عسكرية (قاعدة الملك عبد العزيز الجوية) | The route goes into a military area, at 20.9 km
-- on the road, going its way: 0 cameras, 0 bumps, 3 signal junctions
+- before starting: الطريق يدخل منطقة عسكرية (قاعدة الملك عبد العزيز الجوية) | The route goes into a military area, at 18.2 km
+- on the road, going its way: 0 cameras, 0 bumps, 1 signal junctions
 - arrival: وجهتك على يسارك
 
 ```

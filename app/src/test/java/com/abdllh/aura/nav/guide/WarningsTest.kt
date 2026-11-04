@@ -6,6 +6,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import com.abdllh.aura.nav.Polyline
 import org.junit.Test
 
 class WarningsTest {
@@ -24,10 +25,10 @@ class WarningsTest {
         assertEquals("a parallel road", 0, onRoad(camera(1000.0, right = 35.0)).size)
     }
 
-    @Test fun withoutADirectionItMustBeNearer() {
-        // (no `dir`: a two-way road, either way. A frontage road's stays out)
-        assertEquals(1, onRoad(camera(1000.0, right = 10.0, dir = null)).size)
-        assertEquals(0, onRoad(camera(1000.0, right = 25.0, dir = null)).size)
+    @Test fun withoutADirectionEitherWay() {
+        // (no `dir`: a two-way road. One rule with RoadAhead: a camera stands beside its road, up to 25 m off, and the owner's own, placed by finger, have none; better told once too often)
+        assertEquals(1, onRoad(camera(1000.0, right = 25.0, dir = null)).size)
+        assertEquals(0, onRoad(camera(1000.0, right = 35.0, dir = null)).size)
     }
 
     @Test fun theDistanceIsAlongTheRoad() {
@@ -222,6 +223,22 @@ class WarningsTest {
         val start = zoneAround(-3000.0, 3000.0, ZoneRow.MILITARY)
         val r = Kit.route().apply { facts = RoadFacts(listOf(RoadStretch(0.0, line.length, 0, "residential", "road", false, false, false))) }
         assertTrue(Guidance.build(r, true, Kit.world(zones = listOf(start))).warnings.isEmpty())
+    }
+
+    /** The tester's real rows at the south end of Khobar's corniche: a line that ends on them never saw the sea. */
+    @Test fun theCornicheIsNotTheCauseway() {
+        val line = Polyline(listOf(LatLon(26.30, 50.20), LatLon(26.27, 50.21), LatLon(26.24841, 50.220668)))
+        val r = GuideRoute(line, emptyList(), line.length, 0.0, setOf("SA"))
+        assertFalse(Guidance.build(r, true, Kit.world()).warnings.any { it.kind == TripWarning.Kind.CAUSEWAY })
+        val south = Polyline(listOf(LatLon(26.25, 50.21), LatLon(26.200089, 50.220032)))
+        assertFalse(Guidance.build(GuideRoute(south, emptyList(), south.length, 0.0, setOf("SA")), true, Kit.world()).warnings.any { it.kind == TripWarning.Kind.CAUSEWAY })
+    }
+
+    @Test fun leavingTheHaramOrAnErrandInsideIsNotComingIn() {
+        val around = zoneAround(-3000.0, Kit.line.length + 3000, ZoneRow.HARAM_MAKKAH)
+        assertTrue("wholly inside", routeIn(around).isEmpty())
+        val start = zoneAround(-3000.0, 3000.0, ZoneRow.HARAM_MAKKAH)
+        assertTrue("only driving out of it", routeIn(start).isEmpty())
     }
 
     @Test fun gatesByTheirKindAndRoad() {

@@ -37,6 +37,47 @@ class PackRulesTest {
         assertEquals(PackRules.Fit.OK, PackRules.fit(1190199, 200000, 0))
     }
 
+    /** The tester's tight disk: 947 MiB at the start of a 936 MiB need, a pause at 13 %, and a NO_SPACE that lacked nothing. */
+    @Test fun goingOnNeedsNoMarginOnlyAStartDoes() {
+        val disk = 705_169_408L
+        val need = 981_993_472L
+        assertTrue("all the pieces hold their room", PackRules.mayStart(237_428_736, need, disk, disk))
+        assertFalse("a start", PackRules.mayStart(500_000_000, need, disk, 0))
+        assertTrue("a start with the room", PackRules.mayStart(need, need, disk, 0))
+        assertFalse("killed halfway through the allocation: as a start", PackRules.mayStart(100_000_000, need, disk, disk / 2))
+    }
+
+    @Test fun whatIsNotAChunkDoesNotWipeWhatIsKept() {
+        // the right length
+        assertTrue(PackRules.bodyFits(206, 100, 100, 50, "application/gzip", 0))
+        assertFalse(PackRules.bodyFits(200, 49, 100, 50, "text/html", 0))
+        // no length: a page of a sign-in says so by its type
+        assertFalse(PackRules.bodyFits(200, -1, 100, 0, "text/html; charset=utf-8", 0))
+        assertFalse(PackRules.bodyFits(200, -1, 100, 0, "text/plain", 9))
+        // a whole answer of no length over kept bytes waits, and is taken in the end, for a proxy that does that to all
+        assertFalse(PackRules.bodyFits(200, -1, 100, 50, "application/octet-stream", 0))
+        assertTrue(PackRules.bodyFits(200, -1, 100, 50, "application/octet-stream", 3))
+        assertTrue("nothing kept, nothing to lose", PackRules.bodyFits(200, -1, 100, 0, "application/octet-stream", 0))
+        assertTrue("a range, chunked", PackRules.bodyFits(206, -1, 100, 50, null, 0))
+    }
+
+    @Test fun aPortalsJsonIsNoManifest() {
+        assertFalse(PackRules.looksLikeManifest("{\"error\":\"sign in first\"}"))
+        assertFalse(PackRules.looksLikeManifest("<html>"))
+        assertTrue(PackRules.looksLikeManifest(" {\"format\": 1, \"id\": \"x\", \"pieces\": []}"))
+        // a newer pack is still told as one, by its format
+        assertTrue(PackRules.looksLikeManifest("{\"format\": 2, \"pieces\": []}"))
+    }
+
+    @Test fun aPackRebuiltUnderOneIdCanCome() {
+        assertTrue("nothing here", PackRules.worthOffering(null, null, "ksa", "2026-11-04T16:41Z", false))
+        assertTrue("another, newer", PackRules.worthOffering("ksa", "2026-11-04T16:41Z", "ksa2", "2026-12-01T00:00Z", false))
+        assertFalse("another, older", PackRules.worthOffering("ksa", "2026-12-01T00:00Z", "ksa2", "2026-11-04T16:41Z", false))
+        assertTrue("one id, newer, other bytes", PackRules.worthOffering("ksa", "2026-11-04T16:41Z", "ksa", "2026-12-01T00:00Z", false))
+        assertFalse("one id, the same bytes", PackRules.worthOffering("ksa", "2026-11-04T16:41Z", "ksa", "2026-11-04T16:41Z", true))
+        assertFalse("one id, other bytes, older", PackRules.worthOffering("ksa", "2026-12-01T00:00Z", "ksa", "2026-11-04T16:41Z", false))
+    }
+
     @Test fun theSpaceRule() {
         val need = 989947904L // the real manifest
         assertEquals(need, PackRules.need(713123840L, need))

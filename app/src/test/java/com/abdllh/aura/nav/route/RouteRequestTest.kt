@@ -76,4 +76,44 @@ class RouteRequestTest {
         // the lowest class has nothing below it
         assertTrue(RouteRequest(a, b, startRoad = RouteRequest.RoadClasses.onSide("service_other")).json().contains("\"max_road_class\":\"service_other\""))
     }
+
+    /** A word Valhalla does not know makes the filter do nothing, with no error (tester: main:bogus, side:trunk_link all as unfiltered). */
+    @Test
+    fun aRoadClassInOtherWords() {
+        fun j(c: RouteRequest.RoadClasses) = RouteRequest(a, b, startRoad = c).json()
+        assertTrue(j(RouteRequest.RoadClasses.onMain("trunk_link")).contains("\"min_road_class\":\"trunk\""))
+        assertTrue(j(RouteRequest.RoadClasses.onMain("service")).contains("\"min_road_class\":\"service_other\""))
+        assertTrue(j(RouteRequest.RoadClasses.onSide("trunk_link")).contains("\"max_road_class\":\"primary\""))
+        assertFalse(j(RouteRequest.RoadClasses.onMain("bogus")).contains("search_filter"))
+        assertFalse(j(RouteRequest.RoadClasses.onSide("bogus")).contains("search_filter"))
+    }
+
+    @Test
+    fun aRingValhallaWouldRefuseOrIgnore() {
+        val p = LatLon(21.0, 39.0)
+        assertEquals(null, RouteRequest(a, b).problem())
+        assertEquals(null, RouteRequest(a, b, avoid = listOf(List(100) { p })).problem())
+        assertTrue(RouteRequest(a, b, avoid = listOf(List(101) { p })).problem() != null)
+        assertTrue(RouteRequest(a, b, avoid = listOf(List(2) { p })).problem() != null)
+        assertTrue(RouteRequest(a, b, avoid = listOf(emptyList())).problem() != null)
+    }
+
+    @Test
+    fun whatOnlyValhallaCanKeep() {
+        assertFalse(RouteRequest(a, b).needsValhalla)
+        assertFalse("the road switch only helps with the first metres", RouteRequest(a, b, startRoad = RouteRequest.RoadClasses.onMain("trunk")).needsValhalla)
+        assertTrue(RouteRequest(a, b, avoid = listOf(listOf(a, b, a))).needsValhalla)
+        assertTrue(RouteRequest(a, b, via = listOf(RouteRequest.Via(a))).needsValhalla)
+    }
+
+    private val ring = listOf(LatLon(21.0, 39.0), LatLon(21.0, 40.0), LatLon(22.0, 40.0), LatLon(22.0, 39.0))
+
+    @Test
+    fun aLineThroughARing() {
+        assertTrue("a point inside", RingCheck.crosses(listOf(LatLon(20.0, 39.5), LatLon(21.5, 39.5)), ring))
+        assertTrue("through, with no point inside", RingCheck.crosses(listOf(LatLon(20.0, 39.5), LatLon(23.0, 39.5)), ring))
+        assertFalse("beside it", RingCheck.crosses(listOf(LatLon(20.0, 38.5), LatLon(23.0, 38.5)), ring))
+        assertFalse("past a corner", RingCheck.crosses(listOf(LatLon(20.0, 38.0), LatLon(21.0, 38.9)), ring))
+        assertFalse("no ring", RingCheck.crosses(listOf(LatLon(20.0, 39.5), LatLon(23.0, 39.5)), ring.take(2)))
+    }
 }

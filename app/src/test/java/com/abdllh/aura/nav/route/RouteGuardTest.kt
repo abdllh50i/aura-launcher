@@ -60,6 +60,28 @@ class RouteGuardTest {
         assertFalse(GuardState(1).expired(2, t0))
     }
 
+    /** The tester's run: a state file left by the version before with nothing in it, then two real crashes 5 s apart, and "keeps stopping" over the home screen. */
+    @Test
+    fun aFileFromTheVersionBeforeDoesNotForgetThisVersionsDeath() {
+        val old = GuardState.parse("1190100 0 0 0", 1190199)
+        assertFalse(old.expired(1190199, t0))
+        assertTrue(old.adopt(1190199))
+        assertFalse(old.adopt(1190199))
+        old.died(t0, 1_000_000, 1190199)
+        assertFalse("its death stands", old.expired(1190199, t0))
+        assertTrue("and so does its rest", old.resting(1_000_000 + 5000))
+        // without the look first, too
+        val s = GuardState.parse("1190100 0 0 0", 1190199)
+        s.died(t0, 1_000_000, 1190199)
+        assertFalse(s.expired(1190199, t0))
+        assertTrue(s.resting(1_000_000 + 5000))
+        // a death of the version before still goes with it
+        val before = GuardState(1190100)
+        before.died(t0, 1)
+        assertFalse(before.adopt(1190199))
+        assertTrue(before.expired(1190199, t0))
+    }
+
     @Test
     fun sevenDays() {
         val s = GuardState(1)

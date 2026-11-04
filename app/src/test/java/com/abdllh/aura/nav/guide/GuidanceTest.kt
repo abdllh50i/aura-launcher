@@ -9,6 +9,53 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GuidanceTest {
+    /** The voice and the arrival card, on the same trip: one side. The tester's 5 of 34. */
+    @Test fun theVoiceAndTheCardSayOneSide() {
+        for (id in Fixtures.ids) {
+            val t = Fixtures.trip(id)
+            val g = t.guidance(true)
+            val last = g.told.size - 1
+            assertEquals(id, Speech.text(listOf(Part.Clip(g.arrival(t.to).side.word)), true), Speech.text(g.spoken(last, g.route.line.length - 30, false).filter { it is Part.Clip && it.id.startsWith("arrive") }, true))
+        }
+    }
+
+    /** "the second signal" must not count one the car goes under. */
+    @Test fun aSignalOverAnUnderpassIsNotCounted() {
+        val m = Kit.line.cumulative[50]
+        val r = Kit.route(Kit.step(m, "turn", "right")).apply {
+            facts = RoadFacts(listOf(RoadStretch(0.0, 2000.0, 0, "primary", "road", false, false, false), RoadStretch(2000.0, 3000.0, 0, "primary", "road", false, true, false), RoadStretch(3000.0, line.length, 0, "primary", "road", false, false, false)))
+        }
+        val g = Guidance.build(r, true, Kit.world(listOf(Kit.signal(2500.0, 1), Kit.signal(m, 2))))
+        val turn = g.told.first { it.step.modifier == "right" }
+        assertEquals(1, g.signalCount(turn, 100.0))
+    }
+
+    /** With four to go there is no ordinal to say, and "at the signal" would read as the next one. */
+    @Test fun fourSignalsAwayIsNotTheNextSignal() {
+        val m = Kit.line.cumulative[90]
+        val g = Guidance.build(Kit.route(Kit.step(m, "turn", "right")), true, Kit.world(listOf(Kit.signal(1000.0, 1), Kit.signal(3000.0, 2), Kit.signal(5000.0, 3), Kit.signal(7000.0, 4), Kit.signal(m, 5))))
+        val i = g.told.indexOfFirst { it.step.modifier == "right" }
+        assertEquals(5, g.signalCount(g.told[i], 100.0))
+        assertFalse(Kit.said(g, i, 100.0).contains("الإشارة"))
+        assertTrue(Kit.said(g, i, 7500.0).contains("الإشارة"))
+    }
+
+    /** Arriving right after a ferry: the destination, not "leave the ferry and drive on". */
+    @Test fun arrivingOffAFerrySaysSo() {
+        val r = Kit.route(Kit.step(5000.0, "notification", name = "ferry", mode = "ferry"))
+        val g = Guidance.build(r, true, Kit.world())
+        assertFalse(Speech.text(g.spoken(g.told.size - 1, r.line.length - 30, false), true).contains("العبّارة"))
+    }
+
+    /** One junction told once, and one camera with the limit of whichever row knows it. */
+    @Test fun rowsOfOneCameraAreOneCamera() {
+        val a = SpotRow(SpotRow.CAMERA, Kit.at(3000.0), 90, 0, false, 0)
+        val b = SpotRow(SpotRow.CAMERA, Kit.at(3005.0), 90, 90, false, 0)
+        val g = Guidance.build(Kit.route(), true, Kit.world(listOf(a, b)))
+        assertEquals(1, g.spots.size)
+        assertEquals(90, g.nextAlert(2900.0)!!.kmh)
+    }
+
     private fun guide(world: RouteWorld, vararg steps: GuideStep) = Guidance.build(Kit.route(*steps), true, world)
     /** The point of the line nearest 3 km: a step stands on a point. */
     private val turnM = Kit.line.cumulative[30]
@@ -70,8 +117,11 @@ class GuidanceTest {
         val g = guide(Kit.world(spots), turnAt3km)
         assertEquals(6, g.signalCount(g.told[1], 100.0))
         val s = Kit.said(g, 1, 100.0)
-        assertTrue(s, s.contains("عند الإشارة لف يمين"))
-        assertFalse(s, s.contains("السادسة"))
+        // (no ordinal to say, and "at the signal" would read as the next one: a tester's words run "at the signal", "third", "second", "at the signal")
+        assertFalse(s, s.contains("الإشارة"))
+        assertTrue(s, s.contains("لف يمين"))
+        // nearer, the ordinal comes
+        assertTrue(Kit.said(g, 1, 1000.0).contains("الثالثة"))
     }
 
     @Test fun aSignalAwayFromTheTurnIsNoLandmark() {
