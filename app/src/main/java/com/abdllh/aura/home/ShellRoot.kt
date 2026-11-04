@@ -27,6 +27,9 @@ class ShellRoot(ctx: Context) : FrameLayout(ctx) {
     /** The window's soft input mode is ADJUST_RESIZE now: a smaller size says nothing about the screen ([PanelStack]). */
     internal var followsKeyboard = false
 
+    /** When a finger last touched the window (uptimeMillis): is the owner doing something ([PanelStack.prepareWhenQuiet])? */
+    internal var touchedAt = 0L
+
     init {
         addView(mapHost, MATCH, MATCH)
         addView(panelLayer, MATCH, MATCH)
@@ -41,6 +44,14 @@ class ShellRoot(ctx: Context) : FrameLayout(ctx) {
         }
         super.onMeasure(w, h)
     }
+
+    override fun dispatchTouchEvent(e: MotionEvent): Boolean {
+        touchedAt = SystemClock.uptimeMillis()
+        return super.dispatchTouchEvent(e)
+    }
+
+    /** One is open, or on its way. */
+    val sheetOpen: Boolean get() = (0 until sheets.childCount).any { (sheets.getChildAt(it) as? Sheet)?.isOpen == true }
 
     /** True when one was open. */
     fun closeSheets(): Boolean {

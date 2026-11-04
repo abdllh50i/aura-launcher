@@ -200,6 +200,8 @@ class HomePanel(shell: HomeActivity, savedInstanceState: Bundle?) : Panel(shell,
             room.postDelayed({ if (!isGone) drawer.prewarm() }, PREWARM_AFTER_MS)
             room.postDelayed({ if (!isGone) askLocationOnce() }, 2600)
         }
+        // (not in the start's first seconds, and once it is there this is one look in a map)
+        shell.panels.prepareWhenQuiet(Screens.MUSIC, PREPARE_MUSIC_AFTER_MS)
     }
 
     override fun onTick() {
@@ -385,5 +387,7 @@ class HomePanel(shell: HomeActivity, savedInstanceState: Bundle?) : Panel(shell,
         private const val LIVE_MAP_AFTER_MS = 700L
         /** The app drawer's cells are built while nothing else happens. */
         private const val PREWARM_AFTER_MS = 2500L
+        /** The music screen is built ahead of time ([PanelStack.prepareWhenQuiet]). */
+        private const val PREPARE_MUSIC_AFTER_MS = 6000L
     }
 }

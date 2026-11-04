@@ -213,7 +213,7 @@ object MusicKeys {
      * Is AMRI Music on this key's source? What the screen really is on (it may open on Bluetooth by itself, when the phone
      * plays, without that being the source chosen, which is all the pref says); the pref only when there is no screen.
      */
-    private fun sameSource(bt: Boolean) = bt == (com.abdllh.aura.music.MusicActivity.onBluetooth ?: (Prefs.raw.getString("musicSource", "local") == "bt"))
+    private fun sameSource(bt: Boolean) = bt == (com.abdllh.aura.music.MusicPanel.onBluetooth ?: (Prefs.raw.getString("musicSource", "local") == "bt"))
 
     private fun note(what: String) {
         try {
