@@ -1,0 +1,3 @@
+tables.json and answers.json are a small sample of places.db for the JVM tests, written by scripts/search_compare.py.
+The names in them: (c) OpenStreetMap contributors (ODbL), (c) Overture Maps Foundation, overturemaps.org (CDLA Permissive 2.0, Apache 2.0 for Foursquare data).
+See tools/mapbuild/NOTICE-PACK.md.

@@ -46,6 +46,20 @@ object Places {
      * without internet the offline ones stay. null = no answer at all (no internet and nothing offline).
      */
     fun search(query: String, near: LatLon?, arabic: Boolean, done: (List<Place>?) -> Unit) {
+        // 2.0's search over places.db, behind one preference (default off): a file it cannot use leaves the search below as it was
+        if (com.abdllh.aura.nav.places.PlaceSearch.swapOn) {
+            val gen = generation.incrementAndGet()
+            com.abdllh.aura.nav.places.PlaceSearch.search(query, near) { a ->
+                if (gen == generation.get()) {
+                    if (a.usable) done(a.hits.map { com.abdllh.aura.nav.places.PlaceSearch.place(it, arabic) }) else searchToday(query, near, arabic, done)
+                }
+            }
+            return
+        }
+        searchToday(query, near, arabic, done)
+    }
+
+    private fun searchToday(query: String, near: LatLon?, arabic: Boolean, done: (List<Place>?) -> Unit) {
         val gen = generation.incrementAndGet()
         val store = com.abdllh.aura.nav.offline.OfflineMaps.searchStore()
         // main thread state of this search
@@ -138,7 +152,7 @@ object Places {
         return ranked.take(11) + ranked.first { key(it) == best }
     }
 
-    fun cancelSearch() { generation.incrementAndGet() }
+    fun cancelSearch() { generation.incrementAndGet(); com.abdllh.aura.nav.places.PlaceSearch.cancel() }
 
     /** Turns a free-text address (the 1.0 Home/Work setting) into a place (the offline index when Photon fails). */
     fun geocode(text: String, near: LatLon?, arabic: Boolean, done: (Place?) -> Unit) {

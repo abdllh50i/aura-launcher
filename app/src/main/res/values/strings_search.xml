@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The search over places.db (nav/places): a coarse row's card, and why the file cannot be used -->
+    <string name="places_approx">Approximate location</string>
+    <string name="places_missing">The places file is not on this unit yet</string>
+    <string name="places_damaged">The places file is damaged and needs downloading again</string>
+    <string name="places_other_version">The places file does not fit this version of AMRI. Update the map or the app</string>
+</resources>
