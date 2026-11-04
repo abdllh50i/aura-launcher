@@ -1,0 +1,665 @@
+#!/usr/bin/env python
+"""The reference for AMRI's offline place search: normalisation, the query plan, the FTS4 strings, the score.
+
+SEARCH_SPEC.md says the same in words. The Kotlin side must give the same answers on tests/search_tests.json and
+tests/norm_vectors.json, so everything a query needs is here and nothing else: index-time logic lives in build_places.py.
+
+  python search_ref.py places.db "مطعم البيك الخبر" --near 26.29,50.20
+  python search_ref.py places.db --reverse 26.29,50.20
+  python search_ref.py places.db --test tests/search_tests.json [--golden out.json]
+
+Standard library only, the same SQL as the app, readable by SQLite 3.22 with FTS4.
+"""
+import argparse
+import json
+import math
+import os
+import sqlite3
+import sys
+import unicodedata
+
+NORM_VERSION = 1
+SK = "§"  # a token that starts with this is a consonant skeleton
+CT = "¤"  # a token that starts with this is a category id
+
+APOSTROPHES = "'’‘ʼʻ`´"
+FOLD = {
+    "ٱ": "ا",  # wasla alef
+    "ى": "ي", "ی": "ي", "ې": "ي",  # alef maksura, Persian ya
+    "ة": "ه", "ۃ": "ه", "ھ": "ه", "ہ": "ه", "ە": "ه",  # ta marbuta, other ha forms
+    "ک": "ك", "ڪ": "ك",  # keheh
+    "ڤ": "ف",  # veh
+    "گ": "ق", "ڨ": "ق",  # gaf: said and written for qaf in the Gulf
+    "پ": "ب",  # peh
+    "چ": "ج",  # tcheh
+    "ژ": "ز",  # jeh
+    "ں": "ن", "ٹ": "ت", "ڈ": "د", "ڑ": "ر",
+    "ء": "",  # bare hamza
+}
+for _i in range(10):
+    FOLD[chr(0x0660 + _i)] = str(_i)  # Arabic-Indic digits
+    FOLD[chr(0x06F0 + _i)] = str(_i)  # Persian digits
+
+
+def norm(s):
+    """Comparable text: lower case, no marks, one form of each letter, ASCII digits, words split by single spaces, and
+    split where the script changes between Arabic and anything else."""
+    out = []
+    prev_ar = None
+    for c in unicodedata.normalize("NFKD", s.lower()):
+        if c in APOSTROPHES:
+            continue
+        t = unicodedata.category(c)
+        if t in ("Mn", "Me", "Cf") or c == "ـ":
+            continue
+        c = FOLD.get(c, c)
+        if c == "":
+            continue
+        if t[0] in "LN":
+            ar = "؀" <= c <= "ۿ"
+            if prev_ar is not None and ar != prev_ar:
+                out.append(" ")
+            out.append(c)
+            prev_ar = ar
+        else:
+            out.append(" ")
+            prev_ar = None
+    return " ".join("".join(out).split())
+
+
+def is_ar(w):
+    return "؀" <= w[0] <= "ۿ" if w else False
+
+
+WORD_CANON = {"بو": "ابو", "abou": "abu", "abo": "abu", "abdul": "abd", "abdel": "abd", "abdal": "abd", "abdol": "abd", "abdu": "abd", "um": "umm"}
+
+
+def base(w):
+    """A word without its Arabic article, in its one spelling. The index holds these, so a query does too."""
+    w = WORD_CANON.get(w, w)
+    if is_ar(w):
+        if w == "الله":
+            return w
+        if w.startswith("ال") and len(w) >= 4:
+            return w[2:]
+        if w.startswith("لل") and len(w) >= 5:
+            return w[2:]
+    return w
+
+
+def latin_base(w):
+    """A Latin word without its article (Alkhobar, Ar-Riyadh written together), for skeletons and the index's second form."""
+    if len(w) >= 5 and w[:2] in ("al", "el"):
+        return w[2:]
+    if len(w) >= 6 and w[0] == "a":
+        for d in ("sh", "dh", "th"):
+            if w[1:3] == d and w[3:5] == d:
+                return w[3:]
+        if w[1] == w[2] and w[1] in "rsdtnz":
+            return w[2:]
+    return w
+
+
+SK_AR = {
+    "ب": "b", "ت": "t", "ث": "t", "ط": "t", "ج": "k", "ق": "k", "ك": "k", "خ": "k", "غ": "k", "ح": "h", "ه": "h",
+    "د": "d", "ذ": "d", "ض": "d", "ظ": "d", "ز": "d", "ر": "r", "س": "s", "ش": "s", "ص": "s", "ف": "f", "ل": "l", "م": "m", "ن": "n",
+}
+SK_LATIN_2 = {"kh": "k", "gh": "k", "ck": "k", "sh": "s", "ch": "s", "th": "t", "dh": "d", "ph": "f"}
+SK_LATIN_1 = {"b": "b", "d": "d", "f": "f", "g": "k", "h": "h", "j": "k", "k": "k", "l": "l", "m": "m", "n": "n", "p": "b", "q": "k", "r": "r", "s": "s", "t": "t", "v": "f", "z": "d"}
+
+
+def skeleton(w):
+    """The consonants of one word in one alphabet, so that an Arabic word and its Latin spelling land on the same letters.
+    Expects norm() and base() or latin_base() to have run. Words with digits have none."""
+    out = []
+    i = 0
+    n = len(w)
+    if is_ar(w):
+        for c in w:
+            if c.isdigit():
+                return ""
+            k = SK_AR.get(c)
+            if k:
+                out.append(k)
+    else:
+        prev = ""
+        while i < n:
+            c = w[i]
+            if c.isdigit():
+                return ""
+            two = w[i:i + 2]
+            k = SK_LATIN_2.get(two)
+            if k:
+                i += 2
+            else:
+                i += 1
+                if c == "c":
+                    k = "s" if i < n and w[i] in "eiy" else "k"
+                elif c == "x":
+                    if prev != "k":
+                        out.append("k")
+                    k = "s"
+                else:
+                    k = SK_LATIN_1.get(c, "")
+                    if not k:
+                        prev = ""  # a vowel between two equal consonants keeps both
+                        continue
+            if k != prev:
+                out.append(k)
+            prev = k
+    if out and out[-1] == "h":
+        out.pop()
+    return "".join(out)
+
+
+def skeletons(w):
+    """The skeleton of a word, and for a Latin word ending in -at (a ta marbuta written out: Rawdat, Madinat) the one without its t."""
+    b = base(w) if is_ar(w) else latin_base(w)
+    s = skeleton(b)
+    if not s:
+        return []
+    if not is_ar(w) and b.endswith("at") and len(b) >= 4 and s.endswith("t") and len(s) >= 2:
+        return [s, s[:-1]]
+    return [s]
+
+
+def lev1(a, b):
+    """True when a and b differ by at most one edit."""
+    la, lb = len(a), len(b)
+    if abs(la - lb) > 1:
+        return False
+    if la > lb:
+        a, b, la, lb = b, a, lb, la
+    i = 0
+    while i < la and a[i] == b[i]:
+        i += 1
+    if la == lb:
+        return a[i + 1:] == b[i + 1:]
+    return a[i:] == b[i + 1:]
+
+
+class Syn:
+    """Table syn: normalised word or phrase to categories, role and canonical word."""
+
+    __slots__ = ("words", "max_len")
+
+    def __init__(self, db):
+        self.words = {}
+        self.max_len = 1
+        for w, cats, role, canon in db.execute("SELECT w, cats, role, canon FROM syn"):
+            self.words[w] = ([int(x) for x in cats.split()] if cats else [], role, canon or "")
+            self.max_len = max(self.max_len, w.count(" ") + 1)
+
+    def get(self, w):
+        return self.words.get(w)
+
+
+class Group:
+    """One thing the query asks for: a word or phrase, with the categories it can also mean."""
+
+    __slots__ = ("words", "cats", "role", "prefix", "optional", "sks")
+
+    def __init__(self, words, cats, role, prefix, optional):
+        self.words = words
+        self.cats = cats
+        self.role = role
+        self.prefix = prefix
+        self.optional = optional
+        self.sks = skeletons(words[0]) if len(words) == 1 else []
+
+
+class Plan:
+    __slots__ = ("groups", "required", "road_hint", "district_hint")
+
+
+def plan_query(q, syn):
+    """Groups of a query. Words that only a road, a title or a company name carry are optional; stop words vanish."""
+    typing = not q[-1:].isspace()
+    ws = [base(w) for w in norm(q).split()]
+    p = Plan()
+    p.groups = []
+    p.road_hint = False
+    p.district_hint = False
+    i = 0
+    n = len(ws)
+    while i < n:
+        hit = None
+        for ln in range(min(syn.max_len, n - i), 0, -1):
+            e = syn.get(" ".join(ws[i:i + ln]))
+            if e is not None:
+                hit = (ln, e)
+                break
+        if hit is None:
+            last = i == n - 1
+            p.groups.append(Group([ws[i]], [], 0, last and typing, False))
+            i += 1
+            continue
+        ln, (cats, role, canon) = hit
+        words = ws[i:i + ln]
+        last = i + ln == n
+        if role == 3:  # a stop word
+            i += ln
+            continue
+        if role == 1:
+            p.road_hint = True
+        if role == 4:
+            p.district_hint = True
+        p.groups.append(Group(words, cats, role, last and typing and ln == 1, role in (1, 2, 4)))
+        i += ln
+    # a single letter being typed says nothing yet
+    p.groups = [g for g in p.groups if not (g.prefix and len(g.words[0]) < 2 and not g.words[0].isdigit() and len(g.words) == 1)]
+    p.required = [g for g in p.groups if not g.optional]
+    if not p.required:  # "طريق" alone: what was optional is all there is
+        p.required = p.groups
+    return p
+
+
+def _term(w, prefix):
+    star = prefix or (len(w) >= 3 and not w.isdigit())
+    return w + "*" if star else w
+
+
+def fts_string(plan, loose=False):
+    """The MATCH string. Standard query syntax: OR binds tighter than the implicit AND."""
+    parts = []
+    single = len(plan.required) == 1
+    for g in plan.required:
+        alts = []
+        if len(g.words) == 1:
+            alts.append(_term(g.words[0], g.prefix))
+        else:
+            alts.append('"' + " ".join(g.words) + '"')
+        for c in g.cats:
+            alts.append(CT + str(c))
+        if loose:
+            for i, s in enumerate(g.sks):
+                if len(s) >= 2:
+                    alts.append(SK + (s + "*" if len(s) >= 3 and i == 0 else s))
+        if single:  # a word alone must be in the name, not only in the area: "الخبر" is the town, not every shop in it
+            alts = ["k:" + a if not a.startswith('"') else a for a in alts]
+        parts.append(" OR ".join(alts))
+    return " ".join(parts)
+
+
+def fts_typo_string(plan):
+    """For a query that found nothing: the first three letters of each long word, for the single-edit check afterwards."""
+    parts = []
+    for g in plan.required:
+        for w in g.words:
+            if len(w) >= 4 and not w.isdigit():
+                parts.append(w[:3] + "*")
+            elif len(g.words) == 1:
+                parts.append(_term(w, g.prefix))
+    return " ".join(parts)
+
+
+NEAREST = 150
+BEST = 50
+COLUMNS = "p.id,p.kind,p.name,p.alt,p.cat,p.lat,p.lon,p.area,p.rank"
+
+
+def candidates(db, match, near):
+    """Up to NEAREST nearest and BEST best-ranked rows answering a MATCH string."""
+    rows = {}
+    base_sql = f"SELECT {COLUMNS} FROM f CROSS JOIN p ON p.id=f.docid WHERE f MATCH ? "
+    if near:
+        la = int(near[0] * 1e6)
+        lo = int(near[1] * 1e6)
+        k = math.cos(math.radians(near[0])) ** 2
+        got = db.execute(base_sql + f"ORDER BY (p.lat-{la})*(p.lat-{la})+(p.lon-{lo})*(p.lon-{lo})*{k:.6f} LIMIT {NEAREST}", (match,)).fetchall()
+        for r in got:
+            rows[r[0]] = r
+        if len(got) == NEAREST:
+            for r in db.execute(base_sql + f"ORDER BY p.rank DESC, p.id LIMIT {BEST}", (match,)):
+                rows[r[0]] = r
+    else:
+        for r in db.execute(base_sql + f"ORDER BY p.rank DESC, p.id LIMIT {NEAREST + BEST}", (match,)):
+            rows[r[0]] = r
+    return rows
+
+
+def areas_of(db, rows):
+    ids = sorted({r[7] for r in rows.values() if r[7]})
+    out = {}
+    for i in range(0, len(ids), 400):
+        part = ids[i:i + 400]
+        for a in db.execute(f"SELECT id,ar,en,city_ar,city_en FROM area WHERE id IN ({','.join(map(str, part))})"):
+            out[a[0]] = a
+    return out
+
+
+def km_between(la1, lo1, la2, lo2):
+    p1 = math.radians(la1)
+    p2 = math.radians(la2)
+    a = math.sin((p2 - p1) / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lo2 - lo1) / 2) ** 2
+    return 12742.0 * math.asin(min(1.0, math.sqrt(a)))
+
+
+def word_set(name):
+    return [base(w) for w in norm(name).split()] if name else []
+
+
+KIND_WEIGHT = {1: 8.0, 2: 30.0, 3: 22.0, 4: 10.0, 5: 14.0, 6: 10.0, 7: 8.0}
+KIND_REGION, KIND_CITY, KIND_TOWN, KIND_VILLAGE, KIND_DISTRICT, KIND_POI, KIND_ROAD = 1, 2, 3, 4, 5, 6, 7
+
+
+def group_quality(g, names, name_sks, area_words, area_sks, cat, syn):
+    """How well a row answers one group, 0..1: what the driver can see counts more than what only the index knew."""
+    if len(g.words) > 1:
+        if all(w in names for w in g.words):
+            return 1.0
+        if cat in g.cats:
+            return 0.8
+        if all(w in area_words for w in g.words):
+            return 0.6
+        return 0.5
+    w = g.words[0]
+    if w in names:
+        return 1.0
+    canon = syn.get(w)
+    if canon and canon[2]:
+        for n in names:
+            e = syn.get(n)
+            if e and e[2] == canon[2]:
+                return 1.0
+    best = 0.0
+    if len(w) >= 2:
+        for n in names:
+            if n.startswith(w):
+                best = max(best, 0.85 + 0.1 * len(w) / len(n))
+    if cat in g.cats:
+        best = max(best, 0.8)
+    for s in g.sks:
+        if len(s) >= 2:
+            if s in name_sks:
+                best = max(best, 0.75)
+            elif g.prefix and len(s) >= 3 and any(x.startswith(s) for x in name_sks):
+                best = max(best, 0.65)
+    if best >= 0.75:
+        return best
+    if w in area_words:
+        return max(best, 0.6)
+    if len(w) >= 2 and any(n.startswith(w) for n in area_words):
+        return max(best, 0.55)
+    for s in g.sks:
+        if len(s) >= 2 and s in area_sks:
+            return max(best, 0.55)
+    if len(w) >= 4 and any(lev1(w, n) for n in names):
+        return max(best, 0.6)
+    return max(best, 0.5)
+
+
+def score_row(r, plan, near, area, syn):
+    """The score of one candidate. Same formula in Kotlin; ties go to the lower id."""
+    rid, kind, name, alt, cat, lat, lon, area_id, rank = r
+    n1 = word_set(name)
+    n2 = word_set(alt)
+    names = set(n1) | set(n2)
+    name_sks = set()
+    for w in names:
+        name_sks.update(skeletons(w))
+    area_words = set()
+    area_sks = set()
+    if area:
+        for part in area[1:5]:
+            for w in word_set(part):
+                area_words.add(w)
+                area_sks.update(skeletons(w))
+    qual = [group_quality(g, names, name_sks, area_words, area_sks, cat, syn) for g in plan.required]
+    t = sum(qual) / len(qual) if qual else 0.0
+    # how much of a name the query covers, in the script it covers best
+    asked = set()
+    ask_sks = set()
+    for g in plan.groups:
+        asked.update(g.words)
+        ask_sks.update(g.sks)
+
+    def covered(words):
+        if not words:
+            return 0.0
+        hit = 0
+        for w in words:
+            if w in asked or any(a.startswith(w) or w.startswith(a) for a in asked if len(a) >= 2):
+                hit += 1
+            elif any(s in ask_sks for s in skeletons(w) if len(s) >= 2):
+                hit += 1
+            else:
+                e = syn.get(w)
+                if e is not None and e[1] != 0:  # road words and titles do not make a name longer
+                    hit += 1
+        return hit / len(words)
+
+    c = max(covered(n1), covered(n2))
+    exact = 1.0 if c >= 1.0 and t >= 0.99 else 0.0
+    if exact and plan.required and all(g.cats for g in plan.required) and not any(cat in g.cats for g in plan.required):
+        exact = 0.0  # a shop called "قهوة" that is no coffee shop
+    s = 55.0 * t + 15.0 * c + 25.0 * exact + 15.0 * rank / 100.0 + KIND_WEIGHT.get(kind, 8.0)
+    if plan.road_hint and kind == KIND_ROAD:
+        s += 20.0
+    if plan.district_hint and kind == KIND_DISTRICT:
+        s += 25.0
+    km = None
+    if near:
+        km = km_between(near[0], near[1], lat / 1e6, lon / 1e6)
+        s -= min(75.0, 11.0 * math.log(1.0 + km))
+    return s, km, t
+
+
+def display(r, area, cats, arabic=True):
+    """(name, detail) for the result list. A search-only spelling can never get here: only p.name and p.alt are shown."""
+    rid, kind, name, alt, cat, lat, lon, area_id, rank = r
+    main = name
+    if alt:
+        name_ar = bool(name) and any("؀" <= c <= "ۿ" for c in name)
+        if arabic != name_ar:
+            main = alt
+    parts = []
+    c = cats.get(cat)
+    if c and kind in (KIND_POI, KIND_ROAD, KIND_DISTRICT):
+        parts.append(c[1] if arabic else c[2])
+    if area:
+        na = area[1] if arabic else area[2] or area[1]
+        ci = area[3] if arabic else area[4] or area[3]
+        for x in (na, ci):
+            if x and x != main and x not in parts:
+                parts.append(x)
+    return main, ("، " if arabic else ", ").join(parts)
+
+
+def dedupe(scored):
+    """One place once: the same name within 150 m, or the same road name in one town, is one result (the best)."""
+    out = []
+    seen = []
+    for item in scored:
+        r = item["row"]
+        key = " ".join(sorted(word_set(r[2])))
+        dup = False
+        for key2, r2 in seen:
+            if key != key2:
+                continue
+            if r[1] == KIND_ROAD and r2[1] == KIND_ROAD and (r[7] == r2[7] or km_between(r[5] / 1e6, r[6] / 1e6, r2[5] / 1e6, r2[6] / 1e6) < 5.0):
+                dup = True
+                break
+            if km_between(r[5] / 1e6, r[6] / 1e6, r2[5] / 1e6, r2[6] / 1e6) < 0.15:
+                dup = True
+                break
+        if not dup:
+            out.append(item)
+            seen.append((key, r))
+    return out
+
+
+def search(db, query, near=None, limit=12, syn=None, debug=None):
+    """The answer to a query: a list of dicts, best first. near is (lat, lon) in degrees or None."""
+    syn = syn or Syn(db)
+    plan = plan_query(query, syn)
+    if not plan.required:
+        return []
+    letters = sum(len(w) for g in plan.required for w in g.words)
+    if letters < 2:
+        return []
+    rows = {}
+    stages = []
+    m = fts_string(plan)
+    stages.append(m)
+    rows.update(candidates(db, m, near))
+    if len(rows) < 6:
+        m2 = fts_string(plan, loose=True)
+        if m2 != m:
+            stages.append(m2)
+            rows.update(candidates(db, m2, near))
+    if len(rows) < 3:
+        m3 = fts_typo_string(plan)
+        if m3 and m3 != m:
+            stages.append(m3)
+            for rid, r in candidates(db, m3, near).items():
+                names = set(word_set(r[2])) | set(word_set(r[3]))
+                if all(any(lev1(w, n) or n.startswith(w) for n in names) for g in plan.required for w in g.words):
+                    rows[rid] = r
+    if debug is not None:
+        debug["match"] = stages
+        debug["candidates"] = len(rows)
+    areas = areas_of(db, rows)
+    scored = []
+    for rid, r in rows.items():
+        s, km, t = score_row(r, plan, near, areas.get(r[7]), syn)
+        scored.append({"id": rid, "score": round(s, 3), "km": None if km is None else round(km, 2), "row": r, "t": round(t, 3)})
+    scored.sort(key=lambda x: (-x["score"], x["id"]))
+    scored = dedupe(scored)[:limit]
+    cats = {c[0]: c for c in db.execute("SELECT id,ar,en FROM cat")}
+    out = []
+    for it in scored:
+        r = it["row"]
+        main, detail = display(r, areas.get(r[7]), cats)
+        out.append({"id": it["id"], "kind": r[1], "name": r[2], "alt": r[3], "cat": r[4], "lat": r[5] / 1e6, "lon": r[6] / 1e6, "rank": r[8],
+                    "km": it["km"], "score": it["score"], "shown": main, "detail": detail})
+    return out
+
+
+def reverse(db, lat, lon):
+    """What is at a point: the nearest POI within 60 m, else a named road within 40 m (its points are about 1 km apart, so
+    within 600 m of a point of it), else the district and town. Returns a dict or None."""
+    la = int(lat * 1e6)
+    lo = int(lon * 1e6)
+    k = math.cos(math.radians(lat))
+    d = 7000  # 0.007 degrees, about 780 m, is the widest ring this asks for
+    dl = int(d / k)
+    rows = db.execute(f"SELECT {COLUMNS} FROM p WHERE p.lat BETWEEN ? AND ? AND p.lon BETWEEN ? AND ? AND p.kind>=5", (la - d, la + d, lo - dl, lo + dl)).fetchall()
+    best = {}
+    for r in rows:
+        m = km_between(lat, lon, r[5] / 1e6, r[6] / 1e6) * 1000.0
+        if r[1] not in best or m < best[r[1]][0]:
+            best[r[1]] = (m, r)
+    poi = best.get(KIND_POI)
+    if poi and poi[0] <= 60.0:
+        return {"what": "poi", "m": round(poi[0], 1), "id": poi[1][0], "name": poi[1][2], "alt": poi[1][3]}
+    road = best.get(KIND_ROAD)
+    if road and road[0] <= 600.0:
+        return {"what": "road", "m": round(road[0], 1), "id": road[1][0], "name": road[1][2], "alt": road[1][3]}
+    # the district and the town: the nearest row of any kind says which area the point is in
+    dist = best.get(KIND_DISTRICT)
+    nearest = None
+    for kd, (m, r) in best.items():
+        if r[7] and (nearest is None or m < nearest[0]):
+            nearest = (m, r)
+    if nearest:
+        a = db.execute("SELECT id,ar,en,city_ar,city_en FROM area WHERE id=?", (nearest[1][7],)).fetchone()
+        if a:
+            return {"what": "area", "m": round(nearest[0], 1), "area": a[0], "ar": a[1], "en": a[2], "city_ar": a[3], "city_en": a[4]}
+    if dist:
+        return {"what": "district", "m": round(dist[0], 1), "id": dist[1][0], "name": dist[1][2], "alt": dist[1][3]}
+    return None
+
+
+# ------------------------------------------------------------------------------------------------- the test set
+
+
+def check(case, results, cat_ids):
+    """Does a result list satisfy one test? Returns (passed, why)."""
+    exp = case.get("expect", {})
+    top = exp.get("top", 3)
+    within = exp.get("within_km")
+    kinds = exp.get("kind")
+    if isinstance(kinds, int):
+        kinds = [kinds]
+    want_names = [norm(x) for x in exp.get("name_any", [])]
+    want_cats = [cat_ids.get(c) for c in exp.get("cat_any", [])]
+    if exp.get("none"):
+        return (not results), f"expected nothing, got {len(results)}"
+    if not results:
+        return False, "no results"
+    for i, r in enumerate(results[:top]):
+        if kinds and r["kind"] not in kinds:
+            continue
+        if want_cats and r["cat"] not in want_cats:
+            continue
+        if want_names:
+            text = norm((r["name"] or "") + " " + (r["alt"] or ""))
+            if not any(w in text for w in want_names):
+                continue
+        if within is not None and (r["km"] is None or r["km"] > within):
+            continue
+        return True, f"hit at {i + 1}"
+    return False, "not in top %d: %s" % (top, " / ".join(f"{r['name']} [{r['km']}]" for r in results[:top]))
+
+
+def run_tests(db, path, golden=None, verbose=True):
+    with open(path, encoding="utf-8") as f:
+        cases = json.load(f)["cases"]
+    syn = Syn(db)
+    cat_ids = {k: i for i, k in db.execute("SELECT id,key FROM cat")}
+    passed = 0
+    gold = []
+    by_group = {}
+    for c in cases:
+        near = tuple(c["near"]) if c.get("near") else None
+        res = search(db, c["q"], near, syn=syn)
+        ok, why = check(c, res, cat_ids)
+        passed += ok
+        g = by_group.setdefault(c.get("group", ""), [0, 0])
+        g[1] += 1
+        g[0] += ok
+        if verbose and not ok:
+            print(f"FAIL [{c.get('group', '')}] {c['q']!r}: {why}")
+        gold.append({"q": c["q"], "near": c.get("near"), "ids": [r["id"] for r in res], "scores": [r["score"] for r in res], "ok": bool(ok)})
+    print(f"{passed} of {len(cases)} pass")
+    for k, (a, b) in sorted(by_group.items()):
+        print(f"  {k}: {a}/{b}")
+    if golden:
+        with open(golden, "w", encoding="utf-8") as f:
+            json.dump(gold, f, ensure_ascii=False, indent=0)
+    return passed, len(cases)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("db")
+    ap.add_argument("query", nargs="?")
+    ap.add_argument("--near")
+    ap.add_argument("--reverse")
+    ap.add_argument("--test")
+    ap.add_argument("--golden")
+    ap.add_argument("--limit", type=int, default=12)
+    a = ap.parse_args()
+    sys.stdout.reconfigure(encoding="utf-8")
+    db = sqlite3.connect(f"file:{a.db}?mode=ro", uri=True)
+    v = db.execute("SELECT v FROM meta WHERE k='norm_version'").fetchone()
+    if not v or int(v[0]) != NORM_VERSION:
+        raise SystemExit(f"places.db has norm version {v}, this code {NORM_VERSION}")
+    if a.test:
+        run_tests(db, a.test, a.golden)
+        return
+    if a.reverse:
+        la, lo = map(float, a.reverse.split(","))
+        print(json.dumps(reverse(db, la, lo), ensure_ascii=False))
+        return
+    near = tuple(map(float, a.near.split(","))) if a.near else None
+    dbg = {}
+    res = search(db, a.query, near, a.limit, debug=dbg)
+    print("match:", dbg.get("match"), "candidates:", dbg.get("candidates"))
+    for r in res:
+        print(f"{r['score']:8.2f} {str(r['km']):>8} km  k{r['kind']} c{r['cat']:<3} r{r['rank']:<3} {r['shown']}  |  {r['alt'] or ''}  |  {r['detail']}")
+
+
+if __name__ == "__main__":
+    main()
