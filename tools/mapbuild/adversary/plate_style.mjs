@@ -56,7 +56,7 @@ try {
     mkdirSync(join(outDir, v), { recursive: true });
     for (const [name, lon, lat, zoom, pitch, bearing] of CAMERAS) {
       if (only && !only.split(',').includes(name)) continue;
-      const job = { style, lang: v.endsWith('ar') ? 'ar' : 'en', tiles: `http://127.0.0.1:${port}/base`, glyphs: 'https://tiles.openfreemap.org/fonts', center: [lon, lat], zoom, pitch, bearing };
+      const job = { style, lang: v.endsWith('ar') ? 'ar' : 'en', tiles: `http://127.0.0.1:${port}/base`, glyphs: flag('glyphs') || 'https://tiles.openfreemap.org/fonts', center: [lon, lat], zoom, pitch, bearing };
       const out = join(outDir, v, name + '.png');
       const t0 = Date.now();
       const res = await renderOne(browser, {

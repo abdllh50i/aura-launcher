@@ -327,7 +327,7 @@
     "max_timedep_distance": 500000,
     "max_timedep_distance_matrix": 0,
     "max_alternates": 2,
-    "max_exclude_polygons_length": 10000,
+    "max_exclude_polygons_length": 2000000,
     "max_exclude_polygons_vertices": 100,
     "min_linear_cost_factor": 1,
     "max_linear_cost_edges": 50000,

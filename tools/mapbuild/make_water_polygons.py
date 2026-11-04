@@ -6,10 +6,13 @@
 Runs inside the Valhalla image (it has shapely). The stand-in for water-polygons-split-3857.zip when that file cannot
 be fetched: those polygons are made from the same coastline by OSMCoastline, world-wide; this makes them for one area.
 
-  * Inside the working area (the outline plus 0.15 degrees) the sea comes from the OSM coastline: the coastline lines
-    and the area's edge cut the area into faces, and each face is told apart by which side of a coastline way it lies
-    on (OSM: land on the left, water on the right).
-  * Outside it, where a low-zoom tile still reaches, the sea is Natural Earth's 1:10 m ocean. No road map is read there.
+  * Inside the working area the sea comes from the OSM coastline: the coastline lines and the area's edge cut the area
+    into faces, and each face is told apart by which side of a coastline way it lies on (OSM: land on the left, water on
+    the right). The working area is the Kingdom's outline plus 0.15 degrees, and every 0.1 degree cell (and its
+    neighbours) that a coastline way of the extract crosses inside the pack's rectangle: Bahrain, Qatar, Kuwait and the
+    UAE's coast are the extract's own, and they show on the Kingdom's map.
+  * Outside it, where the rectangle's tiles or a low-zoom tile still reach, the sea is Natural Earth's 1:10 m ocean: the
+    far shores of the Gulf and the Red Sea (Iran, Iraq, Egypt, Sudan, Eritrea), which the extract does not hold.
   * A guard: nothing is sea unless it is within 0.15 degrees of Natural Earth's ocean. A coastline cut by the extract's
     edge (the Sinai side of the Gulf of Aqaba) would otherwise turn land into sea.
 """
@@ -35,6 +38,8 @@ WGS84_PRJ = ('GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",63781
 WORK_BUFFER = 0.15
 GUARD_BUFFER = 0.15
 REACH = box(26.0, 5.0, 64.0, 40.0)  # all that z6-z13 tiles over the Kingdom can show
+RECT = (34.4, 16.2, 55.7, 32.2)  # the pack's rectangle: build_base.sh's --bounds
+CELL = 0.1  # degrees: the size of the working area's cells along the coast
 GRID = 1.0  # degrees
 
 
@@ -58,6 +63,22 @@ def natural_earth_ocean(zip_path):
             os.rmdir(os.path.join(root, d))
     os.rmdir(tmp)
     return shapely.make_valid(unary_union(geoms))
+
+
+def coast_cells(ways):
+    """The cells a coastline way crosses inside the rectangle, with their neighbours, as one area."""
+    cells = set()
+    for w in ways:
+        a = np.array(w)
+        keep = (a[:, 0] >= RECT[0] - CELL) & (a[:, 0] <= RECT[2] + CELL) & (a[:, 1] >= RECT[1] - CELL) & (a[:, 1] <= RECT[3] + CELL)
+        if not keep.any():
+            continue
+        for i, j in set(zip(np.floor(a[keep, 0] / CELL).astype(int).tolist(), np.floor(a[keep, 1] / CELL).astype(int).tolist())):
+            for di in (-1, 0, 1):
+                for dj in (-1, 0, 1):
+                    cells.add((i + di, j + dj))
+    say("coast cells", len(cells))
+    return unary_union([box(i * CELL, j * CELL, (i + 1) * CELL, (j + 1) * CELL) for i, j in cells])
 
 
 def classify_faces(faces, ways):
@@ -141,17 +162,20 @@ def main():
     coast_path, outline_path, ne_zip, out_zip = sys.argv[1:5]
     t0 = time.time()
     outline = shape(json.load(open(outline_path, encoding="utf-8"))["geometry"])
+    coast = json.load(open(coast_path, encoding="ascii"))["ways"]
+    ways = [w["coords"] for w in coast if len(w["coords"]) >= 2]
+    say("coastline ways", len(ways), "points", sum(len(w) for w in ways))
     work = outline.buffer(WORK_BUFFER, quad_segs=2).simplify(0.01)
-    say("working area vertices", shapely.get_num_coordinates(work))
+    work = unary_union([work, coast_cells(ways)])
+    if work.geom_type != "Polygon":  # holes are fine, separate parts would only mean a far island group: keep them too
+        say("working area parts", len(work.geoms))
+    say("working area vertices", shapely.get_num_coordinates(work), "area", round(work.area, 2))
 
     say("Natural Earth ocean")
     ocean = natural_earth_ocean(ne_zip).intersection(REACH)
     say("  area", round(ocean.area, 2), "deg2")
     guard = ocean.buffer(GUARD_BUFFER, quad_segs=2)
 
-    coast = json.load(open(coast_path, encoding="ascii"))["ways"]
-    ways = [w["coords"] for w in coast if len(w["coords"]) >= 2]
-    say("coastline ways", len(ways), "points", sum(len(w) for w in ways))
     # where a way ends with no continuation inside the working area, the extract has cut it
     starts = {tuple(w[0]) for w in ways}
     ends = {tuple(w[-1]) for w in ways}
@@ -218,6 +242,26 @@ def main():
         "Doha": (25.28, 51.50, False),
         "Red Sea far side": (20.0, 38.5, True),
         "Iran side of the Gulf": (28.0, 50.5, True),
+        "Gulf north of Bahrain": (26.60, 50.65, True),
+        "Gulf north of Qatar": (26.50, 51.30, True),
+        "Gulf mid": (27.50, 51.50, True),
+        "Gulf off Kuwait": (28.90, 49.00, True),
+        "Gulf between Qatar and Abu Dhabi": (25.00, 52.50, True),
+        "Red Sea mid": (21.50, 38.00, True),
+        "Red Sea off Yanbu": (24.00, 37.60, True),
+        "Gulf of Aqaba": (28.80, 34.80, True),
+        "off Jazan": (16.80, 41.50, True),
+        "Manama": (26.21, 50.58, False),
+        "Muharraq": (26.26, 50.61, False),
+        "Abu Dhabi island": (24.45, 54.38, False),
+        "Dubai": (25.20, 55.27, False),
+        "Kuwait City": (29.35, 47.98, False),
+        "Failaka island": (29.44, 48.33, False),
+        "Bubiyan island": (29.80, 48.20, False),
+        "Iran's coast at Bushehr": (28.98, 51.00, False),
+        "Sinai": (28.50, 34.00, False),
+        "Port Sudan's land": (19.60, 37.10, False),
+        "Eritrea": (15.60, 38.90, False),
     }
     bad = 0
     for label, (lat, lon, want) in checks.items():

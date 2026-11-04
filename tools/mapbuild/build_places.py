@@ -38,7 +38,7 @@ import pyarrow.parquet as pq
 
 import places_tables as T
 from geo_index import Points, parse_wkb, rings_area_km2, rings_bbox
-from search_ref import ABD_LATIN, CT, NORM_VERSION, SK, base, is_ar, latin_base, norm, skeleton, skeletons
+from search_ref import ABD_LATIN, CT, NORM_VERSION, PL, ROLE_ALIAS, ROLE_FILLER, ROLE_LETTER, SK, SRC_COARSE, base, is_ar, latin_base, norm, skeleton, skeletons
 from translit import latin_forms
 
 KIND_REGION, KIND_CITY, KIND_TOWN, KIND_VILLAGE, KIND_DISTRICT, KIND_POI, KIND_ROAD = 1, 2, 3, 4, 5, 6, 7
@@ -62,6 +62,14 @@ COUNTRY_ALONE = re.compile(r"\s*(?:kingdom of saudi arabia|saudi arabia|ksa|ال
 
 
 PHONE_IN_NAME = re.compile(r"\+?\d[\d\s-]{6,}\d")
+# a bare number or code as a name: 12251, E203, 396-00-308, F211
+CODE_NAME = re.compile(r"^[\W_]*[A-Za-z\u0621-\u064A]{0,2}[\W_]*\d[\d\W_]*[A-Za-z\u0621-\u064A]{0,2}[\W_]*$")
+# an advertisement as a name
+ADVERT_NAME = re.compile(r"خصم|تخفيض|ارخص|أرخص|افضل شرك|أفضل شرك|واتس|whats ?app|نقل عفش ب|نقل اثاث ب|نقل أثاث ب|شراء اثاث|شراء أثاث|شراء .*مستعمل|تنظيف .* ب[ال]|رش مبيدات|مكافحة حشرات ب|كشف تسرب.* ب", re.I)
+# a part of a place, not a place: Gate 13, an ICU ward, a floor
+SUB_UNIT = re.compile(r"^(?:gate|door|entrance|exit|floor|ward|bed|unit|room|hall|counter|terminal gate)\s*[-#:]?\s*[\dA-Za-z]{0,3}\b|\b(?:icu|nicu|picu)\b|\bward\b|\bfood court\b|^(?:بوابة|بوابه|باب|مدخل|الدور|دور|عنبر|جناح|قسم|غرفة)\s+[\d\u0660-\u0669]{1,3}\s*$", re.I)
+# a name that says it is somewhere else, on an Overture row with no other witness
+ELSEWHERE = re.compile(r"\b(?:dubai|doha|qatar|kuwait|bahrain|manama|abu dhabi|sharjah|muscat|oman|egypt|cairo|jordan|amman|lebanon|beirut|kerala|india|pakistan|karachi|lahore|philippines|manila|indonesia|jakarta|nigeria|kenya|poland|romania|turkey|istanbul)\s*$|(?:المنامة|المنامه|دبي|الدوحة|الدوحه|الكويت|ابوظبي|أبوظبي|ابو ظبي|الشارقة|الشارقه|القاهرة|القاهره|بيروت)\s*$", re.I)
 MAX_INDEX_WORDS = 10  # a longer "name" is an advertisement: its first words are the name, the rest would answer every search
 WEAK_CATS = {"other", "shop", "office", "building", "real_estate", "community"}
 # words of table syn that often begin a name without saying what the place is ("محطة توزيع المياه", "Riyadh Gas")
@@ -111,6 +119,110 @@ def kind_from_name(r, words_to_cats, stats):
             stats["rows whose category came from their name"] += 1
             r.cat = hit[0]
             return
+
+
+def usual_kinds(rows, stats, w2c):
+    """What a name usually is. Overture's categories are noisy and one batch is plainly wrong, so:
+      * a row of that batch (Row.suspect) takes the kind the same name has on other rows, or "other" when no other row knows it;
+      * a row whose name is seen often, nearly always as one family of kinds, and is itself filed under another family, joins them;
+      * a row with a weak kind whose name begins with a chain's name takes the chain's kind (Kudu - Al-Shiraa - Al Khobar);
+      * so does any row whose first word is a big chain's whole name, unless another word of its name says what it is (Starbucks Middle East, not Al Rajhi Mosque)."""
+
+    def key(r):
+        return " ".join(latin_base(w) if not is_ar(w) else w for w in canon_tokens(r.name)[0])
+
+    names = collections.defaultdict(collections.Counter)
+    first = collections.defaultdict(collections.Counter)
+    for r in rows:
+        if r.suspect or r.generic or r.cat in WEAK_CATS:
+            continue
+        k = key(r)
+        names[k][r.cat] += 1
+        if " " not in k:
+            first[k][r.cat] += 1
+        if r.alt and not r.suspect:
+            names[" ".join(latin_base(w) if not is_ar(w) else w for w in canon_tokens(r.alt)[0])][r.cat] += 1
+
+    def family(c):
+        return CAT_ICON.get(c)
+
+    def dominant(counter, least, share):
+        total = sum(counter.values())
+        if total < least:
+            return None
+        fam = collections.Counter()
+        for c, n in counter.items():
+            fam[family(c)] += n
+        f, n = fam.most_common(1)[0]
+        if n / total < share:
+            return None
+        return max((c for c in counter if family(c) == f), key=lambda c: counter[c])
+
+    for r in rows:
+        k = key(r)
+        if r.suspect:
+            got = dominant(names.get(k, {}), 1, 0.5) if k in names else None
+            r.cat = got or "other"
+            stats["pharmacy batch: took the name's usual kind" if got else "pharmacy batch: no other row knows the name"] += 1
+            continue
+        if r.generic:
+            continue
+        usual = dominant(names.get(k, {}), 6, 0.6) if k in names else None
+        if usual and family(usual) != family(r.cat) and not compatible(r.cat, usual):
+            stats["rows moved to their name's usual kind"] += 1
+            r.cat = usual
+            continue
+        if " " in k:
+            words = k.split()
+            ch = words[0]
+            if ch not in first or len(ch) < 3:
+                continue
+            if r.cat in WEAK_CATS:
+                usual = dominant(first[ch], 12, 0.8)
+                if usual:
+                    stats["weak rows took a chain's kind from their first word"] += 1
+                    r.cat = usual
+            else:
+                usual = dominant(first[ch], 20, 0.9)
+                if usual and family(usual) != family(r.cat) and not compatible(r.cat, usual) and not any(w in w2c for w in words[1:]):
+                    stats["rows took a big chain's kind from their first word"] += 1
+                    r.cat = usual
+
+
+def check_chains(rows, stats):
+    """Stops the build when a known chain is filed under another kind (a batch of Overture rows once filed كنتاكي under pharmacy)."""
+    want = {" ".join(latin_base(w) if not is_ar(w) else w for w in canon_tokens(k)[0]): v for k, v in T.CHAIN_KINDS.items()}
+    bad = collections.Counter()
+    total = collections.Counter()
+    for r in rows:
+        for nm in (r.name, r.alt):
+            if not nm:
+                continue
+            k = " ".join(latin_base(w) if not is_ar(w) else w for w in canon_tokens(nm)[0])
+            w = want.get(k)
+            if w:
+                total[k] += 1
+                if not (r.cat == w or CAT_ICON.get(r.cat) == CAT_ICON.get(w) or {CAT_ICON.get(r.cat), CAT_ICON.get(w)} == {T.FOOD, T.CAFE} or r.cat in WEAK_CATS):
+                    bad[(k, r.cat)] += 1
+                break
+    wrong = {k: sum(v for (a, _), v in bad.items() if a == k) for k, _ in bad}
+    log("chains checked:", sum(total.values()), "rows; off their kind:", dict(bad.most_common(20)))
+    stats["chain rows checked"] = sum(total.values())
+    stats["chain rows off their kind"] = sum(bad.values())
+    over = {k: n for k, n in wrong.items() if n > max(2, total[k] * 0.03)}
+    if over:
+        raise SystemExit(f"known chains filed under another kind: {over}")
+
+
+def mark_piles(rows, stats):
+    """Five or more POIs on one point: that point is a geocoder's default. The rows stay in search, marked as coarse, and stay off the map's tiles, unless OpenStreetMap vouches for the row."""
+    at = collections.Counter((int(round(r.lat * 1e6)), int(round(r.lon * 1e6))) for r in rows if r.kind == KIND_POI)
+    n = 0
+    for r in rows:
+        if r.kind == KIND_POI and at[(int(round(r.lat * 1e6)), int(round(r.lon * 1e6)))] >= 5 and not r.src & SRC_OSM:
+            r.src |= SRC_COARSE
+            n += 1
+    stats["rows on a pile of 5 or more, marked coarse"] = n
 
 
 # ------------------------------------------------------------------------------------------------------- names
@@ -392,7 +504,7 @@ def _lev1(a, b):
 
 class Row:
     __slots__ = ("kind", "name", "alt", "others", "cat", "lat", "lon", "phone", "conf", "nsrc", "brand", "src", "generic", "website", "wiki", "area_poly", "cls", "pop",
-                 "rank", "area", "mkeys", "sks", "toks", "merged", "oid", "brand_ok", "ad")
+                 "rank", "area", "mkeys", "sks", "toks", "merged", "oid", "brand_ok", "ad", "suspect", "core", "sub", "away")
 
     def __init__(self, kind, name, alt, cat, lat, lon, src):
         self.kind = kind
@@ -422,6 +534,10 @@ class Row:
         self.oid = ""
         self.brand_ok = False
         self.ad = False
+        self.suspect = False  # its category came from a batch known to be wrong
+        self.core = None
+        self.sub = False  # a part of a place
+        self.away = False  # says it is elsewhere
 
 
 def names_of_osm(t):
@@ -772,6 +888,12 @@ def overture_rows(cache, lex, stats):
             stats["overture: no Arabic or Latin"] += 1
             continue
         whole = o.get("name") or ""
+        if CODE_NAME.match(raw) and not o.get("brand"):
+            stats["overture: a number or code as a name"] += 1
+            continue
+        if ADVERT_NAME.search(raw):
+            stats["overture: an advertisement as a name"] += 1
+            continue
         if COUNTRY_ALONE.fullmatch(raw):
             stats["overture: a name that is only a country"] += 1
             continue
@@ -798,6 +920,11 @@ def overture_rows(cache, lex, stats):
             cat = "mosque"
         r = Row(KIND_POI, ar or la, la if ar else "", cat, o["lat"], o["lon"], SRC_OVERTURE)
         r.conf = conf
+        # a batch of Microsoft's rows files fast food, phones and perfume under pharmacy; the same names elsewhere say what they are (see usual_kinds)
+        if cat == "pharmacy" and "Microsoft" in (o.get("src") or []) and not T.PHARMACY_WORDS.search(raw):
+            r.suspect = True
+        r.sub = bool(SUB_UNIT.search(raw))
+        r.away = bool(ELSEWHERE.search(raw))
         r.phone = clean_phone(o.get("phone")) or name_phone
         r.ad = bool(name_phone)
         r.website = bool(o.get("web"))
@@ -890,7 +1017,11 @@ def osm_poi_rows(path, inside, lex, stats):
         if FOREIGN.search(name) and not AR_RANGE.search(name):
             stats["osm: foreign script"] += 1
             continue
+        if not generic and CODE_NAME.match(name) and not t.get("brand") and t.get("highway") != "motorway_junction":
+            stats["osm: a number or code as a name"] += 1
+            continue
         r = Row(KIND_POI, name, en if ar and en else "", cat, o["lat"], o["lon"], SRC_OSM)
+        r.sub = bool(SUB_UNIT.search(name)) and t.get("highway") != "motorway_junction"
         r.others = others
         r.phone = first_phone(t)
         r.generic = generic
@@ -953,6 +1084,16 @@ def division_rows(divs):
         r = Row(kind, name, d.en if d.ar else "", cat, d.lat, d.lon, SRC_OVERTURE)
         r.cls = d.cls or d.sub
         r.pop = d.pop or 0
+        rows.append(r)
+    return rows
+
+
+def hand_rows():
+    rows = []
+    for ar, en, others, cls, lat, lon in T.HAND_PLACES:
+        r = Row({"city": KIND_CITY, "town": KIND_TOWN, "village": KIND_VILLAGE, "district": KIND_DISTRICT}[cls], ar, en, "city", lat, lon, SRC_OSM)
+        r.others = list(others)
+        r.cls = cls
         rows.append(r)
     return rows
 
@@ -1034,14 +1175,44 @@ def compatible(a, b):
     return {ia, ib} == {T.FOOD, T.CAFE}
 
 
+def core_of(r, w2c):
+    """The consonants of the words that tell this place from others of its kind: no titles, no words that say its kind, nothing shorter than three consonants."""
+    out = set()
+    icon = CAT_ICON.get(r.cat)
+    for nm in [r.name, r.alt] + r.others[:4]:
+        if not nm:
+            continue
+        for w in canon_tokens(nm)[0]:
+            if w in OPTIONAL or w.isdigit() or w in ("for", "and", "the", "of", "co"):
+                continue
+            kinds = w2c.get(w)
+            if kinds and any(CAT_ICON.get(c) == icon or c == r.cat for c in kinds):
+                continue
+            for s in skeletons(w)[:1]:
+                if len(s) >= 3:
+                    out.add(s)
+    return out
+
+
+def scripts_differ(a, b):
+    """One row only in Arabic letters, the other only in Latin ones."""
+    return not a.alt and not b.alt and bool(AR_RANGE.search(a.name)) != bool(AR_RANGE.search(b.name))
+
+
 def same_place(a, b, d):
     """Is b, d metres from a, the same place as a?"""
     if a.generic or b.generic:
         return d <= 40.0 and a.cat == b.cat
     if not compatible(a.cat, b.cat):
         return False
+    if a.mkeys & b.mkeys and d <= 150.0 and CAT_ICON.get(a.cat) == CAT_ICON.get(b.cat):  # the search too holds one name within 150 m to be one place
+        return True
     if (a.mkeys & b.mkeys or a.sks & b.sks) and d <= 100.0:
         return True
+    if d <= 100.0 and scripts_differ(a, b) and a.core and b.core:  # مطعم الشحرور, Shahroor; Tamimi Market, أسواق التميمي
+        short, long_ = (a.core, b.core) if len(a.core) <= len(b.core) else (b.core, a.core)
+        if short <= long_:
+            return True
     if d <= 80.0:
         for x in a.toks:
             sx = set(x)
@@ -1053,22 +1224,23 @@ def same_place(a, b, d):
     return False
 
 
-def dedupe_pois(rows, lex, stats):
+def dedupe_pois(rows, lex, stats, w2c):
     """Merges the same place from several sources, the richest row first. A row keeps every name its copies had."""
     for r in rows:
         keys_of(r, lex)
+        r.core = core_of(r, w2c)
 
     def richness(r):
         return (0 if r.generic else 6) + (3 if r.alt else 0) + (2 if r.phone else 0) + (2 if r.brand else 0) + r.conf + (1.2 if r.src & SRC_OSM else 0)
 
     rows.sort(key=richness, reverse=True)
-    grid = Grid(0.0012)
+    grid = Grid(0.0016)
     out = []
     for r in rows:
         hit = None
         for la, lo, a in grid.near(r.lat, r.lon, 1):
             d = dist_m(r.lat, r.lon, la, lo)
-            if d <= 100.0 and same_place(a, r, d):
+            if d <= 150.0 and same_place(a, r, d):
                 hit = a
                 break
         if hit is None:
@@ -1094,6 +1266,8 @@ def dedupe_pois(rows, lex, stats):
         hit.website = hit.website or r.website
         hit.wiki = hit.wiki or r.wiki
         hit.area_poly = hit.area_poly or r.area_poly
+        hit.sub = hit.sub and r.sub
+        hit.away = hit.away and r.away
         for x in [r.name, r.alt] + r.others:
             if x and x != hit.name and x != hit.alt and x not in hit.others and len(hit.others) < 8:
                 hit.others.append(x)
@@ -1202,6 +1376,10 @@ def rank_rows(rows):
                 v -= 18
             if len(r.name or "") > 50:
                 v -= 6
+            if r.away and r.src == SRC_OVERTURE:
+                v -= 25
+            if r.sub:  # a part of a place: never above the z13 tile's lowest rank (30)
+                v = min(v, 28)
         else:
             base_rank = {KIND_REGION: 72, KIND_CITY: 84, KIND_TOWN: 68, KIND_VILLAGE: 34, KIND_DISTRICT: 44}.get(r.kind, 30)
             if r.cls == "county":
@@ -1283,7 +1461,10 @@ def index_tokens(r, lex, stats):
         for s in skeletons(w):
             if len(s) >= 2:
                 sks.append(SK + s)
-    toks = list(dict.fromkeys(main)) + [w for w in dict.fromkeys(extra + extra2) if w not in main] + list(dict.fromkeys(sks)) + [CT + str(CAT[r.cat])]
+    places = []
+    if r.kind <= KIND_DISTRICT:  # a town's or a district's consonants again under their own mark: see search_ref.place_string
+        places = [PL + s[1:] for s in dict.fromkeys(sks) if len(s) >= 4]
+    toks = list(dict.fromkeys(main)) + [w for w in dict.fromkeys(extra + extra2) if w not in main] + list(dict.fromkeys(sks)) + places + [CT + str(CAT[r.cat])]
     return " ".join(toks)
 
 
@@ -1331,10 +1512,46 @@ def syn_rows():
         e = table.setdefault(k, [[], 0, ""])
         e[1] = role
         e[2] = canon
+    for canon, words in T.CANON.items():
+        for w in words.split():
+            e = table.setdefault(key(w), [[], 0, ""])
+            e[2] = key(canon)
+    for w in T.FILLERS + T.FILLER_PHRASES:
+        k = key(w)
+        e = table.setdefault(k, [[], 0, ""])
+        if e[1] == 0 and not e[0]:  # a word that already means something keeps its meaning
+            e[1] = ROLE_FILLER
+    for w, letter in T.LETTERS.items():
+        k = key(w)
+        if k not in table:
+            table[k] = [[], ROLE_LETTER, letter]
+    for w, target in T.ALIASES.items():
+        table[key(w)] = [[], ROLE_ALIAS, target]
     return [(k, " ".join(map(str, v[0])), v[1], v[2]) for k, v in sorted(table.items())]
 
 
-def write_db(path, rows, area_rows, spots, stats, meta, prefix):
+def with_junctions(spots):
+    """Adds a column to each spot: signal nodes within 60 m of each other are one junction, with one number. "الإشارة الثانية" counts these, not the nodes."""
+    sig = [i for i, s in enumerate(spots) if s[0] == 2]
+    parent = {i: i for i in sig}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    grid = Grid(0.001)
+    for i in sig:
+        la, lo = spots[i][1] / 1e6, spots[i][2] / 1e6
+        for la2, lo2, j in grid.near(la, lo, 1):
+            if dist_m(la, lo, la2, lo2) <= 60.0:
+                parent[find(i)] = find(j)
+        grid.add(la, lo, i)
+    return [s + (find(i) + 1 if s[0] == 2 else None,) for i, s in enumerate(spots)]
+
+
+def write_db(path, rows, area_rows, spots, gates, zones, stats, meta, prefix):
     if os.path.exists(path):
         os.remove(path)
     db = sqlite3.connect(path)
@@ -1349,7 +1566,9 @@ def write_db(path, rows, area_rows, spots, stats, meta, prefix):
         CREATE TABLE cat(id INTEGER PRIMARY KEY, key TEXT, ar TEXT, en TEXT, icon INT);
         CREATE TABLE p(id INTEGER PRIMARY KEY, kind INT, name TEXT NOT NULL, alt TEXT, cat INT, lat INT, lon INT, area INT, phone TEXT, rank INT, src INT);
         CREATE VIRTUAL TABLE f USING fts4(content='', k, a{prefix_opt}, matchinfo=fts3);
-        CREATE TABLE spot(kind INT, lat INT, lon INT, dir INT, kmh INT, src INT);
+        CREATE TABLE spot(kind INT, lat INT, lon INT, dir INT, kmh INT, src INT, j INT);
+        CREATE TABLE gate(lat INT, lon INT, sub INT, road INT);
+        CREATE TABLE zone(id INTEGER PRIMARY KEY, kind INT, name TEXT, en TEXT, s REAL, n REAL, w REAL, e REAL, ring TEXT);
         CREATE TABLE syn(w TEXT PRIMARY KEY, cats TEXT, role INT, canon TEXT) WITHOUT ROWID;
         CREATE TABLE meta(k TEXT PRIMARY KEY, v TEXT) WITHOUT ROWID;
     """)
@@ -1361,10 +1580,13 @@ def write_db(path, rows, area_rows, spots, stats, meta, prefix):
     for i, r in enumerate(rows, 1):
         db.execute("INSERT INTO p VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                    (i, r.kind, r.name, r.alt or None, CAT[r.cat], int(round(r.lat * 1e6)), int(round(r.lon * 1e6)), r.area or None, r.phone or None, r.rank, r.src))
-    db.executemany("INSERT INTO spot VALUES(?,?,?,?,?,?)", spots)
+    db.executemany("INSERT INTO spot VALUES(?,?,?,?,?,?,?)", spots)
+    db.executemany("INSERT INTO gate VALUES(?,?,?,?)", gates)
+    db.executemany("INSERT INTO zone VALUES(?,?,?,?,?,?,?,?,?)", zones)
     db.execute("COMMIT")
     db.execute("CREATE INDEX p_lat ON p(lat)")
     db.execute("CREATE INDEX spot_lat ON spot(lat)")
+    db.execute("CREATE INDEX gate_lat ON gate(lat)")
     return db
 
 
@@ -1427,14 +1649,16 @@ def main():
                         r.others.append(top)
                         stats["other-script brand name from Wikidata"] += 1
 
-    pois = dedupe_pois(ov + osm, lex, stats)
+    w2c = syn_words()
+    usual_kinds(ov + osm, stats, w2c)
+    pois = dedupe_pois(ov + osm, lex, stats, w2c)
     del ov, osm
     log("pois after merging", len(pois), "merged", stats["pois merged"], "across sources", stats["pois merged across sources"])
 
     # names decide weak categories
-    w2c = syn_words()
     for r in pois:
         kind_from_name(r, w2c, stats)
+    check_chains(pois, stats)
 
     # one source's "airport" far from any airport OpenStreetMap knows is a check-in somewhere else: it stays findable, not as an airport
     fields = Grid(0.25)
@@ -1461,7 +1685,7 @@ def main():
                 shown += 1
     log("Latin-only rows given a real Arabic brand name for display:", shown)
 
-    places = merge_places(division_rows(divs) + place_osm, stats)
+    places = merge_places(division_rows(divs) + place_osm + hand_rows(), stats)
     del place_osm
     log("places after merging", len(places))
 
@@ -1484,6 +1708,7 @@ def main():
     pois = keep
     log("pois after dropping place names", len(pois))
 
+    mark_piles(pois, stats)
     rows = places + pois + roads
     del places, pois, roads
     log("assigning areas to", len(rows))
@@ -1501,12 +1726,19 @@ def main():
     KIND = {"camera": 1, "signal": 2, "bump": 3}
     vertical = {"bump", "hump", "table", "cushion", "rumble_strip", "dip", "yes", "speed_bump", "speed_hump"}
     sc = collections.Counter()
+    with open(os.path.join(a.work, "roadside.json"), encoding="utf-8") as f:
+        roadside = json.load(f)  # osm_roadside.py
     for s, ok in zip(sp, ins.tolist()):
         if not ok:
             continue
         if s["k"] == "bump" and s.get("sub") not in vertical:
             sc["calming that is no bump (island, chicane...)"] += 1
             continue
+        if s["k"] == "camera":  # the traffic it watches comes from the road: OSM's direction tag is where the lens faces, when it is anything
+            c = roadside["cameras"].get(f'{s["lat"]:.7f},{s["lon"]:.7f}')
+            if c is None:
+                sc["camera the road-side file does not know"] += 1
+            s["dir"] = c["dir"] if c else None
         spots.append((KIND[s["k"]], int(round(s["lat"] * 1e6)), int(round(s["lon"] * 1e6)), s.get("dir"), s.get("kmh"), 1))
         sc[s["k"]] += 1
         if s.get("dir") is not None:
@@ -1524,18 +1756,28 @@ def main():
                     spots.append((kind, int(round(x["lat"] * 1e6)), int(round(x["lon"] * 1e6)), None, x.get("kmh") or None, 2))
                     sc["owner " + key] += 1
     spots.sort(key=lambda s: s[1])
+    spots = with_junctions(spots)
+    sc["signal junctions (nodes within 60 m are one)"] = len({s[6] for s in spots if s[6] is not None})
     log("spots", dict(sc))
+    la = np.array([g["lat"] for g in roadside["gates"]])
+    lo = np.array([g["lon"] for g in roadside["gates"]])
+    road_order = ["motorway", "trunk", "primary", "secondary", "tertiary", "unclassified", "residential", "living_street", "service"]
+    gates = sorted((int(round(g["lat"] * 1e6)), int(round(g["lon"] * 1e6)), g["sub"], next((i for i, x in enumerate(road_order) if g["road"].startswith(x)), 9))
+                   for g, ok in zip(roadside["gates"], inside(la, lo).tolist()) if ok)
+    zones = [(i, z["kind"], z["name"] or None, z["en"] or None, min(p[1] for p in z["ring"]), max(p[1] for p in z["ring"]), min(p[0] for p in z["ring"]), max(p[0] for p in z["ring"]), json.dumps(z["ring"], separators=(",", ":")))
+             for i, z in enumerate(roadside["zones"], 1)]
+    log("gates", len(gates), "zones", len(zones))
 
     meta = {
-        "schema": "1", "norm_version": str(NORM_VERSION), "built": time.strftime("%Y-%m-%dT%H:%MZ", time.gmtime()), "overture": release,
+        "schema": "2", "norm_version": str(NORM_VERSION), "built": time.strftime("%Y-%m-%dT%H:%MZ", time.gmtime()), "overture": release,
         "osm_data": a.osm_stamp, "additions": add_src,
-        "attribution": "© OpenStreetMap contributors (ODbL), © Overture Maps Foundation. Places from Overture: CDLA Permissive 2.0, Apache 2.0 for Foursquare data; "
+        "attribution": "© OpenStreetMap contributors (ODbL), © Overture Maps Foundation, overturemaps.org. Places from Overture: CDLA Permissive 2.0, Apache 2.0 for Foursquare data; "
                        "Foursquare data was transformed to the Overture schema. Copyright 2024 Foursquare Labs, Inc. All rights reserved.",
         "rank": "0-100, higher is more important",
     }
     log("writing", a.out)
     t0 = time.time()
-    db = write_db(a.out, rows, area_rows, spots, stats, meta, a.prefix)
+    db = write_db(a.out, rows, area_rows, spots, gates, zones, stats, meta, a.prefix)
     log(f"tables written {time.time() - t0:.1f} s, file {os.path.getsize(a.out) / 1e6:.1f} MB before the index")
     t0 = time.time()
     db.execute("BEGIN")
@@ -1580,7 +1822,7 @@ def main():
     }
     with open(os.path.join(a.work, "build-report.json"), "w", encoding="utf-8") as f:
         json.dump(report, f, ensure_ascii=False, indent=1)
-    log(json.dumps({k: v for k, v in report.items() if k not in ("poi_by_category", "stats", "brand_display_pairs")}, ensure_ascii=False))
+    log(json.dumps({k: v for k, v in report.items() if k not in ("poi_by_category", "brand_display_pairs")}, ensure_ascii=False))
 
 
 if __name__ == "__main__":

@@ -9,6 +9,8 @@ DICT      Latin word <-> Arabic word, for search only (index time): a Latin-name
 BRANDS    brands both ways, seeds for what the data's own brand:ar and name:ar pairs do not hold
 """
 
+import re
+
 # Icon groups, in the order of nav/Poi.kt's kinds, so that the app can colour by them.
 OTHER, FOOD, CAFE, SHOP, FUEL, TRANSPORT, HEALTH, WORSHIP, LODGING, BANK, SCHOOL, PARK, SIGHT, PUBLIC = range(14)
 
@@ -401,12 +403,12 @@ SYNONYMS = [
     ("حلويات حلا كيك دونات ايسكريم بوظة sweets dessert desserts cake", ["آيس كريم", "ice cream"], ["sweets"]),
     ("عصير عصيرات juice", [], ["juice"]),
     # coffee, in every way it is said here
-    ("قهوة قهوه گهوة جهوة كوفي كافيه كافي كوفيشوب coffee cafe kahwa gahwa qahwa", ["كوفي شوب", "coffee shop"], ["coffee", "lounge"]),
+    ("قهوة قهوه گهوة جهوة كهوة كوفي كوفيهات كوفيات كافيه كافيهات كافي كوفيشوب coffee cafe cafes kahwa gahwa qahwa", ["كوفي شوب", "coffee shop"], ["coffee", "lounge"]),
     ("مقهى مقاهي قهاوي", [], ["coffee", "lounge", "tea"]),
     ("شاي كرك tea karak", [], ["tea", "coffee"]),
     ("معسل شيشة lounge hookah shisha", [], ["lounge"]),
     # fuel and the car
-    ("بنزين بترول محطة محطات وقود ديزل gas petrol fuel", ["محطة بنزين", "محطة وقود", "محطات وقود", "محطة بترول", "gas station", "petrol station", "fuel station"], ["fuel"]),
+    ("بنزين بنزينة بترول محطة محطات وقود ديزل gas petrol fuel", ["محطة بنزين", "محطة وقود", "محطات وقود", "محطة بترول", "gas station", "petrol station", "fuel station"], ["fuel"]),
     ("شاحن", ["شحن كهربائي", "شحن سيارات", "ev charging", "ev charger", "charging station"], ["ev_charging"]),
     ("تلميع carwash", ["مغسلة سيارات", "مغاسل سيارات", "غسيل سيارات", "مغسلة سياره", "car wash"], ["car_wash"]),
     ("مغسلة مغاسل غسيل", [], ["car_wash", "laundry"]),
@@ -424,7 +426,7 @@ SYNONYMS = [
     # shops
     ("بقالة بقاله بقالات تموينات دكان grocery convenience", ["مواد غذائية"], ["grocery", "supermarket"]),
     ("سوبرماركت هايبر هايبرماركت ماركت supermarket hypermarket", ["سوبر ماركت", "هايبر ماركت"], ["supermarket", "grocery"]),
-    ("مول مولات mall malls", ["مجمع تجاري", "shopping center", "shopping centre"], ["mall"]),
+    ("مول مولات mall malls", ["مجمع تجاري", "مجمعات تجارية", "shopping center", "shopping centre"], ["mall"]),
     ("سوق أسواق souq souk market", [], ["market", "supermarket", "grocery"]),
     ("خضار خضروات فواكه vegetables", ["خضار وفواكه"], ["vegetables"]),
     ("ملحمة ملاحم لحوم جزار butcher", [], ["butcher"]),
@@ -433,7 +435,7 @@ SYNONYMS = [
     ("أحذية جزم shoes", [], ["shoes"]),
     ("ذهب مجوهرات jewelry jewellery gold", [], ["jewelry"]),
     ("نظارات بصريات optician glasses optical", [], ["optician"]),
-    ("عطور عطر عود بخور مكياج perfume perfumes oud cosmetics", [], ["perfume"]),
+    ("عطور عطر عطارة عطار عود بخور مكياج perfume perfumes oud cosmetics", [], ["perfume"]),
     ("جوال جوالات موبايل phones mobile", [], ["mobile", "electronics"]),
     ("إلكترونيات الكترونيات كمبيوتر حاسب electronics computer", [], ["electronics", "mobile"]),
     ("أثاث اثاث مفروشات موبيليا سجاد furniture carpet", [], ["furniture"]),
@@ -446,7 +448,7 @@ SYNONYMS = [
     ("مستشفى مستشفيات طوارئ hospital hospitals emergency", [], ["hospital"]),
     ("مستوصف مستوصفات عيادة عيادات clinic clinics medical doctor", ["مجمع طبي", "مركز طبي", "مركز صحي"], ["clinic", "hospital"]),
     ("أسنان اسنان dentist dental", ["دكتور اسنان", "طبيب اسنان"], ["dentist"]),
-    ("صيدلية صيدليه صيدليات دواء أدوية pharmacy pharmacies drugstore", [], ["pharmacy"]),
+    ("صيدلية صيدليه صيدليات صيدلة دواء أدوية pharmacy pharmacies pharma drugstore", [], ["pharmacy"]),
     ("مختبر مختبرات تحاليل lab laboratory", [], ["lab"]),
     ("بيطري vet veterinary", [], ["vet"]),
     # worship
@@ -524,6 +526,7 @@ SPECIFIC = """دواء أدوية شاورما شورما شاورمة shawarma 
 
 # Words that are never required. role: 1 road word (a hint that a road is meant), 2 optional word (titles, company words),
 # 3 stop word (dropped), 4 district word (a hint). canon: the one spelling compared when ranking, never shown.
+# Roles 6, 7 and 8 are below: FILLERS, LETTERS, ALIASES.
 ROLES = {
     "محل": (2, "محل"), "محلات": (2, "محل"), "متجر": (2, "محل"), "shop": (2, "محل"), "store": (2, "محل"), "مركز": (2, "مركز"), "center": (2, "مركز"), "centre": (2, "مركز"), "مجمع": (2, "مجمع"),
     "شارع": (1, "طريق"), "طريق": (1, "طريق"), "street": (1, "طريق"), "st": (1, "طريق"), "road": (1, "طريق"), "rd": (1, "طريق"), "جادة": (1, "طريق"),
@@ -537,8 +540,53 @@ ROLES = {
     "region": (2, "منطقه"), "province": (2, "منطقه"), "محافظه": (2, "محافظه"), "governorate": (2, "محافظه"),
     "بن": (3, "بن"), "ابن": (3, "بن"), "bin": (3, "بن"), "ibn": (3, "بن"), "bn": (3, "بن"), "ال": (3, ""), "al": (3, ""), "el": (3, ""), "the": (3, ""), "of": (3, ""), "and": (3, ""),
     "و": (3, ""), "في": (3, ""), "من": (3, ""), "الي": (3, ""), "ar": (3, ""), "as": (3, ""), "ad": (3, ""), "at": (3, ""), "an": (3, ""), "ash": (3, ""), "az": (3, ""), "ath": (3, ""), "adh": (3, ""),
-    "اقرب": (3, ""), "nearest": (3, ""), "near": (3, ""), "قريب": (3, ""), "قريبه": (3, ""), "ودني": (3, ""), "وديني": (3, ""),
+    "اقرب": (3, ""), "nearest": (3, ""), "near": (3, ""), "قريب": (3, ""), "قريبه": (3, ""), "ودني": (3, ""), "وديني": (3, ""), "قريبين": (3, ""), "لاقرب": (3, ""),
+    "عام": (2, "عام"), "عامه": (2, "عام"), "general": (2, "عام"),
 }
+
+# Role 6, what people say around what they want: "وين اقرب صيدلية", "ابغى اروح الراشد مول", "خذني لاقرب محطة", "ابي قهوة". At the start or the end of a query these are only speech:
+# never required, but rows that hold them too come first ("روح الشرق", "ابي طالب"), because the search also reads the rows with every word. In the middle of a query they are plain words.
+# Not stop words: a name may hold them, and the index keeps them.
+FILLERS = """وين فين ابي ابى ابغى ابغي ابغا ابا اريد ودي عايز خذني خدني اخذني وصلني وصلنا ودنا ودينا دلني دلوني اروح نروح اذهب روح رحني نبي نبغى نبغي ابحث دور دورلي شوف شوفلي هل وش ايش فيه فيها
+    ممكن بالله الحين هنا عندي جنبي حولي where take me to go find show navigate please""".split()
+FILLER_PHRASES = ["لو سمحت", "take me to", "go to", "navigate to", "where is"]
+
+# Role 7, letters said one by one, as a recogniser writes them: "كي اف سي" is kfc, "اتش اند ام" is hm. canon holds the Latin letter, "" for the word that only joins them (اند).
+LETTERS = {"اي": "a", "بي": "b", "سي": "c", "دي": "d", "اف": "f", "جي": "g", "اتش": "h", "كي": "k", "ام": "m", "ان": "n", "او": "o", "ار": "r", "اس": "s", "تي": "t", "يو": "u", "دبليو": "w", "اكس": "x", "واي": "y", "زد": "z", "اند": ""}
+
+# Role 8, another name for the whole thing. canon holds what to search for as well, | between several ways of writing it. Only well-known ones: a wrong one would send the driver elsewhere.
+ALIASES = {
+    "جسر البحرين": "جسر الملك فهد|king fahd causeway", "كوبري البحرين": "جسر الملك فهد|king fahd causeway", "bahrain causeway": "king fahd causeway|جسر الملك فهد", "causeway": "king fahd causeway|جسر الملك فهد",
+    "الحرم": "المسجد الحرام", "الحرم المكي": "المسجد الحرام", "الحرم الشريف": "المسجد الحرام", "الحرم النبوي": "المسجد النبوي", "haram": "masjid al haram",
+    "مطار الدمام": "مطار الملك فهد الدولي|king fahd international airport", "dammam airport": "king fahd international airport|مطار الملك فهد الدولي", "مطار الرياض": "مطار الملك خالد الدولي|king khalid international airport", "riyadh airport": "king khalid international airport|مطار الملك خالد الدولي",
+    "مطار جدة": "مطار الملك عبدالعزيز الدولي", "jeddah airport": "king abdulaziz international airport", "مطار المدينة": "مطار الامير محمد بن عبدالعزيز", "madinah airport": "prince mohammad bin abdulaziz airport",
+    "جامعة البترول": "جامعة الملك فهد للبترول|king fahd university of petroleum", "البترول والمعادن": "جامعة الملك فهد للبترول|king fahd university of petroleum", "kfupm": "king fahd university of petroleum|جامعة الملك فهد للبترول", "كاوست": "جامعة الملك عبدالله", "kaust": "king abdullah university",
+    "المدينة الصناعية الجبيل": "الجبيل الصناعية", "صناعية الجبيل": "الجبيل الصناعية", "الهيئة الملكية الجبيل": "الجبيل الصناعية",
+}
+
+# One spelling of a word that stands for one thing, so that the rows with any of them answer: rows write شاورما, people type شاورمه.
+CANON = {
+    "شاورما": "شاورما شاورمه شاورمة شورما shawarma shawerma shawarmah", "مشويات": "مشويات مشاوي grill", "بروست": "بروست broast", "كرك": "كرك karak", "عود": "عود oud",
+    "كورنيش": "كورنيش corniche", "ممشي": "ممشى ممشي walkway", "بوفيه": "بوفيه بوفية بوفيات", "كافتيريا": "كافتيريا كفتيريا كافيتريا cafeteria", "تمور": "تمور تمر dates",
+    "مطبخ": "مطبخ مطابخ", "دواجن": "دواجن poultry", "امارة": "إمارة امارة", "مكيفات": "مكيفات تكييف", "مطبعة": "مطبعة طباعة printing", "محامي": "محامي محاماة lawyer",
+    "سطحة": "سطحة سطحات", "عباية": "عبايات عباية", "كمبيوتر": "كمبيوتر حاسب computer", "سكراب": "سكراب تشليح", "شيشة": "شيشة معسل hookah shisha",
+}
+
+# By hand: a place the sources do not hold as a place. (Arabic, Latin, other names, kind, lat, lon)
+HAND_PLACES = [
+    ("الجبيل الصناعية", "Jubail Industrial City", ["مدينة الجبيل الصناعية", "الجبيل الصناعيه", "Jubail Industrial", "Madinat Al Jubail Al Sinaiyah", "الهيئة الملكية بالجبيل"], "town", 27.10, 49.57),
+]
+
+# Names of known chains and the kind each must be: a build that files one of these under another kind stops (a batch of Overture rows filed كنتاكي under pharmacy).
+CHAIN_KINDS = {
+    "كنتاكي": "fast_food", "kfc": "fast_food", "هارديز": "fast_food", "hardees": "fast_food", "صب واي": "fast_food", "subway": "fast_food", "ماكدونالدز": "fast_food", "mcdonalds": "fast_food",
+    "بيتزا هت": "pizza", "pizza hut": "pizza", "كرسبي كريم": "sweets", "ستاربكس": "coffee", "starbucks": "coffee", "البيك": "fast_food", "albaik": "fast_food", "كودو": "fast_food", "kudu": "fast_food", "هرفي": "fast_food",
+    "النهدي": "pharmacy", "صيدلية النهدي": "pharmacy", "nahdi": "pharmacy", "الدريس": "fuel", "aldrees": "fuel", "ساسكو": "fuel", "sasco": "fuel", "العثيم": "supermarket", "بنده": "supermarket", "panda": "supermarket",
+    "مصرف الراجحي": "bank", "البنك الاهلي": "bank", "جرير": "books", "ارامكس": "shipping", "aramex": "shipping", "سمسا": "shipping", "smsa": "shipping",
+}
+
+# Words for a shop's name that say a pharmacy is one: a row Overture calls a pharmacy with none of these is checked against what the same name is elsewhere.
+PHARMACY_WORDS = re.compile(r"صيدل|دواء|ادوي|أدوي|pharm|drug|nahdi|نهدي|whites|وايتس|dawaa|dawa\b|care\b|كير\b", re.I)
 
 # Latin word <-> Arabic word, used at index time only: a shop named in Latin letters answers to its Arabic words, and the
 # other way round. A word can have several translations.

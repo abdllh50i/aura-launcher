@@ -25,4 +25,5 @@ valhalla_build_config \
   --thor-max-reserved-labels-count-dijkstras 200000 \
   --thor-max-reserved-labels-count-bidir-dijkstras 100000 \
   --thor-clear-reserved-memory true \
-  --service-limits-max-alternates 2 "$@"
+  --service-limits-max-alternates 2 \
+  --service-limits-max-exclude-polygons-length 2000000 "$@"

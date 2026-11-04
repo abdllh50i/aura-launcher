@@ -19,9 +19,11 @@ import sqlite3
 import sys
 import unicodedata
 
-NORM_VERSION = 2
+NORM_VERSION = 3
 SK = "§"  # a token that starts with this is a consonant skeleton
 CT = "¤"  # a token that starts with this is a category id
+PL = "¶"  # a token that starts with this is the consonant skeleton of a word of a town or district's name
+ROLE_ROAD, ROLE_OPTIONAL, ROLE_STOP, ROLE_DISTRICT, ROLE_SPECIFIC, ROLE_FILLER, ROLE_LETTER, ROLE_ALIAS = 1, 2, 3, 4, 5, 6, 7, 8
 
 APOSTROPHES = "'’‘ʼʻ`´"
 FOLD = {
@@ -217,14 +219,17 @@ def lev1(a, b):
 class Syn:
     """Table syn: normalised word or phrase to categories, role and canonical word."""
 
-    __slots__ = ("words", "max_len", "airport")
+    __slots__ = ("words", "max_len", "airport", "by_canon")
 
     def __init__(self, db):
         self.words = {}
         self.max_len = 1
-        for w, cats, role, canon in db.execute("SELECT w, cats, role, canon FROM syn"):
+        self.by_canon = {}
+        for w, cats, role, canon in db.execute("SELECT w, cats, role, canon FROM syn ORDER BY w"):
             self.words[w] = ([int(x) for x in cats.split()] if cats else [], role, canon or "")
             self.max_len = max(self.max_len, w.count(" ") + 1)
+            if canon and role in (0, ROLE_SPECIFIC) and " " not in w:
+                self.by_canon.setdefault(canon, []).append(w)
         row = db.execute("SELECT id FROM cat WHERE key='airport'").fetchone()
         self.airport = row[0] if row else -1
 
@@ -235,36 +240,51 @@ class Syn:
 class Group:
     """One thing the query asks for: a word or phrase, with the categories it can also mean."""
 
-    __slots__ = ("words", "cats", "role", "prefix", "optional", "sks")
+    __slots__ = ("words", "cats", "role", "prefix", "optional", "sks", "alts")
 
-    def __init__(self, words, cats, role, prefix, optional):
+    def __init__(self, words, cats, role, prefix, optional, alts=()):
         self.words = words
         self.cats = cats
         self.role = role
         self.prefix = prefix
         self.optional = optional
         self.sks = skeletons(words[0]) if len(words) == 1 else []
+        self.alts = alts  # the same word in its other spellings (شاورمه, شاورما)
 
 
 class Plan:
-    __slots__ = ("groups", "required", "road_hint", "district_hint")
+    __slots__ = ("groups", "required", "road_hint", "district_hint", "fillers", "ws", "typing", "other", "skeleton_from")
+
+
+def without_li(w, syn):
+    """"لاقرب", "لصيدليه", "لمول" as a recogniser writes them: the word with ل in front of it, when that word means something and the whole does not."""
+    if len(w) >= 4 and w[0] == "ل" and syn.get(w) is None:
+        e = syn.get(w[1:])
+        if e is not None and e[1] not in (ROLE_LETTER, ROLE_ALIAS) and (len(w) >= 5 or e[1] != ROLE_STOP):
+            return w[1:]
+    return w
 
 
 def plan_query(q, syn):
-    """Groups of a query. Words that only a road, a title or a company name carry are optional; stop words vanish."""
+    """Groups of a query. Words that only a road, a title or a company name carry are optional; stop words vanish; words of speech at either end of the query are optional."""
     typing = not q[-1:].isspace()
-    ws = query_words(q)
+    ws = [without_li(w, syn) for w in query_words(q)]
     p = Plan()
     p.groups = []
     p.road_hint = False
     p.district_hint = False
+    p.fillers = []
+    p.ws = ws
+    p.typing = typing
+    p.other = ""  # what kind of other reading this is, "" for the query as written
+    p.skeleton_from = 0  # with a value: the first stages also take skeletons of at least so many letters
     i = 0
     n = len(ws)
     while i < n:
         hit = None
         for ln in range(min(syn.max_len, n - i), 0, -1):
             e = syn.get(" ".join(ws[i:i + ln]))
-            if e is not None:
+            if e is not None and e[1] not in (ROLE_LETTER, ROLE_ALIAS):
                 hit = (ln, e)
                 break
         if hit is None:
@@ -275,15 +295,32 @@ def plan_query(q, syn):
         ln, (cats, role, canon) = hit
         words = ws[i:i + ln]
         last = i + ln == n
-        if role == 3:  # a stop word
+        if role == ROLE_STOP:
             i += ln
             continue
-        if role == 1:
+        if role == ROLE_ROAD:
             p.road_hint = True
-        if role == 4:
+        if role == ROLE_DISTRICT:
             p.district_hint = True
-        p.groups.append(Group(words, cats, role, last and typing and ln == 1, role in (1, 2, 4)))
+        alts = ()
+        if canon and role in (0, ROLE_SPECIFIC) and ln == 1:
+            alts = [x for x in syn.by_canon.get(canon, ()) if x != words[0]]
+        p.groups.append(Group(words, cats, role, last and typing and ln == 1, role in (ROLE_ROAD, ROLE_OPTIONAL, ROLE_DISTRICT), alts))
         i += ln
+    # words of speech: optional at the ends of the query, plain words in the middle
+    first = 0
+    while first < len(p.groups) and p.groups[first].role == ROLE_FILLER:
+        first += 1
+    end = len(p.groups)
+    while end > first and p.groups[end - 1].role == ROLE_FILLER:
+        end -= 1
+    for j, g in enumerate(p.groups):
+        if g.role == ROLE_FILLER:
+            if j < first or j >= end:
+                g.optional = True
+                p.fillers.append(g)
+            else:
+                g.role = 0
     # a single letter being typed says nothing yet
     p.groups = [g for g in p.groups if not (g.prefix and len(g.words[0]) < 2 and not g.words[0].isdigit() and len(g.words) == 1)]
     p.required = [g for g in p.groups if not g.optional]
@@ -297,8 +334,9 @@ def _term(w, prefix):
     return w + "*" if star else w
 
 
-def fts_string(plan, loose=False, in_names=False, no_cats=False):
+def fts_string(plan, loose_from=0, in_names=False, no_cats=False):
     """The MATCH string. Standard query syntax: OR binds tighter than the implicit AND.
+    loose_from: also the word's consonants, from a skeleton of so many letters.
     in_names: every word must be in the name. FTS4 cannot put a column on a quoted phrase, so a phrase stays as it is.
     no_cats: the words themselves, without the kinds of place they also mean."""
     parts = []
@@ -310,14 +348,17 @@ def fts_string(plan, loose=False, in_names=False, no_cats=False):
             alts.append(_term(w, g.prefix))
             if not is_ar(w) and latin_base(w) != w:  # "alkhobar" also finds "Al Khobar"
                 alts.append(_term(latin_base(w), g.prefix))
+            for x in g.alts:
+                alts.append(_term(x, False))
         else:
             alts.append('"' + " ".join(g.words) + '"')
         if not no_cats:
             for c in g.cats:
                 alts.append(CT + str(c))
+        loose = loose_from or plan.skeleton_from
         if loose:
             for i, s in enumerate(g.sks):
-                if len(s) >= 2:
+                if len(s) >= loose:
                     alts.append(SK + (s + "*" if len(s) >= 3 and i == 0 else s))
         if single:  # a word alone must be in the name, not only in the area: "الخبر" is the town, not every shop in it
             alts = ["k:" + a if not a.startswith('"') else a for a in alts]
@@ -325,22 +366,89 @@ def fts_string(plan, loose=False, in_names=False, no_cats=False):
     return " ".join(parts)
 
 
-def fts_typo_string(plan):
-    """For a query that found nothing: the first three letters of each long word, for the single-edit check afterwards."""
+# letters that sound or are written alike here: one standing for another is the commonest slip in a recogniser's Arabic
+SOUND_ALIKE = ("تثط", "سصث", "دذضظز", "قكجغ", "هح", "اع")
+
+
+def one_edit_forms(w):
+    """The spellings one letter from a word that an index can be asked for: with a letter less, and with a letter swapped for one that sounds alike."""
+    out = []
+    if len(w) >= 4:
+        for i in range(len(w)):
+            out.append(w[:i] + w[i + 1:])
+    elif len(w) == 3 and w[1] in "اوي":  # "هات" for هت
+        out.append(w[0] + w[2])
+    if is_ar(w):
+        for i, c in enumerate(w):
+            for group in SOUND_ALIKE:
+                if c in group:
+                    out += [w[:i] + x + w[i + 1:] for x in group if x != c]
+        if len(w) <= 7:  # a long vowel left out: "دنكن" for دانكن
+            for i in range(1, len(w)):
+                out += [w[:i] + x + w[i:] for x in "اوي"]
+    return list(dict.fromkeys(x for x in out if len(x) >= 2))
+
+
+def fts_edit_string(plan):
+    """For a query that found little: the words one letter away from each word, and all that begin with its first three letters; what comes back is checked by edit_ok.
+    ("ايثرا" finds "اثراء"; "النهضي" finds "النهدي"; "بيتزا هات" finds "بيتزا هت".)"""
     parts = []
     for g in plan.required:
         for w in g.words:
-            if len(w) >= 4 and not w.isdigit():
-                parts.append(w[:3] + "*")
+            alts = []
+            if len(w) >= 3 and not w.isdigit():
+                if len(w) >= 4:
+                    alts.append(w[:3] + "*")
+                else:
+                    alts.append(_term(w, g.prefix))
+                alts += one_edit_forms(w)
             elif len(g.words) == 1:
-                parts.append(_term(w, g.prefix))
+                alts.append(_term(w, g.prefix))
+            if not alts:
+                continue
+            if len(g.words) == 1:
+                alts += [CT + str(c) for c in g.cats]
+            parts.append(" OR ".join("k:" + a for a in alts))
     return " ".join(parts)
+
+
+def edit_ok(plan, r):
+    """Is a row from fts_edit_string what was meant: every required word is one edit from a word of its name, or starts one, or says its kind."""
+    names = set(word_set(r[2])) | set(word_set(r[3]))
+    for g in plan.required:
+        if r[4] in g.cats:
+            continue
+        for w in g.words:
+            if not any(lev1(w, n) or n.startswith(w) for n in names):
+                return False
+    return True
+
+
+def holds_word(g, names, syn):
+    """Is the group's word in the names, in this or another spelling of it?"""
+    if all(w in names for w in g.words):
+        return True
+    return bool(g.alts) and any(x in names for x in g.alts)
+
+
+def fts_all_words(plan):
+    """Every word of a reading, the optional ones too, in the name."""
+    return " ".join("k:" + w for w in plan.ws if (w not in ("ال",)) and not w.isdigit())
+
+
+def place_string(plan):
+    """A word alone may be a town or district written another way ("Al Malqa", "Al Malga District"): its consonants, among places only, whatever else shares them."""
+    if len(plan.required) != 1 or plan.required[0].cats or len(plan.required[0].words) != 1:
+        return None
+    alts = ["k:" + PL + s for s in plan.required[0].sks if len(s) >= 3]
+    return " OR ".join(alts) or None
 
 
 NEAREST = 150
 BEST = 50
 BAND = 1.0  # degrees of latitude either side of the car, about 110 km
-COLUMNS = "p.id,p.kind,p.name,p.alt,p.cat,p.lat,p.lon,p.area,p.rank"
+COLUMNS = "p.id,p.kind,p.name,p.alt,p.cat,p.lat,p.lon,p.area,p.rank,p.src"
+SRC_COARSE = 4  # bit of p.src: the position is a geocoder's default (many rows on one point), about right at best
 
 
 def id_band(db, lat):
@@ -409,6 +517,7 @@ def word_set(name):
     return query_words(name) if name else []
 
 
+EXACT_WEIGHT = 22.0
 KIND_WEIGHT = {1: 8.0, 2: 30.0, 3: 22.0, 4: 10.0, 5: 14.0, 6: 10.0, 7: 8.0}
 KIND_REGION, KIND_CITY, KIND_TOWN, KIND_VILLAGE, KIND_DISTRICT, KIND_POI, KIND_ROAD = 1, 2, 3, 4, 5, 6, 7
 
@@ -419,7 +528,7 @@ def group_quality(g, names, name_sks, area_words, area_sks, cat, syn, cat_query=
     A word for one thing within a kind (role 5: شاورما, كرك, سمسا) works the other way: the name first, the kind only when no name has it."""
     if cat_query:
         in_cat = cat in g.cats
-        named = all(w in names for w in g.words)
+        named = holds_word(g, names, syn)
         if in_cat and named:
             return 1.0
         if in_cat:
@@ -451,6 +560,10 @@ def group_quality(g, names, name_sks, area_words, area_sks, cat, syn, cat_query=
                 best = max(best, 0.8 + 0.09 * len(w) / len(n))
     if cat in g.cats:
         best = max(best, 0.8)
+    if len(w) >= 4:  # one letter off is closer than the same consonants: العتيم is العثيم before it is إطعام, and a letter swapped is closer than a letter missing
+        for n in names:
+            if lev1(w, n):
+                best = max(best, 0.9 if len(n) == len(w) else 0.86)
     for s in g.sks:
         if len(s) >= 2:
             if s in name_sks:
@@ -468,14 +581,12 @@ def group_quality(g, names, name_sks, area_words, area_sks, cat, syn, cat_query=
     for s in g.sks:
         if len(s) >= 2 and s in area_sks:
             return max(best, 0.55)
-    if len(w) >= 4 and any(lev1(w, n) for n in names):
-        return max(best, 0.6)
     return max(best, 0.5)
 
 
 def score_row(r, plan, near, area, syn):
     """The score of one candidate. Same formula in Kotlin; ties go to the lower id."""
-    rid, kind, name, alt, cat, lat, lon, area_id, rank = r
+    rid, kind, name, alt, cat, lat, lon, area_id, rank = r[:9]
     n1 = word_set(name)
     n2 = word_set(alt)
     names = set(n1) | set(n2)
@@ -515,6 +626,8 @@ def score_row(r, plan, near, area, syn):
         asked.update(latin_base(w) for w in g.words if not is_ar(w))
         ask_sks.update(g.sks)
 
+    ask_roles = {w for w in plan.ws if (syn.get(w) or (0, 0))[1] == ROLE_STOP}
+
     def covered(words):
         if not words:
             return 0.0
@@ -526,7 +639,10 @@ def score_row(r, plan, near, area, syn):
                 hit += 1
             else:
                 e = syn.get(w)
-                if e is not None and e[1] in (1, 2, 3, 4):  # road words and titles do not make a name longer
+                # road words and titles do not make a name longer, nor do a word that says the row's own kind and its own town: "Nahdi pharmacy" is as much النهدي as "Nahdi"
+                if e is not None and (e[1] in (ROLE_ROAD, ROLE_OPTIONAL, ROLE_STOP, ROLE_DISTRICT) or cat in e[0]):
+                    hit += 1
+                elif w in area_words:
                     hit += 1
         return hit / len(words)
 
@@ -541,7 +657,7 @@ def score_row(r, plan, near, area, syn):
         c = 0.0
         exact = 0.0
         rank_weight = 30.0
-    s = 55.0 * t + 15.0 * c + 25.0 * exact + rank_weight * rank / 100.0 + KIND_WEIGHT.get(kind, 8.0)
+    s = 55.0 * t + 15.0 * c + EXACT_WEIGHT * exact + rank_weight * rank / 100.0 + KIND_WEIGHT.get(kind, 8.0)
     if plan.road_hint and kind == KIND_ROAD:
         s += 20.0
     if plan.district_hint and kind == KIND_DISTRICT:
@@ -550,8 +666,15 @@ def score_row(r, plan, near, area, syn):
     if near:
         km = km_between(near[0], near[1], lat / 1e6, lon / 1e6)
         away = min(75.0, 11.0 * math.log(1.0 + km))
-        if exact and kind in (KIND_CITY, KIND_TOWN):  # a town's name asks for the town, however far: not for a street named after it
-            away = min(away, 6.0)
+        if exact and kind in (KIND_CITY, KIND_TOWN) and not plan.road_hint:  # a town's name asks for the town, however far: not for a street named after it,
+            if km < 150.0 or all(any(w == n or lev1(w, n) for n in names) for g in plan.required for w in g.words):  # and not a far town with only the same consonants (KFC, Al Khafji)
+                away = min(away, 6.0)
+        if exact and kind == KIND_DISTRICT and km < 60.0:  # a district's whole name asks for the district, before a street called after it; not for one in another town
+            away = min(away, 18.0)
+        if plan.other == "alias":  # another name of one known thing: how far it is says little, and a row with all of that name is the thing
+            away = min(away, 15.0)
+            if all(w in names or w in ask_roles for w in plan.ws):
+                s += 30.0
         if cat_query and cat == syn.airport:  # one drives far to an airport: the real one before a check-in spot that is nearer
             away *= 0.3
         if names_town:
@@ -562,7 +685,7 @@ def score_row(r, plan, near, area, syn):
 
 def display(r, area, cats, arabic=True):
     """(name, detail) for the result list. A search-only spelling can never get here: only p.name and p.alt are shown."""
-    rid, kind, name, alt, cat, lat, lon, area_id, rank = r
+    rid, kind, name, alt, cat, lat, lon, area_id, rank = r[:9]
     main = name
     if alt:
         name_ar = bool(name) and any("؀" <= c <= "ۿ" for c in name)
@@ -582,15 +705,17 @@ def display(r, area, cats, arabic=True):
 
 
 def dedupe(scored):
-    """One place once: the same name within 150 m, or the same road name in one town, is one result (the best)."""
+    """One place once: the same name, in either of a row's two names, within 150 m, or the same road name in one town, is one result (the best)."""
     out = []
     seen = []
     for item in scored:
         r = item["row"]
-        key = " ".join(sorted(word_set(r[2])))
+        key = {" ".join(sorted(word_set(r[2])))}
+        if r[3]:
+            key.add(" ".join(sorted(word_set(r[3]))))
         dup = False
         for key2, r2 in seen:
-            if key != key2:
+            if not key & key2:
                 continue
             if r[1] == KIND_ROAD and r2[1] == KIND_ROAD and (r[7] == r2[7] or km_between(r[5] / 1e6, r[6] / 1e6, r2[5] / 1e6, r2[6] / 1e6) < 5.0):
                 dup = True
@@ -608,9 +733,15 @@ def first_stages(plan):
     """The MATCH strings every search runs, in order."""
     out = []
     plain = fts_string(plan)
-    if any(g.role == 5 for g in plan.required):
+    if plan.fillers:
+        # "روح الشرق", "ابي طالب": the rows that hold the words of speech too, exactly and in the name
+        strict = [fts_string(plan, in_names=True)] + ["k:" + g.words[0] for g in plan.fillers if len(g.words) == 1]
+        out.append(" ".join(strict))
+    if any(g.role == ROLE_SPECIFIC for g in plan.required):
         # شاورما: the shops called that, or the many near restaurants would crowd them out of the candidates
         out.append(fts_string(plan, in_names=True, no_cats=True))
+    if plan.other == "alias" and len(plan.ws) > 1:
+        out.append(fts_all_words(plan))
     if len(plan.required) > 1:
         # the rows that hold all the words in their name, so that a thing itself is never crowded out by the many rows that are merely in it
         names = fts_string(plan, in_names=True)
@@ -618,6 +749,47 @@ def first_stages(plan):
             out.append(names)
     out.append(plain)
     return out
+
+
+def other_plans(plan, syn):
+    """Other readings of the same words. A row found by one is scored by the reading that suits it best:
+    a known place's other name (جسر البحرين); letters said one by one (كي اف سي is kfc); a name written apart, as a recogniser writes it (ستار بكس, ماك دونالدز, لو لو)."""
+    ws = plan.ws
+    n = len(ws)
+    end = "" if plan.typing else " "
+    out = []
+
+    def add(kind, words, skeleton_from=0):
+        p = plan_query(" ".join(words) + end, syn)
+        if p.required and " ".join(p.ws) not in {" ".join(x.ws) for x in out} and p.ws != ws:
+            p.other = kind
+            p.skeleton_from = skeleton_from
+            out.append(p)
+
+    core = [w for w in ws if (syn.get(w) or (0, 0))[1] not in (ROLE_STOP, ROLE_FILLER)]  # another name is for the whole query, words of speech aside
+    e = syn.get(" ".join(core))
+    if e is not None and e[1] == ROLE_ALIAS:
+        for target in e[2].split("|"):
+            add("alias", target.split())
+    i = 0
+    while i < n:
+        j = i
+        said = ""
+        while j < n:
+            e = syn.get(ws[j])
+            if e is None or e[1] != ROLE_LETTER:
+                break
+            said += e[2]
+            j += 1
+        if j - i >= 2 and len(said) >= 2:
+            add("letters", ws[:i] + [said] + ws[j:])
+        i = max(j, i + 1)
+    plain = {g.words[0] for g in plan.groups if len(g.words) == 1 and not g.cats and g.role in (0, ROLE_FILLER) and not g.words[0].isdigit()}
+    for i in range(n - 1):
+        a, b = ws[i], ws[i + 1]
+        if a in plain and b in plain and is_ar(a) == is_ar(b):
+            add("joined", ws[:i] + [a + b] + ws[i + 2:], 4)
+    return out[:4]
 
 
 def search(db, query, near=None, limit=12, syn=None, debug=None):
@@ -635,26 +807,47 @@ def search(db, query, near=None, limit=12, syn=None, debug=None):
     for m in stages:
         rows.update(candidates(db, m, near, best))
     m = stages[-1]
-    if len(rows) < 6:
-        m2 = fts_string(plan, loose=True)
+    plans = [plan]
+    for other in other_plans(plan, syn):
+        hit = False
+        for m9 in first_stages(other):
+            stages.append(m9)
+            got = candidates(db, m9, near, wants_best(other, syn))
+            hit = hit or bool(got)
+            rows.update(got)
+        if hit:
+            plans.append(other)
+    few = len(rows) < 6
+    # few, or none near the car: perhaps it is written another way. What a letter or two apart finds is a nearer branch of the same name more often than another word
+    none_near = near is not None and sum(1 for r in rows.values() if abs(r[5] / 1e6 - near[0]) < 0.1 and abs(r[6] / 1e6 - near[1]) < 0.1) < 3
+    mp = place_string(plan)
+    if mp:
+        stages.append(mp)
+        rows.update(candidates(db, mp, near, False))
+    if few or none_near:
+        m3 = fts_edit_string(plan)
+        if m3 and m3 != m:
+            stages.append(m3)
+            for rid, r in candidates(db, m3, near, False).items():
+                if edit_ok(plan, r):
+                    rows[rid] = r
+    if few:
+        m2 = fts_string(plan, loose_from=3)
+        if m2 != m:
+            stages.append(m2)
+            rows.update(candidates(db, m2, near, False))
+    if len(rows) < 3:  # two consonants say little: only when nothing else has been found
+        m2 = fts_string(plan, loose_from=2)
         if m2 != m:
             stages.append(m2)
             rows.update(candidates(db, m2, near))
-    if len(rows) < 3:
-        m3 = fts_typo_string(plan)
-        if m3 and m3 != m:
-            stages.append(m3)
-            for rid, r in candidates(db, m3, near).items():
-                names = set(word_set(r[2])) | set(word_set(r[3]))
-                if all(any(lev1(w, n) or n.startswith(w) for n in names) for g in plan.required for w in g.words):
-                    rows[rid] = r
     if debug is not None:
         debug["match"] = stages
         debug["candidates"] = len(rows)
     areas = areas_of(db, rows)
     scored = []
     for rid, r in rows.items():
-        s, km, t = score_row(r, plan, near, areas.get(r[7]), syn)
+        s, km, t = max((score_row(r, pl, near, areas.get(r[7]), syn) for pl in plans), key=lambda x: x[0])
         scored.append({"id": rid, "score": round(s, 3), "km": None if km is None else round(km, 2), "row": r, "t": round(t, 3)})
     scored.sort(key=lambda x: (-x["score"], x["id"]))
     scored = dedupe(scored)[:limit]
@@ -664,7 +857,7 @@ def search(db, query, near=None, limit=12, syn=None, debug=None):
         r = it["row"]
         main, detail = display(r, areas.get(r[7]), cats)
         out.append({"id": it["id"], "kind": r[1], "name": r[2], "alt": r[3], "cat": r[4], "lat": r[5] / 1e6, "lon": r[6] / 1e6, "rank": r[8],
-                    "km": it["km"], "score": it["score"], "shown": main, "detail": detail})
+                    "km": it["km"], "score": it["score"], "shown": main, "detail": detail, "approx": bool(r[9] & SRC_COARSE)})
     return out
 
 
@@ -679,6 +872,8 @@ def reverse(db, lat, lon):
     rows = db.execute(f"SELECT {COLUMNS} FROM p WHERE p.lat BETWEEN ? AND ? AND p.lon BETWEEN ? AND ? AND p.kind>=5", (la - d, la + d, lo - dl, lo + dl)).fetchall()
     best = {}
     for r in rows:
+        if r[9] & SRC_COARSE:  # a pile of rows on a geocoder's default point is not what is at that point
+            continue
         m = km_between(lat, lon, r[5] / 1e6, r[6] / 1e6) * 1000.0
         if r[1] not in best or m < best[r[1]][0]:
             best[r[1]] = (m, r)

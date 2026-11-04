@@ -1,7 +1,7 @@
 # Builds out\places.db and out\places.mbtiles and checks them. Each step's output is in places\logs. Everything is under -Work (D:, never C:).
-#   powershell -File build_all_places.ps1 [-Work D:\k2501-work\mapbuild]
-# Needs what fetch_overture.py and osm_extract.py made, and the Overture places rows (cached in places\overture-sa.jsonl after the first run).
-param([string]$Work = 'D:\k2501-work\mapbuild', [string]$OverturePlaces = 'D:\k2501-work\tmp\v2\scratch\maps\overture-gcc-rows.parquet')
+#   powershell -File build_all_places.ps1 -Work <work folder> -OverturePlaces <parquet of Overture places rows, from fetch_overture.py --places>
+# Needs what fetch_overture.py, osm_extract.py and osm_roadside.py made (the Overture rows are cached in places\overture-sa.jsonl after the first run).
+param([Parameter(Mandatory)][string]$Work, [Parameter(Mandatory)][string]$OverturePlaces)
 $env:TEMP = "$Work\tmp"; $env:TMP = "$Work\tmp"; $env:PYTHONDONTWRITEBYTECODE = '1'
 $here = $PSScriptRoot
 $logs = "$Work\places\logs"
@@ -16,6 +16,7 @@ step 'build-places' @("$here\build_places.py", '--work', "$Work\places", '--out'
 Move-Item -Force "$Work\tmp\places.new.db" "$Work\out\places.db"
 step 'vectors' @("$here\tests\run_vectors.py", "$Work\out\places.db")
 step 'search-tests' @("$here\search_ref.py", "$Work\out\places.db", '--test', "$here\tests\search_tests.json", '--golden', "$Work\out\search-golden.json")
+step 'search-set' @("$here\tests\eval_search_set.py", '--db', "$Work\out\places.db", '--set', "$here\tests\search-set.json", '--out', "$Work\places\test\search-set-latest.json")
 step 'translit' @("$here\tests\test_translit.py", "$Work\out\places.db")
 step 'self-retrieval' @("$here\tests\self_retrieval.py", "$Work\out\places.db", '--n', '1000')
 step 'poi-tiles' @("$here\build_poi_tiles.py", '--db', "$Work\out\places.db", '--out', "$Work\out\places.mbtiles")

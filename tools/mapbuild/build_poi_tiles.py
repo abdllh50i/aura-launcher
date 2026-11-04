@@ -5,7 +5,7 @@
 
 A small Mapbox Vector Tile writer for points, standard library only (tippecanoe would be one more download). A tile keeps its
 best places by rank: at most so many per cell of a grid over the tile, so a dense quarter is thinned while a quiet one keeps
-everything, and a limit for the whole tile. What is dropped stays searchable: the tile is for the eye.
+everything, and a limit for the whole tile. What is dropped stays searchable: the tile is for the eye. Rows on a geocoder's default point (p.src bit 4) never reach a tile.
 
 Tile fields:
   name      p.name, the Arabic name when there is one
@@ -116,7 +116,7 @@ def build(db_path, out_path):
     skip = {i for i, k in src.execute("SELECT id,key FROM cat") if k in GROUP_SKIP}
     t0 = time.time()
     rows = []
-    for r in src.execute("SELECT id,name,alt,cat,lat,lon,rank FROM p WHERE kind=6 AND rank>=? ORDER BY rank DESC, id", (min(v[0] for v in ZOOMS.values()),)):
+    for r in src.execute("SELECT id,name,alt,cat,lat,lon,rank FROM p WHERE kind=6 AND rank>=? AND src&4=0 ORDER BY rank DESC, id", (min(v[0] for v in ZOOMS.values()),)):
         if r[3] in skip:
             continue
         rows.append(r)
