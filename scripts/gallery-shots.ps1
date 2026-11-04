@@ -9,7 +9,7 @@ New-Item -ItemType Directory -Force -Path $dir | Out-Null
 $Pages = $Pages | ForEach-Object { $_ -split "," }
 $Themes = $Themes | ForEach-Object { $_ -split "," }
 if (-not $Pages) {
-    $Pages = "buttons", "abtn", "controls", "bars", "rows", "sheet", "sheet-trip", "modal", "confirm", "menu", "snack", "field", "wash", "covers", "surfaces", "plates", "icons", "dock", "type1", "type2", "type3", "digits", "r-settings-display", "r-settings-maps", "r-controls", "r-queue", "r-sources", "r-music", "r-column"
+    $Pages = "buttons", "abtn", "controls", "bars", "rows", "sheet", "sheet-trip", "modal", "confirm", "menu", "snack", "field", "wash", "covers", "surfaces", "plates", "icons", "dock", "type1", "type2", "type3", "digits", "r-settings-display", "r-settings-maps", "r-controls", "r-queue", "r-sources", "r-music", "r-column", "running"
 }
 & $adb -s $Serial shell "settings put global policy_control immersive.full=*; svc power stayon true; input keyevent KEYCODE_WAKEUP" | Out-Null # (a window draws nothing while the display is off, whatever is asked of it)
 if ($Design) {
@@ -28,7 +28,7 @@ foreach ($t in $Themes) {
             if ((& $adb -s $Serial logcat -d -s AuraGallery:I) -match "drawn $p\.") { break }
             Start-Sleep -Milliseconds 250
         }
-        Start-Sleep -Milliseconds $Wait
+        Start-Sleep -Milliseconds $(if ($p -in "modal", "confirm", "menu", "snack", "sheet", "sheet-trip") { $Wait + 3000 } else { $Wait })
         $name = if ($Lang) { "v2-ds-$p-$t-$Lang" } else { "v2-ds-$p-$t" }
         & $adb -s $Serial shell "screencap -p /sdcard/aura_shot.png" | Out-Null
         & $adb -s $Serial pull /sdcard/aura_shot.png "$dir\$name.png" | Out-Null

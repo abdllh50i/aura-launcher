@@ -486,6 +486,7 @@ sea cover's pill came out `#56A1BF` against the design's `#6FD6F6`, duller, beca
 
 **The gallery.** `am broadcast -n com.abdllh.aura/.debug.GalleryReceiver --es page controls --es theme night --ez cut true` (debug builds): every component in every state at real size, a page per group; `theme` without `cut` goes through the real `ThemeSwap`. `r-*` pages put them where the mockups have them with the mockups' words, on the mockups' map plates (`scripts/gallery-shots.ps1 -Design <folder>` pushes them).
 `scripts/gallery_compare.py <design folder>` compares those pages rect by rect with `screens/_layout.json`. Text can never be equal: Chromium's gamma and Skia's differ.
+On an emulator under load a window can stop drawing altogether while its main thread is well and every view is new: `OpenGLRenderer: dequeueBuffer failed, error = -110; switching to fallback` in the log (the composer lagged more than the buffer's wait, while something animated without a pause), then the renderer is disabled and the surface released until the next relayout. It is the framework's, on the emulator's composer, and not a state of a page; `--ez probe true` prints it (`settings put global hidden_api_policy 1` first). That is why the gallery's page with spinners is its own and last, and a theme change, which relayouts, brings the window back.
 
 ## Design system (1.12)
 The tokens' numbers below are history since 2.0; their names, and how they are used, are still what old screens do.

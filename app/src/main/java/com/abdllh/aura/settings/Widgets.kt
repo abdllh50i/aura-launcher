@@ -7,22 +7,19 @@ import android.graphics.drawable.LayerDrawable
 import android.text.InputType
 import android.view.Gravity
 import android.view.View
-import android.view.WindowManager
-import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import com.abdllh.aura.R
 import com.abdllh.aura.ui.ABtn
-import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Modal
 import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
-import com.abdllh.aura.ui.Radius
 import com.abdllh.aura.ui.Shapes
 import com.abdllh.aura.ui.Space
 import com.abdllh.aura.ui.Touch
+import com.abdllh.aura.ui.TextField
 import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.WRAP
 import com.abdllh.aura.ui.enter
@@ -91,32 +88,22 @@ class Swatches(ctx: Context, private val colors: IntArray, selected: Int, privat
 object InputDialog {
     fun show(ctx: Context, title: String, hint: String, initial: String, onOk: (String) -> Unit) {
         val card = Modal.card(ctx)
-        val m = Modal(ctx, card)
-        m.dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE or WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN)
-        card.addView(ctx.label(Type.TITLE, Palette.text).apply { text = title })
-        val input = EditText(ctx).apply {
-            setText(initial)
-            setSelection(initial.length)
-            this.hint = hint
-            setHintTextColor(Palette.text3)
-            setTextColor(Palette.text)
-            textSize = Type.BODY.sp
-            typeface = Fonts.get(Type.BODY.weight)
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_POSTAL_ADDRESS
-            isSingleLine = true
-            setPadding(Space.L.dp, 0, Space.L.dp, 0)
-            background = Shapes.rect(Palette.card2, Radius.M, Palette.stroke)
-        }
-        card.addView(input, lp(MATCH, Touch.MIN.dp).apply { topMargin = Space.L.dp })
-        val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END }
-        row.addView(ABtn(ctx).apply { kind = ABtn.Kind.GHOST; setText(R.string.btn_cancel); setOnClickListener { m.close() } }, lp(WRAP, WRAP))
-        row.addView(ABtn(ctx).apply {
+        val m = Modal(ctx, card).followKeyboard()
+        card.addView(Modal.title(ctx, title), lp(MATCH, WRAP))
+        val field = TextField(ctx, hint = hint)
+        val input = field.input
+        input.setText(initial)
+        input.setSelection(initial.length)
+        input.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_POSTAL_ADDRESS
+        card.addView(field, lp(MATCH, TextField.HEIGHT).apply { topMargin = 14 })
+        val yes = ABtn(ctx).apply {
             kind = ABtn.Kind.PRIMARY
             setText(R.string.btn_save)
             // (the value is taken now; the card goes meanwhile)
             setOnClickListener { val v = input.text.toString().trim(); m.close(); onOk(v) }
-        }, lp(WRAP, WRAP).apply { marginStart = Space.M.dp })
-        card.addView(row, lp(MATCH, WRAP).apply { topMargin = Space.XL.dp })
+        }
+        val no = ABtn(ctx).apply { kind = ABtn.Kind.TONAL; setText(R.string.btn_cancel); setOnClickListener { m.close() } }
+        card.addView(Modal.buttons(ctx, yes, no), lp(MATCH, WRAP).apply { topMargin = 20 })
         m.show()
         input.requestFocus()
     }

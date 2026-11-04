@@ -274,7 +274,9 @@ internal object Backdrop {
         }
         val panel = Bitmap.createBitmap(out, W, h, Bitmap.Config.ARGB_8888)
         val coverWash = if (px != null) Bitmap.createBitmap(px, W, h, Bitmap.Config.ARGB_8888) else panel
-        val black = Palette.mix(fill, Color.BLACK, .82f)
+        // (the fill's hue at full strength: the design's veil is the sea cover's (5,30,46), which is that mixed 82 % to black; from the fill itself,
+        // whose saturation and value are held down so that it works as a fill, the card came out grey)
+        val black = Palette.mix(Color.HSVToColor(floatArrayOf(hue, .89f, 1f)), Color.BLACK, .82f)
         val widget = try {
             if (night) card(ctx, "widget", WIDGET_H, coverWash, black, .68f, .82f, true) else card(ctx, "widget", WIDGET_H, coverWash, Color.WHITE, .80f, .86f, false)
         } catch (_: Throwable) { null }

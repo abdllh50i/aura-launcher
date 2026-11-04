@@ -148,10 +148,12 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
             "abtn" -> abtn(s)
             "controls" -> controls(s)
             "bars" -> bars(s)
+            "running" -> running(s)
             "rows" -> rows(s)
             "sheet" -> sideSheet(s, 12)
             "sheet-trip" -> sideSheet(s, 384)
             "modal" -> modal(s)
+            "modal-ime" -> modal(s, ime = true)
             "confirm" -> confirm(s)
             "menu" -> menu(s)
             "snack" -> snack(s)
@@ -448,7 +450,6 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
         }
         rowOf(ABtn.Size.M, {}, "rest")
         rowOf(ABtn.Size.M, { it.icon(R.drawable.ic_check) }, "icon")
-        rowOf(ABtn.Size.M, { it.loading = true }, "loading")
         rowOf(ABtn.Size.M, { it.isEnabled = false }, "disabled")
         rowOf(ABtn.Size.M, { pressed(it, PressGesture.CONTROL) }, "pressed")
         val go = ABtn(ctx).apply { kind = ABtn.Kind.PRIMARY; size = ABtn.Size.L; role = Type.go; text = "انطلق"; icon(R.drawable.ic_nav, 32) }
@@ -512,11 +513,9 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
         s.icon(R.drawable.ic_play, 44, 332, 240) { Palette.ink2 }
         s.icon(R.drawable.ic_pause, 44, 382, 240) { Palette.ink2 }
         s.caption(332, 286, "(the icons, to compare)", 120)
-        s.head("Spinner 24, 36; ProgressBar 6 high: 40 %, sweeping", 460, 204)
-        s.addView(Spinner(ctx, 24), at(460, 240, 24, 24))
-        s.addView(Spinner(ctx, 36), at(494, 240, 36, 36))
-        s.addView(ProgressBar(ctx).apply { set(.4f) }, at(546, 244, 200, 6))
-        s.addView(ProgressBar(ctx).apply { setIndeterminate() }, at(760, 244, 200, 6))
+        s.head("ProgressBar 6 high: 40 %, 100 %", 460, 204)
+        s.addView(ProgressBar(ctx).apply { set(.4f) }, at(460, 244, 200, 6))
+        s.addView(ProgressBar(ctx).apply { set(1f) }, at(680, 244, 200, 6))
         s.head("LimitSign: 68, 40, 34, 2 and 3 digits, the Night Panel's", 12, 350)
         var x = 12
         for (kmh in intArrayOf(80, 120)) { s.addView(LimitSign(ctx).apply { this.kmh = kmh }, at(x, 386, 68, 68)); x += 78 }
@@ -532,6 +531,22 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
         for ((i, f) in listOf<() -> Unit>({ com.abdllh.aura.ui.Tones.tick(ctx) }, { com.abdllh.aura.ui.Tones.saher(ctx) }, { com.abdllh.aura.ui.Tones.over(ctx) }).withIndex()) {
             s.addView(ABtn(ctx).apply { text = arrayOf("tick", "saher", "over")[i]; setOnClickListener { f() } }, at(12 + 150 * i, 506, 140, 60))
         }
+    }
+
+    /**
+     * What keeps asking for frames: a page of its own, last in the script. On an emulator whose composer lags, a window that animates without a
+     * pause can time out on its next buffer (dequeueBuffer failed, -110) and lose its surface until a relayout: see docs/DEV.md.
+     */
+    private fun running(s: FrameLayout) {
+        s.head("Running only while seen: ABtn loading, Spinner 24, 36, ProgressBar sweeping", 12, 4)
+        var x = 12
+        for ((k, word) in listOf(ABtn.Kind.PRIMARY to "تأكيد", ABtn.Kind.TONAL to "إلغاء", ABtn.Kind.GHOST to "لاحقًا", ABtn.Kind.DANGER to "إنهاء", ABtn.Kind.DANGER_FILLED to "رفض")) {
+            s.addView(ABtn(ctx).apply { kind = k; text = word; loading = true }, at(x, 40, 186, 60))
+            x += 196
+        }
+        s.addView(Spinner(ctx, 24), at(12, 120, 24, 24))
+        s.addView(Spinner(ctx, 36), at(46, 114, 36, 36))
+        s.addView(ProgressBar(ctx).apply { setIndeterminate() }, at(100, 130, 300, 6))
     }
 
     // ------------------------------------------------------------------------------------------ rows
@@ -588,7 +603,7 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
     }
 
     // ------------------------------------------------------------------------------------------ dialogs and messages
-    private fun modal(s: FrameLayout) {
+    private fun modal(s: FrameLayout, ime: Boolean = false) {
         s.mapPlate("browse")
         val card = Modal.card(ctx)
         val m = Modal(ctx, card).followKeyboard()
@@ -598,7 +613,7 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
         val yes = ABtn(ctx).apply { kind = ABtn.Kind.PRIMARY; text = "حفظ"; setOnClickListener { m.close() } }
         val no = ABtn(ctx).apply { kind = ABtn.Kind.TONAL; text = "إلغاء"; setOnClickListener { m.close() } }
         card.addView(Modal.buttons(ctx, yes, no), lp(MATCH, WRAP).apply { topMargin = 20 })
-        root.post { m.show() }
+        root.post { m.show(); if (ime) f.input.requestFocus() }
     }
 
     private fun confirm(s: FrameLayout) {
