@@ -59,11 +59,20 @@ case "$1" in
             echo already-running
             exit 0
         fi
-        rm -f $R
+        rm -f $R $D/running
         S=
         command -v setsid >/dev/null 2>&1 && S=setsid
+        # adbd hangs up on the whole process group the moment this shell ends, and the child may not have reached nohup
+        # by then (seen on a loaded emulator: "started", and then nothing): the child is born ignoring it, and this shell
+        # only ends once the child has said it is up
+        trap '' HUP PIPE
         nohup $S sh $D/rollback.sh --run "$@" > $D/runner.log 2>&1 < /dev/null &
-        echo started
+        n=0
+        while [ ! -f $D/running ] && [ ! -f $R ] && [ $n -lt 100 ]; do
+            sleep 0.1
+            n=$((n + 1))
+        done
+        if [ -f $D/running ] || [ -f $R ]; then echo started; else echo failed-to-start; fi
         exit 0
         ;;
 esac

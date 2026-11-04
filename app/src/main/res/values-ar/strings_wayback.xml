@@ -27,7 +27,7 @@
     <string name="wayback_last_lost">راح من ⁨%1$s⁩ إلى ⁨%2$s⁩، لكن البيانات ما بقيت.</string>
     <string name="wayback_last_failed">من ⁨%1$s⁩ إلى ⁨%2$s⁩ ما زبط: ⁨%3$s⁩</string>
     <string name="guard_title">الحارس</string>
-    <string name="guard_watching">في هذي النسخة يراقب بس: تحت اللي شافه، واللي كان بيسويه.</string>
+    <string name="guard_watching">في هذي النسخة يراقب بس: فوق اللي شافه، واللي كان بيسويه.</string>
     <string name="guard_empty">لسا ما انكتب شي.</string>
     <string name="guard_channel">حارس عمري</string>
     <string name="rescue_name">إنقاذ عمري</string>

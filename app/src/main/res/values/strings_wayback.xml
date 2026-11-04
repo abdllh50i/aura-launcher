@@ -27,7 +27,7 @@
     <string name="wayback_last_lost">Went from %1$s to %2$s, but the data did not stay.</string>
     <string name="wayback_last_failed">From %1$s to %2$s failed: %3$s</string>
     <string name="guard_title">The guard</string>
-    <string name="guard_watching">In this version it only watches: below is what it saw, and what it would have done.</string>
+    <string name="guard_watching">In this version it only watches: above is what it saw, and what it would have done.</string>
     <string name="guard_empty">Nothing written yet.</string>
     <string name="guard_channel">AMRI guard</string>
     <string name="rescue_name">AMRI Rescue</string>

@@ -284,10 +284,15 @@ object Rollback {
     /** Waits for the script's outcome: its result file, or null when it never told (this process usually does not live to see it). */
     fun awaitResult(): String? {
         val until = SystemClock.elapsedRealtime() + RESULT_WAIT_MS
+        var gone = 0
         while (SystemClock.elapsedRealtime() < until) {
             Thread.sleep(2000L)
-            val out = sh("cat $RESULT 2>/dev/null", 8_000) ?: continue
-            if (out.lines().any { it == "DONE" }) return out
+            val out = sh("cat $RESULT 2>/dev/null; [ -f $DIR/running ] && echo RUNNING", 8_000) ?: continue
+            val lines = out.lines()
+            if (lines.any { it == "DONE" }) return out
+            // (it ended without a word: killed, or the unit's shell is not what it should be. No use waiting 7 minutes)
+            gone = if (lines.contains("RUNNING")) 0 else gone + 1
+            if (gone >= 5) return null
         }
         return null
     }
