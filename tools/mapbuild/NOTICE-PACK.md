@@ -7,7 +7,7 @@ This file travels with the pack (make_pack.py refuses to build without it). The 
 **OpenStreetMap** (base tiles, routing tiles, roads, most signals and cameras, part of the places)
 © OpenStreetMap contributors. Available under the Open Database License 1.0: https://opendatacommons.org/licenses/odbl/1-0/ . Contents under the Database Contents License: https://opendatacommons.org/licenses/dbcl/1-0/ . See https://www.openstreetmap.org/copyright .
 This pack is a Derivative Database and is offered under the ODbL. The scripts that make it are public in `tools/mapbuild/` of the AMRI OS repository, so that anyone can make it again from the same data.
-Changed from OpenStreetMap by this build: Arabic names added to roads that had only a Latin name, by a rule table and word pairs learnt from OpenStreetMap's own names (`arabic_names.py`, its rules and word list beside it). A few typos in Arabic names mended. Nothing is added to a road whose name has a word the table does not know.
+Changed from OpenStreetMap by this build: Arabic names added to roads that had only a Latin name, by a rule table and word pairs learnt from OpenStreetMap's own names (`arabic_names.py`, its rules and word list beside it). A few typos in Arabic names mended. Toll booths outside the King Fahd Causeway marked as checkpoints. Nothing is added to a road whose name has a word the table does not know.
 
 **OpenMapTiles schema** (the layout of the base tiles)
 © OpenMapTiles, https://openmaptiles.org . Schema under BSD and CC-BY; the tiles were built with Planetiler and planetiler-openmaptiles.

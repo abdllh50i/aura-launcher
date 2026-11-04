@@ -2,7 +2,7 @@
 """Cuts what the guidance tests need out of the reference answers and places.db, into app/src/test/resources/guide.   python -I guide_fixtures.py <mapbuild out> <resources dir>
 
 Each trip file is one real answer of Valhalla (out/ref-routes, the request in ../trips.py) with what guidance never reads left out, so all 30 stay under 2 MB:
-the alternates keep only their steps' times, a long step only its first crossing, its last, and those where the road's classes change, and the line stays whole.
+the alternates keep only their steps' times, a long step only its first crossing, its last, those where the road's classes change and those with a toll booth, and the line stays whole.
 Beside it, the rows a RouteWorld (nav/guide/RouteWorld.kt) would answer for that route: spots and gates by the line, POIs by its turns, fuel, mosques and rest areas along it,
 parking by its end, zones it touches. edges: trace_attributes over this very line, only where out/route-tests/edges was made from the same shape (6 of the 30).
 raw/ holds a few answers byte for byte, so the parser also meets them untouched. rings.json: OSM's own count of roundabout exits (tests/check_rings.py), for the exit-number rule.
@@ -83,7 +83,7 @@ def trim_intersections(ints, whole):
     else:
         keep = [0, len(ints) - 1]
         for k in range(1, len(ints)):
-            if sorted(ints[k].get("classes") or []) != sorted(ints[k - 1].get("classes") or []):
+            if sorted(ints[k].get("classes") or []) != sorted(ints[k - 1].get("classes") or []) or ints[k].get("toll_collection"):
                 keep.append(k)
         keep = sorted(set(keep))
     out = []

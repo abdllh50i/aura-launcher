@@ -5,7 +5,8 @@
     <venv python> -I arabic_names.py apply <ksa.osm.pbf> <out.osm.pbf> --report <report.json> [--sample tests/arabic-names-sample.tsv]
     python -I arabic_names.py try "King Fahd Road"                                       one name
 
-Only highway ways with a Latin `name` and no `name:ar` are given one, and the hand corrections of arabic_names_rules.json's `fix` are made. The rest of the file is copied as it is.
+Only highway ways with a Latin `name` and no `name:ar` are given one, and the hand corrections of arabic_names_rules.json's `fix` are made. The rest of the file is copied as it is, but for one thing that also must read the same
+everywhere: a toll booth outside the King Fahd Causeway becomes barrier=checkpoint, or Valhalla's answer says toll_collection there (the Kingdom's roads have no other toll, osm_roadside.py).
 
 A name is rewritten only when every word of it is known; otherwise it stays Latin, untouched, and the style then shows no label for a minor road (SPEC section 11). Nothing is ever spelled out letter by letter:
 a wrong name on a sign is worse than a Latin one.
@@ -36,6 +37,7 @@ WORDS = os.path.join(HERE, "arabic_names_words.tsv")
 AR_RE = re.compile(r"[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]")
 LAT_RE = re.compile(r"[A-Za-z]")
 OWNER_BOX = (26.10, 27.25, 49.40, 50.30)  # s, n, w, e
+CAUSEWAY = (26.10, 26.25, 50.19, 50.50)  # s, n, w, e: osm_roadside.py's
 LEARN_SHARE = 0.9
 LEARN_MIN = 3
 SEED = 20261104
@@ -659,9 +661,18 @@ def apply(pbf, out, report_path, sample_path):
     if stamp:
         header.set("osmosis_replication_timestamp", stamp)
     n = 0
+    tolls = 0
     with osmium.SimpleWriter(out, overwrite=True, header=header) as wr:
         for o in fp:
             if o.is_node():
+                if o.tags.get("barrier") == "toll_booth" or o.tags.get("highway") == "toll_gantry":
+                    la, lo = o.location.lat, o.location.lon
+                    if not (CAUSEWAY[0] <= la <= CAUSEWAY[1] and CAUSEWAY[2] <= lo <= CAUSEWAY[3]):
+                        tags = {x.k: x.v for x in o.tags if not (x.k == "highway" and x.v == "toll_gantry")}
+                        tags["barrier"] = "checkpoint"
+                        wr.add_node(o.replace(tags=tags))
+                        tolls += 1
+                        continue
                 wr.add_node(o)
             elif o.is_way():
                 plan = wanted.get(o.id)
@@ -674,9 +685,9 @@ def apply(pbf, out, report_path, sample_path):
                     n += 1
             elif o.is_relation():
                 wr.add_relation(o)
-    print(f"written, {n:,} ways changed; {time.time() - t0:.0f} s", flush=True)
+    print(f"written, {n:,} ways changed, {tolls} toll booths outside the causeway made checkpoints; {time.time() - t0:.0f} s", flush=True)
     rep = {
-        "ways_by_rule": dict(rule_ways), "names_by_rule": {k: len(v) for k, v in rule_names.items()},
+        "ways_by_rule": dict(rule_ways), "names_by_rule": {k: len(v) for k, v in rule_names.items()}, "toll_booths_made_checkpoints": tolls,
         "kingdom": {k: round(v, 1) for k, v in areas["kingdom"].items()}, "owner_box": {k: round(v, 1) for k, v in areas["box"].items()},
         "latin_left_kingdom_ways": sum(stayed.values()), "latin_left_kingdom_names": len(stayed), "latin_left_box_ways": sum(stayed_box.values()), "latin_left_box_names": len(stayed_box),
         "latin_left_top": stayed.most_common(200), "latin_left_box_top": stayed_box.most_common(200),

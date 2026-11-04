@@ -2560,10 +2560,10 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
 
 ## jed-taif: Jeddah to Taif Mall, which must not pass Makkah's forbidden zone for a non-Muslim
 
-173.0 km, Valhalla 105.1 min, estimate 123.4 min
-- choice 1, the router's 1: 173.0 km, 123.4 min: الأسرع | fastest
+173.0 km, Valhalla 104.8 min, estimate 123.1 min
+- choice 1, the router's 1: 173.0 km, 123.1 min: الأسرع | fastest
 - choice 2, the router's 2: 187.9 km, 132.4 min: أبطأ بـ 9 دقائق، أطول بـ 15 كم | slower by 9 min, longer by 15 km
-- choice 3, the router's 3: 210.6 km, 164.8 min: أبطأ بـ 41 دقيقة، أطول بـ 38 كم | slower by 41 min, longer by 38 km
+- choice 3, the router's 3: 210.6 km, 164.8 min: أبطأ بـ 42 دقيقة، أطول بـ 38 كم | slower by 42 min, longer by 38 km
 - before starting: الطريق يدخل حدود الحرم، والدخول للمسلمين فقط (حدود الحرم المكي) | The route enters the Haram boundary: Muslims only, at 57.1 km
 - fuel on the way: 46, longest gap 21.9 km; at the start: أقرب محطة بعد 2.8 كم
 - on the road, going its way: 0 cameras, 0 bumps, 1 signal junctions

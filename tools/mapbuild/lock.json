@@ -33,8 +33,8 @@
     "from": "cut_pbf.py, from the PBF above and polygon/ksa.poly"
    },
    "src/ksa-ar.osm.pbf": {
-    "bytes": 109010649,
-    "sha256": "322c77f310e92546055bce5c819ac423214b5d96901318ca0c0e6ced0e0a5c60",
+    "bytes": 109010531,
+    "sha256": "5a62d4a22d640ef3432b3203df68af0cf266db6dd8db8b87d4cbfa0e57da2f03",
     "from": "arabic_names.py apply, from the PBF above with arabic_names_rules.json and arabic_names_words.tsv"
    },
    "sources/natural_earth_vector.sqlite.zip": {
