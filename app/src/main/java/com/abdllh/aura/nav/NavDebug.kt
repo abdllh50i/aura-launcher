@@ -10,6 +10,9 @@ import android.os.SystemClock
 import android.util.Log
 import com.abdllh.aura.media.MediaMonitor
 import com.abdllh.aura.nav.offline.OfflineMaps
+import com.abdllh.aura.ui.Daylight
+import com.abdllh.aura.ui.Theme
+import com.abdllh.aura.voice.VoiceTurn
 import java.io.File
 import java.util.Locale
 
@@ -19,6 +22,7 @@ import java.util.Locale
  *   --es go lat,lon,name                      a trip there from the last fix (without the Maps screen)
  *   --ei sim 90                               the simulator drives the route at that speed
  *   --ez end true                             the trip ends
+ *   --es turn nav|amri|free                   the car's voice ([VoiceTurn]) taken for one of them, or given back
  *   --es fetch url,name                       OfflineMaps.fetchFile into files/fetchtest/name
  *   --ez dump true                            what navigation, the road watch and the media card know, in the log (tag AuraNavDebug)
  */
@@ -42,6 +46,7 @@ internal object NavDebug {
     private fun handle(app: Context, i: Intent) {
         i.getStringExtra("fix")?.let { s ->
             val v = s.split(',').map { it.trim().toDouble() }
+            CarLocation.simulated = true // (the emulator's own GPS keeps out of it from now on)
             CarLocation.publish(Location(LocationManager.GPS_PROVIDER).apply {
                 latitude = v[0]; longitude = v[1]; bearing = v[2].toFloat(); speed = (v[3] / 3.6).toFloat()
                 accuracy = v.getOrElse(4) { 5.0 }.toFloat()
@@ -60,6 +65,11 @@ internal object NavDebug {
         }
         if (i.hasExtra("sim")) NavSim.start(i.getIntExtra("sim", 60).toDouble())
         if (i.getBooleanExtra("end", false)) NavSession.stop()
+        when (i.getStringExtra("turn")) { // the car's voice taken and given back (no TTS on this emulator to hold it)
+            "nav" -> Log.i(TAG, "turn taken: ${VoiceTurn.take(VoiceTurn.Who.NAV)}")
+            "amri" -> Log.i(TAG, "turn taken: ${VoiceTurn.take(VoiceTurn.Who.AMRI)}")
+            "free" -> { VoiceTurn.release(VoiceTurn.Who.NAV); VoiceTurn.release(VoiceTurn.Who.AMRI) }
+        }
         i.getStringExtra("fetch")?.let { s ->
             val (url, name) = s.split(',', limit = 2)
             Thread({
@@ -86,6 +96,8 @@ internal object NavDebug {
         Log.i(TAG, "progress along=${p?.along?.toInt()} next=${p?.next} toNext=${p?.toNext?.toInt()} left=${p?.remaining?.toInt()} kmh=${p?.speedKmh} off=${p?.offRoute}")
         Log.i(TAG, "road limit=${w.limit} fromMap=${w.limitFromMap} over=${w.over} kmh=${w.speedKmh}")
         Log.i(TAG, "media current=${MediaMonitor.current?.let { "'${it.title}' playing=${it.playing} from=${it.sourcePkg}" }}")
+        val at = CarLocation.lastKnown()
+        Log.i(TAG, String.format(Locale.ROOT, "dark=%b sun=%.1f at=%s", Theme.isDarkNow(), at?.let { Daylight.altitude(it.lat, it.lon, System.currentTimeMillis()) } ?: Double.NaN, at?.let { "${it.lat},${it.lon}" }))
         Log.i(TAG, String.format(Locale.ROOT, "note=%s", NavNote.text.replace('\n', '|')))
     }
 }

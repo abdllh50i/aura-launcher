@@ -198,15 +198,18 @@ object Amri {
         AmriService.pauseMic() // the recogniser needs the microphone
         paused = MediaMonitor.pauseNow(c)
         AmriOverlay.show(c, AmriOverlay.Mode.LISTEN, c.getString(R.string.amri_listening))
-        Chime.play {
-            if (session != s || state != State.LISTENING) return@play
-            // Google with the internet (it understands anything); the requests the owner taught without it
-            val google = canRecognize(c)
-            when {
-                google && online(c) -> listen(c, s)
-                OfflineCommands.anyTaught(c) -> listenOffline(c, s)
-                !google -> finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_no_recognizer), null)
-                else -> finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_offline_none), null)
+        // (a navigation prompt being said ends first: its words must not reach the recogniser)
+        VoiceTurn.whenFree(VoiceTurn.Who.AMRI) {
+            if (session == s && state == State.LISTENING) Chime.play {
+                if (session != s || state != State.LISTENING) return@play
+                // Google with the internet (it understands anything); the requests the owner taught without it
+                val google = canRecognize(c)
+                when {
+                    google && online(c) -> listen(c, s)
+                    OfflineCommands.anyTaught(c) -> listenOffline(c, s)
+                    !google -> finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_no_recognizer), null)
+                    else -> finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_offline_none), null)
+                }
             }
         }
     }
@@ -399,7 +402,7 @@ object Amri {
     /** The recogniser's guesses (or, in debug builds, a typed request). */
     private fun heard(c: Context, guesses: List<String>, simulated: Boolean) {
         Log.i(TAG, "heard: $guesses")
-        if (simulated && state == State.IDLE) { state = State.LISTENING; session++ }
+        if (simulated && state == State.IDLE) { state = State.LISTENING; session++; VoiceTurn.take(VoiceTurn.Who.AMRI) }
         val said = guesses.firstOrNull().orEmpty()
         val cmd = Command.parse(guesses)
         if (cmd == null) {
@@ -704,6 +707,8 @@ object Amri {
                 }
                 heardBy = null
                 state = State.IDLE
+                VoiceTurn.forget(VoiceTurn.Who.AMRI)
+                VoiceTurn.release(VoiceTurn.Who.AMRI)
                 AmriService.resumeMic()
             }
         }

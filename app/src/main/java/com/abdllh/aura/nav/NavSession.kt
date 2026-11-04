@@ -11,9 +11,11 @@ import android.os.SystemClock
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
+import com.abdllh.aura.BuildConfig
 import com.abdllh.aura.R
 import com.abdllh.aura.util.LocaleHelper
 import com.abdllh.aura.util.Prefs
+import com.abdllh.aura.voice.VoiceTurn
 import java.util.Locale
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.math.abs
@@ -137,6 +139,8 @@ object NavSession {
         tts?.shutdown()
         tts = null
         ttsReady = false
+        VoiceTurn.forget(VoiceTurn.Who.NAV)
+        VoiceTurn.release(VoiceTurn.Who.NAV)
         if (c != null) duck?.let { try { (c.getSystemService(Context.AUDIO_SERVICE) as AudioManager).abandonAudioFocusRequest(it) } catch (_: Throwable) { } }
         changed()
     }
@@ -175,7 +179,9 @@ object NavSession {
         // leaving the route ([OffRouteWatch]) while moving; retries back off while the car stays off it
         if (!off) rerouteStreak = 0
         if (watch.leaving && speed > 5 && !rerouting && SystemClock.elapsedRealtime() >= nextRerouteAt) reroute(here, l)
-        if (!off) prompt(r, next, toNext, along, speed)
+        // (while the assistant has the car's voice a prompt is not even looked at: the fix after it ends decides, with the
+        // distance of that moment, so nothing is said late and nothing that has been passed is said at all)
+        if (!off && VoiceTurn.free(VoiceTurn.Who.NAV)) prompt(r, next, toNext, along, speed)
         changed()
     }
 
@@ -381,23 +387,30 @@ object NavSession {
     }
 
     private fun say(text: String) {
+        if (BuildConfig.DEBUG) Log.d(TAG, "prompt: $text${if (ttsReady) "" else " (no voice to say it)"}")
         if (!voiceOn || !ttsReady) return
         val c = app ?: return
+        VoiceTurn.whenFree(VoiceTurn.Who.NAV) { speak(c, text) }
+    }
+
+    /** Said now: the car's voice is this prompt's ([VoiceTurn]) until [finished]. */
+    private fun speak(c: Context, text: String) {
         val id = "aura-nav-${++utterances}"
         lastUtterance = id
         try {
             val req = duck ?: AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
                 .setAudioAttributes(voiceAttrs).build().also { duck = it }
             (c.getSystemService(Context.AUDIO_SERVICE) as AudioManager).requestAudioFocus(req)
-            tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, id)
+            if (tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, id) != TextToSpeech.SUCCESS) finished(id)
         } catch (_: Throwable) {
             finished(id)
         }
     }
 
-    /** A prompt ended (TTS thread): give the focus back once the latest one is over (a flushed one ends first). */
+    /** A prompt ended (TTS thread): give the focus and the turn back once the latest one is over (a flushed one ends first). */
     private fun finished(id: String?) {
         if (id != lastUtterance) return
+        main.post { if (id == lastUtterance) VoiceTurn.release(VoiceTurn.Who.NAV) }
         val c = app ?: return
         val req = duck ?: return
         try { (c.getSystemService(Context.AUDIO_SERVICE) as AudioManager).abandonAudioFocusRequest(req) } catch (_: Throwable) { }
