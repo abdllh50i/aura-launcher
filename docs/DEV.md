@@ -397,6 +397,7 @@ Numbers, emulator, a shared PC, interleaved with the build before the panels (`2
 | Window frames in a move, medians, and the longest frame's median | open 4-5, 314-938 ms; back 2, 80-224 ms | open and back 15-23, 24-139 ms |
 | Engines in 10 rounds | a new one at every open, by the code | 1 engine, 1 style (the log: `engine #1`, `style load #1`) |
 | Window frames with the car moving at Home (1 fix a second, no other change) | 23.6 a second (1.19.0, `home-shell.md` 4) | **0 in 30 s**, and 0 on Maps |
+| The same, one sitting on a loaded PC (the emulator's GL thread is encoder and pipe work): window frames, CPU of one core | 8.7 a second, 108 % (map thread 55, RenderThread 51) | 1 in 30 s (the clock), 57 % (map thread 54, RenderThread 0.3) |
 | Map frames at Home with the car stopped; under Settings on a trip | | 0 in 12 s; 0 in 4 s |
 | PSS after a GC / native, MB: Home at rest | 77.5 / 36.6, 77.6 / 37.1 | 82.3 / 41.5, 90.1 / 46.4, 89.7 / 48.2 |
 | Maps open | 89.7 / 48.1, 94.8 / 53.7 | 82.2 / 41.3, 90.5 / 46.9, 91.3 / 49.8 |
