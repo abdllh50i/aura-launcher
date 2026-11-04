@@ -397,7 +397,10 @@ internal object RouteProbe {
         v.route(c, req)
         o.put("msAgain", (SystemClock.elapsedRealtimeNanos() - t0) / 1_000_000)
         o.put("bytes", first.size)
+        // (how long the JSON takes here says what the 2.35 MB answer will: it is parsed in this process)
+        t0 = SystemClock.elapsedRealtimeNanos()
         val a = JSONObject(String(first, Charsets.UTF_8))
+        o.put("parseMs", (SystemClock.elapsedRealtimeNanos() - t0) / 1_000_000)
         o.put("code", a.opt("code") ?: JSONObject.NULL)
         val routes = a.optJSONArray("routes")
         if (routes != null && routes.length() > 0) {
