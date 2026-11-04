@@ -15,6 +15,9 @@ if (-not $NoBuild) {
     if ($code -ne 0) { "BUILD FAILED"; exit 1 }
 }
 & $adb -s $Serial install -r -d (Join-Path $root "app\build\outputs\apk\debug\app-debug.apk") | Select-Object -Last 1
+# From 2.x the guard acts during a trial (docs/DEV.md, "The guard"): three force-stops of this script in a boot, each before 5 minutes of
+# life, would be a crash loop to it. Here a start is a healthy one after 20 s.
+& $adb -s $Serial shell "setprop debug.aura.guard.livedsec 20" | Out-Null
 # A home intent limited to the package, never the class by name: only a start that names no component makes a home-type
 # activity (docs/DEV.md, "One way to the screens"). For the Home key to come back to AMRI as on the unit, once per
 # emulator:  adb shell cmd package set-home-activity com.abdllh.aura/.home.HomeActivity
