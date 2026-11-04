@@ -212,6 +212,7 @@ class MusicActivity : Activity() {
     /** Where the music comes from: the unit's own files, the phone over Bluetooth, or YouTube's app on the unit. */
     private enum class Src(val pref: String) { LOCAL("local"), BT("bt"), YT("yt") }
     private var src = Src.LOCAL
+        set(v) { field = v; onBluetooth = v == Src.BT }
     private val bt get() = src == Src.BT
     private val yt get() = src == Src.YT
     private val rtl get() = resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL
@@ -366,6 +367,11 @@ class MusicActivity : Activity() {
         super.onPause()
     }
 
+    override fun onDestroy() {
+        onBluetooth = null
+        super.onDestroy()
+    }
+
     /** Sunset or sunrise under "auto" (a minute's tick), or a theme, accent or language chosen in Settings meanwhile. */
     private val looks = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) { checkLook() }
@@ -393,11 +399,23 @@ class MusicActivity : Activity() {
     private val phoneListener: () -> Unit = {
         val s = lyricsSong
         val r = phoneLyrics(s)
-        if (s != null && r != null && lyricsKey == s.key && lyricsResult !== r && ::lyricsView.isInitialized && !isDestroyed) {
-            lyricsView.removeCallbacks(lyricsLoading)
-            lyricsAnswer(s.key, r, false)
+        if (s != null && r != null && lyricsKey == s.key && lyricsResult !== r && phoneSeen !== r && ::lyricsView.isInitialized && !isDestroyed) {
+            phoneSeen = r
+            val own = lyricsResult?.takeIf { lyricsShown == s.key }
+            if (own == null || phoneTakesOver(own, r)) {
+                lyricsView.removeCallbacks(lyricsLoading)
+                lyricsAnswer(s.key, r, false)
+            }
         }
     }
+    /** Naghm's lyrics already looked at (the listener runs with its every state). */
+    private var phoneSeen: Lyrics.Result? = null
+
+    /**
+     * Naghm's lines in place of the screen's own [own], already showing. Not when they are the very same lines (the owner's
+     * correction kept with them goes on applying), and lines without times do not take the place of timed ones.
+     */
+    private fun phoneTakesOver(own: Lyrics.Result, r: Lyrics.Result) = !Lyrics.sameLines(own.lines, r.lines) && (r.synced || !own.synced)
 
     /** Naghm's own lyrics for the Bluetooth song [s] (1.19), when it sent some for this very song. */
     private fun phoneLyrics(s: LyricSong?): Lyrics.Result? {
@@ -751,7 +769,11 @@ class MusicActivity : Activity() {
         if (s == null) { lyricsShown = null; lyrics { it.showStatus(getString(R.string.lyrics_nothing)) }; lyricsHave(false); return }
         // 1.19: Naghm's song with the phone's lyrics already here: those, at once (the same lines as on the phone, timed
         // on the very recording; the screen's own lookup does not always find them)
-        phoneLyrics(s)?.let { r -> lyricsAnswer(s.key, r, false); return }
+        phoneLyrics(s)?.let { r ->
+            val own = lyricsResult?.takeIf { lyricsShown == s.key }
+            lyricsAnswer(s.key, if (own == null || phoneTakesOver(own, r)) r else own, false)
+            return
+        }
         // (while they are looked up their place stays as it is: open with what it showed, stepped back, or closed)
         if (lyricsShown != s.key) {
             lyrics { it.dim() }
@@ -770,7 +792,7 @@ class MusicActivity : Activity() {
             // (timed lines only: an untimed record's length says no more than a catalogue's)
             if (bt && r != null && r.synced && r.durationSec > 0) BtMusic.offerDuration(r.durationSec, s.title, s.artist, BtMusic.FROM_LYRICS)
             val wait = songMovesUntil - SystemClock.uptimeMillis()
-            if (wait > 0) root.postDelayed({ if (lyricsKey == s.key && !isDestroyed) lyricsAnswer(s.key, r, failed) }, wait)
+            if (wait > 0) root.postDelayed({ if (lyricsKey == s.key && !isDestroyed && phoneLyrics(s) == null) lyricsAnswer(s.key, r, failed) }, wait)
             else lyricsAnswer(s.key, r, failed)
         }
     }
@@ -790,11 +812,16 @@ class MusicActivity : Activity() {
             r.instrumental -> { lyricsShown = null; lyrics { it.showStatus(getString(R.string.lyrics_instrumental)) }; lyricsHave(false) }
             else -> {
                 val unknown = positionUnknown
+                // (the same song's lines again stay where they are; other ones, Naghm's after the screen's own, go up)
+                val old = lyricsResult
+                val same = lyricsShown == key && old != null && Lyrics.sameLines(old.lines, r.lines)
                 lyricsResult = r
-                // the owner's correction kept with these lyrics (a Bluetooth song's: see onLineTap)
-                lyricsOffset = if (lyricsSong?.bt == true) r.offsetMs else 0L
+                // the owner's correction kept with these lyrics (a Bluetooth song's: see onLineTap; the very lyrics that
+                // show go on with the one they have, which may be newer than what they were read with)
+                if (r !== old) lyricsOffset = if (lyricsSong?.bt == true) r.offsetMs else 0L
                 val at = positionNow() + lyricsShift
-                if (lyricsShown != key) lyrics { it.show(r) }
+                if (!same) lyrics { it.show(r) }
+                if (com.abdllh.aura.BuildConfig.DEBUG) android.util.Log.d("AuraMusic", "lyrics up: ${r.source}, ${r.lines.size} lines, offset $lyricsOffset, put up: ${!same}")
                 lyricsShown = key
                 lyrics { it.needSync = unknown; it.at(at) }
                 lyricsHave(true)
@@ -2347,6 +2374,10 @@ class MusicActivity : Activity() {
     }
 
     companion object {
+        /** The source the screen is on while there is one (null: none), for [com.abdllh.aura.system.MusicKeys]. */
+        @Volatile var onBluetooth: Boolean? = null
+            private set
+
         // art keys for "no cover" states (album ids are >= 0)
         private const val BT_ART = Long.MIN_VALUE + 1
         private const val NO_ART = -2L

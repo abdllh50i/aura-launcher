@@ -100,7 +100,7 @@
     <string name="set_full_off_sub">بدل وضع السكون. الشاشة بعدها تشتغل من الصفر كل مرة، وتاخذ وقت أطول</string>
     <string name="set_off_now">إطفاء الشاشة الحين</string>
     <string name="set_off_now_sub">تنطفي بالكامل، مو سكون: وترجع تشتغل لما تطفّي السيارة وتشغّلها</string>
-    <string name="set_power_hint">الاثنين يمرّون عبر وحدة التحكم بالطاقة في الشاشة نفسها (نفس الخيار اللي في إعدادات المصنع). ما تجرّبوا على هالشاشة للحين.</string>
+    <string name="set_power_hint">الاثنين يمرّون عبر وحدة التحكم بالطاقة في الشاشة نفسها (نفس الخيار اللي في إعدادات المصنع).</string>
     <string name="off_now_title">تطفي الشاشة؟</string>
     <string name="off_now_text">الشاشة بتنطفي بالكامل الحين (مو وضع سكون). وترجع تشتغل أول ما تطفّي السيارة وتشغّلها من جديد.</string>
     <string name="off_now_action">إطفاء</string>

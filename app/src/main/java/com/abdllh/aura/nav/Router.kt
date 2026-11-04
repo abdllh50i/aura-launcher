@@ -2,6 +2,8 @@ package com.abdllh.aura.nav
 
 import android.os.Handler
 import android.os.Looper
+import com.abdllh.aura.BuildConfig
+import com.abdllh.aura.system.SystemProps
 import org.json.JSONObject
 import java.util.Locale
 import java.util.concurrent.Executors
@@ -36,6 +38,14 @@ class Step(
 }
 
 class Route(val line: Polyline, val steps: List<Step>, val distance: Double, val duration: Double) {
+    /** OpenStreetMap's speed limits along the way, when BRouter answered too (OSRM has none of its own). Main thread. */
+    var limits: RouteLimits? = null
+    /**
+     * The answer to the same question that came after this one was taken: OSRM's, with road names, when the hotspot took
+     * longer than BRouter's head start. Whoever shows this route takes it over when it fits ([NavSession]). Main thread.
+     */
+    var better: Route? = null
+
     /** Time left from a distance along the route, scaled by the steps' own speeds. */
     fun timeLeft(along: Double): Double {
         var t = 0.0
@@ -61,13 +71,20 @@ class Route(val line: Polyline, val steps: List<Step>, val distance: Double, val
  * Driving directions: the public OSRM server (OpenStreetMap data, with road names) and, where the offline map has
  * routing data, BRouter on the unit ([com.abdllh.aura.nav.offline.OfflineRouter]) at the same time. OSRM's route is
  * taken when it comes within [ONLINE_HEAD_START_MS]; else the offline one, so a route shows at once also without
- * internet or with a hotspot that stopped passing traffic (where OSRM would only time out).
+ * internet or with a hotspot that stopped passing traffic (where OSRM would only time out). OSRM's answer coming later
+ * still is kept on the route taken ([Route.better]): a slow hotspot must not mean nameless guidance for the whole trip.
  */
 object Router {
     private const val ONLINE_HEAD_START_MS = 2500L
     private val io = Executors.newSingleThreadExecutor()
     private val offlineIo = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
+
+    /** Debug builds: another OSRM (a stand-in on the PC: setprop debug.aura.osrm http://10.0.2.2:5000). */
+    private val osrm: String get() {
+        if (BuildConfig.DEBUG) SystemProps.get("debug.aura.osrm").takeIf { it.startsWith("http") }?.let { return it }
+        return "https://router.project-osrm.org"
+    }
 
     /** [heading] (degrees) helps the router start in the direction the car is already moving. */
     fun route(from: LatLon, to: LatLon, heading: Double?, whenFound: (Route?, String?) -> Unit) {
@@ -90,8 +107,18 @@ object Router {
         var offlineDone = false
         var offlineRoute: Route? = null
         var headStartOver = false
+        var taken: Route? = null
         fun decide() {
-            if (delivered) return
+            // (the limits are in BRouter's answer alone: they go with whichever route is driven, also one already delivered)
+            val on = onlineRoute
+            val off = offlineRoute
+            if (on != null && off != null && on.limits == null) on.limits = off.limits
+            if (delivered) {
+                // BRouter's was taken after OSRM's head start, and OSRM has answered after all
+                if (on != null && off != null && on !== taken && off === taken) off.better = on
+                if (onlineDone) android.util.Log.i("AuraNav", "OSRM after the head start: ${if (on != null) "kept" else "no route ($onlineErr)"}")
+                return
+            }
             val r: Route? = when {
                 onlineDone && onlineRoute != null -> onlineRoute
                 offlineDone && offlineRoute != null && (headStartOver || onlineDone) -> offlineRoute
@@ -99,6 +126,7 @@ object Router {
                 else -> return
             }
             delivered = true
+            taken = r
             done(r, if (r == null) onlineErr else null)
         }
         io.execute {
@@ -115,7 +143,7 @@ object Router {
     private fun online(from: LatLon, to: LatLon, heading: Double?): Pair<Route?, String?> = try {
         val coords = String.format(Locale.ROOT, "%.6f,%.6f;%.6f,%.6f", from.lon, from.lat, to.lon, to.lat)
         val bearings = heading?.let { String.format(Locale.ROOT, "&bearings=%d,60;", it.toInt().coerceIn(0, 359)) } ?: ""
-        val r = parse(Places.get("https://router.project-osrm.org/route/v1/driving/$coords?overview=full&geometries=geojson&steps=true$bearings"))
+        val r = parse(Places.get("$osrm/route/v1/driving/$coords?overview=full&geometries=geojson&steps=true$bearings"))
         if (r != null && Locale.getDefault().language == "ar") arabicNames(r)
         r to null
     } catch (t: Throwable) {

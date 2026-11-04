@@ -71,21 +71,15 @@ object MediaMonitor {
         return NowPlaying(t.title, t.artist, p.art, p.playing, app?.packageName)
     }
 
+    /** Whose song played last ([NowPlaying.sourcePkg]; an app that only sends broadcasts: [NowPlayingRule.BROADCAST]). */
+    private var lastPlayed: String? = null
+
     private fun publish() {
-        val sessionInfo = controller?.let { fromController(it) }
-        val bt = btInfo()
-        val aura = auraInfo()
-        // What plays wins: Bluetooth music, Aura Music, another app's session or broadcast; then what is paused.
-        current = when {
-            bt != null && bt.playing -> bt
-            aura != null && aura.playing -> aura
-            sessionInfo != null && (sessionInfo.playing || broadcastInfo?.playing != true) -> sessionInfo
-            broadcastInfo != null -> broadcastInfo
-            sessionInfo != null -> sessionInfo
-            aura != null -> aura
-            else -> bt
-        }
-        val c = current
+        // (the source the owner chose last, for the time before anything has played in this process)
+        val chosenBt = try { com.abdllh.aura.util.Prefs.raw.getString("musicSource", "local") == "bt" } catch (_: Throwable) { false }
+        val c = NowPlayingRule.pick(btInfo(), auraInfo(), controller?.let { fromController(it) }, broadcastInfo, lastPlayed, chosenBt)
+        if (c?.playing == true) lastPlayed = c.sourcePkg ?: NowPlayingRule.BROADCAST
+        current = c
         main.post { listeners.forEach { it(c) } }
     }
 
@@ -327,6 +321,48 @@ object MediaMonitor {
     }
 
     // ---------------------------------------------------------------- transport
+    /** What [pauseNow] paused: that source and nothing else plays again, whatever [current] has become meanwhile. */
+    class Paused internal constructor(val source: String?, internal val session: MediaController?)
+
+    /**
+     * Pauses what plays with a command that can only pause, for a moment that is not the owner's own choice (the assistant
+     * listening): a toggle sent to a source whose state changed in between ends the wrong way. Null when nothing plays.
+     */
+    fun pauseNow(ctx: Context): Paused? {
+        val c = current?.takeIf { it.playing } ?: return null
+        return Paused(c.sourcePkg, controller?.takeIf { it.packageName == c.sourcePkg }).also { command(ctx, it, false) }
+    }
+
+    /** What [pauseNow] paused plays again, with a command that can only play. */
+    fun playAgain(ctx: Context, p: Paused) = command(ctx, p, true)
+
+    /** The song of the card plays, if it does not already (the source's own command, never a toggle). */
+    fun play(ctx: Context) {
+        val c = current ?: return
+        if (!c.playing) command(ctx, Paused(c.sourcePkg, controller?.takeIf { it.packageName == c.sourcePkg }), true)
+    }
+
+    private fun command(ctx: Context, p: Paused, play: Boolean) {
+        Log.i(TAG, "${if (play) "play" else "pause"}: ${p.source ?: "the app of the broadcasts"}")
+        try {
+            val b = com.abdllh.aura.music.BtMusic
+            val player = com.abdllh.aura.music.Player
+            when {
+                p.source == SOURCE_BT -> b.control(if (play) b.PLAY else b.PAUSE)
+                p.source == ctx.packageName -> if (play) player.resume() else player.pause()
+                p.session != null -> if (play) p.session.transportControls.play() else p.session.transportControls.pause()
+                else -> {
+                    val code = if (play) KeyEvent.KEYCODE_MEDIA_PLAY else KeyEvent.KEYCODE_MEDIA_PAUSE
+                    val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                    am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code))
+                    am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, code))
+                }
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "command: $t")
+        }
+    }
+
     enum class Key(val code: Int) { PREV(KeyEvent.KEYCODE_MEDIA_PREVIOUS), PLAY_PAUSE(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE), NEXT(KeyEvent.KEYCODE_MEDIA_NEXT) }
 
     fun send(ctx: Context, key: Key) {
@@ -364,5 +400,23 @@ object MediaMonitor {
         val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, key.code))
         am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, key.code))
+    }
+}
+
+/** Which song the home card and the transport are about, of all the sources that have one. No Android in here. */
+internal object NowPlayingRule {
+    /** For [pick]'s lastPlayed: an app known only from its broadcasts (they name no package). */
+    const val BROADCAST = "broadcast"
+
+    /**
+     * What plays wins: Bluetooth music, Aura Music, another app's session, its broadcast. When nothing plays, what played
+     * last: the phone paused stays the phone (the local player restores its last queue, paused, at every start, and used to
+     * take the card, so its play button started the old local song and muted the phone). Before anything has played in this
+     * process, the source chosen last ([chosenBt]), else the order this always had.
+     */
+    fun pick(bt: NowPlaying?, aura: NowPlaying?, session: NowPlaying?, broadcast: NowPlaying?, lastPlayed: String?, chosenBt: Boolean): NowPlaying? {
+        listOf(bt, aura, session, broadcast).firstOrNull { it?.playing == true }?.let { return it }
+        val last = if (lastPlayed == BROADCAST) broadcast else listOf(bt, aura, session).firstOrNull { it != null && it.sourcePkg == lastPlayed }
+        return last ?: bt.takeIf { chosenBt } ?: session ?: broadcast ?: aura ?: bt
     }
 }

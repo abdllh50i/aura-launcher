@@ -198,8 +198,7 @@ object MusicKeys {
                 (if (bt) Known.BT_MUSIC else Known.MUSIC) + ".home_horizontalActivity")
             return
         }
-        val same = bt == (Prefs.raw.getString("musicSource", "local") == "bt")
-        if (same && Front.ownResumed && Front.panel == Screens.MUSIC) {
+        if (sameSource(bt) && Front.ownResumed && Front.panel == Screens.MUSIC) {
             Log.i(TAG, "the music key inside Aura Music: the home screen")
             openedAt = now
             Screens.home(c, "music key")
@@ -209,6 +208,12 @@ object MusicKeys {
         Log.i(TAG, "the ${if (bt) "Bluetooth music" else "music"} key: Aura Music")
         Screens.musicOn(c, bt)
     }
+
+    /**
+     * Is AMRI Music on this key's source? What the screen really is on (it may open on Bluetooth by itself, when the phone
+     * plays, without that being the source chosen, which is all the pref says); the pref only when there is no screen.
+     */
+    private fun sameSource(bt: Boolean) = bt == (MusicActivity.onBluetooth ?: (Prefs.raw.getString("musicSource", "local") == "bt"))
 
     private fun note(what: String) {
         try {
@@ -275,8 +280,7 @@ object MusicKeys {
         // AMRI Music was what the owner looked at, on this very source: its button again, inside it. That is the way
         // out, to the home screen (the stock screen it brought up is covered like the first time, by the home screen
         // now). Another source's screen is its own button: AMRI Music changes source, as before.
-        val same = bt == (Prefs.raw.getString("musicSource", "local") == "bt")
-        if (same && Front.ownIs(Screens.MUSIC, AGAIN_MS)) {
+        if (sameSource(bt) && Front.ownIs(Screens.MUSIC, AGAIN_MS)) {
             if (!Front.ownResumed) { again(c); return }
             // (still in front as far as this process knows: only if something really comes up over it)
             main.postDelayed({ if (!Front.ownResumed && Front.ownIs(Screens.MUSIC, AGAIN_MS)) again(c) }, 250L)

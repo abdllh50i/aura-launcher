@@ -58,7 +58,10 @@ object Amri {
     private var recognizer: SpeechRecognizer? = null
     private var tts: TextToSpeech? = null
     private var ttsReady = false
-    private var pausedMedia = false
+    /** The music this request paused, and which it was: that comes back ([WakeMusic]), nothing else starts. */
+    private var paused: MediaMonitor.Paused? = null
+    /** ...when a phone call came meanwhile, at its end. */
+    private var afterCall: MediaMonitor.Paused? = null
     private var session = 0
     /** Set while Settings records the wake word: the background listener keeps off the microphone. */
     @Volatile var enrolling = false
@@ -107,6 +110,11 @@ object Amri {
                     }
                     if (callUntil > now && state == State.LISTENING) cancel(c)
                     AmriService.resumeMic() // off the microphone for the call, on again after it
+                    if (callUntil == 0L) afterCall?.let { p ->
+                        afterCall = null
+                        // (the moment the player waits for its own music after a call)
+                        main.postDelayed({ if (!somethingElsePlays(p)) MediaMonitor.playAgain(c.applicationContext, p) }, 1200L)
+                    }
                 }
             }, IntentFilter().apply {
                 addAction("com.bt.ACTION_BT_INCOMING_CALL")
@@ -191,24 +199,26 @@ object Amri {
         wokeAt = SystemClock.elapsedRealtime()
         playingAtWake = MediaMonitor.current
         AmriService.pauseMic() // the recogniser needs the microphone
-        pausedMedia = false
-        if (MediaMonitor.current?.playing == true) {
-            MediaMonitor.send(c, MediaMonitor.Key.PLAY_PAUSE)
-            pausedMedia = true
-        }
+        paused = MediaMonitor.pauseNow(c)
         AmriOverlay.show(c, AmriOverlay.Mode.LISTEN, c.getString(R.string.amri_listening))
-        Chime.play {
-            if (session != s || state != State.LISTENING) return@play
-            // Google with the internet (it understands anything); the requests the owner taught without it
-            val google = canRecognize(c)
-            when {
-                google && online(c) -> listen(c, s)
-                OfflineCommands.anyTaught(c) -> listenOffline(c, s)
-                !google -> finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_no_recognizer), null)
-                else -> finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_offline_none), null)
+        // (a navigation prompt being said ends first: its words must not reach the recogniser)
+        VoiceTurn.whenFree(VoiceTurn.Who.AMRI) {
+            if (session == s && state == State.LISTENING) Chime.play {
+                if (session != s || state != State.LISTENING) return@play
+                // Google with the internet (it understands anything); the requests the owner taught without it
+                val google = canRecognize(c)
+                when {
+                    google && online(c) -> listen(c, s)
+                    OfflineCommands.anyTaught(c) -> listenOffline(c, s)
+                    !google -> finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_no_recognizer), null)
+                    else -> finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_offline_none), null)
+                }
             }
         }
     }
+
+    /** Another source plays by now: what [p] paused does not take the speakers from it. */
+    private fun somethingElsePlays(p: MediaMonitor.Paused) = MediaMonitor.current?.let { it.playing && it.sourcePkg != p.source } == true
 
     /** Is there internet now (a validated network that the car's Wi-Fi watchdog does not know to be down)? */
     private fun online(c: Context): Boolean = try {
@@ -402,7 +412,7 @@ object Amri {
     /** The recogniser's guesses (or, in debug builds, a typed request). */
     private fun heard(c: Context, guesses: List<String>, simulated: Boolean) {
         Log.i(TAG, "heard: $guesses")
-        if (simulated && state == State.IDLE) { state = State.LISTENING; session++ }
+        if (simulated && state == State.IDLE) { state = State.LISTENING; session++; VoiceTurn.take(VoiceTurn.Who.AMRI) }
         val said = guesses.firstOrNull().orEmpty()
         val cmd = Command.parse(guesses)
         if (cmd == null) {
@@ -449,16 +459,17 @@ object Amri {
 
     /** Does [cmd]; the answer to show (and to say). */
     private fun run(c: Context, cmd: Command): Answer {
-        fun s(id: Int, vararg a: Any) = c.getString(id, *a)
+        fun s(id: Int, vararg a: Any) = digits(c, id, *a)
         return when (cmd) {
             Command.Next -> { media(c, MediaMonitor.Key.NEXT); Answer(s(R.string.amri_next)) }
             Command.Previous -> { media(c, MediaMonitor.Key.PREV); Answer(s(R.string.amri_previous)) }
-            Command.Pause -> { pausedMedia = false; Answer(s(R.string.amri_paused)) } // paused when it started listening
+            Command.Pause -> { paused = null; Answer(s(R.string.amri_paused)) } // paused when it started listening
             Command.Play -> {
+                val p = paused
                 when {
-                    pausedMedia -> { pausedMedia = false; MediaMonitor.send(c, MediaMonitor.Key.PLAY_PAUSE) }
+                    p != null -> { paused = null; MediaMonitor.playAgain(c, p) }
                     MediaMonitor.current?.playing == true -> {}
-                    MediaMonitor.current != null -> MediaMonitor.send(c, MediaMonitor.Key.PLAY_PAUSE)
+                    MediaMonitor.current != null -> MediaMonitor.play(c)
                     else -> openMusic(c, false)
                 }
                 Answer(s(R.string.amri_playing))
@@ -524,6 +535,9 @@ object Amri {
 
     private val arabic get() = Locale.getDefault().language == "ar"
 
+    /** An answer with its numbers in Western digits, the app's rule everywhere (%d alone gives ١٢ in Arabic, beside 12 on the dock). */
+    private fun digits(c: Context, id: Int, vararg a: Any): String = String.format(Locale.ROOT, c.getString(id), *a)
+
     /** What is left of the route on AMRI Maps (another navigation app does not say). */
     private fun eta(c: Context): Answer {
         val nav = com.abdllh.aura.nav.NavSession
@@ -565,7 +579,7 @@ object Amri {
             cmd.up -> R.string.amri_brighter
             else -> R.string.amri_dimmer
         }
-        return Answer(c.getString(id, to))
+        return Answer(digits(c, id, to))
     }
 
     /**
@@ -697,7 +711,7 @@ object Amri {
         if (best == null || com.abdllh.aura.util.TextMatch.score(name, best.label) < 0.8 || !repo.launch(c, best.pkg)) {
             return Answer(c.getString(R.string.amri_app_missing, name), error = true)
         }
-        pausedMedia = false // another app in front: the music stays as the owner left it
+        paused = null // another app in front: the music stays as the owner left it
         return Answer(c.getString(R.string.amri_open_app, best.label))
     }
 
@@ -741,7 +755,7 @@ object Amri {
                     !yt.play(c, song) { com.abdllh.aura.home.Screens.music(c) } ->
                         give(Answer(c.getString(R.string.amri_song_no_app), error = true))
                     else -> {
-                        pausedMedia = false // it plays on its own; the music paused for the request stays paused
+                        paused = null // it plays on its own; the music paused for the request stays paused
                         give(Answer(if (song.artist.isBlank()) c.getString(R.string.amri_now_playing_title, song.title)
                             else c.getString(R.string.amri_song_playing, song.title, song.artist)))
                     }
@@ -752,9 +766,10 @@ object Amri {
 
     /** Next / previous: music the assistant paused plays on with the next song. */
     private fun media(c: Context, key: MediaMonitor.Key) {
-        if (pausedMedia) {
-            pausedMedia = false
-            MediaMonitor.send(c, MediaMonitor.Key.PLAY_PAUSE)
+        val p = paused
+        if (p != null) {
+            paused = null
+            MediaMonitor.playAgain(c, p)
             main.postDelayed({ MediaMonitor.send(c, key) }, 250)
         } else {
             MediaMonitor.send(c, key)
@@ -763,7 +778,7 @@ object Amri {
 
     /** The music screen on that source, playing (as the stock music key does). */
     private fun openMusic(c: Context, bt: Boolean) {
-        pausedMedia = false // it plays itself
+        paused = null // it plays itself
         com.abdllh.aura.home.Screens.musicOn(c, bt)
     }
 
@@ -777,10 +792,17 @@ object Amri {
             if (!ended && session == s) {
                 ended = true
                 // music the assistant paused plays on, unless the owner wanted it stopped or changed
-                if (pausedMedia && cmd != Command.Pause && cmd != Command.Mute) MediaMonitor.send(c, MediaMonitor.Key.PLAY_PAUSE)
-                pausedMedia = false
+                val p = paused
+                paused = null
+                when (WakeMusic.after(p != null, cmd == Command.Pause || cmd == Command.Mute, p != null && somethingElsePlays(p), inCall)) {
+                    WakeMusic.Then.PLAY -> MediaMonitor.playAgain(c, p!!)
+                    WakeMusic.Then.AFTER_CALL -> afterCall = p
+                    WakeMusic.Then.LEAVE -> {}
+                }
                 heardBy = null
                 state = State.IDLE
+                VoiceTurn.forget(VoiceTurn.Who.AMRI)
+                VoiceTurn.release(VoiceTurn.Who.AMRI)
                 AmriService.resumeMic()
             }
         }

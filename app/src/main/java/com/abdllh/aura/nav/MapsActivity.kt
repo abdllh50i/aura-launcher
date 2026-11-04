@@ -324,16 +324,19 @@ class MapsActivity : Activity() {
      * Builds the screen again when its look is out of date: the map's style, the panels and the car are made in the
      * theme and accent of their time, and the words in the language of theirs. A new language at once (the old
      * screen would mix the two); a theme or an accent not while the driver is choosing a place (the next minute's
-     * tick tries again), nor while the car moves on a trip: the map and its surface are built anew, a blank map and
-     * seconds of heavy work on this SoC just when the driver may need it; it waits for a stop or the trip's end. A
-     * trip being driven goes on: [NavSession] is the app's, not this screen's.
+     * tick tries again), nor while the car moves on a trip with a manoeuvre coming up: the map and its surface are built
+     * anew, a blank map and seconds of heavy work on this SoC just when the driver may need it. It waits for a stop, the
+     * trip's end or a long stretch ahead: a highway at dusk must not stay on the day's bright map until the first red
+     * light. A trip being driven goes on: [NavSession] is the app's, not this screen's.
      */
     private fun checkLook(): Boolean {
         val lang = Prefs.lang != builtLang
         if (!lang && Theme.isDarkNow() == builtDark && Prefs.accent == builtAccent) return false
         if (!lang && (resultsCard.isOn || selected != null || pickFor != null || input.hasFocus() || routing)) return false
-        val moving = NavSession.state == NavSession.State.NAVIGATING && (NavSession.progress?.speedKmh ?: 0) >= MOVING_KMH
-        if (!lang && moving) return false
+        val p = NavSession.progress
+        val moving = NavSession.state == NavSession.State.NAVIGATING && (p?.speedKmh ?: 0) >= MOVING_KMH
+        val quiet = p != null && !p.offRoute && !NavSession.rerouting && p.toNext >= QUIET_AHEAD_M
+        if (!lang && moving && !quiet) return false
         recreate()
         return true
     }
@@ -350,6 +353,12 @@ class MapsActivity : Activity() {
         // (not for a place whose trip is being started from elsewhere: [Trips] is finding its route)
         if (selected != null && preview == null && !routing && following == null && NavSession.state == NavSession.State.IDLE &&
             SystemClock.elapsedRealtime() >= routeRetryAt) requestRoute()
+        // OSRM's route came after BRouter's was shown: the card and the line take it (nothing is being driven yet)
+        preview?.better?.let { b ->
+            preview = b
+            showPreview(b)
+            map.setRoute(b.line.points)
+        }
     }
 
     private var routeFails = 0
@@ -1295,6 +1304,8 @@ class MapsActivity : Activity() {
         private const val ROW_DP = 74
         /** At this speed and above the car moves on a trip: a new theme or accent waits ([checkLook]). */
         private const val MOVING_KMH = 3
+        /** Nothing to do for this far: a minute and a half at 120 km/h, for a few seconds of a screen being rebuilt. */
+        private const val QUIET_AHEAD_M = 3000.0
 
         /** Extras: a place to show with its route and Go ([handle]; sent by [com.abdllh.aura.home.Screens.mapsPlace]). */
         const val EXTRA_LAT = "dest_lat"

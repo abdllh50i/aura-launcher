@@ -12,6 +12,7 @@ import com.abdllh.aura.nav.Geo
 import com.abdllh.aura.nav.LatLon
 import com.abdllh.aura.nav.Polyline
 import com.abdllh.aura.nav.Route
+import com.abdllh.aura.nav.RouteLimits
 import com.abdllh.aura.nav.Router
 import com.abdllh.aura.nav.Step
 import org.json.JSONObject
@@ -170,6 +171,31 @@ object OfflineRouter {
         }
         // the roundabouts measured on the line, as OSRM's are: a hint gives the exit's number, not where it leads
         Router.prepare(line, result)
-        return Route(line, result, line.length, total)
+        return Route(line, result, line.length, total).also { it.limits = limits(props, raw) }
+    }
+
+    /**
+     * The speed limits among the road tags BRouter gives for each stretch ([RouteLimits]). `messages` is a table: a row of
+     * column names, then one row per stretch with where it ends (millionths of a degree). Never a reason to lose the route.
+     */
+    private fun limits(props: JSONObject, raw: List<LatLon>): RouteLimits? = try {
+        val m = props.optJSONArray("messages")
+        val head = m?.optJSONArray(0)
+        val names = if (head == null) emptyList() else (0 until head.length()).map { head.optString(it) }
+        val lon = names.indexOf("Longitude")
+        val lat = names.indexOf("Latitude")
+        val tags = names.indexOf("WayTags")
+        if (m == null || lon < 0 || lat < 0 || tags < 0) null
+        else {
+            val rows = ArrayList<RouteLimits.Row>(m.length())
+            for (i in 1 until m.length()) {
+                val r = m.getJSONArray(i)
+                rows.add(RouteLimits.Row(LatLon(r.getString(lat).toDouble() / 1e6, r.getString(lon).toDouble() / 1e6), r.getString(tags)))
+            }
+            RouteLimits.of(raw, rows).also { Log.i(TAG, "limits on ${it?.metres?.toInt() ?: 0} m of the route") }
+        }
+    } catch (t: Throwable) {
+        Log.w(TAG, "limits: $t")
+        null
     }
 }

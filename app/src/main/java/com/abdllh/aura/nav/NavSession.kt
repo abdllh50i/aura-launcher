@@ -10,11 +10,15 @@ import android.os.Looper
 import android.os.SystemClock
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.util.Log
+import com.abdllh.aura.BuildConfig
 import com.abdllh.aura.R
 import com.abdllh.aura.util.LocaleHelper
 import com.abdllh.aura.util.Prefs
+import com.abdllh.aura.voice.VoiceTurn
 import java.util.Locale
 import java.util.concurrent.CopyOnWriteArrayList
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -53,12 +57,24 @@ object NavSession {
     const val ARRIVED_HOLD_MS = 30_000L
     /** An announcement holds the first prompt back at most this long (should its end never be reported). */
     private const val ANNOUNCE_MS = 6000L
+    private const val TAG = "AuraNav"
+    /** Beside the destination with this much of the route left, the car is not there yet. */
+    private const val ARRIVE_NEAR_M = 300.0
+    /** A route that came late ([takeBetter]) is given up when the car is this far from it. */
+    private const val BETTER_GONE_M = 300.0
+    /** Moving this fast, the car's course must agree with it this closely. */
+    private const val BETTER_COURSE_KMH = 20.0
+    private const val BETTER_COURSE_DEG = 60.0
+    /** Nothing to do on either route for this long (seconds, within these metres) before a late route takes over. */
+    private const val BETTER_CLEAR_S = 30.0
+    private const val BETTER_CLEAR_MIN_M = 300.0
+    private const val BETTER_CLEAR_MAX_M = 1500.0
 
     private var app: Context? = null
     private val main = Handler(Looper.getMainLooper())
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
     private var lastSeg = 0
-    private var offCount = 0
+    private val watch = OffRouteWatch()
     private var rerouteStreak = 0  // reroutes while the car stays off the route (no network, a road OSM lacks...)
     private var nextRerouteAt = 0L
     private var trip = 0           // bumped by start/stop: answers for an older trip are dropped
@@ -96,11 +112,12 @@ object NavSession {
         main.removeCallbacks(endAfterArrival)
         rerouting = false
         lastSeg = 0
-        offCount = 0
+        watch.reset()
         rerouteStreak = 0
         nextRerouteAt = 0L
         forgetPrompts()
         if (remember) Places.addRecent(dest)
+        TripMemory.started(dest, CarLocation.last)
         CarLocation.acquire(c, "nav")
         CarLocation.removeListener(onFix)
         CarLocation.addListener(onFix)
@@ -124,6 +141,7 @@ object NavSession {
         val c = app
         state = State.IDLE
         trip++
+        TripMemory.forget()
         main.removeCallbacks(endAfterArrival)
         destination = null
         route = null
@@ -139,6 +157,8 @@ object NavSession {
         tts?.shutdown()
         tts = null
         ttsReady = false
+        VoiceTurn.forget(VoiceTurn.Who.NAV)
+        VoiceTurn.release(VoiceTurn.Who.NAV)
         if (c != null) duck?.let { try { (c.getSystemService(Context.AUDIO_SERVICE) as AudioManager).abandonAudioFocusRequest(it) } catch (_: Throwable) { } }
         changed()
     }
@@ -150,22 +170,16 @@ object NavSession {
         if (state == State.ARRIVED) return
         val here = LatLon(l.latitude, l.longitude)
         val accuracy = if (l.hasAccuracy()) l.accuracy.toDouble() else 20.0
-        val limit = maxOf(40.0, accuracy * 1.5)
-        var snap = r.line.snap(here, lastSeg) ?: return
-        if (snap.offset > limit) {
-            // beyond the usual search window (a GPS gap in a tunnel...): look along the rest of the route once
-            r.line.snap(here, lastSeg, ahead = r.line.points.size)?.let { if (it.offset <= limit) snap = it }
-        }
-        val off = snap.offset > limit
-        if (!off) lastSeg = snap.segment
         val speed = if (l.hasSpeed()) l.speed * 3.6 else 0.0
+        val snap = watch.locate(r.line, here, lastSeg, if (l.hasBearing()) l.bearing.toDouble() else null, speed, accuracy) ?: return
+        val off = watch.off
+        if (!off) lastSeg = snap.segment
+        if (!off && takeBetter(r, snap.along, here, l, speed, maxOf(OffRouteWatch.MIN_LIMIT_M, accuracy * 1.5))) { update(l); return }
         val along = snap.along
         // the next thing the driver is told (a street that only changes its name is not one); a roundabout stays the
         // next one until the car has left it, with the distance to its exit
-        var next = r.steps.indexOfFirst { !it.silent && it.at + it.span > along + 3 }
-        if (next < 0) next = r.steps.size - 1
-        val step = r.steps[next]
-        val toNext = ((if (along > step.at) step.at + step.span else step.at) - along).coerceAtLeast(0.0)
+        val next = nextStep(r, along)
+        val toNext = toStep(r, next, along)
         val remaining = (r.line.length - along).coerceAtLeast(0.0)
         // on the route the arrow follows the road (steady, and right even when a GPS module reports no heading);
         // off it, the GPS heading while moving
@@ -175,15 +189,65 @@ object NavSession {
             if (speed < 3) 0 else speed.roundToInt(), off)
 
         val dest = destination
-        if (remaining < 25 || (dest != null && Geo.distance(here, dest.pos) < 30)) {
+        // (in a straight line only when the route agrees, or the car has left it: a place seen across a divided road, with
+        // the way round to it still ahead, has not been reached)
+        if (remaining < 25 || (dest != null && Geo.distance(here, dest.pos) < 30 && (off || remaining < ARRIVE_NEAR_M))) {
             arrive()
             return
         }
-        // leaving the route: three bad fixes in a row while moving; retries back off while the car stays off it
-        if (off) offCount++ else { offCount = 0; rerouteStreak = 0 }
-        if (offCount >= 3 && speed > 5 && !rerouting && SystemClock.elapsedRealtime() >= nextRerouteAt) reroute(here, l)
-        if (!off) prompt(r, next, toNext, along, speed)
+        if (dest != null) TripMemory.beat(dest, l)
+        // leaving the route ([OffRouteWatch]) while moving; retries back off while the car stays off it
+        if (!off) rerouteStreak = 0
+        if (watch.leaving && speed > 5 && !rerouting && SystemClock.elapsedRealtime() >= nextRerouteAt) reroute(here, l)
+        // (while the assistant has the car's voice a prompt is not even looked at: the fix after it ends decides, with the
+        // distance of that moment, so nothing is said late and nothing that has been passed is said at all)
+        if (!off && VoiceTurn.free(VoiceTurn.Who.NAV)) prompt(r, next, toNext, along, speed)
         changed()
+    }
+
+    private fun nextStep(r: Route, along: Double): Int {
+        val next = r.steps.indexOfFirst { !it.silent && it.at + it.span > along + 3 }
+        return if (next < 0) r.steps.size - 1 else next
+    }
+
+    private fun toStep(r: Route, next: Int, along: Double): Double {
+        val step = r.steps[next]
+        return ((if (along > step.at) step.at + step.span else step.at) - along).coerceAtLeast(0.0)
+    }
+
+    /**
+     * OSRM's route came after BRouter's was taken ([Route.better]): names on the signs and in the voice, and lanes where
+     * they exist. It takes over when it fits, without a word: the car on it and going its way, nothing to do soon on either
+     * route (no sign changing its mind before a turn). While that is not so it keeps waiting; a car that has left it behind
+     * (the two routes parted) has no use for it. True when it took over.
+     */
+    private fun takeBetter(r: Route, along: Double, here: LatLon, l: Location, speedKmh: Double, limit: Double): Boolean {
+        val b = r.better ?: return false
+        if (rerouting) return false
+        val s = b.line.snap(here, 0, 0, b.line.points.size)
+        if (s == null || s.offset > BETTER_GONE_M) {
+            r.better = null
+            NavNote.add("late route dropped: the car left it")
+            return false
+        }
+        if (s.offset > limit) return false
+        if (l.hasBearing() && speedKmh >= BETTER_COURSE_KMH && abs(Geo.angleDiff(l.bearing.toDouble(), s.bearing)) > BETTER_COURSE_DEG) return false
+        val clear = (speedKmh / 3.6 * BETTER_CLEAR_S).coerceIn(BETTER_CLEAR_MIN_M, BETTER_CLEAR_MAX_M)
+        if (toStep(r, nextStep(r, along), along) < clear) return false
+        val next = nextStep(b, s.along)
+        val toNext = toStep(b, next, s.along)
+        if (toNext < clear) return false
+        route = b
+        lastSeg = s.segment
+        watch.reset()
+        // not a word: the driver has heard what comes next, or will, at its time
+        forgetPrompts()
+        pendingIntro = false
+        saidLong.add(next)
+        saidEarly.add(next)
+        Log.i(TAG, "OSRM's late route taken over (${toNext.toInt()} m to its next step)")
+        NavNote.add("late route taken over")
+        return true
     }
 
     private fun forgetPrompts() {
@@ -251,7 +315,10 @@ object NavSession {
         rerouting = true
         // 8 s, 16 s, 32 s, then every 64 s while the car stays off the route
         nextRerouteAt = SystemClock.elapsedRealtime() + (8_000L shl rerouteStreak.coerceAtMost(3))
-        if (rerouteStreak == 0) say(if (ttsArabic) "جارٍ تحديث المسار" else "Rerouting") // once per detour
+        if (rerouteStreak == 0) { // once per detour
+            say(if (ttsArabic) "جارٍ تحديث المسار" else "Rerouting")
+            NavNote.add("left the route: ${watch.why}, ${(if (l.hasSpeed()) l.speed * 3.6f else 0f).toInt()} km/h")
+        }
         rerouteStreak++
         changed()
         val t = trip
@@ -265,7 +332,7 @@ object NavSession {
             if (nr != null) {
                 route = nr
                 lastSeg = 0
-                offCount = 0
+                watch.reset()
                 forgetPrompts() // (the new route's first manoeuvre is said at once: the driver is waiting to hear it)
                 CarLocation.last?.let { update(it) }
             }
@@ -275,6 +342,7 @@ object NavSession {
 
     private fun arrive() {
         state = State.ARRIVED
+        TripMemory.forget()
         arrivedAt = SystemClock.elapsedRealtime()
         progress = progress?.let { Progress(it.position, it.bearing, it.along, it.next, 0.0, 0.0, 0.0, it.speedKmh, false) }
         // by the place's name, unless it is only a pin's (named in AMRI's language, which the bare application
@@ -362,24 +430,31 @@ object NavSession {
     }
 
     private fun say(text: String) {
+        if (BuildConfig.DEBUG) Log.d(TAG, "prompt: $text${if (ttsReady) "" else " (no voice to say it)"}")
         if (!voiceOn || !ttsReady) return
         val c = app ?: return
+        VoiceTurn.whenFree(VoiceTurn.Who.NAV) { speak(c, text) }
+    }
+
+    /** Said now: the car's voice is this prompt's ([VoiceTurn]) until [finished]. */
+    private fun speak(c: Context, text: String) {
         val id = "aura-nav-${++utterances}"
         lastUtterance = id
         try {
             val req = duck ?: AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
                 .setAudioAttributes(voiceAttrs).build().also { duck = it }
             (c.getSystemService(Context.AUDIO_SERVICE) as AudioManager).requestAudioFocus(req)
-            tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, id)
+            if (tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, id) != TextToSpeech.SUCCESS) finished(id)
         } catch (_: Throwable) {
             finished(id)
         }
     }
 
-    /** A prompt ended (TTS thread): give the focus back once the latest one is over (a flushed one ends first). */
+    /** A prompt ended (TTS thread): give the focus and the turn back once the latest one is over (a flushed one ends first). */
     private fun finished(id: String?) {
         if (id != lastUtterance) return
         announcingUntil = 0L
+        main.post { if (id == lastUtterance) VoiceTurn.release(VoiceTurn.Who.NAV) }
         val c = app ?: return
         val req = duck ?: return
         try { (c.getSystemService(Context.AUDIO_SERVICE) as AudioManager).abandonAudioFocusRequest(req) } catch (_: Throwable) { }

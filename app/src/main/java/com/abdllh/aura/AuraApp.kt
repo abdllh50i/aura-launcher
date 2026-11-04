@@ -57,6 +57,7 @@ class AuraApp : Application() {
         // the map's own tile server and the offline map (before any map style is built)
         com.abdllh.aura.nav.offline.OfflineMaps.init(this)
         com.abdllh.aura.nav.MapExtras.init(this) // what the owner added to the map (cameras, bumps, signals, limits)
+        if (BuildConfig.DEBUG) com.abdllh.aura.nav.NavDebug.init(this)
         UpdateManager.init(this)
         CarAudio.init(this)
         // the status bar, the volume display and the screen-change animations are Aura's to change only while Aura is
@@ -93,6 +94,8 @@ class AuraApp : Application() {
             com.abdllh.aura.system.AppRemover.removeRequestedOnce(this) // the "Vivid" launcher the owner asked to remove
             com.abdllh.aura.voice.Amri.init(this) // the voice assistant (its wake word listener when switched on)
             com.abdllh.aura.link.PhoneServer.init(this) // a place set on the phone (nothing runs until it is switched on)
+            // a trip that was being driven when the process went (an update, a crash, a fuel stop); after the start's rush
+            android.os.Handler(mainLooper).postDelayed({ com.abdllh.aura.nav.TripMemory.resume(this) }, 4000L)
         }
     }
 

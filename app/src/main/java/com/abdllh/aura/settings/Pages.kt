@@ -587,6 +587,8 @@ class AboutPage(private val act: SettingsActivity) : Page(R.string.set_about, R.
         // a place set on the phone: the last one and how it went; and whether the server runs and who last asked it
         com.abdllh.aura.link.PlaceInbox.lastLine(ctx).takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_pin, R.string.link_about_place, it) }
         com.abdllh.aura.link.PhoneLinkCard.aboutLine(ctx).takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_smartphone, R.string.link_title, it) }
+        // what navigation last did on its own: a late route taken, the route left, a trip resumed or not (and why)
+        com.abdllh.aura.nav.NavNote.text.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_nav, R.string.about_nav, it) }
         col.addRow(ctx.group(*rows.toTypedArray()))
 
         // the first real numbers from this unit: a page of its own, nothing runs until its button is pressed
