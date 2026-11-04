@@ -124,6 +124,27 @@
             </intent-filter>
         </activity>
 
+        <!-- Settings › About › Screen check (diag/ScreenCheck.kt): the page in the main process, and the tests that
+             load GL or native code in a process of their own, in which AuraApp does nothing: a native crash there
+             cannot touch the home screen. Nothing starts them but the page's button. -->
+        <activity
+            android:name=".settings.ScreenCheckActivity"
+            android:configChanges="orientation|keyboard|keyboardHidden|screenSize|smallestScreenSize|screenLayout|uiMode|density|fontScale"
+            android:exported="false"
+            android:label="@string/diag_title"
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.Aura"
+            android:windowSoftInputMode="adjustPan" />
+
+        <activity
+            android:name=".diag.ProbeActivity"
+            android:configChanges="orientation|keyboard|keyboardHidden|screenSize|smallestScreenSize|screenLayout|uiMode|density|fontScale"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:process=":diag"
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.Aura.Boot" />
+
         <activity
             android:name=".nav.MapsActivity"
             android:configChanges="orientation|keyboard|keyboardHidden|screenSize|smallestScreenSize|screenLayout|uiMode|density|fontScale"

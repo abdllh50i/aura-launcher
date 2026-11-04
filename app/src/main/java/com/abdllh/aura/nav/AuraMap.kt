@@ -343,6 +343,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         mapView.onStart()
         started = true
         firstFrame = Drawn().also { mapView.addOnDidFinishRenderingFrameListener(it) }
+        com.abdllh.aura.diag.TripRecorder.mapOn(mapView) // (nothing unless the trip recorder is on)
         MapExtras.addListener(extrasChanged)
         pushExtras() // (fetched while this map was not on the screen)
         if (carPos != null) {
@@ -368,6 +369,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         firstFrame.cancel()
         MapExtras.removeListener(extrasChanged)
         mapView.removeOnDidFinishRenderingFrameListener(firstFrame)
+        com.abdllh.aura.diag.TripRecorder.mapOff(mapView)
         mapView.onStop()
     }
 

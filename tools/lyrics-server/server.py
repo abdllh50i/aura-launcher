@@ -20,6 +20,8 @@ start.
   POST /api/sync/chunk?id=&pos=&rate=16000     body: 16-bit mono PCM the car heard from song position pos (ms)
   POST /api/sync/file?id=&name=                body: the song's file from the unit (deleted once decoded)
   GET  /api/sync?id=                           {"lrc", "times", "covered", "show", "done", "pending", ...}
+  POST /api/report                             body: the unit's screen check, JSON up to 2 MB; kept in
+                                               <cache>/reports/<utc-time>.json (the newest 200); {"ok": true}
 
 Audio is worked on one piece at a time by a background thread; the answers say how much is still waiting.
 
@@ -61,11 +63,14 @@ import listen  # noqa: E402
 import sources  # noqa: E402
 import words  # noqa: E402
 
-VERSION = "1.1"
+VERSION = "1.2"
 KEY_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"  # no 0/o, 1/l/i: read off a screen and typed on the car's
 MAX_JSON = 512 * 1024
 MAX_CHUNK = 6 * 1024 * 1024    # PCM: about three minutes at 16 kHz
 MAX_FILE = 60 * 1024 * 1024    # a song file
+MAX_REPORT = 2 * 1024 * 1024   # the unit's screen check (app: diag/ScreenCheck.kt)
+REPORTS_KEPT = 200
+REPORTS_LOCK = threading.Lock()
 CFG = {}
 SEARCH = None
 SONGS = None
@@ -282,6 +287,9 @@ class Handler(BaseHTTPRequestHandler):
                 st = align.Songs.state(s, pending(i), arg(q, "words") == "1")
                 note = "%s, %.0f%%%s" % (st["mode"], 100 * st["covered"], " words" if st["mode"] == "timed" else " timed")
                 return self.send(200, st)
+            if method == "POST" and path == "/api/report":
+                body, note = report(self)
+                return self.send(200, body)
             raise Bad(404, "not found")
         except Bad as e:
             note = note or str(e)
@@ -464,6 +472,41 @@ def sync_file(q, h):
     n = pending(i, +1)
     JOBS.put(("file", i, path))
     return align.Songs.state(s, n, arg(q, "words") == "1"), "%s file %s (%d waiting)" % (label(s), name, n)
+
+
+def report(h):
+    """The unit's screen check (one press of a button in the car's Settings, parked): kept as it came, for the owner
+    and the 2.0 plan to read. A file per report, named by the UTC time it came, and only the newest REPORTS_KEPT stay
+    (the names sort by time)."""
+    data = h.body(MAX_REPORT)
+    try:
+        d = json.loads(data.decode("utf-8"))
+    except ValueError:
+        raise Bad(400, "not JSON")
+    if not isinstance(d, dict):
+        raise Bad(400, "not an object")
+    folder = os.path.join(CACHE, "reports")
+    stamp = time.strftime("%Y-%m-%dT%H-%M-%SZ", time.gmtime())
+    with REPORTS_LOCK:
+        os.makedirs(folder, exist_ok=True)
+        for n in range(1000):  # (two in one second keep both)
+            name = stamp + ("-%d" % n if n else "") + ".json"
+            try:
+                fd = os.open(os.path.join(folder, name), os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0))
+            except FileExistsError:
+                continue
+            with os.fdopen(fd, "wb") as f:
+                f.write(data)
+            break
+        else:
+            raise Bad(500, "no free name")
+        kept = sorted((x for x in os.listdir(folder) if x.endswith(".json")), reverse=True)
+        for old in kept[REPORTS_KEPT:]:
+            try:
+                os.remove(os.path.join(folder, old))
+            except OSError:
+                pass
+    return {"ok": True}, "%d bytes, %s" % (len(data), name)
 
 
 def main():

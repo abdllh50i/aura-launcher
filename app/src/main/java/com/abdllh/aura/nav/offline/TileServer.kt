@@ -102,6 +102,23 @@ object TileServer {
         return true
     }
 
+    /**
+     * The screen check's own process (diag/): the main process serves, and this one only uses the address. True when
+     * the server answers there; [running] and the addresses then hold here as well. Not on the main thread.
+     */
+    @Synchronized
+    fun attach(): Boolean {
+        if (port != 0) return true
+        return try {
+            Socket().use { it.connect(java.net.InetSocketAddress("127.0.0.1", PORT), 1000) }
+            port = PORT
+            true
+        } catch (t: Throwable) {
+            Log.w(TAG, "no server to use: $t")
+            false
+        }
+    }
+
     private class Reply(val code: Int, val body: ByteArray = ByteArray(0), val cache: Boolean = true)
 
     /** Answers from the disk at once; what has to come from the internet is handed to the online threads. */

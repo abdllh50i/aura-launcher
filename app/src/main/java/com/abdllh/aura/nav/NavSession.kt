@@ -239,7 +239,9 @@ object NavSession {
         changed()
         val t = trip
         val moving = l.hasSpeed() && l.speed > 2f // a heading at walking pace is noise: it could pick the wrong road
+        val asked = SystemClock.elapsedRealtime()
         Router.route(here, dest.pos, if (l.hasBearing() && moving) l.bearing.toDouble() else null) { nr, _ ->
+            com.abdllh.aura.diag.TripRecorder.route("reroute", SystemClock.elapsedRealtime() - asked, nr != null) // (only while it records)
             if (t != trip) return@route // that trip has ended (or another one started)
             rerouting = false
             if (state != State.NAVIGATING) return@route

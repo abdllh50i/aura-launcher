@@ -113,6 +113,7 @@ All answers are JSON (UTF-8). The key goes in the header `X-Lyrics-Key` (or `?ke
 | `POST /api/sync/chunk?id=&pos=&rate=16000&src=capture` | body: 16-bit mono PCM heard from song position `pos` (ms); `src` capture or mic |
 | `POST /api/sync/file?id=&name=` | body: the song's file (deleted once decoded) |
 | `GET /api/sync?id=&words=1` | `{"mode", "lrc", "times", "covered", "show", "done", "pending", "enhanced", "words", "diag", ...}` |
+| `POST /api/report` | body: the car's screen check (Settings › About), JSON up to 2 MB; kept in `<cache>/reports/<utc-time>.json` (`AMRI_LYRICS_CACHE`), the newest 200. `{"ok": true}` |
 
 Untimed (no `times`): `covered` is the share of the sung lines that are timed by what was heard (or spread between two
 such lines); the car shows the timing from 70 % and stops listening at 90 %. Timed: `times` are the given ones and
