@@ -297,7 +297,7 @@ final class AmriFlowUITests: XCTestCase {
         XCTAssertTrue(element(app, "repairCommand").waitForExistence(timeout: 30))
         shot("repair-intro")
         tap(app, "repairScan")
-        tap(app, "repairUnit-15555", timeout: 20)
+        tap(app, "repairUnit-15555")
         shot("repair-found-then-first-confirm")
         XCTAssertEqual(fake.log().adbOpens.count, 0, "a scan never opens anything")
         tap(app, "repairUnderstood")

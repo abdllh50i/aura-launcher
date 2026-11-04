@@ -106,12 +106,12 @@ public struct AdbRunResult: Equatable, Sendable {
 public enum AdbClient {
     public static let port: UInt16 = 5555
 
-    public static func hello(host: String, port: UInt16 = AdbClient.port, connectTimeout: TimeInterval = 0.6, timeout: TimeInterval = 1.5) async -> AdbHello {
+    public static func hello(host: String, port: UInt16 = AdbClient.port, connectTimeout: TimeInterval = 1.0, timeout: TimeInterval = 3) async -> AdbHello {
         await helloWithNote(host: host, port: port, connectTimeout: connectTimeout, timeout: timeout).hello
     }
 
     /// `note`: what the system said if the connection did not open.
-    static func helloWithNote(host: String, port: UInt16 = AdbClient.port, connectTimeout: TimeInterval = 0.6, timeout: TimeInterval = 1.5) async -> (hello: AdbHello, note: String?) {
+    static func helloWithNote(host: String, port: UInt16 = AdbClient.port, connectTimeout: TimeInterval = 1.0, timeout: TimeInterval = 3) async -> (hello: AdbHello, note: String?) {
         guard let socket = NWSocket(host: host, port: port) else { return (.unreachable(.closed), nil) }
         defer { socket.close() }
         do {

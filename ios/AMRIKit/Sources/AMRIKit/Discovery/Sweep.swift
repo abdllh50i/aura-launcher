@@ -59,7 +59,8 @@ public struct SweepReport: Equatable, Sendable {
     public init() {}
 }
 
-/// Parallel connections, a short timeout, then `GET /v1/ping`. On a hotspot's /28 that is 13 hosts in under a second.
+/// Parallel connections, a short timeout, then `GET /v1/ping`. On a hotspot's /28 that is 13 hosts in about a second: missing a
+/// unit on a slow moment costs far more than a little more waiting for addresses nobody is on.
 public enum Sweep {
     private struct Hit: Sendable {
         var target: SweepTarget
@@ -69,8 +70,8 @@ public enum Sweep {
     }
 
     public static func run(targets: [SweepTarget],
-                           connectTimeout: TimeInterval = 0.6,
-                           pingTimeout: TimeInterval = 1.2,
+                           connectTimeout: TimeInterval = 1.0,
+                           pingTimeout: TimeInterval = 2.0,
                            concurrency: Int = 32,
                            stopWhen: (@Sendable (UnitPing) -> Bool)? = nil) async -> SweepReport {
         let startedAt = Date()
