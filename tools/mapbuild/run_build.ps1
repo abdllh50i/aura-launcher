@@ -6,7 +6,7 @@
 #   1      Saudi outline from relation 307584     gcc-states PBF                 polys\ksa.poly (also .\polygon\)  seconds
 #   2      Cut the Kingdom out                    gcc-states PBF, ksa.poly       src\ksa.osm.pbf                   12 min (pyosmium, HDD)
 #   3      Sea polygons from OSM's coastline      PBF, ksa.geojson, Natural Earth sources\water-polygons-ksa.shp.zip  1 min
-#   4      Base tiles                             ksa.osm.pbf, rectangle, water  out\base.mbtiles                  2 min + copying
+#   4      Base tiles, then without its poi layer ksa.osm.pbf, rectangle, water  out\base.mbtiles                  2 min + copying, 1 min
 #   5      Admin database, then routing tar       ksa.osm.pbf                    v\admin-ksa.sqlite, out\route.tar  20 s, 91 s + 1 s
 #   6      The probe set                          probe.osm.pbf, the admin       out\route-probe.tar.gz            25 s
 #   7      Reference answers and checks           the tar, a running service     out\ref-routes\
@@ -45,6 +45,9 @@ function Valhalla([string]$tmpfs, [string[]]$rest) {
 # 4. Base tiles over the rectangle, not the outline: build_base.sh says why.
 & $Docker run --rm --memory 11g -e 'JAVA_TOOL_OPTIONS=-Xmx5g -Djava.io.tmpdir=/work/tmp' -e THREADS=6 -v "${W}:/data" -v "${S}:/scripts:ro" --tmpfs '/work:size=5g,exec' --entrypoint sh $P /scripts/build_base.sh /data/src/ksa.osm.pbf $Rectangle /data/sources/water-polygons-ksa.shp.zip /data/out/base.mbtiles
 
+# 4b. Places come from places.mbtiles: OpenMapTiles' poi layer goes, or they would show twice on the map.
+& $python -I "$S\strip_tiles.py" "$W\out\base.mbtiles" --out "$W\out\base.stripped.mbtiles" --drop-layers poi
+Move-Item -Force "$W\out\base.stripped.mbtiles" "$W\out\base.mbtiles"
 # 5. Routing. The admin database comes first: it holds the Kingdom's boundary and default_language=ar.
 Valhalla '1g' @('/scripts/build_admin.sh', '/data/src/ksa.osm.pbf', '/data/v/admin-ksa.sqlite')
 Valhalla '6g' @('/scripts/build_set.sh', '/data/src/ksa.osm.pbf', '/data/v/admin-ksa.sqlite', '/data/out/route.tar')

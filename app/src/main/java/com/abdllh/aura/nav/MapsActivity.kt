@@ -839,11 +839,13 @@ class MapsActivity : Activity() {
         controls = FrameLayout(this)
         root.addView(controls, MATCH, MATCH)
         val attribution = label(Type.ATTRIBUTION_SP, Palette.text3, Fonts.REGULAR).apply {
-            text = MapStyle.ATTRIBUTION
+            text = MapStyle.attribution(CarLocation.lastKnown())
             setPadding(Space.S.dp, Space.XXS.dp, Space.S.dp, Space.XXS.dp)
             background = Shapes.rect(Palette.withAlpha(Palette.glass, 0.7f), Radius.XS)
         }
         controls.addView(attribution, flp(WRAP, WRAP, Gravity.BOTTOM or Gravity.END).apply { setMargins(0, 0, Space.M.dp, Space.S.dp); marginEnd = Space.M.dp })
+        // (the credit follows what is drawn: the pack inside the Kingdom, OpenFreeMap's tiles outside it)
+        map.onCameraIdle = { at -> MapStyle.attribution(at).let { if (attribution.text != it) attribution.text = it } }
 
         // compass, and + / − as one capsule (six round buttons on one edge were a wall of controls)
         val btns = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""POI vector tiles from places.db: out\\places.mbtiles, zoom 12-14, one layer "places" with fields name, name:en, cat, rank, id.
+"""POI vector tiles from places.db: out\\places.mbtiles, zoom 12-14, one layer "places" with fields name, name:en, kind, cat, rank, id.
 
   python build_poi_tiles.py --db places.db --out places.mbtiles
 
@@ -10,7 +10,8 @@ everything, and a limit for the whole tile. What is dropped stays searchable: th
 Tile fields:
   name      p.name, the Arabic name when there is one
   name:en   p.alt when name is Arabic and alt is Latin (absent otherwise), for the English map
-  cat       cat.id (see table cat; cat.icon groups them for colours)
+  kind      cat.icon: the colour group, an index the style can name (cat.id is not stable across builds)
+  cat       cat.id (see table cat)
   rank      p.rank, 0-100, higher is more important
   id        p.id, to read the row when a place is tapped
 """
@@ -114,6 +115,7 @@ def tile_of(lat, lon, z):
 def build(db_path, out_path):
     src = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     skip = {i for i, k in src.execute("SELECT id,key FROM cat") if k in GROUP_SKIP}
+    kinds = dict(src.execute("SELECT id,icon FROM cat"))
     t0 = time.time()
     rows = []
     for r in src.execute("SELECT id,name,alt,cat,lat,lon,rank FROM p WHERE kind=6 AND rank>=? AND src&4=0 ORDER BY rank DESC, id", (min(v[0] for v in ZOOMS.values()),)):
@@ -161,6 +163,7 @@ def build(db_path, out_path):
                 props = {"name": r[1]}
                 if r[2] and any("؀" <= c <= "ۿ" for c in r[1]) and not any("؀" <= c <= "ۿ" for c in r[2]):
                     props["name:en"] = r[2]
+                props["kind"] = kinds.get(r[3], 0)
                 props["cat"] = r[3]
                 props["rank"] = r[6]
                 props["id"] = r[0]
@@ -174,7 +177,7 @@ def build(db_path, out_path):
     db.execute("CREATE UNIQUE INDEX tile_index ON tiles(zoom_level, tile_column, tile_row)")
     built = src.execute("SELECT v FROM meta WHERE k='built'").fetchone()[0]
     attribution = src.execute("SELECT v FROM meta WHERE k='attribution'").fetchone()[0]
-    fields = {"name": "String", "name:en": "String", "cat": "Number", "rank": "Number", "id": "Number"}
+    fields = {"name": "String", "name:en": "String", "kind": "Number", "cat": "Number", "rank": "Number", "id": "Number"}
     meta = {
         "name": "AMRI places", "format": "pbf", "type": "overlay", "version": "1", "description": "Points of interest of Saudi Arabia", "minzoom": "12", "maxzoom": "14",
         "bounds": "34.4,16.3,55.8,32.3", "center": "50.2,26.3,14", "attribution": attribution, "built": built,

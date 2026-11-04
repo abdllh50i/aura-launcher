@@ -3,6 +3,7 @@ package com.abdllh.aura.nav.offline
 import android.os.Process
 import android.os.SystemClock
 import android.util.Log
+import com.abdllh.aura.nav.MapStyle
 import com.abdllh.aura.nav.Places
 import com.abdllh.aura.util.Prefs
 import org.json.JSONObject
@@ -27,10 +28,14 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.zip.GZIPInputStream
 
 /**
- * The map's tiles and font glyphs, served on this device (http://127.0.0.1:47821): from the offline map when it has
- * them, else from OpenFreeMap. The map style points here instead of at OpenFreeMap, because OpenFreeMap publishes a
- * new version of the planet every week under a new address: tiles kept under those addresses (MapLibre's own offline
- * regions) would stop being found a week after the download. Here a tile is just z/x/y.
+ * The map's tiles and font glyphs, served on this device (http://127.0.0.1:47821): from the map pack inside the Kingdom,
+ * else from the offline map when it has them, else from OpenFreeMap, and at the end from the pack again. The map style
+ * points here instead of at OpenFreeMap, because OpenFreeMap publishes a new version of the planet every week under a
+ * new address: tiles kept under those addresses (MapLibre's own offline regions) would stop being found a week after the
+ * download. Here a tile is just z/x/y.
+ *  - Inside the Kingdom's outline ([KsaOutline]) the pack is the map: a row it does not have is an empty tile (204: more
+ *    than a third of z14 is), the internet is never asked, so a drive with a phone's hotspot on costs nothing.
+ *  - Outside it the pack has only the sea and far shores: the internet first, the pack when there is none.
  *  - A fixed port keeps the addresses (and so MapLibre's cache of them) the same across restarts.
  *  - Small pools of background-priority threads: one answers from the disk, the others fetch online (tiles, glyphs),
  *    so a tile on disk never waits behind one that is being fetched. A zoom asks for dozens of tiles at once: until 1.11 each
@@ -74,7 +79,11 @@ object TileServer {
 
     val running: Boolean get() = port != 0
     val tilesUrl: String get() = "http://127.0.0.1:$port/t/{z}/{x}/{y}.pbf"
+    /** The pack's places: a source of their own, a tile layer no other server has. */
+    val placesUrl: String get() = "http://127.0.0.1:$port/p/{z}/{x}/{y}.pbf"
     val glyphsUrl: String get() = "http://127.0.0.1:$port/f/{fontstack}/{range}.pbf"
+    /** OpenFreeMap has just failed (no internet, a stalled hotspot): what is outside the Kingdom comes from the pack for now. */
+    val offline: Boolean get() = upstreamDown()
 
     @Synchronized
     fun start(): Boolean {
@@ -116,6 +125,7 @@ object TileServer {
             val out = s.getOutputStream()
             val fetchIt = when {
                 path.startsWith("/t/") -> tile(path, out)
+                path.startsWith("/p/") -> { places(path, out); null }
                 path.startsWith("/f/") -> glyphs(path, out)
                 else -> { write(out, Reply(404, cache = false)); null }
             } ?: return
@@ -147,22 +157,39 @@ object TileServer {
         try { s.soTimeout = 20_000 } catch (_: Throwable) { }
     }
 
-    /** /t/z/x/y.pbf: from the store, else (what is returned, for the online threads) streamed from OpenFreeMap. */
+    /**
+     * /t/z/x/y.pbf: from the pack inside the Kingdom, else from the store, else (what is returned, for the online threads)
+     * streamed from OpenFreeMap; what that cannot give, from the pack after all. A pack that cannot be read counts as none.
+     */
     private fun tile(path: String, out: OutputStream): (() -> Unit)? {
         val p = path.removePrefix("/t/").removeSuffix(".pbf").split('/')
         val z = p.getOrNull(0)?.toIntOrNull()
         val x = p.getOrNull(1)?.toIntOrNull()
         val y = p.getOrNull(2)?.toIntOrNull()
-        if (z == null || x == null || y == null) { write(out, Reply(404, cache = false)); return null }
+        if (z == null || x == null || y == null || z !in 0..22 || x !in 0 until (1 shl z) || y !in 0 until (1 shl z)) { write(out, Reply(404, cache = false)); return null }
+        // (not stored twice: see MapStyle.afterLoad; without a date of expiry MapLibre has no reason to ask for it again)
+        fun fromPack(): Reply? = PackTiles.base(z, x, y)?.let { if (it.isEmpty()) Reply(204, cache = false) else Reply(200, it, cache = false) }
+        if (PackTiles.present && KsaOutline.touchesTile(z, x, y)) fromPack()?.let { write(out, it); return null }
         store?.let { st -> try { st.tile(TileMath.key(z, x, y)) } catch (_: Throwable) { null } }?.let {
             write(out, if (it.isEmpty()) Reply(204) else Reply(200, it)); return null
         }
-        if (upstreamDown()) { write(out, Reply(503, cache = false)); return null }
+        val none = { fromPack() ?: Reply(503, cache = false) }
+        if (upstreamDown()) { write(out, none()); return null }
         return {
             val t = tileTemplate()
-            if (t == null || upstreamDown()) write(out, Reply(503, cache = false))
-            else stream(t.replace("{z}", "$z").replace("{x}", "$x").replace("{y}", "$y"), out)
+            if (t == null || upstreamDown()) write(out, none())
+            else stream(t.replace("{z}", "$z").replace("{x}", "$x").replace("{y}", "$y"), out, none)
         }
+    }
+
+    /** /p/z/x/y.pbf: the pack's places, the only place they are; nothing here is an empty tile, the map draws without them. */
+    private fun places(path: String, out: OutputStream) {
+        val p = path.removePrefix("/p/").removeSuffix(".pbf").split('/')
+        val z = p.getOrNull(0)?.toIntOrNull()
+        val x = p.getOrNull(1)?.toIntOrNull()
+        val y = p.getOrNull(2)?.toIntOrNull()
+        val data = if (z == null || x == null || y == null || z !in 0..22) null else PackTiles.places(z, x, y)
+        write(out, if (data == null || data.isEmpty()) Reply(204, cache = false) else Reply(200, data, cache = false))
     }
 
     /** /f/{fontstack}/{range}.pbf (the font stack URL-encoded by MapLibre); like [tile], the online part is returned. */
@@ -170,8 +197,14 @@ object TileServer {
         val rest = path.removePrefix("/f/")
         val cut = rest.lastIndexOf('/')
         if (cut <= 0) { write(out, Reply(404, cache = false)); return null }
-        val stack = URLDecoder.decode(rest.substring(0, cut), "UTF-8")
+        var stack = URLDecoder.decode(rest.substring(0, cut), "UTF-8")
         val range = rest.substring(cut + 1).removeSuffix(".pbf")
+        if (stack.startsWith(MapStyle.PACK_FONT)) {
+            // a range the font has nothing in is no row (204: no internet could give it, no one else has this font)
+            PackTiles.glyph("$stack/$range")?.let { write(out, if (it.isEmpty()) Reply(204) else Reply(200, it)); return null }
+            // glyphs.db cannot be read: words in the other font rather than a map with no words
+            stack = stack.replace(MapStyle.PACK_FONT, MapStyle.ONLINE_FONT)
+        }
         val name = "$stack/$range"
         store?.let { st -> try { st.glyph(name) } catch (_: Throwable) { null } }?.let { write(out, Reply(200, it)); return null }
         // not on the unit and no internet: "no glyphs here" lets the map draw (a missing range would hold up every
@@ -255,14 +288,14 @@ object TileServer {
         }
     }
 
-    /** A tile from upstream passed on as it arrives (the map's own read timeout keeps running while it comes). */
-    private fun stream(url: String, out: OutputStream) {
+    /** A tile from upstream passed on as it arrives (the map's own read timeout keeps running while it comes); [none]: what to answer if it does not. */
+    private fun stream(url: String, out: OutputStream, none: () -> Reply) {
         var c: HttpURLConnection? = null
         try {
             c = open(url)
             val code = c.responseCode
             if (code != 200) {
-                write(out, when (code) { 204 -> Reply(204); 404 -> Reply(404); else -> Reply(503, cache = false) })
+                write(out, when (code) { 204 -> Reply(204); 404 -> Reply(404); else -> none() })
                 return
             }
             val length = c.contentLengthLong
@@ -273,7 +306,7 @@ object TileServer {
             out.flush()
         } catch (t: Throwable) {
             markDown()
-            try { write(out, Reply(503, cache = false)) } catch (_: Throwable) { } // (if nothing was sent yet)
+            try { write(out, none()) } catch (_: Throwable) { } // (if nothing was sent yet)
         } finally {
             c?.disconnect()
         }

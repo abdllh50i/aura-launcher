@@ -3,23 +3,31 @@ package com.abdllh.aura.nav
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.util.DisplayMetrics
+import com.abdllh.aura.nav.offline.KsaOutline
+import com.abdllh.aura.nav.offline.PackTiles
+import com.abdllh.aura.nav.offline.TileServer
 import com.abdllh.aura.ui.Palette
+import com.mapbox.mapboxsdk.maps.Style
 import kotlin.math.hypot
 import kotlin.math.pow
 
 /**
- * The Aura map style (MapLibre style JSON) in the colours of the current theme: OpenStreetMap vector tiles from
- * OpenFreeMap (free, no key), 3D buildings when close, labels in the UI language, and the data sources the app fills
- * (the route, the arrow of the next turn, the destination).
+ * The Aura map style (MapLibre style JSON) in the colours of the current theme: OpenStreetMap vector tiles from the map
+ * pack or OpenFreeMap (free, no key), 3D buildings when close, labels in the UI language, and the data sources the app
+ * fills (the route, the arrow of the next turn, the destination).
  *
- * A road map first (1.8): the kinds of road are told apart at a glance — motorways and trunk roads in a warm colour,
- * main roads wider and lighter than streets, every road on a casing — built-up land, parks, sand and water each have
- * their tone, and the places people drive to are on it: shops, restaurants, fuel, mosques, hospitals... as a dot in
- * their kind's colour with their name ([Poi]), more of them the closer the map is.
+ * A road map first (1.8): the kinds of road are told apart at a glance — main roads wider and lighter than streets, every
+ * road on a casing — built-up land, parks and water each have their tone, and the places people drive to are on it:
+ * shops, restaurants, fuel, mosques, hospitals... as a dot in their kind's colour with their name ([Poi]), more of them
+ * the closer the map is.
  *
  * 1.12: the route is the brightest line on the map at night too, roads step down calmly below it, flyovers are drawn
  * over the roads they cross and buildings stand over the streets, and a place's dot and its name are one symbol, so
  * a dot never stands without its name.
+ *
+ * 2.0: the colours are the design's two palettes ([MapPalette], scripts/gen_map_palette.py), like the maps of new cars and
+ * phones, with no amber road. On a unit with a pack the map reads it through [TileServer]: its fonts and its places
+ * (places.mbtiles, 9 times what OpenStreetMap alone holds here). What a unit with no pack sees differs only in those two.
  */
 object MapStyle {
     const val SRC_ROUTE = "aura-route"
@@ -38,9 +46,13 @@ object MapStyle {
      * map has drawn and trailed it by a frame during every flight and pan.
      */
     const val SRC_DEST = "aura-dest"
+    /** The two seas' names: no tile holds them ([SEAS]). */
+    private const val SRC_SEAS = "aura-seas"
+    /** The pack's places (places.mbtiles, layer `places`), a source of its own: fields name, name:en, kind, cat, rank, id. */
+    private const val SRC_PLACES = "places"
 
-    /** The layers a tap looks in for a place ([AuraMap.onPoiTap]). */
-    val POI_LAYERS = arrayOf("poi-a", "poi-b", "poi-c", "poi-d")
+    /** The layers a tap looks in for a place ([AuraMap.onPoiTap]): the pack's, then those of the online tiles. */
+    val POI_LAYERS = arrayOf("poi-a", "poi-b", "poi-c", "poi-d", "omt-poi-a", "omt-poi-b", "omt-poi-c", "omt-poi-d")
 
     /** The route's line layers (faded while a new route is being found). */
     val ROUTE_LAYERS = arrayOf("route-casing", "route-near-casing", "route", "route-near")
@@ -50,47 +62,37 @@ object MapStyle {
      * turn; dozens of shop names compete with them, and on the turning heading-up map they are placed again all the
      * time (labels flicker, and the weak CPU pays for it). The most important places (band a) stay.
      */
-    val NAV_HIDDEN = arrayOf("poi-b", "poi-c", "poi-d", "housenumber")
+    val NAV_HIDDEN = arrayOf("poi-b", "poi-c", "poi-d", "omt-poi-b", "omt-poi-c", "omt-poi-d", "housenumber")
 
     /** The image of a place's dot ([poiDot]), drawn in each kind's colour. */
     const val POI_DOT = "poi-dot"
 
+    /**
+     * The pack's map fonts: tools/mapbuild/make_glyphs.py's --family, with " Regular" and " Bold" the stacks of glyphs.db. The
+     * one place to change when the UI's font changes (with a new glyphs.db).
+     */
+    const val PACK_FONT = "Readex Pro AMRI"
+    /** The fonts OpenFreeMap serves, and the offline map of a unit with no pack holds. */
+    const val ONLINE_FONT = "Noto Sans"
+
     private const val TILES = "https://tiles.openfreemap.org/planet"
     private const val GLYPHS = "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf"
-    const val ATTRIBUTION = "© OpenStreetMap · OpenFreeMap"
+    /** The credit while OpenFreeMap's tiles draw: online, or from the offline map they were downloaded for. */
+    const val ATTRIBUTION_ONLINE = "© OpenStreetMap · OpenFreeMap"
+    /** The credit while the pack draws (tools/mapbuild/NOTICE-PACK.md, the manifest's attribution). */
+    const val ATTRIBUTION_PACK = "© OpenStreetMap contributors · © OpenMapTiles · Overture Maps"
 
-    private class C(
-        val land: String, val built: String, val commercial: String, val industrial: String, val care: String, val sand: String,
-        val park: String, val wood: String, val water: String, val waterway: String,
-        val building: String, val buildingLine: String, val building3d: String,
-        val casing: String, val service: String, val minor: String, val tertiary: String, val secondary: String, val primary: String,
-        val primaryCasing: String, val motorway: String, val motorwayCasing: String, val tunnel: String, val rail: String, val boundary: String,
-        val roadLabel: String, val roadHalo: String, val motorLabel: String, val place: String, val placeHalo: String,
-        val minorPlace: String, val waterLabel: String, val poiStroke: String
-    )
+    /** Whose tiles are drawn around [at] (the middle of the map; null: not known yet, the car's place is not either). */
+    fun attribution(at: LatLon?): String = when {
+        !PackTiles.present -> ATTRIBUTION_ONLINE
+        at == null || KsaOutline.contains(at.lat, at.lon) || TileServer.offline -> ATTRIBUTION_PACK
+        else -> ATTRIBUTION_ONLINE
+    }
+
+    // (the design's two palettes, read by no code but this: a change of them is one command)
+    private fun colors(): MapColors = if (Palette.dark) MapPalette.NIGHT else MapPalette.DAY
 
     private fun hex(c: Int) = String.format(java.util.Locale.ROOT, "#%06X", c and 0xFFFFFF)
-
-    // At night the roads step down calmly (each class a little brighter than the one below it, the smallest still
-    // apart from the blocks) and stay below the route in brightness: until 1.11 the main roads and the motorway were as
-    // bright as the route, and service roads vanished into the built-up land.
-    private fun colors(): C = if (Palette.dark) C(
-        land = hex(Palette.mapLand), built = "#22272E", commercial = "#262A31", industrial = "#24272C", care = "#2A2629", sand = "#25241F",
-        park = "#1E3629", wood = "#1C3025", water = "#12243B", waterway = "#16304D",
-        building = "#2B3038", buildingLine = "#394049", building3d = "#313741",
-        casing = "#121519", service = "#30363F", minor = "#3A414B", tertiary = "#424A56", secondary = "#4A5361", primary = "#566173",
-        primaryCasing = "#0F1114", motorway = "#6B5A38", motorwayCasing = "#2B2418", tunnel = "#2A2F37", rail = "#3A404A", boundary = "#525A66",
-        roadLabel = "#B7BFCA", roadHalo = "#14171B", motorLabel = "#F0D6A4", place = "#ECEEF1", placeHalo = "#111317",
-        minorPlace = "#9CA5B1", waterLabel = "#6C95C6", poiStroke = "#14171B"
-    ) else C(
-        land = hex(Palette.mapLand), built = "#F7F5F1", commercial = "#FBF3E4", industrial = "#EDEBEF", care = "#FBEBEC", sand = "#F3EBD5",
-        park = "#CBE7BD", wood = "#C2DFB4", water = "#A8D2F2", waterway = "#9CC9EE",
-        building = "#E6E2D9", buildingLine = "#D5D0C5", building3d = "#E2DED5",
-        casing = "#CDD1D7", service = "#FFFFFF", minor = "#FFFFFF", tertiary = "#FFFFFF", secondary = "#FFFFFF", primary = "#FFFFFF",
-        primaryCasing = "#B9BEC6", motorway = "#FCD572", motorwayCasing = "#DDA42B", tunnel = "#CDD1D7", rail = "#BFC4CC", boundary = "#A3A9B3",
-        roadLabel = "#555C66", roadHalo = "#FFFFFF", motorLabel = "#6B4E0E", place = "#262B31", placeHalo = "#FFFFFF",
-        minorPlace = "#666D77", waterLabel = "#3C76B3", poiStroke = "#FFFFFF"
-    )
 
     /** The style's own tones as colours, for what stands in for the map before it has drawn ([com.abdllh.aura.ui.MapBackdropView]). */
     class Tones(val land: Int, val block: Int, val park: Int, val water: Int, val road: Int, val major: Int, val casing: Int)
@@ -104,14 +106,20 @@ object MapStyle {
     /**
      * The colour of the route (and of the turn arrow, the car on it and the destination): the guidance colour,
      * [Guide.color], so the map and the sign over it are one colour. It is the owner's accent when that reads as a
-     * route on this map — blue, cyan or violet — else the default blue. Amber is the motorways' colour, red the
-     * cameras', green the parks' and graphite the roads' own: a route in those would sink into the map. The rest of the
-     * UI keeps the accent.
+     * route on this map — blue, cyan or violet — else the default blue. Red is the cameras', green the parks' and
+     * graphite the roads' own: a route in those would sink into the map. The rest of the UI keeps the accent.
      */
     fun routeBase(): Int = Guide.color()
 
-    /** The route as drawn: the base colour, lighter at night so it is the brightest line among the dark roads. */
-    fun routeColor(): Int = if (Palette.dark) Palette.mix(routeBase(), 0xFFFFFFFF.toInt(), 0.32f) else routeBase()
+    // the default accent draws in the design's blue and its casing; only an accent the owner picked is worked out from it
+    private fun ownAccent() = routeBase() != Palette.DEFAULT_ACCENT
+
+    /** The route as drawn: at night a lighter blue, so it is the brightest line among the dark roads. */
+    fun routeColor(): Int = when {
+        !ownAccent() -> Color.parseColor(colors().route)
+        Palette.dark -> Palette.mix(routeBase(), 0xFFFFFFFF.toInt(), 0.32f)
+        else -> routeBase()
+    }
 
     /**
      * A white disc as a signed distance field (the alpha falls from 0.75 at the edge to 0 eight pixels out, as MapLibre
@@ -150,21 +158,43 @@ object MapStyle {
 
     private fun num(v: Double) = String.format(java.util.Locale.ROOT, "%.2f", v).trimEnd('0').trimEnd('.')
 
+    /**
+     * The two seas' names, which no tile holds: they are drawn over the blue at the zooms where the Kingdom fills the screen.
+     * Fixed points on the water, by the widest part of each sea; the further ones only once the map is close enough
+     * to need them (a name's [minz]).
+     */
+    private class Sea(val lat: Double, val lon: Double, val ar: String, val en: String, val minz: Int)
+    private val SEAS = listOf(
+        Sea(27.20, 50.95, "الخليج العربي", "Arabian Gulf", 0), Sea(28.95, 49.75, "الخليج العربي", "Arabian Gulf", 7), Sea(25.95, 53.20, "الخليج العربي", "Arabian Gulf", 7),
+        Sea(20.70, 38.45, "البحر الأحمر", "Red Sea", 0), Sea(25.05, 35.95, "البحر الأحمر", "Red Sea", 7), Sea(17.85, 40.25, "البحر الأحمر", "Red Sea", 7)
+    )
+
+    private fun seas(arabic: Boolean) = SEAS.joinToString(",", """{"type":"geojson","data":{"type":"FeatureCollection","features":[""", "]}}") {
+        """{"type":"Feature","properties":{"name":"${if (arabic) it.ar else it.en}","minz":${it.minz}},"geometry":{"type":"Point","coordinates":[${it.lon},${it.lat}]}}"""
+    }
+
     /** Style JSON for the current theme and accent; [arabic] picks Arabic names (falling back to the local name). */
     fun json(arabic: Boolean): String {
         val c = colors()
         val dark = Palette.dark
+        val own = ownAccent()
         val base = routeBase()
         val route = hex(routeColor())
-        val routeCasing = hex(Palette.mix(base, 0xFF000000.toInt(), if (dark) 0.62f else 0.38f))
-        val turnCasing = hex(Palette.mix(base, 0xFF000000.toInt(), 0.62f))
+        val routeCasing = if (own) hex(Palette.mix(base, 0xFF000000.toInt(), if (dark) 0.62f else 0.38f)) else c.routeCasing
+        val turnCasing = if (own) hex(Palette.mix(base, 0xFF000000.toInt(), 0.62f)) else c.turnCasing
         val name = if (arabic) """["coalesce",["get","name:ar"],["get","name"]]"""
         else """["coalesce",["get","name:en"],["get","name:latin"],["get","name"]]"""
         // (a motorway often has only its number)
         val roadName = if (arabic) """["coalesce",["get","name:ar"],["get","name"],["get","ref"]]"""
         else """["coalesce",["get","name:en"],["get","name:latin"],["get","name"],["get","ref"]]"""
-        val regular = """["Noto Sans Regular"]"""
-        val bold = """["Noto Sans Bold"]"""
+        // tiles and glyphs through the unit's own tile server (the pack, the offline map, else OpenFreeMap), OpenFreeMap directly
+        // only if that server could not start
+        val local = TileServer.running
+        val pack = local && PackTiles.present
+        // the fonts of whoever serves the glyphs: OpenFreeMap has no others, the pack no others
+        val font = if (local && PackTiles.hasFonts) PACK_FONT else ONLINE_FONT
+        val regular = """["$font Regular"]"""
+        val bold = """["$font Bold"]"""
         // Arabic letters read about a size smaller than Latin ones at the same pixel size: every label is a little
         // larger in Arabic, so both read alike
         fun ts(v: Double) = num(if (arabic) v * 1.12 else v)
@@ -184,6 +214,7 @@ object MapStyle {
         // on the ground: neither a bridge (drawn over the roads it crosses) nor a tunnel (faint, under them)
         val ground = """["!",["match",["get","brunnel"],["bridge","tunnel"],true,false]]"""
         fun cls(vararg names: String) = """["match",["get","class"],[${names.joinToString(",") { "\"$it\"" }}],true,false]"""
+        fun sub(vararg names: String) = """["match",["get","subclass"],[${names.joinToString(",") { "\"$it\"" }}],true,false]"""
         fun all(vararg f: String) = """["all",${f.joinToString(",")}]"""
         fun fill(id: String, layer: String, filter: String, color: String, opacity: Double = 1.0) =
             """{"id":"$id","type":"fill","source":"omt","source-layer":"$layer","filter":$filter,
@@ -196,16 +227,18 @@ object MapStyle {
         val wTertiary = W(11.0 to 0.6, 14.0 to 3.2, 16.0 to 8.0, 18.0 to 19.0)
         val wMinor = W(12.0 to 0.5, 14.0 to 2.2, 16.0 to 6.0, 18.0 to 15.0)
         val wService = W(14.0 to 0.6, 16.0 to 2.4, 18.0 to 8.0)
-        // A slip road is a single lane: drawn at 60 % of its motorway, not as a second motorway beside it.
+        // A slip road is a single lane: drawn at 60 % of its motorway, not as a second motorway beside it. A casing is a thin
+        // edge at any zoom: far out, at its street-level width, a dual carriageway was two grey bands with a thread of white in each.
+        fun edge(z: Double, extra: Double) = if (extra == 0.0) 0.0 else extra * (0.3 + 0.7 * ((z - 5.0) / 7.0)).coerceAtMost(1.0)
         fun motorWidth(extra: Double) = """["interpolate",["exponential",1.5],["zoom"],${wMotor.stops.joinToString(",") {
-            """${num(it.first)},["+",["*",["case",["==",["get","ramp"],1],0.6,1],${num(it.second)}],${num(extra)}]""" }}]"""
+            """${num(it.first)},["+",["*",["case",["==",["get","ramp"],1],0.6,1],${num(it.second)}],${num(edge(it.first, extra))}]""" }}]"""
         // A road drawn by its class in one layer (bridges, main tunnels): each class at the width of its own layer, a
         // slip road too (most of an interchange's ramps are flyovers: at motorway width they swelled on every bridge).
         // Stops from zoom 5, where the motorways start, so a viaduct shows wherever its class does.
         fun classWidth(extra: Double) = """["interpolate",["exponential",1.5],["zoom"],${listOf(5.0, 7.0, 9.0, 10.0, 12.0, 14.0, 16.0, 18.0).joinToString(",") { z ->
-            """${num(z)},["match",["get","class"],["motorway","trunk"],["+",["*",["case",["==",["get","ramp"],1],0.6,1],${num(wMotor.at(z))}],${num(extra)}],""" +
-            """"primary",${num(wPrimary.at(z) + extra)},"secondary",${num(wSecondary.at(z) + extra)},"tertiary",${num(wTertiary.at(z) + extra)},""" +
-            """["service","track"],${num(wService.at(z) + extra)},${num(wMinor.at(z) + extra)}]""" }}]"""
+            """${num(z)},["match",["get","class"],["motorway","trunk"],["+",["*",["case",["==",["get","ramp"],1],0.6,1],${num(wMotor.at(z))}],${num(edge(z, extra))}],""" +
+            """"primary",${num(wPrimary.at(z) + edge(z, extra))},"secondary",${num(wSecondary.at(z) + edge(z, extra))},"tertiary",${num(wTertiary.at(z) + edge(z, extra))},""" +
+            """["service","track"],${num(wService.at(z) + edge(z, extra))},${num(wMinor.at(z) + edge(z, extra))}]""" }}]"""
         fun byClass(motorway: String, primary: String, secondary: String, tertiary: String, service: String, other: String) =
             """["match",["get","class"],["motorway","trunk"],"$motorway","primary","$primary","secondary","$secondary","tertiary","$tertiary",""" +
             """["service","track"],"$service","$other"]"""
@@ -215,29 +248,49 @@ object MapStyle {
         val wRoute = W(8.0 to 5.0, 12.0 to 7.0, 14.0 to 10.0, 16.0 to 15.0, 17.0 to 18.0, 18.0 to 22.0)
         val wTurn = W(8.0 to 3.0, 14.0 to 5.4, 16.0 to 8.0, 17.0 to 9.5, 18.0 to 11.5)
 
-        // ---- places: a dot and its name as one symbol per band of importance (the tiles rank them), more bands the
-        // closer the map. One symbol, so the two collide together: until 1.11 the dots were circle layers, which never
-        // give way, and every name that did left an unnamed dot behind.
-        val poiDot = Poi.match { if (dark) it.night else it.day }
-        val poiText = Poi.match { if (dark) it.nightText else it.dayText }
-        fun poi(band: String, minzoom: Double, rank: String): String {
-            val filter = all("""["has","name"]""", rank)
-            return """{"id":"poi-$band","type":"symbol","source":"omt","source-layer":"poi","minzoom":$minzoom,"filter":$filter,
+        // ---- places: a dot and its name as one symbol per band of importance, more bands the closer the map. One symbol,
+        // so the two collide together: until 1.11 the dots were circle layers, which never give way, and every name that did
+        // left an unnamed dot behind.
+        fun poi(id: String, source: String, dot: String, text: String, label: String, minzoom: Double, filter: String) =
+            """{"id":"$id","type":"symbol",$source,"minzoom":$minzoom,"filter":$filter,
                    "layout":{"icon-image":"$POI_DOT","icon-size":["interpolate",["linear"],["zoom"],14,0.6,17,1.05],
-                   "icon-pitch-alignment":"viewport","text-field":$name,"text-font":$regular,"text-size":${size(14 to 12.5, 17 to 15.0)},
+                   "icon-pitch-alignment":"viewport","text-field":$label,"text-font":$regular,"text-size":${size(14 to 12.5, 17 to 15.0)},
                    "text-anchor":"top","text-offset":[0,0.7],"text-max-width":8,"text-padding":6},
-                   "paint":{"icon-color":$poiDot,"icon-halo-color":"${c.poiStroke}","icon-halo-width":1.6,
+                   "paint":{"icon-color":$dot,"icon-halo-color":"${c.poiStroke}","icon-halo-width":1.6,
                    "icon-opacity":["interpolate",["linear"],["zoom"],$minzoom,0,${minzoom + 0.4},1],
-                   "text-color":$poiText,"text-halo-color":"${c.roadHalo}","text-halo-width":1.5,
+                   "text-color":$text,"text-halo-color":"${c.roadHalo}","text-halo-width":1.5,
                    "text-opacity":["interpolate",["linear"],["zoom"],$minzoom,0,${minzoom + 0.4},1]}}"""
-        }
+        // The online tiles' places (rank: the lower the more important); on a unit with a pack only outside the Kingdom,
+        // where its tiles hold no poi layer.
         fun rank(above: Int, upTo: Int) = when {
             above <= 0 -> """["<=",["get","rank"],$upTo]"""
             upTo <= 0 -> """[">",["get","rank"],$above]"""
             else -> all("""[">",["get","rank"],$above]""", """["<=",["get","rank"],$upTo]""")
         }
+        val omtSource = """"source":"omt","source-layer":"poi""""
+        val omtDot = Poi.matchClass(c.dots)
+        val omtText = Poi.matchClass(c.texts)
+        fun omtPoi(id: String, minzoom: Double, r: String) = poi(id, omtSource, omtDot, omtText, name, minzoom, all("""["has","name"]""", r))
         // (the least important band first: a layer further down the list places its names first)
-        val pois = listOf(poi("d", 17.0, rank(40, 0)), poi("c", 16.0, rank(12, 40)), poi("b", 15.0, rank(3, 12)), poi("a", 13.6, rank(0, 3)))
+        val omtPois = if (pack) listOf(omtPoi("omt-poi-d", 17.0, rank(40, 0)), omtPoi("omt-poi-c", 16.0, rank(12, 40)), omtPoi("omt-poi-b", 15.0, rank(3, 12)), omtPoi("omt-poi-a", 13.6, rank(0, 3)))
+            else listOf(omtPoi("poi-d", 17.0, rank(40, 0)), omtPoi("poi-c", 16.0, rank(12, 40)), omtPoi("poi-b", 15.0, rank(3, 12)), omtPoi("poi-a", 13.6, rank(0, 3)))
+        // The pack's places (rank: 1 to 100, the higher the more important; a dense z14 tile holds 420 of them, about
+        // 40 above 60), and already thinned by the tiles at z12 and z13. The very top show earlier: from z14 band a is
+        // the shop on the corner, at z13 only a hospital, a mall or a big hotel. (zoom in a filter: per tile, so a whole number.)
+        val packPois = if (local && PackTiles.hasPlaces) {
+            val source = """"source":"$SRC_PLACES","source-layer":"places""""
+            val dot = Poi.matchKind(c.dots)
+            val text = Poi.matchKind(c.texts)
+            val label = if (arabic) """["get","name"]""" else """["coalesce",["get","name:en"],["get","name"]]"""
+            fun band(above: Int, upTo: Int) = all("""[">=",["get","rank"],$above]""", """["<",["get","rank"],$upTo]""")
+            listOf(
+                poi("poi-d", source, dot, text, label, 17.0, """["<",["get","rank"],30]"""),
+                poi("poi-c", source, dot, text, label, 16.0, band(30, 45)),
+                poi("poi-b", source, dot, text, label, 15.0, band(45, 60)),
+                poi("poi-a", source, dot, text, label, 12.6, """[">=",["get","rank"],["step",["zoom"],80,14,60]]""")
+            )
+        } else emptyList()
+        val pois = omtPois + packPois
 
         // Buildings: flat footprints at every zoom from 13 (cheap, and under the 3D ones when those show), 3D only
         // from zoom 17 — closer in than guidance drives (15.2 to 17), so a tilted map while driving never pays for
@@ -252,25 +305,45 @@ object MapStyle {
         else """{"id":"building-outline","type":"line","source":"omt","source-layer":"building","minzoom":15,
                "paint":{"line-color":"${c.buildingLine}","line-width":1}}"""
 
-        val layers = listOf(
+        val layers = listOfNotNull(
             """{"id":"background","type":"background","paint":{"background-color":"${c.land}"}}""",
-            fill("landcover-sand", "landcover", cls("sand"), c.sand),
-            fill("landuse-built", "landuse", cls("residential", "suburb", "neighbourhood"), c.built),
+            // (the desert is the land's own colour in the palettes: a layer of it would be one more fill of the same)
+            if (c.sand != c.land) fill("landcover-sand", "landcover", cls("sand"), c.sand) else null,
+            fill("landuse-built", "landuse", cls("residential", "suburb", "neighbourhood", "quarter"), c.built),
             fill("landuse-commercial", "landuse", cls("commercial", "retail"), c.commercial),
             fill("landuse-industrial", "landuse", cls("industrial", "railway", "garages", "quarry"), c.industrial),
             fill("landuse-care", "landuse", cls("hospital", "school", "university", "college", "kindergarten"), c.care),
             fill("landcover-wood", "landcover", cls("wood", "forest"), c.wood, 0.8),
-            fill("landcover-grass", "landcover", cls("grass", "farmland", "wetland"), c.park, 0.5),
-            """{"id":"park","type":"fill","source":"omt","source-layer":"park","paint":{"fill-color":"${c.park}","fill-opacity":0.9}}""",
+            // Green is for what is green. The tiles call a Saudi plain "scrub" and a salt flat "wetland", both class-level
+            // neighbours of a real park: painted, half the Eastern Province came out as a lawn. So by subclass: gardens and
+            // fields only.
+            fill("landcover-park", "landcover", all(cls("grass"), sub("park", "garden", "recreation_ground", "golf_course", "grass", "meadow", "village_green", "allotments", "flowerbed")), c.park, 0.9),
+            fill("landcover-farm", "landcover", cls("farmland"), c.park, 0.45),
+            // The tiles' park layer is no park: reserves the size of countries, and the Haram's boundary, which came through
+            // with a class of its own and painted all of Makkah green (protection_title: any word a mapper wrote). So
+            // only classes named here: a forest is green; a reserve is a faint tint while the map is far out, where it
+            // says where the reserve is, and nothing by the time the roads inside it show.
+            """{"id":"park-forest","type":"fill","source":"omt","source-layer":"park","filter":${cls("forest")},"paint":{"fill-color":"${c.park}","fill-opacity":0.7}}""",
+            """{"id":"park-reserve","type":"fill","source":"omt","source-layer":"park","maxzoom":11,
+               "filter":${all(cls("national_park", "nature_reserve", "protected_area", "protected_site"), """["==",["geometry-type"],"Polygon"]""")},
+               "paint":{"fill-color":"${c.park}","fill-opacity":["interpolate",["linear"],["zoom"],9,0.09,11,0]}}""",
             fill("landuse-green", "landuse", cls("cemetery", "stadium", "pitch", "playground", "track"), c.park, 0.7),
-            """{"id":"waterway","type":"line","source":"omt","source-layer":"waterway","minzoom":8,
-               "paint":{"line-color":"${c.waterway}","line-width":${width(8 to 0.5, 14 to 2.0, 18 to 6.0)}}}""",
-            """{"id":"water","type":"fill","source":"omt","source-layer":"water","paint":{"fill-color":"${c.water}"}}""",
+            // A river here is a dry wadi: thousands of them laid a blue web over the desert at the zooms of a long drive. They
+            // come in with the small roads. (Nor is a drain beside a street a river on a driver's map.)
+            """{"id":"waterway","type":"line","source":"omt","source-layer":"waterway","minzoom":10.5,"filter":["!",${cls("drain", "ditch")}],
+               "paint":{"line-color":"${c.waterway}","line-opacity":["interpolate",["linear"],["zoom"],10.5,0,12,0.8],"line-width":${width(8 to 0.5, 14 to 2.0, 18 to 6.0)}}}""",
+            // (a dry lake or a seasonal pool is not the sea's colour; drawn on its own, or all water would lose the opaque pass)
+            """{"id":"water","type":"fill","source":"omt","source-layer":"water","filter":["!=",["get","intermittent"],1],"paint":{"fill-color":"${c.water}"}}""",
+            """{"id":"water-seasonal","type":"fill","source":"omt","source-layer":"water","filter":["==",["get","intermittent"],1],"paint":{"fill-color":"${c.water}","fill-opacity":0.45}}""",
             """{"id":"aeroway","type":"line","source":"omt","source-layer":"aeroway","minzoom":11,"filter":${cls("runway", "taxiway")},
                "paint":{"line-color":"${c.minor}","line-width":${width(11 to 1.0, 15 to 12.0, 18 to 40.0)}}}""",
             building,
-            """{"id":"boundary","type":"line","source":"omt","source-layer":"boundary","filter":["<=",["get","admin_level"],4],
-               "paint":{"line-color":"${c.boundary}","line-width":1,"line-dasharray":[3,2]}}""",
+            // (not the lines at sea: the tiles carry the maritime borders, which crossed the Gulf and the causeway; a region's
+            // border fainter than the country's, and gone before the streets come)
+            """{"id":"boundary-region","type":"line","source":"omt","source-layer":"boundary","minzoom":5,"maxzoom":11,"filter":${all("""[">",["get","admin_level"],2]""", """["<=",["get","admin_level"],4]""", """["!=",["get","maritime"],1]""")},
+               "paint":{"line-color":"${c.boundary}","line-width":0.8,"line-opacity":0.6,"line-dasharray":[2,2]}}""",
+            """{"id":"boundary","type":"line","source":"omt","source-layer":"boundary","filter":${all("""["<=",["get","admin_level"],2]""", """["!=",["get","maritime"],1]""")},
+               "paint":{"line-color":"${c.boundary}","line-width":1.2,"line-dasharray":[3,2]}}""",
             // tunnels, under everything on the ground: the main roads as a quiet band of their own width (a main road
             // seemed to break at every underpass as a thin dashed line), the small ones dashed
             """{"id":"tunnel-major","type":"line","source":"omt","source-layer":"transportation","minzoom":10,
@@ -284,7 +357,7 @@ object MapStyle {
             road("road-minor-casing", all(ground, cls("minor")), c.casing, width(wMinor, 1.8), 13, "butt"),
             road("road-tertiary-casing", all(ground, cls("tertiary")), c.casing, width(wTertiary, 1.8), 12, "butt"),
             road("road-secondary-casing", all(ground, cls("secondary")), c.casing, width(wSecondary, 2.0), 10, "butt"),
-            road("road-primary-casing", all(ground, cls("primary")), c.primaryCasing, width(wPrimary, 2.2), 8, "butt"),
+            road("road-primary-casing", all(ground, cls("primary")), c.primaryCasing, """["interpolate",["exponential",1.5],["zoom"],${wPrimary.stops.joinToString(",") { "${num(it.first)},${num(it.second + edge(it.first, 2.2))}" }}]""", 8, "butt"),
             road("road-motorway-casing", all(ground, cls("motorway", "trunk")), c.motorwayCasing, motorWidth(2.4), 5, "butt"),
             // fills, the bigger roads over the smaller ones
             road("road-service", all(ground, cls("service", "track")), c.service, width(wService), 14),
@@ -313,9 +386,13 @@ object MapStyle {
                "paint":{"line-color":"$route","line-width":${width(wRoute)}}}"""
         ) + pois + extras(dark, c.roadHalo, bold) + listOf(
             // labels
-            """{"id":"water-name","type":"symbol","source":"omt","source-layer":"water_name","minzoom":10,
+            // (the big bays and straits are in the tiles from z8 only, the seas in no tile: [SEAS])
+            """{"id":"sea-name","type":"symbol","source":"$SRC_SEAS","maxzoom":9,"filter":[">=",["zoom"],["get","minz"]],
+               "layout":{"text-field":["get","name"],"text-font":$regular,"text-size":${size(4 to 13.0, 8 to 17.0)},"text-max-width":12${if (arabic) "" else ""","text-letter-spacing":0.08"""}},
+               "paint":{"text-color":"${c.waterLabel}","text-halo-color":"${c.water}","text-halo-width":1}}""",
+            """{"id":"water-name","type":"symbol","source":"omt","source-layer":"water_name","minzoom":8,
                "layout":{"text-field":$name,"text-font":$regular,"text-size":${ts(13.0)},"text-max-width":8},
-               "paint":{"text-color":"${c.waterLabel}","text-halo-color":"${c.land}","text-halo-width":1}}""",
+               "paint":{"text-color":"${c.waterLabel}","text-halo-color":"${c.water}","text-halo-width":1}}""",
             """{"id":"housenumber","type":"symbol","source":"omt","source-layer":"housenumber","minzoom":17.5,
                "layout":{"text-field":["get","housenumber"],"text-font":$regular,"text-size":${ts(11.0)}},
                "paint":{"text-color":"${c.minorPlace}","text-halo-color":"${c.land}","text-halo-width":1}}""",
@@ -327,19 +404,30 @@ object MapStyle {
                "text-size":${size(13 to 12.5, 16 to 14.5, 18 to 17.0)},"text-max-angle":30,"text-padding":5,
                "text-rotation-alignment":"map","text-pitch-alignment":"viewport"},
                "paint":{"text-color":"${c.roadLabel}","text-halo-color":"${c.roadHalo}","text-halo-width":1.8}}""",
-            """{"id":"road-name-major","type":"symbol","source":"omt","source-layer":"transportation_name","minzoom":10,
+            // (from z11, and far apart while far out: at z10 they outshouted the towns they join)
+            """{"id":"road-name-major","type":"symbol","source":"omt","source-layer":"transportation_name","minzoom":11,
                "filter":${cls("motorway", "trunk")},
-               "layout":{"symbol-placement":"line","text-field":$roadName,"text-font":$bold,"symbol-spacing":380,
-               "text-size":${size(10 to 12.0, 14 to 14.0, 18 to 17.5)},"text-max-angle":30,"text-padding":5,
+               "layout":{"symbol-placement":"line","text-field":$roadName,"text-font":$bold,"symbol-spacing":["interpolate",["linear"],["zoom"],11,800,14,380],
+               "text-size":${size(11 to 12.0, 14 to 14.0, 18 to 17.5)},"text-max-angle":30,"text-padding":5,
                "text-rotation-alignment":"map","text-pitch-alignment":"viewport"},
                "paint":{"text-color":"${c.motorLabel}","text-halo-color":"${c.roadHalo}","text-halo-width":1.8}}""",
+            // (the tiles' park layer brings a point with each name: a reserve is named while it can be seen as one)
+            """{"id":"park-name","type":"symbol","source":"omt","source-layer":"park","minzoom":7,"maxzoom":11,
+               "filter":${all(cls("national_park", "nature_reserve", "protected_area", "protected_site"), """["==",["geometry-type"],"Point"]""")},
+               "layout":{"text-field":$name,"text-font":$regular,"text-size":${size(7 to 12.0, 11 to 13.5)},"text-max-width":9,"text-padding":24},
+               "paint":{"text-color":"${c.texts[11]}","text-halo-color":"${c.placeHalo}","text-halo-width":1.2}}""",
             """{"id":"airport","type":"symbol","source":"omt","source-layer":"aerodrome_label","minzoom":9,
                "layout":{"text-field":$name,"text-font":$regular,"text-size":${ts(13.0)},"text-max-width":9},
                "paint":{"text-color":"${c.minorPlace}","text-halo-color":"${c.placeHalo}","text-halo-width":1.4}}""",
+            // The regions under the cities, quiet: bold and larger they were the loudest words of the map far out, over Riyadh
+            // and Jeddah, and first in this list (the last is placed first) so that a town keeps its name beside one. (The tiles
+            // have them as state and as province.)
+            """{"id":"place-region","type":"symbol","source":"omt","source-layer":"place","minzoom":5,"maxzoom":8,"filter":${cls("state", "province")},
+               "layout":{"text-field":$name,"text-font":$regular,"text-size":${size(5 to 12.0, 8 to 14.0)},"text-max-width":7,"text-padding":12},
+               "paint":{"text-color":"${c.minorPlace}","text-halo-color":"${c.placeHalo}","text-halo-width":1.2}}""",
             """{"id":"place-minor","type":"symbol","source":"omt","source-layer":"place","minzoom":11,
-               "filter":${cls("suburb", "quarter", "neighbourhood", "hamlet", "isolated_dwelling")},
-               "layout":{"text-field":$name,"text-font":$regular,"text-size":${size(11 to 12.0, 16 to 15.5)},"text-max-width":8,
-               "text-letter-spacing":0.02},
+               "filter":${cls("suburb", "quarter", "neighbourhood", "hamlet", "isolated_dwelling", "island")},
+               "layout":{"text-field":$name,"text-font":$regular,"text-size":${size(11 to 12.0, 16 to 15.5)},"text-max-width":8},
                "paint":{"text-color":"${c.minorPlace}","text-halo-color":"${c.placeHalo}","text-halo-width":1.5}}""",
             """{"id":"place-village","type":"symbol","source":"omt","source-layer":"place","minzoom":9,"filter":${cls("village")},
                "layout":{"text-field":$name,"text-font":$regular,"text-size":${size(9 to 12.0, 15 to 16.0)},"text-max-width":8},
@@ -350,8 +438,9 @@ object MapStyle {
             """{"id":"place-city","type":"symbol","source":"omt","source-layer":"place","minzoom":3,"maxzoom":15,"filter":${cls("city")},
                "layout":{"text-field":$name,"text-font":$bold,"text-size":${size(4 to 13.0, 12 to 22.0)},"text-max-width":8},
                "paint":{"text-color":"${c.place}","text-halo-color":"${c.placeHalo}","text-halo-width":1.9}}""",
-            """{"id":"place-country","type":"symbol","source":"omt","source-layer":"place","maxzoom":7,"filter":${cls("country", "state")},
-               "layout":{"text-field":$name,"text-font":$bold,"text-size":${size(2 to 12.0, 6 to 17.0)},"text-max-width":7},
+            // (the country's own name only where the Kingdom is small)
+            """{"id":"place-country","type":"symbol","source":"omt","source-layer":"place","maxzoom":5,"filter":${cls("country")},
+               "layout":{"text-field":$name,"text-font":$bold,"text-size":${size(2 to 12.0, 5 to 16.0)},"text-max-width":7},
                "paint":{"text-color":"${c.minorPlace}","text-halo-color":"${c.placeHalo}","text-halo-width":1.6}}""",
             // The arrow of the next turn over every label: a name never collides with a line, and a place's name
             // sitting on the turn hid its head (the one thing on the map the driver must see).
@@ -362,36 +451,50 @@ object MapStyle {
                "layout":{"line-join":"round"},"paint":{"line-color":"$turnCasing","line-width":3.4}}""",
             """{"id":"turn","type":"line","source":"$SRC_TURN","filter":["==","${'$'}type","LineString"],
                "layout":{"line-cap":"round","line-join":"round"},
-               "paint":{"line-color":"#FFFFFF","line-width":${width(wTurn)}}}""",
+               "paint":{"line-color":"${c.turn}","line-width":${width(wTurn)}}}""",
             """{"id":"turn-head","type":"fill","source":"$SRC_TURN","filter":["==","${'$'}type","Polygon"],
-               "paint":{"fill-color":"#FFFFFF"}}"""
-        ) + dest(route, dark)
+               "paint":{"fill-color":"${c.turn}"}}"""
+        ) + dest(route, c.destRing)
         val empty ="""{"type":"geojson","data":{"type":"FeatureCollection","features":[]}}"""
-        // tiles and glyphs through the unit's own tile server (the offline map, else OpenFreeMap), OpenFreeMap directly
-        // only if that server could not start
-        val local = com.abdllh.aura.nav.offline.TileServer.running
-        val source = if (local) """"tiles":["${com.abdllh.aura.nav.offline.TileServer.tilesUrl}"],"minzoom":0,"maxzoom":14"""
+        val source = if (local) """"tiles":["${TileServer.tilesUrl}"],"minzoom":0,"maxzoom":14"""
             else """"url":"$TILES""""
-        val glyphs = if (local) com.abdllh.aura.nav.offline.TileServer.glyphsUrl else GLYPHS
+        val glyphs = if (local) TileServer.glyphsUrl else GLYPHS
+        val credit = if (pack) ATTRIBUTION_PACK else ATTRIBUTION_ONLINE
+        val places = if (packPois.isEmpty()) "" else """"$SRC_PLACES":{"type":"vector","tiles":["${TileServer.placesUrl}"],"minzoom":12,"maxzoom":14,"attribution":"$ATTRIBUTION_PACK"},"""
         // a softer light at night: lit roofs no brighter than the roads around them
         return """{"version":8,"name":"Aura","glyphs":"$glyphs",
-          "light":{"anchor":"viewport","intensity":${if (dark) 0.3 else 0.4}},
-          "sources":{"omt":{"type":"vector",$source,"attribution":"$ATTRIBUTION"},
-            "$SRC_ROUTE":$empty,"$SRC_ROUTE_NEAR":$empty,"$SRC_TURN":$empty,"$SRC_EXTRAS":$empty,"$SRC_DEST":$empty},
+          "light":{"anchor":"viewport","intensity":${c.light}},
+          "sources":{"omt":{"type":"vector",$source,"attribution":"$credit"},$places
+            "$SRC_ROUTE":$empty,"$SRC_ROUTE_NEAR":$empty,"$SRC_TURN":$empty,"$SRC_EXTRAS":$empty,"$SRC_DEST":$empty,"$SRC_SEAS":${seas(arabic)}},
           "layers":[${layers.joinToString(",")}]}"""
+    }
+
+    /**
+     * Once the style is up. The pack's tiles are on the disk already: as "volatile" sources MapLibre does not store them a
+     * second time in its own cache (files/mbgl-offline.db, packed again and written to the eMMC, tile by tile). No header
+     * says that: 10.3.7 reads max-age and must-revalidate, and no-store is not in its code. It also means online tiles
+     * outside the Kingdom are not kept on a unit with a pack: it asks for them again after a restart.
+     */
+    fun afterLoad(s: Style) {
+        if (!PackTiles.present) return
+        try {
+            s.getSource("omt")?.setVolatile(true)
+            s.getSource(SRC_PLACES)?.setVolatile(true)
+        } catch (_: Throwable) {
+        }
     }
 
     /**
      * The destination over everything else: a ringed dot in the route's colour with a soft halo, lying on the ground
      * like the route it ends (an ellipse on the tilted map), so it reads as a place, not as a button.
      */
-    private fun dest(route: String, dark: Boolean): List<String> {
+    private fun dest(route: String, ring: String): List<String> {
         fun circle(id: String, color: String, r: String, opacity: Double = 1.0) =
             """{"id":"$id","type":"circle","source":"$SRC_DEST",
                "paint":{"circle-color":"$color","circle-radius":$r,"circle-opacity":$opacity,"circle-pitch-alignment":"map"}}"""
         return listOf(
             circle("dest-halo", route, """["interpolate",["linear"],["zoom"],10,11,16,18]""", 0.22),
-            circle("dest-ring", if (dark) "#14171B" else "#FFFFFF", """["interpolate",["linear"],["zoom"],10,8,16,12]"""),
+            circle("dest-ring", ring, """["interpolate",["linear"],["zoom"],10,8,16,12]"""),
             circle("dest-core", route, """["interpolate",["linear"],["zoom"],10,5.5,16,8.5]""")
         )
     }
