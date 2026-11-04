@@ -67,24 +67,21 @@ public enum ShareInput {
         }
     }
 
+    /// The provider hands over the item itself or its archive, depending on the iOS version.
     private static func loadMapItem(_ provider: NSItemProvider, timeout: TimeInterval) async -> SharedMapItem? {
-        guard provider.canLoadObject(ofClass: MKMapItem.self) else { return nil }
-        return await withCheckedContinuation { (continuation: CheckedContinuation<SharedMapItem?, Never>) in
-            let once = OneShot<SharedMapItem?> { continuation.resume(returning: $0) }
-            _ = provider.loadObject(ofClass: MKMapItem.self) { object, _ in
-                guard let item = object as? MKMapItem else {
-                    once.fire(nil)
-                    return
-                }
-                let coordinate = item.placemark.coordinate
-                guard CLLocationCoordinate2DIsValid(coordinate) else {
-                    once.fire(nil)
-                    return
-                }
-                once.fire(SharedMapItem(name: item.name, detail: item.placemark.title, lat: coordinate.latitude,
-                                        lon: coordinate.longitude, placeID: item.identifier?.rawValue))
-            }
-            DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { once.fire(nil) }
-        }
+        let raw = await loadItem(provider, type: mapItemType, timeout: timeout)
+        var found = raw as? MKMapItem
+        if found == nil, let data = raw as? Data { found = unarchive(data) }
+        guard let item = found else { return nil }
+        let coordinate = item.placemark.coordinate
+        guard CLLocationCoordinate2DIsValid(coordinate) else { return nil }
+        return SharedMapItem(name: item.name, detail: item.placemark.title, lat: coordinate.latitude,
+                             lon: coordinate.longitude, placeID: item.identifier?.rawValue)
+    }
+
+    private static func unarchive(_ data: Data) -> MKMapItem? {
+        guard let archive = try? NSKeyedUnarchiver(forReadingFrom: data) else { return nil }
+        defer { archive.finishDecoding() }
+        return archive.decodeObject(of: [MKMapItem.self], forKey: NSKeyedArchiveRootObjectKey) as? MKMapItem
     }
 }

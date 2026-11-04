@@ -6,6 +6,12 @@ public enum StartOutcome: Equatable, Sendable {
     case started(NavEvent)
     /// The unit's own `failed` event.
     case failed(String?)
+    /// Given to another navigation app, which says nothing back: not "started".
+    case handed
+    /// The screen kept the trip it had.
+    case ignored
+    /// Cancelled on the screen, or another place took its turn.
+    case cancelled
     /// No word in time. The phone must not claim anything.
     case noWord(routingSeen: Bool)
 }
@@ -127,14 +133,15 @@ public final class LinkClient: @unchecked Sendable {
         return try decode(GoAck.self, data)
     }
 
-    public func saved(which: String, timeout: TimeInterval = 3) async throws -> GoAck {
-        struct Body: Encodable { let which: String }
-        let (data, _) = try await perform(request("POST", "v1/nav/saved", timeout: timeout, json: try body(Body(which: which))))
+    public func saved(which: String, id: String = RequestID.new(), timeout: TimeInterval = 3) async throws -> GoAck {
+        struct Body: Encodable { let which: String; let id: String }
+        let (data, _) = try await perform(request("POST", "v1/nav/saved", timeout: timeout, json: try body(Body(which: which, id: id))))
         return try decode(GoAck.self, data)
     }
 
-    public func stop(timeout: TimeInterval = 3) async throws {
-        _ = try await perform(request("POST", "v1/nav/stop", timeout: timeout, json: Data("{}".utf8)))
+    public func stop(id: String = RequestID.new(), timeout: TimeInterval = 3) async throws {
+        struct Body: Encodable { let id: String }
+        _ = try await perform(request("POST", "v1/nav/stop", timeout: timeout, json: try body(Body(id: id))))
     }
 
     public func state(timeout: TimeInterval = 3) async throws -> UnitSnapshot {
@@ -152,9 +159,12 @@ public final class LinkClient: @unchecked Sendable {
         _ = try await perform(request("PUT", "v1/places", timeout: timeout, json: try body(places)))
     }
 
-    public func remote(_ command: RemoteCommand, timeout: TimeInterval = 3) async throws {
-        struct Body: Encodable { let cmd: String }
-        _ = try await perform(request("POST", "v1/remote", timeout: timeout, json: try body(Body(cmd: command.rawValue))))
+    /// What really happened comes back; a refusal throws with the unit's reason.
+    @discardableResult
+    public func remote(_ command: RemoteCommand, id: String = RequestID.new(), timeout: TimeInterval = 3) async throws -> RemoteReply {
+        struct Body: Encodable { let cmd: String; let id: String }
+        let (data, _) = try await perform(request("POST", "v1/remote", timeout: timeout, json: try body(Body(cmd: command.rawValue, id: id))))
+        return (try? JSONDecoder().decode(RemoteReply.self, from: data)) ?? RemoteReply()
     }
 
     public func diag(timeout: TimeInterval = 4) async throws -> String {
@@ -195,7 +205,8 @@ public final class LinkClient: @unchecked Sendable {
     }
 
     /// Watches the unit's events until this send's real outcome, for the time given. Reconnects when the hotspot blinks.
-    public func waitForStart(id: String?, timeout: TimeInterval) async -> StartOutcome {
+    /// `update` hears every step on the way (routing, a card on the screen, waiting for GPS), as the unit says them.
+    public func waitForStart(id: String?, timeout: TimeInterval, update: (@Sendable (NavEvent) -> Void)? = nil) async -> StartOutcome {
         let routing = Locked(false)
         let result: StartOutcome = await withTaskGroup(of: StartOutcome?.self) { group in
             group.addTask { [self] in
@@ -203,13 +214,14 @@ public final class LinkClient: @unchecked Sendable {
                     do {
                         for try await event in events() {
                             guard case .nav(let nav) = event else {
-                                if case .snapshot(let snapshot) = event, let nav = snapshot.nav,
-                                   let outcome = LinkClient.outcome(of: nav, forID: id, routing: routing) {
-                                    return outcome
+                                if case .snapshot(let snapshot) = event, let nav = snapshot.nav {
+                                    if let outcome = LinkClient.outcome(of: nav, forID: id, routing: routing) { return outcome }
+                                    if nav.id == id { update?(nav) }
                                 }
                                 continue
                             }
                             if let outcome = LinkClient.outcome(of: nav, forID: id, routing: routing) { return outcome }
+                            if nav.id == nil || nav.id == id { update?(nav) }
                         }
                     } catch {
                         if let link = error as? LinkError, case .unauthorized = link { return nil }
@@ -234,17 +246,27 @@ public final class LinkClient: @unchecked Sendable {
         let sameSend = nav.id == nil || id == nil || nav.id == id
         guard sameSend else { return nil }
         switch nav.kind {
-        case .routing:
+        case .routing, .waitingFix:
             routing.with { $0 = true }
             return nil
         case .started:
+            // A "started" with no id at all is the snapshot of an earlier trip only if it says "navigating", which reads
+            // as progress. The unit's real start always names its id or comes alone.
             return .started(nav)
         case .progress:
             // A progress with this send's own id proves the start. One without an id could be an earlier trip.
             if nav.id != nil, nav.id == id { return .started(nav) }
             return nil
         case .failed:
-            return .failed(nav.reason)
+            return nav.id == nil && id != nil && !routing.current ? nil : .failed(nav.reason)
+        case .handed:
+            return nav.id == id ? .handed : nil
+        case .ignored:
+            return nav.id == id ? .ignored : nil
+        case .replaced:
+            return nav.id == id ? .cancelled : nil
+        case .stopped:
+            return nav.id != nil && nav.id == id ? .cancelled : nil
         default:
             return nil
         }

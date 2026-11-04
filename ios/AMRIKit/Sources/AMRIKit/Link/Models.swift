@@ -119,13 +119,34 @@ public struct GoRequest: Codable, Equatable, Sendable {
 public struct GoAck: Codable, Equatable, Sendable {
     public var id: String?
     public var state: String
+    /// "tap": the screen shows a card and waits for a tap (a sender with no token).
+    public var needs: String?
+    /// On a duplicate, what became of the first try, in the unit's words.
+    public var last: String?
 
-    public init(id: String?, state: String) {
+    public init(id: String?, state: String, needs: String? = nil, last: String? = nil) {
         self.id = id
         self.state = state
+        self.needs = needs
+        self.last = last
     }
 
     public var isDuplicate: Bool { state == "duplicate" }
+}
+
+/// What `POST /v1/remote` says really happened. Unknown stays nil.
+public struct RemoteReply: Codable, Equatable, Sendable {
+    public var state: String?
+    public var volume: Int?
+    public var muted: Bool?
+    public var navVoice: Bool?
+
+    public init(state: String? = nil, volume: Int? = nil, muted: Bool? = nil, navVoice: Bool? = nil) {
+        self.state = state
+        self.volume = volume
+        self.muted = muted
+        self.navVoice = navVoice
+    }
 }
 
 /// Ids in the same family as the protocol's example: time first, then randomness, Crockford base32.
@@ -275,6 +296,16 @@ enum JSONField {
 public struct NavEvent: Equatable, Sendable {
     public enum Kind: Equatable, Sendable {
         case idle, routing, started, progress, failed, arrived, stopped, card
+        /// The screen waits for its GPS before it can route.
+        case waitingFix
+        /// The screen holds the place until a call or reversing ends.
+        case held
+        /// Handed to another navigation app, which says nothing back. This is not "started".
+        case handed
+        /// The driver or the screen kept the current trip.
+        case ignored
+        /// Another place took this one's turn.
+        case replaced
         case other(String)
 
         init(raw: String) {
@@ -287,9 +318,17 @@ public struct NavEvent: Equatable, Sendable {
             case "arrived": self = .arrived
             case "stopped", "ended", "cancelled", "canceled", "stop": self = .stopped
             case "card", "waiting": self = .card
+            case "waiting_fix": self = .waitingFix
+            case "held": self = .held
+            case "handed": self = .handed
+            case "ignored": self = .ignored
+            case "replaced": self = .replaced
             default: self = .other(raw)
             }
         }
+
+        /// A trip the unit says is under way right now.
+        public var isUnderWay: Bool { self == .started || self == .progress }
     }
 
     public var kind: Kind
@@ -334,7 +373,7 @@ public struct NavEvent: Equatable, Sendable {
     }
 }
 
-/// One `music` event: what the unit says it plays. Unknown stays nil.
+/// One `music` event: what the unit says it plays, and the car's volume step. Unknown stays nil.
 public struct MusicStatus: Equatable, Sendable {
     public var title: String?
     public var artist: String?
@@ -342,15 +381,22 @@ public struct MusicStatus: Equatable, Sendable {
     public var playing: Bool?
     public var positionS: Double?
     public var durationS: Double?
+    /// The car's own step, never a percentage.
+    public var volume: Int?
+    public var maxVolume: Int?
+    public var muted: Bool?
 
     public init(title: String? = nil, artist: String? = nil, source: String? = nil, playing: Bool? = nil,
-                positionS: Double? = nil, durationS: Double? = nil) {
+                positionS: Double? = nil, durationS: Double? = nil, volume: Int? = nil, maxVolume: Int? = nil, muted: Bool? = nil) {
         self.title = title
         self.artist = artist
         self.source = source
         self.playing = playing
         self.positionS = positionS
         self.durationS = durationS
+        self.volume = volume
+        self.maxVolume = maxVolume
+        self.muted = muted
     }
 
     public init(json: [String: Any]) {
@@ -360,31 +406,43 @@ public struct MusicStatus: Equatable, Sendable {
         playing = JSONField.bool(JSONField.first(json, "playing", "isPlaying"))
         positionS = JSONField.double(JSONField.first(json, "positionS", "position"))
         durationS = JSONField.double(JSONField.first(json, "durationS", "duration"))
+        volume = JSONField.int(JSONField.first(json, "volume", "volumeStep"))
+        maxVolume = JSONField.int(JSONField.first(json, "maxVolume", "volumeMax"))
+        muted = JSONField.bool(json["muted"])
     }
 }
 
-/// One `car` event. The volume is the car's own step, never a percentage.
+/// One `car` event. Unknown stays nil.
 public struct CarStatus: Equatable, Sendable {
+    /// Only if the unit sends it here and not with the music. The car's own step, never a percentage.
     public var volumeStep: Int?
     public var volumeMax: Int?
     public var speedKmh: Double?
     public var gpsFix: Bool?
     public var reversing: Bool?
+    public var inCall: Bool?
+    public var gear: String?
 
-    public init(volumeStep: Int? = nil, volumeMax: Int? = nil, speedKmh: Double? = nil, gpsFix: Bool? = nil, reversing: Bool? = nil) {
+    public init(volumeStep: Int? = nil, volumeMax: Int? = nil, speedKmh: Double? = nil, gpsFix: Bool? = nil, reversing: Bool? = nil,
+                inCall: Bool? = nil, gear: String? = nil) {
         self.volumeStep = volumeStep
         self.volumeMax = volumeMax
         self.speedKmh = speedKmh
         self.gpsFix = gpsFix
         self.reversing = reversing
+        self.inCall = inCall
+        self.gear = gear
     }
 
     public init(json: [String: Any]) {
         volumeStep = JSONField.int(JSONField.first(json, "volumeStep", "volume"))
-        volumeMax = JSONField.int(JSONField.first(json, "volumeMax", "volumeSteps"))
-        speedKmh = JSONField.double(JSONField.first(json, "speedKmh", "speed"))
-        gpsFix = JSONField.bool(JSONField.first(json, "gpsFix", "gps"))
+        volumeMax = JSONField.int(JSONField.first(json, "volumeMax", "volumeSteps", "maxVolume"))
+        let fix = json["fix"] as? [String: Any]
+        speedKmh = JSONField.double(JSONField.first(json, "speedKmh", "speed")) ?? JSONField.double(fix?["kmh"])
+        gpsFix = JSONField.bool(JSONField.first(json, "gpsFix", "gps")) ?? (fix != nil ? true : nil)
         reversing = JSONField.bool(JSONField.first(json, "reversing", "reverse"))
+        inCall = JSONField.bool(json["inCall"])
+        gear = JSONField.string(json["gear"])
     }
 }
 
