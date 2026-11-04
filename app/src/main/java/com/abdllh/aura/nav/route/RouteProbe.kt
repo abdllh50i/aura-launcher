@@ -45,6 +45,10 @@ import java.util.zip.GZIPInputStream
  * killed after [STAGE_MS] and reported the same way, with `hung`. A failure is reported, never thrown. Nothing reads the report
  * here: the Screen check page shows it and sends it.
  *
+ * The scout is one shot, so beside the plain trips it runs what 2.0 calls on every route (`more`): trace_attributes, which the limits ask after each route; deleteActor and a new actor, as a new pack
+ * asks, with the file's cache dropped through the root shell when there is one, which is the first route from the eMMC; a ring to avoid, via points, the road filter; and the answer's JSON at the 2.3 MB of the
+ * longest trips, since this tar's answers are 221 KB at most. `disk` measures the eMMC by itself. What it still cannot say: a route over the whole of route.tar's 378 MB (this tar is 1 % of it, main roads only).
+ *
  * Costs the APK the library (6,017,176 B on armeabi-v7a), the tar (1,517,794 B), the test program (664 B) and the config.
  */
 internal object RouteProbe {
@@ -59,6 +63,10 @@ internal object RouteProbe {
     private const val TAR_SHA256 = "a7446fa524fdf40d92b4b8eb813cb78f58ab2f9d949837cfd29cc236d28f8a33"
     /** A little more than route.tar's 378 MB: does a mapping that long still fit in this process, after the library and its tiles? */
     private const val MAP_BYTES = 400L * 1024 * 1024
+    /** The longest answer of the old options: what the JSON's time is measured at. */
+    private const val LONG_ANSWER_BYTES = 2_300_000
+    private const val DISK_FILE_BYTES = 64L * 1024 * 1024
+    private const val DISK_NEEDS_FREE = 300L * 1024 * 1024
 
     /** [refKm]: Jubail-Khobar is the PC service's on this tar; the rest the same request on the x86_64 library, whose answers equal the service's. */
     private class Trip(val id: String, val a: Double, val b: Double, val c: Double, val d: Double, val refKm: Double)
@@ -145,16 +153,26 @@ internal object RouteProbe {
             if (!lost.get()) try { c.unbindService(conn) } catch (_: Throwable) { }
             if (doneFile(c).exists()) return
             if (SystemClock.elapsedRealtime() >= deadline) return giveUp(c, "out of time")
-            if (runs > MAX_DEATHS) return giveUp(c, "died $runs times")
+            // (one more than the deaths allowed: that process notes the last death and still does the map stage, which needs no library)
+            if (runs > MAX_DEATHS + 1) return giveUp(c, "died $runs times")
             SystemClock.sleep(REST_MS)
         }
     }
 
-    /** A stage past its time: killed, and the marker says why, for the next process's report. */
+    private var markerSeen: String? = null
+    private var markerSeenAt = 0L
+
+    /**
+     * A stage past its time: killed, and the marker says why, for the next process's report. Timed here from when this marker was first seen, not by the file's date: a head unit's wall clock
+     * jumps when it finds the time, and that must not kill a healthy stage.
+     */
     private fun killIfStuck(c: Context) {
         val m = marker(c)
-        if (!m.exists() || System.currentTimeMillis() - m.lastModified() < STAGE_MS) return
-        val o = try { JSONObject(m.readText()) } catch (_: Throwable) { return }
+        val text = try { if (m.exists()) m.readText() else null } catch (_: Throwable) { null }
+        val now = SystemClock.elapsedRealtime()
+        if (text != markerSeen) { markerSeen = text; markerSeenAt = now }
+        if (text == null || now - markerSeenAt < STAGE_MS) return
+        val o = try { JSONObject(text) } catch (_: Throwable) { return }
         try { m.writeText(o.put("hung", true).toString()) } catch (_: Throwable) { }
         Log.w(TAG, "stage ${o.optString("stage")} hung")
         Process.killProcess(o.optInt("pid"))
@@ -163,7 +181,26 @@ internal object RouteProbe {
     /** The end of a run with no process to end it: what is there stands, and says why it stopped. */
     private fun giveUp(c: Context, why: String) {
         val r = read(c) ?: JSONObject()
-        try { save(c, r.put("finished", true).put("gaveUp", why)) } catch (t: Throwable) { Log.w(TAG, "$t") }
+        try {
+            noteDeath(c, r)
+            save(c, r.put("finished", true).put("gaveUp", why))
+        } catch (t: Throwable) {
+            Log.w(TAG, "$t")
+        }
+    }
+
+    /** A stage's marker left on the disk: the process before this one died in it. */
+    private fun noteDeath(c: Context, r: JSONObject) {
+        val deaths = r.optJSONArray("deaths") ?: org.json.JSONArray().also { r.put("deaths", it) }
+        val left = marker(c)
+        if (!left.exists()) return
+        val m = try { JSONObject(left.readText()) } catch (_: Throwable) { JSONObject() }
+        val stage = m.optString("stage")
+        val hung = m.optBoolean("hung")
+        deaths.put(stage)
+        holder(r, stage)?.put(stage.substringAfter('/'), JSONObject().put("ok", false).put("died", true).put("hung", hung))
+        left.delete()
+        Log.w(TAG, "stage $stage killed its process (hung: $hung)")
     }
 
     private fun read(c: Context): JSONObject? = try {
@@ -186,18 +223,8 @@ internal object RouteProbe {
         crashIn = debug?.getString("crash")
         hangIn = debug?.getString("hang")
         val r = read(c) ?: fresh(c)
-        // (a stage's marker left on the disk: the process before this one died in it)
-        val deaths = r.optJSONArray("deaths") ?: org.json.JSONArray().also { r.put("deaths", it) }
-        val left = marker(c)
-        if (left.exists()) {
-            val m = try { JSONObject(left.readText()) } catch (_: Throwable) { JSONObject() }
-            val stage = m.optString("stage")
-            val hung = m.optBoolean("hung")
-            deaths.put(stage)
-            holder(r, stage)?.put(stage.substringAfter('/'), JSONObject().put("ok", false).put("died", true).put("hung", hung))
-            left.delete()
-            Log.w(TAG, "stage $stage killed its process (hung: $hung)")
-        }
+        noteDeath(c, r)
+        val deaths = r.getJSONArray("deaths")
         val v = Engine()
         try {
             save(c, r)
@@ -208,10 +235,16 @@ internal object RouteProbe {
                 stage(c, r, "root") { root(program, it) }
                 stage(c, r, "unpack") { unpack(c, it) }
                 stage(c, r, "load") { o -> o.put("ms", v.load()); o.put("ok", true) }
-                stage(c, r, "actor") { o -> o.put("ms", v.actor(config(c))); o.put("ok", true) }
-                if (ok(r, "load") && ok(r, "actor")) for (t in TRIPS) stage(c, r, "trips/${t.id}") { trip(c, v, t, it) }
-                stage(c, r, "map") { mapLong(c, it) }
+                // (with no whole tar an actor would only die of that, and read as if the library had)
+                if (ok(r, "unpack")) stage(c, r, "actor") { o -> o.put("ms", v.actor(config(c))); o.put("ok", true) }
+                else if (!r.has("actor")) r.put("actor", JSONObject().put("ok", false).put("skipped", "unpack failed"))
+                if (ok(r, "load") && ok(r, "actor")) {
+                    for (t in TRIPS) stage(c, r, "trips/${t.id}") { trip(c, v, t, it) }
+                    more(c, v, r)
+                }
             }
+            // (no library in this stage: a run that died too often still answers it)
+            stage(c, r, "map") { mapLong(c, it) }
         } catch (t: Throwable) {
             r.put("error", t.toString().take(300))
         }
@@ -228,6 +261,7 @@ internal object RouteProbe {
         .put("at", System.currentTimeMillis())
         .put("finished", false)
         .put("trips", JSONObject())
+        .put("more", JSONObject())
 
     private fun ok(r: JSONObject, key: String) = r.optJSONObject(key)?.optBoolean("ok") == true
 
@@ -253,6 +287,149 @@ internal object RouteProbe {
         into.put(key, o)
         save(c, r)
         marker(c).delete()
+    }
+
+    // ------------------------------------------------------------------------------------------ what 2.0 calls on every route
+
+    private fun location(lat: Double, lon: Double, rest: String = "\"type\":\"break\"") = String.format(Locale.ROOT, "{\"lat\":%.6f,\"lon\":%.6f,%s}", lat, lon, rest)
+
+    private fun asked(locations: String, extra: String = "") = "{\"locations\":[$locations],\"costing\":\"auto\",\"costing_options\":{\"auto\":{\"top_speed\":160,\"use_distance\":0.5,\"use_tolls\":0.5,\"use_tracks\":0.0}}," +
+        "\"format\":\"osrm\",\"shape_format\":\"geojson\",\"alternates\":2,\"units\":\"kilometers\",\"language\":\"en-US\",\"turn_lanes\":true$extra}"
+
+    private fun plain(c: Context, v: Engine): JSONObject {
+        val t = TRIPS[0]
+        return JSONObject(String(v.route(c, asked(location(t.a, t.b) + "," + location(t.c, t.d)).toByteArray()), Charsets.UTF_8))
+    }
+
+    private fun coords(a: JSONObject) = a.getJSONArray("routes").getJSONObject(0).getJSONObject("geometry").getJSONArray("coordinates")
+
+    /** One request with something of 2.0's in it: what it answered, set against the plain trip's km. */
+    private fun option(c: Context, v: Engine, o: JSONObject, request: (mid: DoubleArray) -> String) {
+        val p = plain(c, v)
+        val line = coords(p)
+        val mid = line.getJSONArray(line.length() / 2)
+        val t0 = SystemClock.elapsedRealtimeNanos()
+        val body = v.route(c, request(doubleArrayOf(mid.getDouble(1), mid.getDouble(0))).toByteArray())
+        o.put("ms", (SystemClock.elapsedRealtimeNanos() - t0) / 1_000_000).put("bytes", body.size)
+        val a = JSONObject(String(body, Charsets.UTF_8))
+        o.put("code", a.opt("code") ?: JSONObject.NULL).put("plainKm", p.getJSONArray("routes").getJSONObject(0).optDouble("distance", 0.0) / 1000)
+        a.optJSONArray("routes")?.optJSONObject(0)?.let { o.put("km", Math.round(it.optDouble("distance", 0.0) * 100) / 100.0) }
+        if (a.opt("code") != "Ok") o.put("message", a.optString("message").take(200))
+        // (an answer of any kind is what is asked here: no crash, and the request understood)
+        o.put("ok", a.has("code"))
+    }
+
+    private fun more(c: Context, v: Engine, r: JSONObject) {
+        val t = TRIPS[0]
+        val ends = location(t.a, t.b) + "," + location(t.c, t.d)
+        // RouteService.limits, after every route; guidance's classes come the same way
+        stage(c, r, "more/trace") { o ->
+            val line = coords(plain(c, v))
+            val q = StringBuilder("{\"shape\":[")
+            for (i in 0 until line.length()) {
+                val p = line.getJSONArray(i)
+                if (i > 0) q.append(',')
+                q.append("{\"lat\":").append(p.getDouble(1)).append(",\"lon\":").append(p.getDouble(0)).append('}')
+            }
+            q.append("],\"costing\":\"auto\",\"shape_match\":\"edge_walk\",\"filters\":{\"attributes\":[\"edge.speed_limit\",\"edge.road_class\",\"edge.use\",\"edge.bridge\",\"edge.tunnel\",\"edge.toll\",\"edge.begin_shape_index\",\"edge.end_shape_index\",\"shape\"],\"action\":\"include\"}}")
+            val t0 = SystemClock.elapsedRealtimeNanos()
+            val body = v.trace(q.toString().toByteArray())
+            o.put("ms", (SystemClock.elapsedRealtimeNanos() - t0) / 1_000_000).put("bytes", body.size).put("points", line.length())
+            val edges = JSONObject(String(body, Charsets.UTF_8)).optJSONArray("edges")
+            o.put("edges", edges?.length() ?: 0)
+            o.put("ok", (edges?.length() ?: 0) > 0)
+            memory(o)
+        }
+        stage(c, r, "more/avoid") { o ->
+            option(c, v, o) { m ->
+                val d = 0.02
+                asked(ends, String.format(Locale.ROOT, ",\"exclude_polygons\":[[[%.6f,%.6f],[%.6f,%.6f],[%.6f,%.6f],[%.6f,%.6f],[%.6f,%.6f]]]", m[1] - d, m[0] - d, m[1] + d, m[0] - d, m[1] + d, m[0] + d, m[1] - d, m[0] + d, m[1] - d, m[0] - d))
+            }
+        }
+        stage(c, r, "more/via") { o -> option(c, v, o) { m -> asked(location(t.a, t.b) + "," + location(m[0], m[1], "\"type\":\"through\"") + "," + location(t.c, t.d)) } }
+        stage(c, r, "more/viaStop") { o -> option(c, v, o) { m -> asked(location(t.a, t.b) + "," + location(m[0], m[1]) + "," + location(t.c, t.d)) } }
+        stage(c, r, "more/filter") { o ->
+            option(c, v, o) { _ -> asked(location(t.a, t.b, "\"type\":\"break\",\"search_filter\":{\"min_road_class\":\"primary\"}") + "," + location(t.c, t.d, "\"type\":\"break\",\"search_cutoff\":1000")) }
+        }
+        // the JSON at the size of the longest trips, in this process's heap, walked as Router's parsing walks it
+        stage(c, r, "more/longAnswer") { o ->
+            val steps = plain(c, v).getJSONArray("routes").getJSONObject(0).getJSONArray("legs").getJSONObject(0).getJSONArray("steps").toString().removeSurrounding("[", "]")
+            val copies = LONG_ANSWER_BYTES / steps.length + 1
+            val text = StringBuilder(LONG_ANSWER_BYTES + steps.length + 64).append("{\"code\":\"Ok\",\"routes\":[{\"legs\":[{\"steps\":[")
+            repeat(copies) { if (it > 0) text.append(','); text.append(steps) }
+            text.append("]}]}]}")
+            val t0 = SystemClock.elapsedRealtimeNanos()
+            val all = JSONObject(text.toString()).getJSONArray("routes").getJSONObject(0).getJSONArray("legs").getJSONObject(0).getJSONArray("steps")
+            var seen = 0
+            for (i in 0 until all.length()) {
+                val s = all.getJSONObject(i)
+                s.optString("name"); s.optDouble("distance"); s.optJSONArray("intersections")
+                s.getJSONObject("maneuver").optString("type")
+                seen++
+            }
+            o.put("ms", (SystemClock.elapsedRealtimeNanos() - t0) / 1_000_000).put("chars", text.length).put("steps", seen).put("ok", seen > 0)
+            memory(o)
+        }
+        // deleteActor, as a new pack asks, and the first route after it with nothing in the file cache, when the root shell can drop it
+        stage(c, r, "more/again") { o ->
+            v.close()
+            o.put("dropped", dropCaches())
+            var t0 = SystemClock.elapsedRealtimeNanos()
+            v.actor(config(c))
+            o.put("actorMs", (SystemClock.elapsedRealtimeNanos() - t0) / 1_000_000)
+            t0 = SystemClock.elapsedRealtimeNanos()
+            val a = plain(c, v)
+            o.put("routeMs", (SystemClock.elapsedRealtimeNanos() - t0) / 1_000_000).put("code", a.opt("code") ?: JSONObject.NULL).put("ok", a.opt("code") == "Ok")
+        }
+        stage(c, r, "more/disk") { o -> disk(c, o) }
+    }
+
+    /** Through the root shell, if there is one: then what is read next comes from the eMMC. */
+    private fun dropCaches(): Boolean {
+        var res: LocalAdb.Result? = null
+        val t = Thread({ res = LocalAdb.run("sync; echo 3 > /proc/sys/vm/drop_caches; echo __dropped=\$?", EXE_TIMEOUT_MS.toInt()) }, "aura-route-probe-adb").apply { isDaemon = true; start() }
+        t.join(EXE_TIMEOUT_MS + 2000)
+        return res?.output?.contains("__dropped=0") == true
+    }
+
+    /** The unit's eMMC by itself: a write with its sync, a sequential read, and 256 small reads at random places, which is what a route's tiles and a search's rows are. */
+    private fun disk(c: Context, o: JSONObject) {
+        val free = StatFs(c.filesDir.path).availableBytes
+        o.put("freeMb", free / (1024 * 1024))
+        if (free < DISK_NEEDS_FREE) { o.put("ok", false).put("skipped", "too little room"); return }
+        val f = File(work(c), "disk-test")
+        try {
+            val block = ByteArray(1024 * 1024) { (it * 31).toByte() }
+            var t0 = SystemClock.elapsedRealtimeNanos()
+            FileOutputStream(f).use { out ->
+                for (i in 0 until DISK_FILE_BYTES / block.size) out.write(block)
+                out.fd.sync()
+            }
+            o.put("bytes", DISK_FILE_BYTES).put("writeMs", (SystemClock.elapsedRealtimeNanos() - t0) / 1_000_000)
+            val dropped = dropCaches()
+            o.put("dropped", dropped)
+            t0 = SystemClock.elapsedRealtimeNanos()
+            f.inputStream().use { inp -> while (inp.read(block) >= 0) { } }
+            o.put("readMs", (SystemClock.elapsedRealtimeNanos() - t0) / 1_000_000)
+            if (dropped) dropCaches()
+            val rnd = java.util.Random(2501)
+            val small = ByteArray(4096)
+            val us = LongArray(256)
+            RandomAccessFile(f, "r").use { raf ->
+                for (i in us.indices) {
+                    raf.seek(rnd.nextInt(((DISK_FILE_BYTES - small.size) / small.size).toInt()).toLong() * small.size)
+                    val a = SystemClock.elapsedRealtimeNanos()
+                    raf.readFully(small)
+                    us[i] = (SystemClock.elapsedRealtimeNanos() - a) / 1000
+                }
+            }
+            us.sort()
+            o.put("smallReadUs", JSONObject().put("median", us[128]).put("p90", us[230]).put("worst", us[255]))
+            // (without dropping the cache these are the page cache's times: dropped says which)
+            o.put("ok", true)
+        } finally {
+            f.delete()
+        }
     }
 
     /** What the plans need to know of the unit and were guessing: RAM, space, the kernel's word width. */
@@ -385,6 +562,13 @@ internal object RouteProbe {
         fun route(c: Context, request: ByteArray): ByteArray {
             if (handle == 0L) actor(config(c))
             return v!!.route(handle, request)
+        }
+
+        fun trace(request: ByteArray): ByteArray = v!!.traceAttributes(handle, request)
+
+        fun close() {
+            if (handle != 0L) v!!.deleteActor(handle)
+            handle = 0L
         }
     }
 
