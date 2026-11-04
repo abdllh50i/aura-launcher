@@ -811,6 +811,11 @@ object PhoneServer {
             "/debug/code" -> reply(c, 200, JSONObject().put("code", Pairing.show(SystemClock.elapsedRealtime())))
             // what the voice would make of a sentence, and the one place it would take a search's answer to mean
             "/debug/command" -> reply(c, 200, JSONObject().put("command", com.abdllh.aura.voice.Command.parse(b.optString("text"))?.let { it.javaClass.simpleName + " " + it }))
+            "/debug/answer" -> {
+                val a = b.optJSONArray("list")
+                com.abdllh.aura.nav.Places.debugAnswer = a?.let { l -> (0 until l.length()).mapNotNull { placeOf(l.optJSONObject(it)) } }
+                reply(c, 200, JSONObject())
+            }
             "/debug/winner" -> {
                 val a = b.optJSONArray("list") ?: JSONArray()
                 val list = (0 until a.length()).mapNotNull { placeOf(a.optJSONObject(it)) }

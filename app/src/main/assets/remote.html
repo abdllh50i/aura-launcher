@@ -324,6 +324,7 @@ function placeButton(p, onTap) {
 function goTo(p, src) {
   var id = lastId = newId();
   $("found").textContent = "";
+  $("box").value = "";
   navName = p.name || "";
   say("أرسلت" + (navName ? " " + navName : "") + "، أنتظر رد الشاشة…");
   send("/v1/nav/go", {id: id, place: {name: p.name, detail: p.detail || "", lat: p.lat, lon: p.lon, src: src}, mode: "start"}).then(answered);

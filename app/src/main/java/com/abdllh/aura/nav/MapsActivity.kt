@@ -180,12 +180,14 @@ class MapsActivity : Activity() {
         // a place to show with its route and Go, the driver's to start: what the phone sent when no card can ask him,
         // or when no route was found for it ([com.abdllh.aura.link.PlaceInbox])
         if (i != null && i.hasExtra(EXTRA_LAT) && i.hasExtra(EXTRA_LON)) {
-            select(Place(i.getStringExtra(EXTRA_NAME).orEmpty(), i.getStringExtra(EXTRA_DETAIL).orEmpty(),
-                LatLon(i.getDoubleExtra(EXTRA_LAT, 0.0), i.getDoubleExtra(EXTRA_LON, 0.0))))
+            val pos = LatLon(i.getDoubleExtra(EXTRA_LAT, 0.0), i.getDoubleExtra(EXTRA_LON, 0.0))
+            notKept = if (i.getBooleanExtra(EXTRA_KEEP, true)) null else pos
+            select(Place(i.getStringExtra(EXTRA_NAME).orEmpty(), i.getStringExtra(EXTRA_DETAIL).orEmpty(), pos))
             i.removeExtra(EXTRA_LAT)
             i.removeExtra(EXTRA_LON)
             i.removeExtra(EXTRA_NAME)
             i.removeExtra(EXTRA_DETAIL)
+            i.removeExtra(EXTRA_KEEP)
         }
         if (i?.getBooleanExtra("search", false) == true) openSearch()
         // a search asked for by name (the assistant's "where is the nearest petrol station", and the emulator's tests)
@@ -203,6 +205,8 @@ class MapsActivity : Activity() {
 
     private var pickFor: String? = null
     private var finishAfterPick = false
+    /** The place sent here that must not go to the recent places when Go starts it ([EXTRA_KEEP]). */
+    private var notKept: LatLon? = null
 
     /** Choosing Home / Work: the search field says how, for as long as it takes. */
     private fun showPickHint() {
@@ -742,7 +746,7 @@ class MapsActivity : Activity() {
             toast(getString(if (CarLocation.last == null) R.string.maps_waiting_gps else R.string.maps_routing))
             return
         }
-        Trips.start(this, p, r)
+        Trips.start(this, p, r, remember = notKept != p.pos)
         afterStart()
     }
 
@@ -1297,6 +1301,8 @@ class MapsActivity : Activity() {
         const val EXTRA_LON = "dest_lon"
         const val EXTRA_NAME = "dest_name"
         const val EXTRA_DETAIL = "dest_detail"
+        /** false: not for the recent places (Apple's place data: companion.md 2.6). */
+        const val EXTRA_KEEP = "dest_keep"
 
         fun open(ctx: Context, extras: Intent.() -> Unit = {}) {
             try {

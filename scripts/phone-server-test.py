@@ -600,6 +600,12 @@ def t_unpaired(token, routes):
     check("a guess: a card", e is not None, ev.nav())
     time.sleep(0.5)
     tap_card(CARD_SECOND)
+    # nobody answers: it goes after 30 s, and the phone hears that
+    req("POST", "/v1/nav/go", {"id": I("gw-7"), "place": {"name": "ما أحد رد", "lat": 26.29, "lon": 50.18}, "mode": "start"})
+    ev.wait(lambda x: x.get("id") == I("gw-7") and x["state"] == "card", 4)
+    t0 = time.time()
+    e = ev.wait(lambda x: x.get("id") == I("gw-7") and x["state"] == "expired", 34)
+    check("nobody answers the card: expired after 30 s, nothing started", e is not None and 27 < time.time() - t0 < 34 and state(token)["nav"]["state"] == "idle", (e, time.time() - t0))
     ev.close()
     set_debug("1")
 
@@ -746,8 +752,13 @@ def front():
 
 def state(token):
     # (the main thread busy for over 1.5 s, a map opening on the emulator: told 503 "busy", asked again)
+    j = None
     for _ in range(10):
-        j = req("GET", "/v1/state", token=token)[1]
+        try:
+            j = req("GET", "/v1/state", token=token)[1]
+        except OSError as e:  # (a whole emulator can stall for many seconds when the PC is loaded)
+            print("     (no answer to state: %s)" % e)
+            continue
         if j and "nav" in j:
             return j
         time.sleep(0.5)
@@ -811,47 +822,88 @@ def t_voice_words():
     check("voice answer: no position, no choice", s == 200 and j["winner"] is None, j)
 
 
-def t_voice(token):
-    """"ودني ...": one clear place starts a route and says so, with a way to cancel; a weak or ambiguous answer stays a list."""
+def t_voice_live(token):
+    """What the unit's real search answers for some spoken names, and which way each goes. Reports only: the data is the internet's."""
     home()
     fix()
     home()
-    # what the unit's own search answers, whichever way each goes (the internet's data, so this part only reports)
-    for q in ["مطار الملك فهد", "المطار", "جامعة الملك فهد", "ستاربكس", "صيدلية", "شارع", "مكتبة جرير", "qwxyzz"]:
+    for q in ["مطار الملك فهد", "المطار", "جامعة الملك فهد", "ستاربكس", "الراشد مول", "شارع", "مكتبة جرير", "qwxyzz"]:
         amri_say("ودني " + q)
-        j = wait_state(token, lambda x: x["nav"]["state"] in ("routing", "navigating") and x["nav"].get("by") == "voice", 9)
+        j = wait_state(token, lambda x: x["nav"]["state"] in ("routing", "navigating") and x["nav"].get("by") == "voice", 11)
         log = [l for l in amri_log().split("\n") if "place '" in l or "request " in l]
         print("     %s -> %s | %s" % (q, j["nav"]["place"]["name"] if j else "(no trip)", " | ".join(l.split(": ", 1)[-1] for l in log)[:220]))
         stop_trip(token)
         home()
-    amri_say("ودني الراشد مول")
-    j = wait_state(token, lambda x: x["nav"]["state"] == "navigating", 15)
-    check("voice: a clear place starts a trip", j is not None and j["nav"].get("by") == "voice", amri_log()[-400:])
-    log = amri_log()
-    check("voice: it says what it chose", "request SearchPlace" in log, log[-400:])
-    print("     %s" % " | ".join(l.split(": ", 1)[-1] for l in log.split("\n") if "place '" in l or "request SearchPlace" in l))
-    time.sleep(0.5)
-    shot("v2-link-voice-started")
-    tap_card(CARD_NARROW_CANCEL)
-    j = wait_state(token, lambda x: x["nav"]["state"] == "idle", 4)
-    check("voice: the card's cancel ends it", j is not None, state(token)["nav"])
+
+
+def t_voice(token):
+    """"ودني ...": one clear place starts a route and says so, with a way to cancel; a weak or ambiguous answer stays a list.
+    The search's answer is fixed here (/debug/answer, for Places.lookup only): what is tested is what is done with it."""
     home()
-    amri_say("ودني صيدلية")
-    time.sleep(9)
-    j = state(token)
-    check("voice: many places of that kind: no trip", j["nav"]["state"] == "idle", j["nav"])
-    check("voice: many places of that kind: the list, on the map", "MapsActivity" in front(), front())
-    shot("v2-link-voice-list")
+    fix()
     home()
-    amri_say("وقف الملاحة")
-    time.sleep(1.5)
-    check("voice: stop with no trip says so", "request StopTrip" in amri_log(), amri_log()[-300:])
-    amri_say("ودني الراشد مول")
-    wait_state(token, lambda x: x["nav"]["state"] == "navigating", 15)
-    time.sleep(6)
-    amri_say("وقف الملاحة")
-    j = wait_state(token, lambda x: x["nav"]["state"] == "idle", 5)
-    check("voice: stop ends the trip", j is not None, state(token)["nav"])
+    def answer(*places):
+        req("POST", "/debug/answer", {"list": [{"name": n, "detail": "", "lat": la, "lon": lo} for n, la, lo in places]})
+    clear = [("Al Rashid Mall", 26.29, 50.18), ("Rashid Road", 26.5, 50.0)]
+    try:
+        answer(*clear)
+        amri_say("ودني الراشد مول")
+        j = wait_state(token, lambda x: x["nav"]["state"] == "navigating", 15)
+        check("voice: a clear place starts a trip", j is not None and j["nav"].get("by") == "voice" and j["nav"]["place"]["name"] == "Al Rashid Mall", amri_log()[-400:])
+        log = amri_log()
+        print("     %s" % " | ".join(l.split(": ", 1)[-1] for l in log.split("\n") if "place '" in l or "request " in l))
+        said = [l for l in log.split("\n") if "request SearchPlace" in l]
+        check("voice: it says what it chose", len(said) == 2 and "Al Rashid Mall" in said[-1], said)
+        time.sleep(0.5)
+        shot("v2-link-voice-started")
+        tap_card(CARD_NARROW_CANCEL)
+        j = wait_state(token, lambda x: x["nav"]["state"] == "idle", 4)
+        check("voice: the card's cancel ends it", j is not None, state(token)["nav"])
+        home()
+        # ambiguous: two names answer alike, at about the same distance
+        answer(("Al Nahdi Pharmacy", 26.41, 50.10), ("Al Nahdi Clinic", 26.42, 50.09))
+        amri_say("ودني النهدي")
+        time.sleep(4)
+        j = state(token)
+        check("voice: ambiguous: no trip", j["nav"]["state"] == "idle", j["nav"])
+        check("voice: ambiguous: the map's list", "MapsActivity" in front(), front())
+        said = [l for l in amri_log().split("\n") if "request SearchPlace" in l]
+        print("     %s" % (said[-1].split(": ", 1)[-1] if said else None))
+        shot("v2-link-voice-list")
+        home()
+        # weak: a word that says what kind of place; nothing found
+        answer(("Street 9", 26.44, 50.10))
+        amri_say("ودني شارع")
+        time.sleep(3)
+        check("voice: a word for a kind of place: no trip", state(token)["nav"]["state"] == "idle", state(token)["nav"])
+        home()
+        answer()
+        amri_say("ودني qwxyzz")
+        time.sleep(3)
+        check("voice: nothing found: no trip", state(token)["nav"]["state"] == "idle", state(token)["nav"])
+        home()
+        # during a trip it asks, like the phone
+        answer(*clear)
+        req("POST", "/v1/nav/go", {"id": I("voice-trip"), "place": {"name": "الرحلة", "lat": 26.35, "lon": 50.15}, "mode": "start"}, token)
+        j = wait_state(token, lambda x: x["nav"]["state"] == "navigating", 45)
+        check("voice during a trip: first the trip", j is not None, state(token)["nav"])
+        time.sleep(6)
+        amri_say("ودني الراشد مول")
+        time.sleep(1.5)
+        j = state(token)
+        check("voice during a trip: the trip stays, the card asks", j["nav"]["place"]["name"] == "الرحلة" and j["nav"].get("pending", {}).get("stage") == "replacing", j["nav"])
+        said = [l for l in amri_log().split("\n") if "request SearchPlace" in l]
+        print("     %s" % (said[-1].split(": ", 1)[-1] if said else None))
+        time.sleep(0.4)
+        shot("v2-link-voice-replace")
+        amri_say("وقف الملاحة")
+        j = wait_state(token, lambda x: x["nav"]["state"] == "idle" and "pending" not in x["nav"], 5)
+        check("voice: stop ends the trip, and what waited", j is not None, state(token)["nav"])
+        amri_say("وقف الملاحة")
+        time.sleep(1.5)
+        check("voice: stop with no trip says so", "request StopTrip" in amri_log(), amri_log()[-300:])
+    finally:
+        req("POST", "/debug/answer", {})
     stop_trip(token)
     home()
 
@@ -1002,6 +1054,57 @@ def t_saved(token):
     home()
 
 
+def t_apple(token):
+    """Apple's place data is not kept on the unit (companion.md 2.6); any other place goes to the recents."""
+    home()
+    fix()
+    home()
+    ev = Events(token)
+    time.sleep(0.5)
+    for key, src, kept in [("apple-1", "share.apple", False), ("apple-2", "share.google", True)]:
+        name = "مكان " + key
+        req("POST", "/v1/nav/go", {"id": I(key), "place": {"name": name, "lat": 26.29, "lon": 50.18, "src": src}, "mode": "start"}, token)
+        e = ev.wait(lambda x: x.get("id") == I(key) and x["state"] == "started", 45)
+        check("%s: started" % src, e is not None, ev.nav())
+        recents = [p["name"] for p in req("GET", "/v1/places", token=token)[1]["recents"]]
+        check("%s: %s the recent places" % (src, "in" if kept else "not in"), (name in recents) == kept, recents)
+        time.sleep(0.3)
+        stop_trip(token)
+        home()
+    ev.close()
+
+
+def t_drive(token):
+    """A whole trip with the fake drive (debug.aura.navsim, km/h): the reports every 10 s, then the arrival."""
+    shell("setprop debug.aura.navsim 200")
+    home()
+    fix()
+    home()
+    ev = Events(token)
+    time.sleep(0.5)
+    req("POST", "/v1/nav/go", {"id": I("drive-1"), "place": {"name": "قريب", "lat": 26.425, "lon": 50.10}, "mode": "start"}, token)
+    e = ev.wait(lambda x: x.get("id") == I("drive-1") and x["state"] in ("started", "failed"), 45)
+    check("drive: started", e is not None and e["state"] == "started", ev.nav())
+    print("     %s" % e)
+    time.sleep(12)
+    shot("v2-link-drive")
+    a = ev.wait(lambda x: x["state"] == "arrived", 150)
+    check("drive: arrived is told", a is not None, [x["state"] for x in ev.nav()])
+    prog = [(t, d) for t, k, d in ev.events if k == "nav" and d["state"] == "progress"]
+    print("     %d reports, e.g. %s" % (len(prog), json.dumps(prog[0][1], ensure_ascii=False)[:230] if prog else None))
+    check("drive: progress reports, each with what is left", len(prog) >= 1 and all(all(k in d for k in ("remainingM", "timeLeftS", "etaLocal")) for _, d in prog), prog[:1])
+    gaps = [prog[i + 1][0] - prog[i][0] for i in range(len(prog) - 1)]
+    check("drive: at most one report in 10 s", all(g >= 9 for g in gaps), gaps)
+    left = [d["remainingM"] for _, d in prog]
+    check("drive: what is left goes down", left == sorted(left, reverse=True), left)
+    time.sleep(0.5)
+    shot("v2-link-arrived")
+    ev.close()
+    shell("setprop debug.aura.navsim ''")
+    stop_trip(token)
+    home()
+
+
 def t_remote_more(token):
     home()
     s, j, _, _ = req("POST", "/v1/remote", {"cmd": "open.music"}, token)
@@ -1053,8 +1156,27 @@ def t_no_fix(token):
     shell("am start -n com.abdllh.aura/.nav.MapsActivity --es mock_loc 26.40,50.09")
     e = ev.wait(lambda x: x.get("id") == I("nofix-2") and x["state"] in ("started", "failed"), 45)
     check("no fix: the first fix starts it", e is not None and e["state"] == "started", ev.nav())
-    ev.close()
     stop_trip(token)
+    # told to wait for a fix, and cancelled on the card
+    shell("settings put secure location_mode 0")
+    shell("am force-stop com.abdllh.aura")
+    shell("am start -n com.abdllh.aura/.home.HomeActivity")
+    time.sleep(4)
+    ev.close()
+    ev = Events(token)
+    time.sleep(0.5)
+    req("POST", "/v1/nav/go", {"id": I("nofix-3"), "place": place, "mode": "start"}, token)
+    e = ev.wait(lambda x: x.get("id") == I("nofix-3") and x["state"] == "waiting_fix", 8)
+    check("no fix again: it waits", e is not None, ev.nav())
+    time.sleep(2)
+    tap_card(CARD_WAIT_CANCEL)
+    e = ev.wait(lambda x: x.get("id") == I("nofix-3") and x["state"] == "cancelled", 4)
+    check("no fix: the card's cancel drops it", e is not None and e.get("by") == "card", ev.nav())
+    j = state(token)
+    check("no fix: after the cancel nothing waits", j["nav"]["state"] == "idle" and "pending" not in j["nav"], j["nav"])
+    time.sleep(0.5)
+    shot("v2-link-waiting-cancelled")
+    ev.close()
     shell("settings put secure location_mode 3")
     home()
 
@@ -1082,7 +1204,7 @@ def t_kill():
 
 
 def main():
-    global SERIAL, PORT, CARD_NARROW_CANCEL, CARD_REPLACE, CARD_PRIMARY, CARD_SECOND
+    global SERIAL, PORT, CARD_NARROW_CANCEL, CARD_REPLACE, CARD_PRIMARY, CARD_SECOND, CARD_WAIT_CANCEL
     p = argparse.ArgumentParser()
     p.add_argument("--serial", default="emulator-5572")
     p.add_argument("--port", type=int, default=47101)
@@ -1093,7 +1215,7 @@ def main():
     only = set(filter(None, a.only.split(",")))
     want = lambda n: not only or n in only
     # where the card's buttons are: read from the screen, both languages
-    CARD_NARROW_CANCEL, CARD_REPLACE, CARD_PRIMARY, CARD_SECOND = card_buttons()
+    CARD_NARROW_CANCEL, CARD_REPLACE, CARD_PRIMARY, CARD_SECOND, CARD_WAIT_CANCEL = card_buttons()
 
     adb("forward", "tcp:%d" % PORT, "tcp:47101")
     shell("appops set com.abdllh.aura SYSTEM_ALERT_WINDOW allow")
@@ -1137,6 +1259,10 @@ def main():
         t_held(token, routes)
     if want("unpaired"):
         t_unpaired(token, routes)
+    if want("drive"):
+        t_drive(token)
+    if want("apple"):
+        t_apple(token)
     if want("remote"):
         t_remote_more(token)
     if want("saved"):
@@ -1149,6 +1275,8 @@ def main():
         t_voice_words()
     if want("voice"):
         t_voice(token)
+    if "voicelive" in only:
+        t_voice_live(token)
     if want("naghm"):
         t_naghm(token)
     if want("kill"):
@@ -1170,7 +1298,7 @@ def card_buttons():
     and Replace on the narrow card beside a trip's banner, Start and No on the wide one."""
     lang = shell("run-as com.abdllh.aura cat shared_prefs/aura.xml")
     arabic = 'name="lang">ar' in lang or shell("getprop persist.sys.locale").startswith("ar")
-    at = [(945, 77), (790, 137), (735, 62), (820, 62)]
+    at = [(945, 77), (790, 137), (735, 62), (820, 62), (806, 62)]
     return [(1024 - x, y) for x, y in at] if arabic else at
 
 

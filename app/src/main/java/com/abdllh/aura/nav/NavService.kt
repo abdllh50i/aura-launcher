@@ -85,8 +85,13 @@ class NavService : Service() {
 
         fun start(ctx: Context) {
             if (state != STOPPED) return
+            val i = Intent(ctx, NavService::class.java)
             try {
-                ctx.startForegroundService(Intent(ctx, NavService::class.java))
+                // With the app in front a plain start is allowed, and no clock runs: after startForegroundService() the
+                // service has 10 s to call startForeground(), and a main thread held up that long (a first map frame on
+                // a stalled GPU: seen on a loaded emulator) brings the whole app down, the home screen with it. In the
+                // background (a place from the phone over another app) only the other way is allowed.
+                try { ctx.startService(i) } catch (_: IllegalStateException) { ctx.startForegroundService(i) }
                 state = STARTING
             } catch (_: Throwable) {
             }

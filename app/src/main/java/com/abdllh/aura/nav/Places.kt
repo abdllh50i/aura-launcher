@@ -67,8 +67,12 @@ object Places {
      * list so far, and whether it is the last one.
      */
     fun lookup(query: String, near: LatLon?, arabic: Boolean, done: (List<Place>?, Boolean) -> Unit) {
+        if (BuildConfig.DEBUG) debugAnswer?.let { a -> main.post { done(a, true) }; return }
         find(query, near, arabic, lookupIo, { true }, done)
     }
+
+    /** Debug builds: what [lookup] answers instead of searching (the voice's choice, tested without the internet). */
+    @Volatile internal var debugAnswer: List<Place>? = null
 
     private fun find(query: String, near: LatLon?, arabic: Boolean, online: java.util.concurrent.Executor, current: () -> Boolean,
                      done: (List<Place>?, Boolean) -> Unit) {

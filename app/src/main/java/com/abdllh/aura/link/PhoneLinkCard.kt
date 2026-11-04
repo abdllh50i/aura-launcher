@@ -51,6 +51,8 @@ class PhoneLinkCard(private val ctx: Context) {
     private val second = object : Runnable {
         override fun run() {
             if (!attached || !showing) return
+            // (Settings left with Home: the page stays built, but the code is valid only while it is really on the screen)
+            if (qrRow.windowVisibility != View.VISIBLE) { setShowing(false); return }
             refreshCode()
             qrRow.postDelayed(this, 1000L)
         }

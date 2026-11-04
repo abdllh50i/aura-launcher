@@ -247,6 +247,7 @@ internal object PlaceInbox {
             putExtra(MapsActivity.EXTRA_LON, x.place.pos.lon)
             putExtra(MapsActivity.EXTRA_NAME, x.place.name)
             putExtra(MapsActivity.EXTRA_DETAIL, x.place.detail)
+            putExtra(MapsActivity.EXTRA_KEEP, mayKeep(x))
         }
     }
 
@@ -265,10 +266,8 @@ internal object PlaceInbox {
         cardAway = false
         main.removeCallbacks(tick)
         main.postDelayed(tick, 1000L)
-        // (Apple's terms keep its place data off the unit's lists: companion.md 2.6)
-        val mayKeep = !x.src.contains("apple", ignoreCase = true)
         shownPhase = null // ([tripsListener] tells each phase, the first one too, and shows the card)
-        Trips.goTo(c, x.place, x.from, if (x.voice) Trips.VOICE else Trips.PHONE, waitForFix = true, remember = mayKeep) { outcome, why ->
+        Trips.goTo(c, x.place, x.from, if (x.voice) Trips.VOICE else Trips.PHONE, waitForFix = true, remember = mayKeep(x)) { outcome, why ->
             if (current === x) when (outcome) {
                 Trips.Outcome.STARTED -> started(c, x)
                 Trips.Outcome.FAILED, Trips.Outcome.NO_FIX -> failed(c, x, if (outcome == Trips.Outcome.NO_FIX) "no_fix" else if (why == "timeout") "timeout" else "no_route")
@@ -278,6 +277,9 @@ internal object PlaceInbox {
         // the way it has always come forward; it shows the place while the route is found
         if (Trips.attempt?.place === x.place) MapsActivity.open(c)
     }
+
+    /** Apple's terms keep its place data off the unit's lists (companion.md 2.6). */
+    private fun mayKeep(x: Incoming) = !x.src.contains("apple", ignoreCase = true)
 
     private fun tellPhase(x: Incoming, phase: Trips.Phase) =
         tell(x, if (phase == Trips.Phase.WAITING_FIX) "waiting_fix" else "routing", JSONObject().put("place", x.place.toJson()))
