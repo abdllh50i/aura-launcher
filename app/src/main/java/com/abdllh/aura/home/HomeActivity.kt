@@ -304,6 +304,7 @@ class HomeActivity : Activity(), HomeHost {
                 }
             }
             startCover = null
+            com.abdllh.aura.nav.MapLib.preload(this) // (the map below will want it: off the main thread, and not before this frame)
             // (counted from here too: from onResume, the first frame's wait brought it into the middle of the entrance)
             r.postDelayed({ if (!isDestroyed) mapPanel.startLive() }, LIVE_MAP_AFTER_MS)
         }

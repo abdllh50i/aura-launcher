@@ -1,5 +1,6 @@
 package com.abdllh.aura.ui
 
+import android.app.Activity
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -17,7 +18,9 @@ import android.os.Looper
 import android.os.Process
 import android.os.SystemClock
 import android.util.Log
+import android.view.FrameMetrics
 import android.view.TextureView
+import android.view.Window
 import com.abdllh.aura.BuildConfig
 import com.abdllh.aura.system.SystemProps
 import com.abdllh.aura.util.Prefs
@@ -341,6 +344,7 @@ class CarGlView(context: Context, private val dark: Boolean, private val bg: Int
     @Volatile private var vw = 0
     @Volatile private var vh = 0
     @Volatile private var failed = false
+    @Volatile private var frameOver = false // the window's frame that brought the surface is on the screen (FrameOver)
     @Volatile private var restFrame = -1
     private var restWanted = -1           // main thread
 
@@ -348,9 +352,6 @@ class CarGlView(context: Context, private val dark: Boolean, private val bg: Int
     private var display: EGLDisplay = EGL14.EGL_NO_DISPLAY
     private var eglCtx: EGLContext = EGL14.EGL_NO_CONTEXT
     private var eglSurface: EGLSurface = EGL14.EGL_NO_SURFACE
-    private var eglCfg: EGLConfig? = null
-    private var offscreen: EGLSurface = EGL14.EGL_NO_SURFACE // what the context is current on until the window's surface comes
-    private var noOffscreen = false       // that did not work here: everything waits for the window's surface
     private var loaded = false            // the first frames are in the GPU
     @Volatile private var showing = false // a frame has been put on screen (the stage was told)
     private var program = 0
@@ -399,10 +400,7 @@ class CarGlView(context: Context, private val dark: Boolean, private val bg: Int
     // ended there, once it has let go of the surface; here only when there never was one
     override fun onDetachedFromWindow() {
         detached = true
-        if (surface == null) {
-            gl?.post { release() } // (the frames may be in already, for a surface that never came)
-            quitThread()
-        }
+        if (surface == null) quitThread()
         super.onDetachedFromWindow()
     }
 
@@ -451,7 +449,37 @@ class CarGlView(context: Context, private val dark: Boolean, private val bg: Int
     // ------------------------------------------------------------------------------------------ TextureView
     override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) {
         surface = st; vw = w; vh = h
-        gl?.post { tryStart() }
+        FrameOver().start() // (this comes in the middle of drawing the window's frame)
+    }
+
+    /**
+     * Lets the GL thread start once the window's frame being drawn is on the screen. Beside that frame (at a cold start the
+     * view drawing's own EGL set-up and programs) this thread's EGL set-up, program and uploads held the screen back:
+     * about 300 ms of 1200 on a loaded emulator (the first frames are in 150-400 ms after this, so the car only comes that
+     * much later, faded in). At the latest after [FRAME_WAIT_MS]: the car must not depend on the report coming.
+     */
+    private inner class FrameOver : Window.OnFrameMetricsAvailableListener, Runnable {
+        private val win = if (BuildConfig.DEBUG && SystemProps.get("debug.aura.car.noreport") == "1") null else (context as? Activity)?.window
+        private var done = false
+
+        fun start() {
+            frameOver = false
+            main.postDelayed(this, FRAME_WAIT_MS)
+            try { win?.addOnFrameMetricsAvailableListener(this, main) } catch (t: Throwable) { Log.w("AuraCar", "frame report: $t") }
+        }
+
+        override fun onFrameMetricsAvailable(w: Window, m: FrameMetrics, dropped: Int) {
+            main.post(this) // (not from inside the window's own round of its listeners)
+        }
+
+        override fun run() {
+            if (done) return
+            done = true
+            main.removeCallbacks(this)
+            try { win?.removeOnFrameMetricsAvailableListener(this) } catch (_: Throwable) { }
+            frameOver = true
+            gl?.post { tryStart() }
+        }
     }
 
     override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) {
@@ -478,61 +506,43 @@ class CarGlView(context: Context, private val dark: Boolean, private val bg: Int
         main.post { visibility = GONE; onFailed?.invoke() }
     }
 
-    /**
-     * The context, the program and the first frames come as soon as the frame file is known, current on a small
-     * off-screen surface: the window's surface only comes with the screen's first draw, and with the frames in by the
-     * time that frame shows, the car starts with the rest of the screen. A driver that refuses this goes the plain
-     * way: all of it once the window's surface is there.
-     */
     private fun tryStart() {
+        val st = surface ?: return
         val f = file ?: return
         val m = meta ?: return
-        if (failed) return
+        if (!frameOver || eglCtx != EGL14.EGL_NO_CONTEXT || failed) return
         try {
-            if (!loaded) {
-                val st = surface
-                if (st == null && noOffscreen) return
-                val t0 = SystemClock.elapsedRealtime()
-                if (BuildConfig.DEBUG) debugHooks()
-                initEgl(st)
-                initProgram(m)
-                val t1 = SystemClock.elapsedRealtime()
-                val set = firstFrames ?: intArrayOf(Math.floorMod(m.defaultFrame, m.count))
-                loadFirst(f, m, set)
-                loaded = true
-                firstInAt = SystemClock.elapsedRealtime()
-                Log.i("AuraCar", "GPU car: ${set.size} of ${m.count} frames in ${firstInAt - t0} ms " +
-                    "(EGL and program ${t1 - t0}, ${if (st == null) "ahead of the window" else "on the window"})")
-                CarStage.gpuFirstMs = firstInAt - t0
-                gl?.postDelayed({ startRest() }, REST_AFTER_MS) // (the intro's end or a touch asks for them before that)
-            }
-            if (eglSurface == EGL14.EGL_NO_SURFACE) attachWindow()
-            if (eglSurface != EGL14.EGL_NO_SURFACE) drawRunnable.run() // the state the stage asked for meanwhile
+            val t0 = SystemClock.elapsedRealtime()
+            if (BuildConfig.DEBUG) debugHooks()
+            initEgl(st)
+            initProgram(m)
+            val t1 = SystemClock.elapsedRealtime()
+            val set = firstFrames ?: intArrayOf(Math.floorMod(m.defaultFrame, m.count))
+            loadFirst(f, m, set)
+            loaded = true
+            firstInAt = SystemClock.elapsedRealtime()
+            Log.i("AuraCar", "GPU car: ${set.size} of ${m.count} frames in ${firstInAt - t0} ms (EGL and program ${t1 - t0})")
+            CarStage.gpuFirstMs = firstInAt - t0
+            gl?.postDelayed({ startRest() }, REST_AFTER_MS) // (the intro's end or a touch asks for them before that)
+            drawRunnable.run() // the state the stage asked for meanwhile
         } catch (t: Throwable) {
             release()
-            if (noOffscreen) fail(t.toString())
-            else {
-                Log.i("AuraCar", "GPU car ahead of the window: $t")
-                noOffscreen = true
-                tryStart() // (or when the window's surface comes)
-            }
+            fail(t.toString())
         }
     }
 
-    // emulator tests: a slow start of the GPU path, one that fails, one without the off-screen surface
+    // emulator tests: a slow start of the GPU path, one that fails
     private fun debugHooks() {
         SystemProps.get("debug.aura.car.slow").toLongOrNull()?.let { Thread.sleep(it) }
         if (SystemProps.get("debug.aura.car.fail") == "1") throw IllegalStateException("debug.aura.car.fail")
-        if (SystemProps.get("debug.aura.car.nooff") == "1" && !noOffscreen) throw IllegalStateException("debug.aura.car.nooff")
     }
 
-    private fun initEgl(st: SurfaceTexture?) {
+    private fun initEgl(st: SurfaceTexture) {
         display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
         val v = IntArray(2)
         if (!EGL14.eglInitialize(display, v, 0, v, 1)) throw IllegalStateException("eglInitialize")
-        val type = if (noOffscreen) EGL14.EGL_WINDOW_BIT else EGL14.EGL_WINDOW_BIT or EGL14.EGL_PBUFFER_BIT
         val attrs = intArrayOf(
-            EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT, EGL14.EGL_SURFACE_TYPE, type,
+            EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
             EGL14.EGL_RED_SIZE, 8, EGL14.EGL_GREEN_SIZE, 8, EGL14.EGL_BLUE_SIZE, 8, EGL14.EGL_ALPHA_SIZE, 8,
             EGL14.EGL_DEPTH_SIZE, 0, EGL14.EGL_STENCIL_SIZE, 0,
             EGL14.EGL_NONE
@@ -540,26 +550,12 @@ class CarGlView(context: Context, private val dark: Boolean, private val bg: Int
         val cfgs = arrayOfNulls<EGLConfig>(1)
         val n = IntArray(1)
         if (!EGL14.eglChooseConfig(display, attrs, 0, cfgs, 0, 1, n, 0) || n[0] < 1) throw IllegalStateException("eglChooseConfig")
-        eglCfg = cfgs[0]
         eglCtx = EGL14.eglCreateContext(display, cfgs[0], EGL14.EGL_NO_CONTEXT,
             intArrayOf(EGL14.EGL_CONTEXT_CLIENT_VERSION, 2, EGL14.EGL_NONE), 0)
         if (eglCtx == EGL14.EGL_NO_CONTEXT) throw IllegalStateException("eglCreateContext")
-        if (st != null) { attachWindow(); return }
-        offscreen = EGL14.eglCreatePbufferSurface(display, cfgs[0], intArrayOf(EGL14.EGL_WIDTH, 1, EGL14.EGL_HEIGHT, 1, EGL14.EGL_NONE), 0)
-        if (offscreen == EGL14.EGL_NO_SURFACE) throw IllegalStateException("eglCreatePbufferSurface")
-        if (!EGL14.eglMakeCurrent(display, offscreen, offscreen, eglCtx)) throw IllegalStateException("eglMakeCurrent")
-    }
-
-    /** The context moves to the window's surface, as soon as there is one. */
-    private fun attachWindow() {
-        val st = surface ?: return
-        eglSurface = EGL14.eglCreateWindowSurface(display, eglCfg, st, intArrayOf(EGL14.EGL_NONE), 0)
+        eglSurface = EGL14.eglCreateWindowSurface(display, cfgs[0], st, intArrayOf(EGL14.EGL_NONE), 0)
         if (eglSurface == EGL14.EGL_NO_SURFACE) throw IllegalStateException("eglCreateWindowSurface")
         if (!EGL14.eglMakeCurrent(display, eglSurface, eglSurface, eglCtx)) throw IllegalStateException("eglMakeCurrent")
-        if (offscreen != EGL14.EGL_NO_SURFACE) {
-            EGL14.eglDestroySurface(display, offscreen)
-            offscreen = EGL14.EGL_NO_SURFACE
-        }
     }
 
     /**
@@ -792,12 +788,10 @@ class CarGlView(context: Context, private val dark: Boolean, private val bg: Int
                     EGL14.eglDestroyContext(display, eglCtx) // its textures and program go with it
                 }
                 if (eglSurface != EGL14.EGL_NO_SURFACE) EGL14.eglDestroySurface(display, eglSurface)
-                if (offscreen != EGL14.EGL_NO_SURFACE) EGL14.eglDestroySurface(display, offscreen)
             } catch (_: Throwable) { }
         }
         eglCtx = EGL14.EGL_NO_CONTEXT
         eglSurface = EGL14.EGL_NO_SURFACE
-        offscreen = EGL14.EGL_NO_SURFACE
         display = EGL14.EGL_NO_DISPLAY
         tex = IntArray(0)
         have = BooleanArray(0)
@@ -812,6 +806,8 @@ class CarGlView(context: Context, private val dark: Boolean, private val bg: Int
     companion object {
         /** Longest the frames after the first ones wait for the intro's end (or a touch) to ask for them. */
         private const val REST_AFTER_MS = 3000L
+        /** Longest the GL thread's start waits for the report that the window's frame is on the screen. */
+        private const val FRAME_WAIT_MS = 1000L
 
         private const val VERTEX = """
 attribute vec2 a_pos;

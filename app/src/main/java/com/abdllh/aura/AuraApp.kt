@@ -53,7 +53,6 @@ class AuraApp : Application() {
         // the status bar, the volume display and the screen-change animations are Aura's to change only while Aura is
         // the home screen
         val disabled = SystemProps.get(Device.DISABLED_PROP) == "1"
-        if (!disabled) com.abdllh.aura.nav.MapLib.preload(this) // (the home screen's map will want it: off the main thread)
         if (disabled) {
             SystemBars.release(this); VolumeHud.release(this); Animations.release(this)
             com.abdllh.aura.phone.Calls.release(this); MusicKeys.release(); com.abdllh.aura.system.Notices.release(this)

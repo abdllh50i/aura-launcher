@@ -186,16 +186,19 @@ of it could be tried on the unit first.
   * `CarEtc.readyNow` tells from a few stats and a hash kept per APK (`carEtcHash`, "<version:size:time:frames>=<hash>"),
     no asset opened. False once after each install or update: nothing has read that APK's frames yet, so that one start
     takes the CPU path as before.
-  * The GL thread starts at the view's attach, on a 1×1 pbuffer, and loads the spin's 47 frames (44 + 3) before there is a
-    window surface. The other 133 follow one per message after the spin, at a touch, or 3 s later at most, nearest the
-    resting view first; a draw that needs one not in yet uses the nearest that is (`texOf`).
+  * The GL thread loads the spin's 47 frames (44 + 3) first, and only once the window's first frame is on the screen
+    (`CarGlView.FrameOver`: the window's frame report, 1 s at most). Loading them beside that frame, on a 1×1 pbuffer from the
+    view's attach or with the window's surface, was tried: the car then starts with the screen, but the first frame came
+    about 270 ms later (of 1200 on a loaded emulator, 12 starts each, round robin from one build). The other 133 follow
+    one per message after the spin, at a touch, or 3 s later at most, nearest the resting view first; a draw that needs
+    one not in yet uses the nearest that is (`texOf`).
   * The car stays faded out until the GPU's first frame, and that frame starts the spin: a slow GPU can only show a wait,
     never a pop. Nothing is decoded for it meanwhile (`cpuDraws` false).
   * Fallbacks: the GPU's first frame more than 1.5 s after the screen's (`onGpuLate`): no spin, the car fades in at rest
     from one frame on the CPU and the GPU takes over in place. The GPU failing: `warmUp` and the CPU's spin, as on a first
-    start. A driver that refuses the pbuffer: all of it on the window's surface (`noOffscreen`). A rebuilt screen (a theme
-    change): the resting frame and its neighbours first, one CPU frame until they are in.
-  * Debug builds: `setprop debug.aura.car.slow <ms>`, `debug.aura.car.fail 1`, `debug.aura.car.nooff 1`.
+    start. A rebuilt screen (a theme change): the resting frame and its neighbours first, one CPU frame until they are in.
+  * Debug builds: `setprop debug.aura.car.slow <ms>`, `debug.aura.car.fail 1`, `debug.aura.car.noreport 1` (no frame
+    report: the 1 s wait).
 * **Nothing of the CPU path stays once the GPU draws (`CarFrames.gpuDraws`).** The decoded and encoded frames and the
   queue are dropped, and a frame still being decoded is thrown away: the two 640×360 frames found alive in the LRU came in
   after the old trim. The layer under the car (0.9 MB) is made each time the car comes to rest, no longer kept.
@@ -209,9 +212,11 @@ of it could be tried on the unit first.
   icons are all in; again after the drawer closes, at most once a minute. The drawer's first open is as it was: moving the
   icons to the first open would have cost the frames the sheet moves in. Anything new that reads other apps' names or
   icons should ask `IdleGc.request` too.
-* **MapLibre's library loads off the main thread (`nav/MapLib.kt`).** At process start, in `AuraApp.onCreate`, not with the
-  kill switch on, not while `MapGuard` has anything on record, and not after a load that never came back (a mark on disk,
-  `map-lib-loading`: a native crash leaves no chance to write anything); those starts leave it to the map, as before. The
+* **MapLibre's library loads off the main thread (`nav/MapLib.kt`).** Right after the home screen's first frame, 700 ms before
+  the live map wants it. At process start, where it was first put, it held that frame back by about 85 ms (of 1200 on a
+  loaded emulator: the linker's and the class loader's locks). Not with the kill switch on, not while `MapGuard` has anything
+  on record, and not after a load that never came back (a mark on disk, `map-lib-loading`: a native crash leaves no chance
+  to write anything); those starts leave it to the map, as before, and so does a Map screen opened first in a process. The
   runtime's lock means the main thread can only wait for what is left of the load, never for more than it used to.
 * **The Music screen's equalizer (`EqualizerView`).** Eight frames a second instead of eleven, and never more than one
   redraw waiting: each draw used to post its own, so a draw for any other reason could start a second round that never
