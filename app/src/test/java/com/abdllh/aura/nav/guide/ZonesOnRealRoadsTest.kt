@@ -51,6 +51,31 @@ class ZonesOnRealRoadsTest {
         assertEquals(listOf(TripWarning.Kind.MILITARY_END), warned("ithra"))
     }
 
+    /** Set ZONES_TRIPS to out/route-tests and ZONES_JSON to all rows of table zone as [[id,kind,name,en,s,n,w,e,ring],...]: every kept trip, with what it warns of. Not a test of the repo's data: a measure, printed. */
+    @Suppress("UNCHECKED_CAST")
+    @Test fun everyKeptTrip() {
+        val root = System.getenv("ZONES_TRIPS")
+        org.junit.Assume.assumeTrue(root != null)
+        val all = (MiniJson.parse(java.io.File(System.getenv("ZONES_JSON")).readText(Charsets.UTF_8)) as List<List<Any?>>).map { r ->
+            ZoneRow((r[0] as Double).toInt(), (r[1] as Double).toInt(), r[2] as? String, r[3] as? String, GeoBox(r[4] as Double, r[6] as Double, r[5] as Double, r[7] as Double),
+                (r[8] as List<List<Double>>).map { c -> LatLon(c[1], c[0]) })
+        }
+        val world = FakeWorld(emptyList(), emptyList(), emptyList(), all, emptyMap())
+        var trips = 0
+        val warned = ArrayList<String>()
+        for (f in java.io.File(root, "valhalla").listFiles()!!.sortedBy { it.name }) {
+            val id = f.name.removeSuffix(".json")
+            val e = java.io.File(root, "edges/$id.json")
+            if (!e.exists()) continue
+            val r = GuideAnswer.parse(f.readText(Charsets.UTF_8))?.routes?.firstOrNull() ?: continue
+            r.facts = RoadFacts.parse(e.readText(Charsets.UTF_8), r.line) ?: continue
+            trips++
+            val w = Guidance.build(r, true, world).warnings.filter { it.kind in setOf(TripWarning.Kind.MILITARY_ROAD, TripWarning.Kind.PRIVATE_ROAD, TripWarning.Kind.MILITARY_END, TripWarning.Kind.PRIVATE_END) }
+            if (w.isNotEmpty()) warned.add("$id: ${w.joinToString { "${it.kind} ${it.name} ${it.metres.toInt()} m" }}")
+        }
+        println("ZONES: $trips trips, ${warned.size} warn: $warned")
+    }
+
     @Test fun theRowsOfOneTripAreRealOnes() {
         assertTrue(zones.any { it.name == "King Abdulaziz Naval Base" || it.en == "King Abdulaziz Naval Base" })
         assertFalse(trip("j6").facts!!.stretches.isEmpty())
