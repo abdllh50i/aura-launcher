@@ -40,7 +40,8 @@ class GuardReceiver : BroadcastReceiver() {
  * down what it would have done (files/guard-log.txt, shown in Settings → About); from 2.0 on, while a version is on
  * trial, it may go back to the saved version or, with none, to the stock launcher; after the trial it only offers
  * (AMRI Rescue). It also runs the Wi-Fi step the main process runs at a cold boot when the main process did not get
- * there, so the rescue paths (a phone, a PC) have a network.
+ * there, so the rescue paths (a phone, a PC) have a network, and sees that AMRI is on the firmware's list of what it leaves
+ * alone ([BackgroundList]): without that, this process is force-stopped as soon as the stock launcher comes up.
  *
  * A foreground service, since Android stops a plain one soon after the app has left the screen, which is when it is
  * needed. The notification channel is the quietest there is, and nothing on this unit opens the shade.
@@ -126,6 +127,9 @@ internal class GuardWatch(private val c: Context, private val h: Handler) {
     private var noDrawSince = upAt
     private var drawPid = 0
     private var killPid = 0
+    private var listDone = false
+    private var listTries = 0
+    private var listAt = 0L
 
     fun start(why: String) {
         GuardLog.add(c, "guard up ($why) boot $boot, ${BuildConfig.VERSION_NAME}: " + when {
@@ -158,6 +162,7 @@ internal class GuardWatch(private val c: Context, private val h: Handler) {
         val now = SystemClock.uptimeMillis()
         val dt = now - lastLook
         lastLook = now
+        backgroundList(now)
         wifi(now)
         val cur = marks.starts.lastOrNull()
         val live = cur != null && alive(cur.pid)
@@ -390,6 +395,17 @@ internal class GuardWatch(private val c: Context, private val h: Handler) {
         if (o.acted) GuardLog.add(c, "wifi: the main process did not get there. airplane was ${if (o.airplane) "on" else "off"}, wifi ${if (o.ok) "on now" else "still off"}")
     }
 
+    /** On the firmware's list of what it leaves alone ([BackgroundList]). Early, since a crash loop may be why this process is up; no root shell yet at a cold boot: again in a minute. */
+    private fun backgroundList(now: Long) {
+        if (listDone || now < listAt) return
+        if (!Device.isNwd && !(BuildConfig.DEBUG && SystemProps.get("debug.aura.unit") == "1")) { listDone = true; return }
+        val o = BackgroundList.ensure(c)
+        o.text?.let { GuardLog.add(c, it) }
+        listTries++
+        listAt = now + LIST_RETRY_MS
+        if (o.ok || listTries >= LIST_TRIES) listDone = true
+    }
+
     /** The owner's switch for this step: WifiOnStart reads the same key. Read here, late: a first read in this process comes from the disk. */
     private fun wifiWanted(): Boolean = try {
         c.getSharedPreferences("aura", Context.MODE_PRIVATE).getBoolean("wifiOnStart", true)
@@ -418,5 +434,7 @@ internal class GuardWatch(private val c: Context, private val h: Handler) {
         const val SHORT_LIFE_MS = 5 * 60_000L
         /** After the guard came up: the main process's own step runs 6 s after boot_completed and takes up to 18 s. */
         const val WIFI_AFTER_MS = 45_000L
+        const val LIST_RETRY_MS = 60_000L
+        const val LIST_TRIES = 10
     }
 }

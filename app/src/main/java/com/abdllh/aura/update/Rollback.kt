@@ -349,7 +349,8 @@ object Rollback {
 
     /**
      * The kill switch and the stock launcher (the fallback when there is nothing to go back to): through the script, which
-     * also gives back what a dead AMRI cannot; else with what this process may do itself.
+     * also gives back what a dead AMRI cannot, and goes on if this process is force-stopped halfway (the firmware does that
+     * to a package that has just stopped being home, see guard/BackgroundList.kt); else with what this process may do itself.
      */
     fun toStock(c: Context, why: String) {
         try { File(c.filesDir, "disable_home").writeText("$why ${System.currentTimeMillis()}") } catch (_: Throwable) { }

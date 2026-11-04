@@ -10,11 +10,14 @@ import android.os.Process
 import android.os.SystemClock
 import android.util.Log
 import android.widget.Toast
+import com.abdllh.aura.BuildConfig
 import com.abdllh.aura.R
+import com.abdllh.aura.update.Rollback
 import com.abdllh.aura.util.Prefs
 import java.io.File
 import java.io.PrintWriter
 import java.io.StringWriter
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Crash-loop protection. A launcher that crashes on start would leave the car without a home screen,
@@ -32,6 +35,8 @@ object CrashGuard {
     private const val MARKER = "disable_home"
     /** Time for the give-backs, each on its own worker through the root shell. */
     private const val LEAVE_AFTER_MS = 8_000L
+    /** The crash loop's start waits this long for the root shell to say whether there is a version to go back to. */
+    private const val LOOK_FOR_COPY_MS = 5_000L
 
     private var sp: SharedPreferences? = null
 
@@ -105,8 +110,9 @@ object CrashGuard {
      * Switches the home role between Aura and the stock launcher and keeps the boot-time kill switch
      * (`persist.aura.disabled` and `files/disable_home`, both read by aura-prepare.sh as root) in step, so the choice
      * survives a reboot. [why] is "user" (Settings) or "crash" (this class). Returns whether the home property changed.
+     * [flipHome] false: everything but the property itself, which someone else is about to do ([bailOut]).
      */
-    fun setAuraEnabled(ctx: Context, enabled: Boolean, why: String): Boolean {
+    fun setAuraEnabled(ctx: Context, enabled: Boolean, why: String, flipHome: Boolean = true): Boolean {
         try {
             val marker = File(ctx.filesDir, MARKER)
             if (enabled) marker.delete() else marker.writeText("$why ${System.currentTimeMillis()}")
@@ -133,7 +139,7 @@ object CrashGuard {
             }
         } catch (_: Throwable) {
         }
-        return Device.setHome(if (enabled) ctx.packageName else Device.STOCK_LAUNCHER)
+        return flipHome && Device.setHome(if (enabled) ctx.packageName else Device.STOCK_LAUNCHER)
     }
 
     /** A new build gets another chance after a crash-loop shutdown (the user's own choice of the stock launcher is kept). */
@@ -150,26 +156,61 @@ object CrashGuard {
      * of its steps is what crashes; the settings are opened as far as they can be, because the give-backs read what to
      * give back from them (Prefs keeps the file even when its first read is what throws). The process then leaves, a
      * moment later: without its singletons it cannot serve anything, and the next start finds the kill switch on.
+     *
+     * While this version is on trial with a version to go back to, it goes back from here, and home is never handed to the
+     * stock launcher: the moment the stock launcher comes up the firmware may force-stop the guard that was to do it
+     * ([com.abdllh.aura.guard.BackgroundList]). What the guard would have done, nothing here depends on it living.
      */
     fun bailOutAtStart(app: Application) {
         bailedOut = true
         try { Prefs.init(app) } catch (_: Throwable) { }
-        if (SystemProps.get(Device.DISABLED_PROP) == "1") clear() else bailOut(app) // (a crash loop behind the stock launcher: nothing to hand over)
-        Handler(Looper.getMainLooper()).postDelayed({ Process.killProcess(Process.myPid()) }, LEAVE_AFTER_MS)
+        val main = Handler(Looper.getMainLooper())
+        val leave = Runnable { Process.killProcess(Process.myPid()) }
+        if (SystemProps.get(Device.DISABLED_PROP) == "1") { // (a crash loop behind the stock launcher: nothing to hand over)
+            clear()
+            main.postDelayed(leave, LEAVE_AFTER_MS)
+            return
+        }
+        val decided = AtomicBoolean(false)
+        val handOver = Runnable {
+            if (decided.compareAndSet(false, true)) {
+                try { bailOut(app) } catch (t: Throwable) { Log.w(TAG, "bail out: $t") }
+                main.postDelayed(leave, LEAVE_AFTER_MS)
+            }
+        }
+        main.postDelayed(handOver, LOOK_FOR_COPY_MS) // (a root shell that does not answer: as if there were no copy)
+        Thread({
+            val back = try { goBack(app) } catch (t: Throwable) { Log.w(TAG, "going back: $t"); false }
+            if (!back) main.post(handOver)
+            else if (decided.compareAndSet(false, true)) { main.removeCallbacks(handOver); main.postDelayed(leave, LEAVE_AFTER_MS) }
+        }, "AuraCrash").start()
     }
 
-    /** Give the home role back to the stock launcher and open it. */
+    /** The way back's script started (detached: it outlives this process and ends it). False: on trial no more, no copy, no root shell. */
+    private fun goBack(app: Application): Boolean {
+        if (BuildConfig.VERSION_CODE < com.abdllh.aura.guard.GuardService.ACTS_FROM_CODE || com.abdllh.aura.guard.GuardTrial.load(app).passed) return false
+        if (!Rollback.usable(Rollback.payload())) return false
+        // (the crash list first: the version it goes to reads the same file, and would find a loop that is not its own. And
+        // should the script fail, its own fallback is the kill switch: a new build then gets another chance, as after a bail-out)
+        sp?.edit()?.remove(KEY)?.putBoolean(KEY_DISABLED, true)?.commit()
+        Log.w(TAG, "a crash loop on trial: going back")
+        return Rollback.runScript(app, false)
+    }
+
+    /**
+     * Gives the home role back to the stock launcher and opens it. The property itself goes last and through the script
+     * ([Rollback.toStock]), as root and outside this process: it also gives back what its workers may not live to, since the
+     * firmware force-stops AMRI within a second of the stock launcher coming up unless AMRI is on its list.
+     */
     fun bailOut(ctx: Context) {
-        val restored = setAuraEnabled(ctx, false, "crash")
+        setAuraEnabled(ctx, false, "crash", flipHome = false)
         try { Prefs.safeModeNotice = true } catch (_: Throwable) { }
         clear()
         try {
-            if (restored) Toast.makeText(ctx, R.string.safe_mode_notice, Toast.LENGTH_LONG).show()
-            val i = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-                .setPackage(Device.STOCK_LAUNCHER)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            ctx.startActivity(i)
+            if (SystemProps.get(Device.DISABLED_PROP) == "1") Toast.makeText(ctx, R.string.safe_mode_notice, Toast.LENGTH_LONG).show()
         } catch (_: Throwable) {
         }
+        val c = ctx.applicationContext
+        Thread({ Rollback.toStock(c, "crash") }, "AuraCrash").start()
     }
 }
