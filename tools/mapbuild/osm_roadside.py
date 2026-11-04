@@ -9,8 +9,10 @@ Needs pyosmium (it walks every road's geometry; the build's own PBF reader would
            carriageways are about equally near, the tag, turned round, chooses; with no tag the camera stays null.
   gates    Nodes on a drivable road that can stop a car: gates, checkpoints, border posts, toll booths, concrete blocks, with what they are (sub).
            A route through one of these is legal to the engine and may still end at a guard: the app warns.
-  zones    Areas a route should warn about: the Haram of Makkah and of Madinah (entry is for Muslims only, no road tag says so), and military or private areas.
-           Rings are simplified and grown outward so that they hold all of the original, at most MAX_RING points each, the limit of exclude_polygons on the unit.
+  zones    Areas a route should warn about: the Haram of Makkah and of Madinah (entry is for Muslims only, no road tag says so), and what is really military or private.
+           The Haram's rings are simplified and grown outward so that they hold all of the original, at most MAX_RING points each, the limit of exclude_polygons on the unit.
+           All others keep OSM's own line, within a few metres (ZONE_TOLERANCE, at most ZONE_MAX_RING points): a ring of 24 points grown outward covered half of Jubail and 1,289 places of Khobar and Dhahran.
+           A zone is military when OSM says landuse=military or military=*, unless the same tags say it is open or something else (not_a_military_zone): such an area is no zone at all.
 """
 import collections
 import json
@@ -24,7 +26,11 @@ ROADS = MAIN | {"unclassified", "residential", "service", "living_street"}
 CAMERA_REACH = 25.0  # metres
 AMBIGUOUS = 4.0  # metres: two carriageways this close in distance are told apart by the tag
 MAX_RING = 100
+ZONE_MAX_RING = 400
+ZONE_TOLERANCE = 0.00015  # degrees, about 16 m
 HARAM = {19590020: 1, 19122097: 2}  # OSM relations: 1 Makkah, 2 Madinah
+# The one road toll of the Kingdom: the King Fahd Causeway's booths, from its Saudi end on. s, n, w, e
+CAUSEWAY = (26.10, 26.25, 50.19, 50.50)
 
 # sub of a gate
 SUB_GATE, SUB_PRIVATE, SUB_CHECKPOINT, SUB_BORDER, SUB_TOLL, SUB_BLOCK = 1, 2, 3, 4, 5, 6
@@ -32,15 +38,19 @@ GATE_LIKE = {"gate", "lift_gate", "swing_gate", "sliding_gate", "bump_gate", "sa
 BLOCK_LIKE = {"block", "jersey_barrier", "bollard", "spikes", "kerb", "bunker", "debris"}
 
 
-def sub_of(t):
+def sub_of(t, lat=None, lon=None):
     b = t.get("barrier") or ""
     hw = t.get("highway") or ""
     access = t.get("access") or t.get("motor_vehicle") or ""
     if b == "border_control":
         return SUB_BORDER
-    if b == "toll_booth":
-        return SUB_TOLL
     if b == "checkpoint" or hw == "checkpoint" or t.get("military") == "checkpoint":
+        return SUB_CHECKPOINT
+    if b == "toll_booth" or hw == "toll_gantry":
+        # Roads in the Kingdom have no tolls but the causeway's. Mappers draw a row of booths with this tag at the checkpoints (Al Shumaisi on the road to Makkah and to Taif said "this road has a toll"), six of them with
+        # military=checkpoint as well. What they are is what they do to a car: it stops and goes on.
+        if lat is not None and CAUSEWAY[0] <= lat <= CAUSEWAY[1] and CAUSEWAY[2] <= lon <= CAUSEWAY[3]:
+            return SUB_TOLL
         return SUB_CHECKPOINT
     if b in BLOCK_LIKE:
         return SUB_BLOCK if access not in ("yes", "permissive", "designated") else None
@@ -92,7 +102,7 @@ class Nodes(osmium.SimpleHandler):
             la, lo = n.location.lat, n.location.lon
             self.cameras[n.id] = {"lat": la, "lon": lo, "tag": tag_direction(t.get("direction")), "best": []}
             self.grid[(int(la * 200), int(lo * 200))].append(n.id)
-        s = sub_of(t)
+        s = sub_of(t, n.location.lat, n.location.lon)
         if s is not None:
             self.gates[n.id] = {"lat": n.location.lat, "lon": n.location.lon, "sub": s}
 
@@ -136,10 +146,24 @@ class Ways(osmium.SimpleHandler):
                     c["best"].append((d, h, one in ("yes", "1", "true", "-1"), hw, w.id))
 
 
+def not_a_military_zone(t):
+    """Why an area with a military tag is none, or "". Each of these said "your destination is in a military zone" where nobody stops a car."""
+    if t.get("access") in ("permissive", "yes", "public", "customers"):
+        return "open"  # "منطقة استبعاد الحدود", the border exclusion area at Salwa, 515 km2: the road to the post runs through it
+    if t.get("boundary") == "protected_area" or t.get("leisure") == "nature_reserve":
+        return "reserve"  # Prince Sultan's reserve, 3,217 km2
+    if t.get("natural") or t.get("landuse") == "quarry":
+        return "hazard"  # military=danger_area on a sinkhole or a digging site
+    if t.get("aeroway") == "aerodrome" and t.get("iata") and ("الدولي" in (t.get("name") or "") or "International" in (t.get("name:en") or t.get("int_name") or "")):
+        return "public airport"  # Taif's: a civil terminal inside a base's fence
+    return ""
+
+
 class Areas(osmium.SimpleHandler):
     def __init__(self):
         super().__init__()
         self.found = []
+        self.not_zones = collections.Counter()
 
     def area(self, a):
         t = a.tags
@@ -148,8 +172,12 @@ class Areas(osmium.SimpleHandler):
         name = t.get("name") or ""
         if rid in HARAM:
             kind = HARAM[rid]
-        elif t.get("landuse") == "military" or t.get("military") in ("base", "barracks", "airfield", "danger_area", "range", "training_area", "naval_base", "office", "checkpoint"):
-            kind = 3
+        elif t.get("landuse") == "military" or t.get("military"):
+            why = not_a_military_zone(t)
+            if why:
+                self.not_zones[why] += 1
+            else:
+                kind = 3
         elif t.get("access") in ("private", "no") and t.get("landuse") in ("residential", "industrial", "commercial", "construction", "retail") and name:
             kind = 4
         if kind is None:
@@ -222,6 +250,19 @@ def simple_outward(ring, max_points):
     return grown
 
 
+def close_to_real(ring):
+    """OSM's own line within ZONE_TOLERANCE: nothing is grown, so what is near the fence stays outside it. Closed, with at most ZONE_MAX_RING points."""
+    r = list(ring)
+    if r[0] != r[-1]:
+        r.append(r[0])
+    tol = ZONE_TOLERANCE
+    s = douglas(r, tol)
+    while len(s) > ZONE_MAX_RING:
+        tol *= 1.3
+        s = douglas(r, tol)
+    return [(round(p[0], 5), round(p[1], 5)) for p in s]
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     pbf, out = sys.argv[1], sys.argv[2]
@@ -274,9 +315,9 @@ def main():
             km2 = ring_area_km2(ring)
             if f["kind"] >= 3 and km2 < 0.05:
                 continue
-            zones.append({"kind": f["kind"], "osm": f["osm"], "name": f["name"], "en": f["en"], "points": len(ring), "km2": round(km2, 2), "ring": simple_outward(ring, MAX_RING if f["kind"] <= 2 else 24)})
+            zones.append({"kind": f["kind"], "osm": f["osm"], "name": f["name"], "en": f["en"], "points": len(ring), "km2": round(km2, 2), "ring": simple_outward(ring, MAX_RING) if f["kind"] <= 2 else close_to_real(ring)})
             kinds[f["kind"]] += 1
-    print("zones by kind:", sorted(kinds.items()), [(z["name"], z["points"], len(z["ring"]), z["km2"]) for z in zones if z["kind"] <= 2], flush=True)
+    print("zones by kind:", sorted(kinds.items()), [(z["name"], z["points"], len(z["ring"]), z["km2"]) for z in zones if z["kind"] <= 2], "points in all rings:", sum(len(z["ring"]) for z in zones), "areas with a military tag that are no zone:", a.not_zones.most_common(), flush=True)
     with open(out, "w", encoding="utf-8", newline="\n") as fo:
         json.dump({"cameras": cams, "camera_how": dict(how), "gates": gates, "zones": zones}, fo, ensure_ascii=False)
 

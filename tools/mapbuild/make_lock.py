@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """lock.json: what a build was made from, so that the next one can be made from the same or say what changed. Run after a build; commit the result.
 
-  python -I make_lock.py --work <mapbuild folder> --docker <docker.exe> --font <ReadexPro-VF.ttf> --overture-places <parquet> --out lock.json [--check]
+  python -I make_lock.py --work <mapbuild folder> --docker <docker.exe> --font <Regular.ttf> --font <SemiBold.ttf> --overture-places <parquet> --out lock.json [--check]
 
 --check compares what is on disk with the file and lists every difference. Images are pinned by digest in run_build.ps1 as well.
 """
@@ -18,6 +18,7 @@ PLANETILER = "openmaptiles/planetiler-openmaptiles:3.16"
 FILES = {
     "src/gcc-states-latest.osm.pbf": "https://download.geofabrik.de/asia/gcc-states-latest.osm.pbf",
     "src/ksa.osm.pbf": "cut_pbf.py, from the PBF above and polygon/ksa.poly",
+    "src/ksa-ar.osm.pbf": "arabic_names.py apply, from the PBF above with arabic_names_rules.json and arabic_names_words.tsv",
     "sources/natural_earth_vector.sqlite.zip": "https://dev.maptiler.download/geodata/omt/natural_earth_vector.sqlite.zip (Planetiler's --download)",
     "sources/water-polygons-ksa.shp.zip": "make_water_polygons.py",
     "sources/lake_centerline.empty.shp.zip": "make_empty_shapefile.py",
@@ -56,7 +57,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--work", required=True)
     ap.add_argument("--docker", required=True)
-    ap.add_argument("--font", required=True)
+    ap.add_argument("--font", required=True, action="append")
     ap.add_argument("--overture-places")
     ap.add_argument("--osm-stamp", default="2026-11-02T21:21:26Z")
     ap.add_argument("--out", required=True)
@@ -80,7 +81,9 @@ def main():
             data["overture_release"] = f.read().strip()
     if a.overture_places and os.path.exists(a.overture_places):
         data["overture_places_rows"] = {"bytes": os.path.getsize(a.overture_places), "sha256": sha256(a.overture_places), "from": "fetch_overture.py --places: row groups over the Gulf"}
-    data["font"] = {"file": os.path.basename(a.font), "sha256": sha256(a.font)}
+    data["fonts"] = [{"file": os.path.basename(p), "sha256": sha256(p)} for p in a.font]
+    for rel in ("arabic_names_rules.json", "arabic_names_words.tsv"):
+        data["files"]["tools/mapbuild/" + rel] = {"sha256": sha256(os.path.join(os.path.dirname(os.path.abspath(__file__)), rel)), "from": "in this repository, read by arabic_names.py"}
     lock = {
         "about": "What the pack was built from. Regenerate with make_lock.py after a build.",
         "images": {"valhalla": {"tag": VALHALLA, "digests": digest(a.docker, VALHALLA)}, "planetiler": {"tag": PLANETILER, "digests": digest(a.docker, PLANETILER), "planetiler": "0.9.3 e6e13811"}},

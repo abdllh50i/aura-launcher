@@ -46,7 +46,7 @@ class LiveRouteTest {
     }
 
     @Test fun noFactsNoLimits() {
-        assertEquals(null, LiveRoute.of(Fixtures.trip("dammam-riyadh").route, true).limits)
+        assertEquals(null, LiveRoute.of(Fixtures.trip("dammam-jeddah").route, true).limits)
     }
 
     @Test fun signsWithoutTheirNoise() {

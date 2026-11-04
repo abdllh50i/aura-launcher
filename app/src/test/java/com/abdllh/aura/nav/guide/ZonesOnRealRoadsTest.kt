@@ -9,7 +9,8 @@ import org.junit.Test
 
 /**
  * The zones' rule with real road classes: real lines with their real trace_attributes (tools/mapbuild/tests/guide_zone_fixture.py). The golden file's trips have facts for only 6 of 30, and that hid this:
- * secondary roads counted as side roads inside the coarse rings, and an ordinary trip in Jubail town was told it enters a military area.
+ * secondary roads counted as side roads inside the coarse rings, and an ordinary trip in Jubail town was told it enters a military area. Since the rings are OSM's own line (osm_roadside.py) the trips below went quiet
+ * for a better reason: the town, Ithra and the hospital are outside the fence.
  */
 class ZonesOnRealRoadsTest {
     @Suppress("UNCHECKED_CAST")
@@ -37,18 +38,19 @@ class ZonesOnRealRoadsTest {
     private fun warned(id: String) = Guidance.build(trip(id), true, FakeWorld(emptyList(), emptyList(), emptyList(), zones, emptyMap())).warnings.map { it.kind }
 
     @Test fun ordinaryTripsInTownStaySilent() {
-        // King Abdul Aziz street and Madeena Street, Jubail town: secondary, inside the naval base's coarse ring. A tester's 374 m and 689 m "the road enters a military area".
+        // King Abdul Aziz street and Madeena Street, Jubail town: a tester's 374 m and 689 m "the road enters a military area".
         for (id in listOf("j6", "gate-jana", "khafji", "airport", "j1")) assertEquals(id, emptyList<TripWarning.Kind>(), warned(id))
     }
 
     @Test fun aRouteIntoABaseStillWarns() {
-        // tertiary and residential inside the air base's ring
-        assertEquals(listOf(TripWarning.Kind.MILITARY_ROAD), warned("gate-air"))
+        // the air base itself, inside its fence
+        assertEquals(listOf(TripWarning.Kind.MILITARY_END), warned("base-air"))
     }
 
-    @Test fun aDestinationWellInsideARingStillWarns() {
-        // a false alarm of the kind the owner has been told of: the ring is coarse, Ithra is in it. Tightening the rings or a softer word is his to pick; it does not come from the road rule
-        assertEquals(listOf(TripWarning.Kind.MILITARY_END), warned("ithra"))
+    @Test fun whatTheCoarseRingsHeldIsOutsideTheFence() {
+        // Ithra and the air base's hospital: false alarms the owner had been told of, gone with the 23-point ring
+        assertEquals(emptyList<TripWarning.Kind>(), warned("ithra"))
+        assertEquals(emptyList<TripWarning.Kind>(), warned("gate-air"))
     }
 
     /** Set ZONES_TRIPS to out/route-tests and ZONES_JSON to all rows of table zone as [[id,kind,name,en,s,n,w,e,ring],...]: every kept trip, with what it warns of. Not a test of the repo's data: a measure, printed. */

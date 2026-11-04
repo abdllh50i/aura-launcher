@@ -73,6 +73,7 @@ TRIPS = [
     # gated
     ("gate-camp", "gated", "Al-Rashed Mall to Dhahran Hills Elementary School, inside Aramco's camp", (26.29077, 50.18098), (26.290298, 50.106827)),
     ("gate-air", "gated", "Dammam to King Abdulaziz Air Base Hospital", (26.4207, 50.0888), (26.284409, 50.150787)),
+    ("base-air", "gated", "Dammam to King Abdulaziz Air Base, inside its fence", (26.4207, 50.0888), (26.253616, 50.151928)),
     # edges beyond the 50
     ("gate-rt", "gated", "Dammam to Ras Tanura Elementary School, Aramco's camp", (26.4207, 50.0888), (26.72492, 50.067646)),
     ("gate-jana", "gated", "Jubail to Jana Island in the Gulf, no road", (27.0046, 49.6586), (27.37, 49.90)),

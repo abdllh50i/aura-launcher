@@ -373,11 +373,11 @@ class GuidanceTest {
 
     // ---------------------------------------------------------------- real trips
     @Test fun latinNamesOnTheRealTrips() {
-        // (d2: "fatma alzahra street" has no Arabic anywhere)
-        val g = Fixtures.trip("d2").guidance(true)
-        val i = g.told.indexOfFirst { it.road.shown == "fatma alzahra street" }
+        // (k1: "Feras Al-Nadher Street" has no Arabic anywhere: the build's table does not know its words, so it stays as it is)
+        val g = Fixtures.trip("k1").guidance(true)
+        val i = g.told.indexOfFirst { it.road.shown == "Feras Al-Nadher Street" }
         assertTrue(i > 0)
-        assertFalse(Speech.text(g.spoken(i, g.told[i].step.at - 200), true).contains("fatma"))
+        assertFalse(Speech.text(g.spoken(i, g.told[i].step.at - 200), true).contains("Feras"))
     }
 
     @Test fun theRealRingsSpeak() {

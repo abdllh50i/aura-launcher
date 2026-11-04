@@ -7,6 +7,7 @@ This file travels with the pack (make_pack.py refuses to build without it). The 
 **OpenStreetMap** (base tiles, routing tiles, roads, most signals and cameras, part of the places)
 © OpenStreetMap contributors. Available under the Open Database License 1.0: https://opendatacommons.org/licenses/odbl/1-0/ . Contents under the Database Contents License: https://opendatacommons.org/licenses/dbcl/1-0/ . See https://www.openstreetmap.org/copyright .
 This pack is a Derivative Database and is offered under the ODbL. The scripts that make it are public in `tools/mapbuild/` of the AMRI OS repository, so that anyone can make it again from the same data.
+Changed from OpenStreetMap by this build: Arabic names added to roads that had only a Latin name, by a rule table and word pairs learnt from OpenStreetMap's own names (`arabic_names.py`, its rules and word list beside it). A few typos in Arabic names mended. Nothing is added to a road whose name has a word the table does not know.
 
 **OpenMapTiles schema** (the layout of the base tiles)
 © OpenMapTiles, https://openmaptiles.org . Schema under BSD and CC-BY; the tiles were built with Planetiler and planetiler-openmaptiles.
@@ -29,7 +30,7 @@ Conflating Overture rows with OpenStreetMap rows makes `places.db` a Derivative 
 
 ## The fonts
 
-Glyphs in `glyphs.db` are signed-distance renderings of **Readex Pro AMRI**, a modified version of Readex Pro: copyright 2018 The Readex Pro Project Authors (https://github.com/ThomasJockin/readexpro), with Reserved Font Name "RevReading Lexend". SIL Open Font License 1.1 (`licences/OFL-1.1.txt`). Modified for AMRI OS: vertical metrics; for the map, joined Arabic forms placed at their Unicode presentation-form code points, and a few rare letters borrowed from similar ones. Made by `make_glyphs.py`.
+Glyphs in `glyphs.db` (stacks `AMRI Map Sans Regular`, `AMRI Map Sans SemiBold`) are signed-distance renderings of **IBM Plex Sans Arabic**: Copyright 2017 IBM Corp. with Reserved Font Name "Plex". SIL Open Font License 1.1 (`licences/OFL-1.1.txt`). A modified form for the map, so under a name without the reserved word: each glyph drawn as a distance field at 24 px, in the ranges MapLibre asks for; letters and marks the font lacks borrowed from similar ones. Made by `make_glyphs.py`.
 
 ## The routing library the pack is read with (in the app, not in the pack)
 

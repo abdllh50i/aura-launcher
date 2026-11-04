@@ -24,7 +24,7 @@ if ($Restore) {
 }
 New-Item -ItemType Directory -Force $Out | Out-Null
 $seed = Join-Path $Out 'map-seed.db'
-python -I -c "import os,sqlite3,sys; a=sqlite3.connect(f'file:{sys.argv[1]}?mode=ro',uri=True); os.path.exists(sys.argv[2]) and os.remove(sys.argv[2]); b=sqlite3.connect(sys.argv[2]); b.execute('CREATE TABLE tiles (k INTEGER PRIMARY KEY, data BLOB NOT NULL)'); b.execute('CREATE TABLE glyphs (name TEXT PRIMARY KEY, data BLOB NOT NULL)'); b.execute('CREATE TABLE meta (k TEXT PRIMARY KEY, v TEXT)'); b.executemany('INSERT INTO glyphs VALUES(?,?)', [(n.replace('Readex Pro AMRI','Noto Sans'),d) for n,d in a.execute('SELECT name,data FROM glyphs')]); b.commit(); b.close()" $Glyphs $seed
+python -I -c "import os,sqlite3,sys; a=sqlite3.connect(f'file:{sys.argv[1]}?mode=ro',uri=True); os.path.exists(sys.argv[2]) and os.remove(sys.argv[2]); b=sqlite3.connect(sys.argv[2]); b.execute('CREATE TABLE tiles (k INTEGER PRIMARY KEY, data BLOB NOT NULL)'); b.execute('CREATE TABLE glyphs (name TEXT PRIMARY KEY, data BLOB NOT NULL)'); b.execute('CREATE TABLE meta (k TEXT PRIMARY KEY, v TEXT)'); b.executemany('INSERT INTO glyphs VALUES(?,?)', [(n.replace('AMRI Map Sans','Noto Sans').replace('SemiBold','Bold'),d) for n,d in a.execute('SELECT name,data FROM glyphs')]); b.commit(); b.close()" $Glyphs $seed
 adb -s $Serial reverse "tcp:$Port" "tcp:$Port" | Out-Null
 adb -s $Serial push $seed /data/local/tmp/map.db.new | Out-Null
 adb -s $Serial push "$PSScriptRoot\native_setpref.sh" /data/local/tmp/native_setpref.sh | Out-Null

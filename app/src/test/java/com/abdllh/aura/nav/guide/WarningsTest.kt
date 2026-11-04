@@ -120,7 +120,7 @@ class WarningsTest {
         assertEquals(120, known.kmh)
         assertEquals(LimitNow.Source.MINE, Limits.at(r, 30_000.0, 100).source)
         // with no facts, the answer's own "motorway"
-        val bare = Fixtures.trip("dammam-riyadh").route
+        val bare = Fixtures.trip("dammam-jeddah").route
         val e = Limits.at(bare, 100_000.0, 0)
         assertEquals(LimitNow.Source.ESTIMATED, e.source)
         assertEquals(120, e.kmh)
@@ -139,8 +139,15 @@ class WarningsTest {
         assertTrue(kinds("j1").isEmpty())
     }
 
-    @Test fun aRouteIntoABaseWarns() {
-        assertTrue(kinds("gate-air").contains(TripWarning.Kind.MILITARY_ROAD))
+    @Test fun aPlaceOutsideTheFenceIsNotInTheBase() {
+        // the air base's hospital: inside the old 23-point ring, outside OSM's own line
+        assertFalse(kinds("gate-air").contains(TripWarning.Kind.MILITARY_ROAD))
+        assertFalse(kinds("gate-air").contains(TripWarning.Kind.MILITARY_END))
+    }
+
+    @Test fun aCheckpointIsNoToll() {
+        // Al Shumaisi, on the road from Jeddah: barrier=toll_booth in OSM, and no road here has a toll but the causeway. osm_roadside.py calls it what it is
+        assertFalse(kinds("jed-taif").contains(TripWarning.Kind.TOLL))
     }
 
     @Test fun aGuardedGateWarns() {
@@ -155,9 +162,9 @@ class WarningsTest {
         assertFalse(kinds("k6").contains(TripWarning.Kind.CAUSEWAY))
     }
 
-    @Test fun aRoadToTheBorderDrawsTheZoneItEndsIn() {
-        // a fact of the data for now: OSM's "Border Exclusion Zone" (1118 km2) is kind 3, and the Salwa post stands in it
-        assertTrue(kinds("salwa").contains(TripWarning.Kind.MILITARY_END))
+    @Test fun aRoadToTheBorderIsNoMilitaryZone() {
+        // OSM's "Border Exclusion Zone" at Salwa is landuse=military with access=permissive: no zone (osm_roadside.py), and the road to the post stays silent
+        assertFalse(kinds("salwa").contains(TripWarning.Kind.MILITARY_END))
     }
 
     @Test fun theHaramOnTheWay() {

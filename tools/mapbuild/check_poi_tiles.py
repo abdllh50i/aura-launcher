@@ -74,7 +74,7 @@ def main():
                 continue
             r = rows[rid]
             seen_ids[z].add(rid)
-            if tags.get("name") != r[1]:
+            if tags.get("name") != (r[1] if sum(c.isalpha() for c in r[1]) > 3 else None):  # (3 letters or less: a dot with no word, build_poi_tiles.py)
                 problems["name differs"] += 1
                 examples.setdefault("name differs", (tags.get("name"), r[1]))
             if tags.get("cat") != r[3]:

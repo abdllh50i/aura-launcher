@@ -8,8 +8,8 @@ best places by rank: at most so many per cell of a grid over the tile, so a dens
 everything, and a limit for the whole tile. What is dropped stays searchable: the tile is for the eye. Rows on a geocoder's default point (p.src bit 4) never reach a tile.
 
 Tile fields:
-  name      p.name, the Arabic name when there is one
-  name:en   p.alt when name is Arabic and alt is Latin (absent otherwise), for the English map
+  name      p.name, the Arabic name when there is one. Absent when it has 3 letters or less (SPEC section 11: "Me" is not a place): the dot stays, with no word; search still finds the row in places.db
+  name:en   p.alt when name is Arabic and alt is Latin (absent otherwise), for the English map; absent under the same rule
   kind      cat.icon: the colour group, an index the style can name (cat.id is not stable across builds)
   cat       cat.id (see table cat)
   rank      p.rank, 0-100, higher is more important
@@ -28,6 +28,7 @@ import time
 ZOOMS = {12: (42, 8, 2, 90), 13: (30, 8, 4, 180), 14: (14, 8, 10, 420)}
 EXTENT = 4096
 GROUP_SKIP = {"parking", "road", "roundabout", "bridge", "tunnel", "city", "neighbourhood", "region", "military"}
+SHORT_NAME = 3
 
 
 def varint(v):
@@ -101,6 +102,11 @@ class Layer:
         return bytes(out)
 
 
+def worth_a_label(name):
+    """More than SHORT_NAME letters of any script; digits and marks do not count."""
+    return sum(c.isalpha() for c in name) > SHORT_NAME
+
+
 def tile_of(lat, lon, z):
     """Tile x, y and the point's position inside it in tile units."""
     n = 1 << z
@@ -155,13 +161,18 @@ def build(db_path, out_path):
             kept += 1
         size = 0
         biggest = 0
+        no_label = 0
         for (x, y), t in tiles.items():
             layer = Layer("places")
             # feature order: within a layer, MapLibre places symbols first to last when no sort key says otherwise
             prev_x = 0
             for px, py, r in t["items"]:
-                props = {"name": r[1]}
-                if r[2] and any("؀" <= c <= "ۿ" for c in r[1]) and not any("؀" <= c <= "ۿ" for c in r[2]):
+                props = {}
+                if worth_a_label(r[1]):
+                    props["name"] = r[1]
+                else:
+                    no_label += 1
+                if r[2] and any("؀" <= c <= "ۿ" for c in r[1]) and not any("؀" <= c <= "ۿ" for c in r[2]) and worth_a_label(r[2]):
                     props["name:en"] = r[2]
                 props["kind"] = kinds.get(r[3], 0)
                 props["cat"] = r[3]
@@ -172,7 +183,7 @@ def build(db_path, out_path):
             db.execute("INSERT INTO tiles VALUES(?,?,?,?)", (z, x, (1 << z) - 1 - y, data))
             size += len(data)
             biggest = max(biggest, len(data))
-        report[str(z)] = {"tiles": len(tiles), "places": total, "kept": kept, "dropped": total - kept, "bytes": size, "largest_tile_bytes": biggest, "seconds": round(time.time() - t1, 1)}
+        report[str(z)] = {"tiles": len(tiles), "places": total, "kept": kept, "dropped": total - kept, "dots_with_no_word": no_label, "bytes": size, "largest_tile_bytes": biggest, "seconds": round(time.time() - t1, 1)}
         print(f"z{z}: {report[str(z)]}", flush=True)
     db.execute("CREATE UNIQUE INDEX tile_index ON tiles(zoom_level, tile_column, tile_row)")
     built = src.execute("SELECT v FROM meta WHERE k='built'").fetchone()[0]

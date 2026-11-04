@@ -37,8 +37,8 @@ WGS84_PRJ = ('GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",63781
              'PRIMEM["Greenwich",0],UNIT["Degree",0.0174532925199433]]')
 WORK_BUFFER = 0.15
 GUARD_BUFFER = 0.15
-REACH = box(26.0, 5.0, 64.0, 40.0)  # all that z6-z13 tiles over the Kingdom can show
-RECT = (34.4, 16.2, 55.7, 32.2)  # the pack's rectangle: build_base.sh's --bounds
+REACH = box(22.5, 0.0, 67.5, 41.0)  # run_build.ps1's $LowRectangle: all that a tile of z8 or less shows when the Kingdom is on the screen
+RECT = (32.0, 13.9, 58.0, 36.6)  # the rectangle the base tiles are built over (run_build.ps1); the coast the extract holds in it is used
 CELL = 0.1  # degrees: the size of the working area's cells along the coast
 GRID = 1.0  # degrees
 

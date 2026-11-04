@@ -32,14 +32,19 @@
     "sha256": "2ab28b64aab8f11b2b274ffa0615211eebc16eef4d1ad6b755354c64cf452263",
     "from": "cut_pbf.py, from the PBF above and polygon/ksa.poly"
    },
+   "src/ksa-ar.osm.pbf": {
+    "bytes": 109010649,
+    "sha256": "322c77f310e92546055bce5c819ac423214b5d96901318ca0c0e6ced0e0a5c60",
+    "from": "arabic_names.py apply, from the PBF above with arabic_names_rules.json and arabic_names_words.tsv"
+   },
    "sources/natural_earth_vector.sqlite.zip": {
     "bytes": 433384440,
     "sha256": "bd9420e7303f6abd4df5245be57107eec3ed4fa0246d31fa63bbc6ec95aaeb56",
     "from": "https://dev.maptiler.download/geodata/omt/natural_earth_vector.sqlite.zip (Planetiler's --download)"
    },
    "sources/water-polygons-ksa.shp.zip": {
-    "bytes": 5075331,
-    "sha256": "df105d1ad1829e54f1a075b3ba8936c3cb8605560bf075fe84c0228a63c291c2",
+    "bytes": 6254178,
+    "sha256": "161bf9cacc574f0f9b8ce9655115c571b3e0cbdd045dabe01e78fac34aed7953",
     "from": "make_water_polygons.py"
    },
    "sources/lake_centerline.empty.shp.zip": {
@@ -66,19 +71,28 @@
     "bytes": 10061612,
     "sha256": "5c3118b51ff4b17655d6239a5e3f2ebdb0c36c0da3ba34a771bd7078f247dd00",
     "from": "https://repo1.maven.org/maven2/io/github/rallista/valhalla-mobile/0.6.4/valhalla-mobile-0.6.4.aar"
+   },
+   "tools/mapbuild/arabic_names_rules.json": {
+    "sha256": "6274ac13313149d1694e50c26e368faf7a21cb6f1b21a91702082cc9259b1a51",
+    "from": "in this repository, read by arabic_names.py"
+   },
+   "tools/mapbuild/arabic_names_words.tsv": {
+    "sha256": "86fda3e1c6f4dd2decda216322cbe5f4441e5151a6012a1c6bd11b1195fd3acf",
+    "from": "in this repository, read by arabic_names.py"
    }
   },
   "gcc_pbf_md5": "5802ffc22e90f0a05fb1f76d1f7819f9",
   "overture_release": "2026-10-21.0",
-  "overture_places_rows": {
-   "bytes": 83251967,
-   "sha256": "477aa58be5754b547d081915bb0b5bfcb2d927dc2f07eb82db9dff9b3dfa85d1",
-   "from": "fetch_overture.py --places: row groups over the Gulf"
-  },
-  "font": {
-   "file": "ReadexPro-VF.ttf",
-   "sha256": "cbb9e950e10d11b1713824620cce2da2ac959d6ae2d21fedfd2b663c4db1fa3c"
-  }
+  "fonts": [
+   {
+    "file": "IBMPlexSansArabic-Regular.ttf",
+    "sha256": "6f611412270a132bbac838da9259d4c68569b4175f3b3b8fa3fa36a30b56dab9"
+   },
+   {
+    "file": "IBMPlexSansArabic-SemiBold.ttf",
+    "sha256": "597bd5502e5997be4414e4c9c88834b30ff3784250c84f20bce2b20e53ebd467"
+   }
+  ]
  },
  "tools": {
   "python": "3.11.0",

@@ -109,7 +109,7 @@ def describe(t, db, cats, areas, z, x, y, n, size, brief=False):
     d = {"z": z, "x": x, "y": y, "features": n, "gz_bytes": size, "center": [round(cen[0], 4), round(cen[1], 4)], "where": area_names.most_common(3), "rows_in_p": len(rows), "lowest_rank_kept": lowest_kept[0] if lowest_kept else None,
          "points_with_2_or_more": sum(1 for v in pts.values() if v >= 2), "largest_pile": max(pts.values()) if pts else 0, "top_cats": collections.Counter(cats.get(f["cat"]) for f in feats_out).most_common(6), "best_dropped": best_dropped}
     if not brief:
-        d["best_kept"] = [(f["rank"], f["name"], cats.get(f["cat"])) for f in feats_out[:12]]
+        d["best_kept"] = [(f["rank"], f.get("name", ""), cats.get(f["cat"])) for f in feats_out[:12]]
     return d
 
 

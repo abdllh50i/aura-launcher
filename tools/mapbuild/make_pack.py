@@ -2,7 +2,7 @@
 """The pack: every piece cut into chunks of 64 MiB, each chunk gzipped, sizes and hashes in manifest.json (maps.md section 15.2). Nothing is uploaded: this makes a folder
 that a release or a USB stick can hold.
 
-  python -I make_pack.py --out <folder> --id ksa-2026.11 --lock lock.json [--family "Readex Pro AMRI"] base.mbtiles=<path> route.tar=<path> places.db=<path> places.mbtiles=<path> glyphs.db=<path> [voice.db=<path>]
+  python -I make_pack.py --out <folder> --id ksa-2026.11 --lock lock.json [--family "AMRI Map Sans"] base.mbtiles=<path> route.tar=<path> places.db=<path> places.mbtiles=<path> glyphs.db=<path> [voice.db=<path>]
   python -I make_pack.py --verify <folder>            every chunk against its hash, then every piece whole against its hash
 
 It stops without the notices, without glyphs (a fresh offline unit would draw a map with no words), with a Valhalla version or font stack the manifest does not expect, or with a file that fails
@@ -29,9 +29,9 @@ CHUNK = 64 * 1024 * 1024
 LEVEL = 6
 HERE = os.path.dirname(os.path.abspath(__file__))
 NEEDED = ("base.mbtiles", "route.tar", "places.db", "places.mbtiles", "glyphs.db")
-NOTICE_WORDS = ["OpenStreetMap", "Open Database License", "OpenMapTiles", "Natural Earth", "Overture", "Foursquare", "Community Data License", "Apache", "Valhalla", "valhalla-mobile", "Protocol Buffers", "Boost", "LZ4", "Abseil", "RapidJSON", "Open Font License", "Readex Pro"]
+NOTICE_WORDS = ["OpenStreetMap", "Open Database License", "OpenMapTiles", "Natural Earth", "Overture", "Foursquare", "Community Data License", "Apache", "Valhalla", "valhalla-mobile", "Protocol Buffers", "Boost", "LZ4", "Abseil", "RapidJSON", "Open Font License", "IBM Plex Sans Arabic"]
 LICENCES = ("CDLA-Permissive-2.0.txt", "Apache-2.0.txt", "OFL-1.1.txt")
-FONT_FAMILY = "Readex Pro AMRI"  # make_glyphs.py's --family, and MapStyle.PACK_FONT in the app
+FONT_FAMILY = "AMRI Map Sans"  # make_glyphs.py's --family, and MapStyle.PACK_FONT in the app
 VALHALLA = "3.9.1"
 
 
@@ -182,7 +182,7 @@ def main():
     with open(a.lock, encoding="utf-8") as f:
         lock = json.load(f)
     pieces = dict(x.split("=", 1) for x in a.pieces)
-    stacks = [f"{a.family} Regular", f"{a.family} Bold"]
+    stacks = [f"{a.family} Regular", f"{a.family} SemiBold"]
     meta, bm = check_pieces(pieces, lock, stacks)
     notice = check_notices()
     os.makedirs(a.out, exist_ok=True)

@@ -137,7 +137,7 @@ class GoldenTest {
         row("A road number only", all.numberOnly)
         row("No name at all", all.none)
         out.append("\nOf the ${all.latinOnly} Latin-only ones, ${all.latinWithLandmark} have a landmark instead and ${all.latinPlain} are a plain instruction. Of the ${all.none} with no name, ${all.noneWithLandmark} have a landmark.\n\n")
-        out.append("Landmarks: ${all.signals} manoeuvres at a signal, ${all.rings} roundabouts (${all.ringNumber} with the exit's number, ${all.ringDirection} by direction), ${all.structures} a flyover or tunnel (flyovers only on the 6 trips with `trace_attributes` here), ${all.places} a place on the corner. Exit signs on ${all.signs}, lanes on ${all.lanes}.\n")
+        out.append("Landmarks: ${all.signals} manoeuvres at a signal, ${all.rings} roundabouts (${all.ringNumber} with the exit's number, ${all.ringDirection} by direction), ${all.structures} a flyover or tunnel (flyovers only on the trips with `trace_attributes` here), ${all.places} a place on the corner. Exit signs on ${all.signs}, lanes on ${all.lanes}.\n")
         for (id in ids) {
             val t = Fixtures.trip(id)
             if (t.reference) write(out, t)

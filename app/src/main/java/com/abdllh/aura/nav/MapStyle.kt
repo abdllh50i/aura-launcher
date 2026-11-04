@@ -68,12 +68,15 @@ object MapStyle {
     const val POI_DOT = "poi-dot"
 
     /**
-     * The pack's map fonts: tools/mapbuild/make_glyphs.py's --family, with " Regular" and " Bold" the stacks of glyphs.db. The
-     * one place to change when the UI's font changes (with a new glyphs.db).
+     * The pack's map fonts, IBM Plex Sans Arabic as glyphs (a modified form of it, so under a name without the reserved "Plex": tools/mapbuild/NOTICE-PACK.md): make_glyphs.py's --family, with
+     * " Regular" and [PACK_HEAVY] the stacks of glyphs.db. The one place to change when the UI's font changes (with a new glyphs.db).
      */
-    const val PACK_FONT = "Readex Pro AMRI"
+    const val PACK_FONT = "AMRI Map Sans"
+    /** The heavier of the pack's two weights. */
+    const val PACK_HEAVY = "SemiBold"
     /** The fonts OpenFreeMap serves, and the offline map of a unit with no pack holds. */
     const val ONLINE_FONT = "Noto Sans"
+    const val ONLINE_HEAVY = "Bold"
 
     private const val TILES = "https://tiles.openfreemap.org/planet"
     private const val GLYPHS = "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf"
@@ -188,6 +191,9 @@ object MapStyle {
         // (a motorway often has only its number)
         val roadName = if (arabic) """["coalesce",["get","name:ar"],["get","name"],["get","ref"]]"""
         else """["coalesce",["get","name:en"],["get","name:latin"],["get","name"],["get","ref"]]"""
+        // On the pack, a minor road in Arabic says its name in Arabic or nothing: the build gave name:ar to every Latin name it could read (tools/mapbuild/arabic_names.py), and a Latin name left means it could not
+        // (name:nonlatin: the tile's own field, the name when it is not in Latin letters). SPEC section 11. Online tiles have had no such build: they keep their Latin names. A motorway keeps its Latin name ([roadName]).
+        val minorName = if (arabic && TileServer.running && PackTiles.present) """["coalesce",["get","name:ar"],["get","name:nonlatin"],""]""" else name
         // tiles and glyphs through the unit's own tile server (the pack, the offline map, else OpenFreeMap), OpenFreeMap directly
         // only if that server could not start
         val local = TileServer.running
@@ -195,7 +201,7 @@ object MapStyle {
         // the fonts of whoever serves the glyphs: OpenFreeMap has no others, the pack no others
         val font = if (local && PackTiles.hasFonts) PACK_FONT else ONLINE_FONT
         val regular = """["$font Regular"]"""
-        val bold = """["$font Bold"]"""
+        val bold = """["$font ${if (font == PACK_FONT) PACK_HEAVY else ONLINE_HEAVY}"]"""
         // Arabic letters read about a size smaller than Latin ones at the same pixel size: every label is a little
         // larger in Arabic, so both read alike
         fun ts(v: Double) = num(if (arabic) v * 1.12 else v)
@@ -406,7 +412,7 @@ object MapStyle {
             // their height while driving, the very moment they are read).
             """{"id":"road-name","type":"symbol","source":"omt","source-layer":"transportation_name","minzoom":13,
                "filter":${cls("primary", "secondary", "tertiary", "minor", "service")},
-               "layout":{"symbol-placement":"line","text-field":$name,"text-font":$regular,"symbol-spacing":320,
+               "layout":{"symbol-placement":"line","text-field":$minorName,"text-font":$regular,"symbol-spacing":320,
                "text-size":${size(13 to 12.5, 16 to 14.5, 18 to 17.0)},"text-max-angle":30,"text-padding":8,
                "text-rotation-alignment":"map","text-pitch-alignment":"viewport"},
                "paint":{"text-color":"${c.roadLabel}","text-halo-color":"${c.roadHalo}","text-halo-width":1.8}}""",

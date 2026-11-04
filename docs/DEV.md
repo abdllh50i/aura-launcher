@@ -668,10 +668,17 @@ Cameras, signals and bumps keep their colours in code, as they were.
   was two grey bands.
 * `road-name-major` from z11, far apart while far out; `road-name` a little more room between names.
 
-**The fonts.** `MapStyle.PACK_FONT` (`Readex Pro AMRI`) is the one name in the app; `make_glyphs.py --family` and `make_pack.py --family`
-must say the same (the font itself is `make_glyphs.py`'s first argument). The style asks for it when the unit has `glyphs.db` and the
+**The fonts.** `MapStyle.PACK_FONT` (`AMRI Map Sans`: IBM Plex Sans Arabic, under a name without the font's reserved "Plex", as the OFL asks of a modified form) is the one name in the app, with `PACK_HEAVY` (`SemiBold`); `make_glyphs.py --family` and `make_pack.py --family`
+must say the same (the two font files are `make_glyphs.py`'s first arguments). The style asks for it when the unit has `glyphs.db` and the
 tile server is up, else for `Noto Sans`, which is all OpenFreeMap has. glyphs.db unreadable: the server answers the request from
 the Noto stack, so a damaged pack costs the font, not the words. A range the pack has no row for is 204 at once.
+
+**Arabic road names, at pack build, nothing at run time** (SPEC section 11; `tools/mapbuild/arabic_names.py`, README there). `src\ksa-ar.osm.pbf` is `ksa.osm.pbf` with `name:ar` on the highway ways that have a Latin
+`name` and none, when every word is known: the hand table (`arabic_names_rules.json`, from the design's `arRoad`), then word pairs learnt from the Kingdom's own two-script names and read by a person (`arabic_names_words.tsv`). A word nobody has read is not used; nothing is spelled out letter by letter. Base tiles, routing and places all read that file.
+Planetiler carries the tag as `name:ar` of `transportation_name`. Valhalla with the Kingdom's admin database lists both (`Prince Naif Road; طريق الأمير نايف`) and `Names.pick` takes the Arabic: no `alt_name` needed. `MapStyle`'s `road-name` on a unit with a pack reads `name:ar`, then the tile's `name:nonlatin`, then nothing: a minor road whose Latin name has no rule has no label. `road-name-major` (motorway, trunk) keeps a Latin name. On online tiles, which had no such build, Latin stays; outside the Kingdom a unit with a pack draws the same rule, so a minor road in Latin there has no label on the Arabic map either.
+Measured on 2026-11-05: named highway ways with Arabic, Kingdom 62,723 to 67,913 of 72,051, his box 1,125 to 2,121 of 2,723 (by km 67 % to 91 %). Named segments in z14's `transportation_name`, his box: 980 of 2,244 to 1,732 of 2,241. What stays Latin there is mostly Aramco's camps (Palm Drive, Crane Court, 308 names, 548 ways).
+
+**Places of 3 letters or less** have no word on the map (`build_poi_tiles.py`: no `name` in the tile, the dot and the row stay; 2,307 dots at z14). A tap on such a dot goes to the nearest named place (`AuraMap.tapPlace`).
 
 **Places.** `places.mbtiles` (layer `places`, fields `name`, `name:en`, `kind`, `cat`, `rank`, `id`) is a source of its own on
 `/p/{z}/{x}/{y}.pbf`, z12 to z14. `kind` is new: `cat.icon`, the colour group, because `cat.id` changes between builds and the style would
@@ -708,9 +715,9 @@ the middle of the map inside the outline or no internet), `© OpenStreetMap · O
 times per shot and anything MapLibre complains of. `tools/mapbuild/adversary/dump_style.ps1` still writes the style as JSON for the GL JS plates.
 Seen on the x86_64 emulator with MapLibre Native 10.3.7, day and night, Arabic and English, against `final2/assets/plates`; not an ARM GPU, nothing on the unit.
 Reads there, the emulator's disk image on a spinning disk shared with other emulators: mean 1 to 23 ms a tile per camera, worst 91 ms; one run while the disk was busy, mean 42 ms, worst 420 ms (the PC itself: 0.04 ms). The unit's eMMC is unmeasured.
-What differs from the plates, on purpose or not: the words are Readex Pro AMRI, the plates' Noto Sans; the places are the pack's, not OpenFreeMap's, so other names and more
+What differs from the plates, on purpose or not: the words are IBM Plex Sans Arabic, the plates' Noto Sans; the places are the pack's, not OpenFreeMap's, so other names and more
 Latin on an Arabic screen; edges of fills have no multisampling; the labels' fade exists on the unit and not on a plate.
-The rectangle's south edge, 16.2 N, shows as a straight line across the Red Sea below Jazan at z7 to z9 (a tile that touches the outline comes from the pack even online): rare here, a rebuild with a lower edge cures it.
+The straight lines in the sea at 16.2 N and 55.7 E are gone: Planetiler cuts the polygons it reads exactly at `--bounds`, so z9-14 are built over 32,13.9,58,36.6 (past every tile that touches the outline) and z0-8 over 22.5,0,67.5,41 (`tools/mapbuild/merge_low_zoom.py`), 4.9 MB more on disk. Which tile comes from where has not changed: `KsaOutline.touchesTile` the pack, else online, else what the pack has.
 
 ### Map additions: limits, cameras, signals, bumps (`tools/map-editor`, `nav/MapExtras.kt`)
 What the map data does not have, the owner draws himself and every unit picks up.
@@ -1951,8 +1958,7 @@ preference below is on. Nothing here has run on the unit: every number is from t
   them apart. Gates within 15 m; `warn` for sub 2 or 3 on a road of class 2 or more (gate-camp's checkpoint is on a secondary road, Jubail-Dammam's on a motorway).
 * **Where it differs from the spec, on purpose:** the spec warns about a military or private zone when a route ends inside "or leaves the motorway and trunk roads inside", and names Jubail-Dammam as the
   public highway that must not. That road is OSM's primary for 9 km in the naval base's ring, so those words warn on it; over the 54 kept test trips with road classes (`scripts/search_compare.py zones`) they warn 11 times, once for a guarded place
-  (gate-air). `ZoneHit.warn` goes by a tertiary road or less (100 m or more) or an end well inside: 2 times (gate-air; ithra, which ends inside). `offMainMetres` keeps the spec's measure. The rings are coarse, which is
-  the larger problem and is not solved here: zone 519 (the air base) holds 1,289 POIs of Khobar and Dhahran, 397 (the naval base) 269 of Jubail, so "ends inside" warns on a hospital in Khobar.
+  (gate-air). `ZoneHit.warn` goes by a tertiary road or less (100 m or more) or an end well inside. `offMainMetres` keeps the spec's measure. Since the pack of 2026-11-05 the rings are OSM's own line, not 24 points grown outward: the air base holds 9 POIs, not 1,289, the naval base 19, not 269.
   Road classes come from `trace_attributes` (`roadClassNumber`); without them only "ends inside" is known. The Haram warns any route that comes in (`haramRing` gives the ring for `exclude_polygons`).
 * **The swap:** preference `placesEngine`, default off, no setting for it: `Places.search` then asks this engine, gives `Place`s, and goes the old way when the file cannot be used; `Places.cancelSearch` stops it.
   Photon is not asked on that road, so it is a test of this engine and no more. `am broadcast -a com.abdllh.aura.debug.PLACES --ez swap true`; `--es db <file>` for another file. The other extras are at the top of `PlacesDebug.kt`.
@@ -1987,16 +1993,15 @@ interface the search part implements over `places.db`. Everything fails towards 
 * **Names** (`Names.pick`): Valhalla's joined list ("طريق الملك فهد; King Fahd Road") by script, then the other script, then the number.
   A `ref` is often no number ("King Abdul Aziz street, Jubail, saudi arabia", 3 ways). A Latin name's Arabic comes from the index when it
   has one (`RouteWorld.arabicRoadName`). The voice calls "الخرمة" "شارع الخرمة" and leaves out over 38 letters; the sign shows the name.
-  **How often, in an Arabic UI, on the 382 told manoeuvres of the 30 trips:** Arabic name 152 (40 %, 5 of them by the index), Latin only 24
-  (6 %: the banner shows it, the voice does not read it; 8 have a landmark instead, 16 are a plain instruction), a number only 31 (8 %),
-  **no name at all 175 (46 %)**, of which 23 have a landmark. So half the turns are "لف يمين" and the distance. That is the data.
+  **How often, in an Arabic UI, on the 382 told manoeuvres of the 30 trips:** Arabic name 174 (46 %), Latin only 3 (1 %: the banner shows it, the voice does not read it), a number only 30 (8 %),
+  **no name at all 175 (46 %)**, of which 24 have a landmark. Before the pack's Arabic road names (`tools/mapbuild/arabic_names.py`): 152 (40 %, 5 of them by the index), 24 (6 %), 31, 175. So half the turns are still "لف يمين" and the distance: those roads have no name in OSM in any script, and no rule makes one.
 * **Landmarks**, in the plan's order: a signal (`spot.j` counted, nodes of one junction once, from where the car is at that moment, so the
   second becomes "the signal" once the first is passed; past the third no ordinal), a roundabout, after a flyover or tunnel at most 150 m
   back, onto one at most 120 m ahead, and only when there is no name to read, a place within 35 m (50 for what has a yard) on the side
   of the turn. Fired on the 382: 24 at a signal, 44 roundabouts, 3 places. Turns with anything at all within 35 m on their side: 30 of 242.
   Places: a short list of kinds and chains, rank 45 or more, never a coarse position; tenants of a mall sit on the mall's point. OSM misses
   signals, so an ordinal can be off by one: the distance is always said with it when far. Flyovers need `trace_attributes`
-  (`RoadFacts`): the answer has no bridge class. Only 6 fixtures have facts for their very line, and on those 6 none fired.
+  (`RoadFacts`): the answer has no bridge class. 15 of the 30 fixtures have facts for their very line (6 before the route tests were asked again with the same request), and on those 5 fired.
 * **Roundabouts** (`Ring`): the router's number counts driveways (8 of 60 rings differ from OSM's road exits). The answer does not say which
   arm is what, but where they are: two arms under 17 m apart are never two roads. Number said only with its arms apart, at most the fourth, and
   not for a first exit that runs straight on. On all 60: said on 46, of which 2 differ from OSM (a first exit OSM calls a service road:
@@ -2016,10 +2021,7 @@ interface the search part implements over `places.db`. Everything fails towards 
   road's `speed_limit`, then by class, `LimitNow.source` says which ("من الخريطة", "تقريبي"). The class table is what OSM says most by length over
   the 56 test trips; his to confirm.
 * **Before a trip** (`TripCheck`): SEARCH_SPEC section 1 with one change: primary counts as a public road beside motorway and trunk, or the spec's
-  own example warns (Jubail-Dammam runs 93 points inside the naval base's ring on King Abdul Aziz street, primary). gate-air, on tertiary and
-  residential, warns. An end inside must be 150 m from the ring's edge: the rings are simplified to about 24 points, and that base's
-  wedge takes in Jubail Center, a mall in town, 74 m in. **Data to fix at the next build:** keep more points for kinds 3 and 4; OSM's "Border
-  Exclusion Zone" is kind 3, so a route to the Salwa post is told it ends in a military area. The causeway goes by place
+  own example warned on the 22-point ring (Jubail-Dammam, King Abdul Aziz street, primary). An end inside must be 150 m from the ring's edge. Since the pack of 2026-11-05 kinds 3 and 4 keep OSM's own line within about 16 m (`osm_roadside.py`): the naval base's ring 22 to 144 points and 269 POIs inside it to 19, the air base's 23 to 81 and 1,289 to 9. Over the 54 kept trips only `base-air`, which ends inside the fence, warns; Ithra and the air base's hospital went quiet with the ring. OSM's "Border Exclusion Zone" at Salwa (access=permissive), Prince Sultan's reserve, Taif's civil airport and 16 hazards with a military tag are no zone at all. A `barrier=toll_booth` outside the causeway is a checkpoint (gate sub 3): the Kingdom's roads have no other toll, and Al Shumaisi said "this road has a toll" on Jeddah-Taif. The causeway goes by place
   (`CAUSEWAY_SEA`): "طريق جسر الملك فهد" runs on land for kilometres. `Haram.plan`: the zone he goes to or comes from is not excluded
   (NoRoute otherwise) and he is told.
 * **Prayer times** (`PrayerTimes`): new. The "Umm al-Qura code" the plan points to is `Amri.kt`'s Hijri date; there were no times in the app. From

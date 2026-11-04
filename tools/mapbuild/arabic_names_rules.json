@@ -1,0 +1,77 @@
+{
+ "about": "Arabic road names at pack build, the hand-written part (arabic_names.py). words starts from the design's table, final2/tools/map.html's arRoad, and goes on with what a person read in the data; a word here beats the learnt list. Latin words are as arabic_names.latin_tokens makes them: lower case, no marks, the article joined to its word (al-Khobar = alkhobar).",
+ "fix": {
+  "طريف الأمير فيصل بن فهد": "طريق الأمير فيصل بن فهد",
+  "South Corniche": "الكورنيش الجنوبي",
+  "Hospital Road": "طريق المستشفى",
+  "King Abdullah Hospital Road": "طريق مستشفى الملك عبدالله",
+  "Service Road": "طريق الخدمة",
+  "Port Road": "طريق الميناء",
+  "University Road": "طريق الجامعة",
+  "Main": "الشارع الرئيسي",
+  "Qasim Road": "طريق القصيم",
+  "Prince Sara Bint Alemam Abdullah": "شارع الأميرة سارة بنت الإمام عبدالله"
+ },
+ "first_word": {"طرق": "طريق", "طريقة": "طريق", "شلرع": "شارع", "شارح": "شارع", "شار": "شارع", "شارء": "شارع", "شارغ": "شارع", "ارع": "شارع"},
+ "kind_end": {
+  "street": "شارع", "stree": "شارع", "stre": "شارع", "strret": "شارع", "st": "شارع",
+  "road": "طريق", "rd": "طريق",
+  "avenue": "جادة", "ave": "جادة",
+  "highway": "طريق", "hwy": "طريق", "expressway": "طريق", "expy": "طريق", "expway": "طريق",
+  "boulevard": "بوليفارد", "blvd": "بوليفارد",
+  "valley": "وادي", "mountain": "جبل", "tunnel": "نفق", "bridge": "جسر"
+ },
+ "kind_before": {
+  "street": "شارع", "st": "شارع", "road": "طريق", "rd": "طريق", "highway": "طريق", "hwy": "طريق", "expressway": "طريق", "expy": "طريق"
+ },
+ "letters": {"a": "أ", "b": "ب", "c": "ج", "d": "د", "h": "ح"},
+ "phrases": {
+  "second ring road": "الطريق الدائري الثاني", "2nd ring road": "الطريق الدائري الثاني",
+  "first ring road": "الطريق الدائري الأول", "1st ring road": "الطريق الدائري الأول",
+  "third ring road": "الطريق الدائري الثالث", "3rd ring road": "الطريق الدائري الثالث",
+  "fourth ring road": "الطريق الدائري الرابع", "4th ring road": "الطريق الدائري الرابع",
+  "eastern ring road": "الطريق الدائري الشرقي", "east ring road": "الطريق الدائري الشرقي",
+  "western ring road": "الطريق الدائري الغربي", "west ring road": "الطريق الدائري الغربي",
+  "northern ring road": "الطريق الدائري الشمالي", "north ring road": "الطريق الدائري الشمالي",
+  "southern ring road": "الطريق الدائري الجنوبي", "south ring road": "الطريق الدائري الجنوبي",
+  "ring road": "الطريق الدائري",
+  "eastern ring": "الدائري الشرقي", "western ring": "الدائري الغربي", "northern ring": "الدائري الشمالي", "southern ring": "الدائري الجنوبي",
+  "custodian of the two holy mosques": "خادم الحرمين الشريفين", "custodian of two holy mosques": "خادم الحرمين الشريفين",
+  "arabian gulf": "الخليج العربي",
+  "red sea": "البحر الأحمر",
+  "jubail university": "جامعة الجبيل",
+  "ibn al khashab": "ابن الخشاب",
+  "sayid ash shuhada": "سيد الشهداء",
+  "fairouz abadi": "الفيروز أبادي",
+  "hassan ibn thabit": "حسان بن ثابت", "hassan bin thabit": "حسان بن ثابت",
+  "bashar bin bard": "بشار بن برد"
+ },
+ "after": {
+  "old": "القديم", "new": "الجديد", "main": "الرئيسي", "branch": "الفرعي",
+  "northern": "الشمالي", "southern": "الجنوبي", "eastern": "الشرقي", "western": "الغربي",
+  "north": "الشمالي", "south": "الجنوبي", "east": "الشرقي", "west": "الغربي"
+ },
+ "titled": ["king", "prince", "princess", "alamir", "almalik", "pr"],
+ "stay": ["mina", "amir", "manarat", "the", "of", "to", "at", "and", "or", "for", "in", "on", "by"],
+ "words": {
+  "prince": "الأمير", "princess": "الأميرة", "king": "الملك", "kings": "الملك", "imam": "الإمام", "sheikh": "الشيخ", "shaikh": "الشيخ", "pr": "الأمير",
+  "naif": "نايف", "nayef": "نايف", "nawaf": "نواف", "badr": "بدر", "bader": "بدر", "mishaal": "مشعل", "mishal": "مشعل",
+  "abdullah": "عبدالله", "abdallah": "عبدالله", "abdulla": "عبدالله", "abdulaziz": "عبدالعزيز", "abdelaziz": "عبدالعزيز", "abdulrahman": "عبدالرحمن",
+  "mansour": "منصور", "mansur": "منصور", "salman": "سلمان", "salmam": "سلمان", "khalid": "خالد", "khaled": "خالد", "humud": "حمود", "hamoud": "حمود", "nasser": "ناصر", "naser": "ناصر",
+  "fahd": "فهد", "fahad": "فهد", "fahed": "فهد", "faisal": "فيصل", "faysal": "فيصل", "sultan": "سلطان", "saud": "سعود",
+  "mohammed": "محمد", "muhammad": "محمد", "mohammad": "محمد", "mohamed": "محمد",
+  "turki": "تركي", "bandar": "بندر", "musaid": "مساعد", "mutaib": "متعب", "miteb": "متعب", "talal": "طلال", "majed": "ماجد", "majid": "ماجد", "saad": "سعد",
+  "ahmed": "أحمد", "ahmad": "أحمد", "ali": "علي", "omar": "عمر", "umar": "عمر", "othman": "عثمان", "uthman": "عثمان",
+  "hassan": "حسن", "hussein": "حسين", "hussain": "حسين", "husain": "حسين", "ibrahim": "إبراهيم", "ismail": "إسماعيل", "yousef": "يوسف", "yousif": "يوسف", "yusuf": "يوسف", "salah": "صلاح",
+  "corniche": "الكورنيش", "dhahran": "الظهران", "dammam": "الدمام", "jubail": "الجبيل", "khobar": "الخبر", "airport": "المطار", "gulf": "الخليج",
+  "no": "رقم",
+  "riyadh": "الرياض", "jeddah": "جدة", "jiddah": "جدة", "makkah": "مكة", "mecca": "مكة", "madinah": "المدينة", "madina": "المدينة", "madeena": "المدينة", "medina": "المدينة",
+  "yanbu": "ينبع", "hail": "حائل", "abha": "أبها", "taif": "الطائف", "qatif": "القطيف", "doha": "الدوحة", "kuwait": "الكويت", "abqaiq": "بقيق", "asfan": "عسفان", "diba": "ضباء",
+  "alhasa": "الأحساء", "alhassa": "الأحساء", "hasa": "الأحساء", "alahsa": "الأحساء", "hofuf": "الهفوف", "albaha": "الباحة",
+  "muzdalifah": "مزدلفة", "mozdalifah": "مزدلفة", "naimi": "النعيمي", "alyamania": "اليمانية", "alasmaie": "الأصمعي", "alnaqeeb": "النقيب", "alkaurnish": "الكورنيش", "alkahtib": "الخطيب",
+  "sibawih": "سيبويه", "tabari": "الطبري", "alamudi": "العمودي", "alnusayr": "نصير", "yassir": "ياسر", "alashjai": "الأشجعي", "alqahirah": "القاهرة",
+  "dahia": "دحية", "radhwa": "رضوى", "rawdah": "الروضة", "alandulus": "الأندلس", "khouzaima": "خزيمة", "bachir": "بشير", "alansarii": "الأنصاري", "albukharl": "البخاري",
+  "abdulmuttabllib": "عبدالمطلب", "salahedin": "صلاح الدين", "allietidal": "الاعتدال", "alistiqama": "الاستقامة", "alintessar": "الانتصار", "almurtada": "المرتضى", "alfarabi": "الفارابي", "badwi": "بدوي", "alkhudri": "الخدري",
+  "qatadah": "قتادة", "alsamaa": "السماء", "dahna": "الدهناء", "abanan": "أبانان"
+ }
+}

@@ -1,21 +1,21 @@
 #!/usr/bin/env python
 """The map's fonts as a pack piece: glyphs.db, signed distance fields of the OS's own typeface, in the 256-code-point ranges MapLibre asks for.
 
-  python -I make_glyphs.py <font.ttf> <out glyphs.db> [--family "Readex Pro AMRI"] [--report out.json]
+  python -I make_glyphs.py <Regular.ttf> <SemiBold.ttf> <out glyphs.db> [--family "AMRI Map Sans"] [--report out.json] [--labels base.mbtiles,places.mbtiles]
 
-A change of the UI's font: run this with the new font and a new --family, make_pack.py with the same --family, and change MapStyle.PACK_FONT in the app: the three must say the same name.
+A change of the UI's font: run this with the new font and a new --family, make_pack.py with the same --family, and change MapStyle.PACK_FONT in the app: the three must say the same name. The stacks are the family + " Regular" and + " SemiBold".
 
-Why not the font as it is: MapLibre 10.3.7 shapes Arabic itself (ICU u_shapeArabic), turning letters into Unicode presentation forms (U+FB50-FDFF, U+FE70-FEFF), and draws one
-signed-distance glyph per code point. Readex Pro AMRI has its joined forms behind OpenType features (init, medi, fina, rlig), with no code points. So each presentation form is
-drawn from the glyph those features give for it, under that form's code point.
+MapLibre 10.3.7 shapes Arabic itself (ICU u_shapeArabic), turning letters into Unicode presentation forms (U+FB50-FDFF, U+FE70-FEFF), and draws one signed-distance glyph per code point. IBM Plex Sans Arabic has those
+forms at their own code points, so most are read straight from its cmap; a form it lacks is drawn from the glyph its OpenType features (init, medi, fina, rlig) give, under that form's code point.
 
-Letters the font lacks (Persian and Urdu letters, in a few names only) borrow the nearest letter it has, listed in NEAR and counted in the report: a label never shows a blank for them.
+Letters the font lacks borrow the nearest letter it has, listed in NEAR and counted in the report: a label never shows a blank for them. --labels counts, over every label of the given tiles, what still has no glyph, by code point.
 
 Standard library, numpy, scipy and fontTools: no font-maker, which would be one more download. The file holds one table, the one TileStore.glyph() reads:
   glyphs(name TEXT PRIMARY KEY, data BLOB)   name is "<stack>/<first>-<last>", data the PBF as MapLibre wants it, not gzipped
-Licence: the font is SIL OFL 1.1; the glyphs are a modified form of it. It keeps the name "Readex Pro AMRI" (app/src/main/assets/fonts/ReadexPro-OFL.txt, NOTICE-PACK.md).
+Licence: the font is SIL OFL 1.1, Copyright 2017 IBM Corp. with Reserved Font Name "Plex". The glyphs are a modified form of it, so they carry a name without the reserved word (NOTICE-PACK.md).
 """
 import argparse
+import collections
 import hashlib
 import json
 import os
@@ -26,11 +26,12 @@ import unicodedata
 import numpy as np
 from fontTools.pens.recordingPen import DecomposingRecordingPen
 from fontTools.ttLib import TTFont
-from fontTools.varLib import instancer
 from PIL import Image, ImageDraw
 from scipy import ndimage
 
-WEIGHTS = {"Regular": 400, "Bold": 700}
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import mvt  # noqa: E402
+
 RANGES = [0, 256, 512, 768, 1536, 1792, 7680, 8192, 8448, 64256, 64512, 64768, 65024, 65280]  # OfflineMaps.GLYPH_RANGES, and 7680-7935: real tags such as "Wādī al Mulayḩ"
 SIZE = 24  # what MapLibre expects: glyphs at 24 px
 BUFFER = 3
@@ -42,9 +43,11 @@ ASCENT = 26  # so that the baseline sits 9 px under the label's middle, as with 
 NEAR = {0x06A9: 0x0643, 0x06AA: 0x0643, 0x06AF: 0x0643, 0x06B3: 0x0643, 0x067E: 0x0628, 0x0680: 0x0628, 0x0686: 0x062C, 0x0683: 0x062C, 0x0698: 0x0632, 0x06CC: 0x064A, 0x06D0: 0x064A, 0x06D2: 0x064A, 0x06D3: 0x064A, 0x0679: 0x062A,
         0x067A: 0x062A, 0x067F: 0x062A, 0x0688: 0x062F, 0x068C: 0x062F, 0x068D: 0x062F, 0x068E: 0x062F, 0x0691: 0x0631, 0x06BE: 0x0647, 0x06C0: 0x0647, 0x06C1: 0x0647, 0x06C2: 0x0647, 0x06C3: 0x0629, 0x06D5: 0x0647, 0x0672: 0x0627,
         0x0673: 0x0627, 0x0675: 0x0627, 0x0676: 0x0648, 0x0677: 0x0648, 0x06C4: 0x0648, 0x06C5: 0x0648, 0x06C6: 0x0648, 0x06C7: 0x0648, 0x06C8: 0x0648, 0x06C9: 0x0648, 0x06CA: 0x0648, 0x06CB: 0x0648, 0x06CF: 0x0648, 0x0678: 0x064A,
-        0x067B: 0x0628, 0x0684: 0x062C, 0x0687: 0x062C, 0x06A6: 0x0641, 0x06AD: 0x0643, 0x06B1: 0x0643, 0x06BB: 0x0646, 0x06BC: 0x0646, 0x06A0: 0x063A, 0x06A2: 0x0641, 0x06A3: 0x0641, 0x06A5: 0x0641, 0x06A7: 0x0642, 0x06A8: 0x0642, 0x06A4: 0x06A4, 0x06BA: 0x06BA}
+        0x067B: 0x0628, 0x0684: 0x062C, 0x0687: 0x062C, 0x06A6: 0x0641, 0x06AD: 0x0643, 0x06B1: 0x0643, 0x06BB: 0x0646, 0x06BC: 0x0646, 0x06A0: 0x063A, 0x06A2: 0x0641, 0x06A3: 0x0641, 0x06A5: 0x0641, 0x06A7: 0x0642, 0x06A8: 0x0642, 0x06A4: 0x0641, 0x06BA: 0x0646}
 # a few characters often found in names that some fonts lack
 SPARE = {0x2019: 0x27, 0x2018: 0x27, 0x201C: 0x22, 0x201D: 0x22, 0x2013: 0x2D, 0x2014: 0x2D, 0x2212: 0x2D, 0x00A0: 0x20, 0x202F: 0x20, 0x2009: 0x20, 0x200A: 0x20, 0x2002: 0x20, 0x2003: 0x20}
+# what draws nothing: no glyph is missed for these
+NO_INK = {0x200B, 0x200C, 0x200D, 0x200E, 0x200F, 0x202A, 0x202B, 0x202C, 0x202D, 0x202E, 0x2066, 0x2067, 0x2068, 0x2069, 0xFEFF, 0xFE0F, 0x0640}
 
 
 def varint(v):
@@ -136,7 +139,7 @@ def outlines(glyphset, name):
         elif op == "qCurveTo":
             pts = list(args)
             p0 = cur[-1]
-            if pts[-1] is None:  # all off-curve: not used by this font's outlines, but legal
+            if pts[-1] is None:  # all off-curve: legal
                 pts = pts[:-1]
                 pts.append(((pts[0][0] + pts[-1][0]) / 2, (pts[0][1] + pts[-1][1]) / 2))
             for i in range(len(pts) - 1):
@@ -182,7 +185,7 @@ def sdf(contours, upm):
         im = Image.new("1", (W, H), 0)
         ImageDraw.Draw(im).polygon(pts, fill=1)
         m = np.asarray(im, dtype=bool)
-        # TrueType: nonzero winding. Overlapping contours (this variable font has them) add up, counters take away.
+        # TrueType: nonzero winding. Overlapping contours add up, counters take away.
         wind[m] += 1 if signed_area(c) < 0 else -1
     inside = wind != 0
     dist = (ndimage.distance_transform_edt(~inside) - ndimage.distance_transform_edt(inside)) / OVER
@@ -204,16 +207,40 @@ def glyph_pbf(cp, g):
     return f_bytes(3, body)
 
 
+def label_code_points(paths):
+    """Every code point of every label in the given tiles (each distinct blob once), with how often it occurs. What ICU's shaping will ask for is added: an Arabic letter also needs its forms, which the ranges hold."""
+    seen = collections.Counter()
+    for path in paths:
+        db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        table = "tiles_data" if db.execute("SELECT 1 FROM sqlite_master WHERE name='tiles_data'").fetchone() else "tiles"
+        for (data,) in db.execute(f"SELECT tile_data FROM {table}"):
+            for name, _, keys, vals, feats, _ in mvt.layers(mvt.ungzip(data)):
+                wanted = {i for i, k in enumerate(keys) if k == "name" or k.startswith("name:") or k in ("ref", "housenumber")}
+                if not wanted:
+                    continue
+                for fb in feats:
+                    for f, _, v in mvt.fields(fb):
+                        if f == 2:
+                            t = mvt.packed(v)
+                            for i in range(0, len(t) - 1, 2):
+                                if t[i] in wanted and isinstance(vals[t[i + 1]], str):
+                                    seen.update(vals[t[i + 1]])
+        db.close()
+    return seen
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("font")
+    ap.add_argument("regular")
+    ap.add_argument("semibold")
     ap.add_argument("out")
-    ap.add_argument("--family", default="Readex Pro AMRI", help="the stacks' names are this + Regular, Bold; the font must be a variable one with a wght axis")
+    ap.add_argument("--family", default="AMRI Map Sans", help="the stacks' names are this + Regular, SemiBold. No reserved font name in it (OFL 1.1 section 3)")
     ap.add_argument("--report")
+    ap.add_argument("--labels", help="tile files, comma separated: count what their labels need and the font has no glyph for")
     a = ap.parse_args()
-    stacks = {f"{a.family} {name}": w for name, w in WEIGHTS.items()}
+    stacks = {f"{a.family} Regular": a.regular, f"{a.family} SemiBold": a.semibold}
     sys.stdout.reconfigure(encoding="utf-8")
-    report = {"font": os.path.basename(a.font), "font_sha256": hashlib.sha256(open(a.font, "rb").read()).hexdigest(), "stacks": {}, "ranges": RANGES}
+    report = {"fonts": {k: {"file": os.path.basename(v), "sha256": hashlib.sha256(open(v, "rb").read()).hexdigest()} for k, v in stacks.items()}, "stacks": {}, "ranges": RANGES}
     if os.path.exists(a.out):
         os.remove(a.out)
     db = sqlite3.connect(a.out)
@@ -221,8 +248,9 @@ def main():
     db.execute("PRAGMA journal_mode=OFF")
     db.execute("CREATE TABLE glyphs(name TEXT PRIMARY KEY, data BLOB NOT NULL)")
     total = 0
-    for stack, weight in stacks.items():
-        font = instancer.instantiateVariableFont(TTFont(a.font), {"wght": weight, "HEXP": 0})
+    code_points = None
+    for stack, path in stacks.items():
+        font = TTFont(path)
         glyphset = font.getGlyphSet()
         cmap = font.getBestCmap()
         forms = Forms(font)
@@ -230,6 +258,7 @@ def main():
         hmtx = font["hmtx"]
         made = {}
         near_used = set()
+        base_used = set()
         missing_forms = []
 
         def add(cp, name):
@@ -245,9 +274,11 @@ def main():
                 if name is None and cp in NEAR and NEAR[cp] in cmap:
                     near_used.add(cp)
                     name = cmap[NEAR[cp]]
-                if name is None and 0x1E00 <= cp <= 0x1EFF:  # ḩ, ṭ: the letter without its mark rather than a gap
+                if name is None and (0x0100 <= cp <= 0x036F or 0x1E00 <= cp <= 0x1EFF):  # ḩ, ā, ṭ: the letter without its mark rather than a gap
                     b = unicodedata.normalize("NFD", chr(cp))[0]
-                    name = cmap.get(ord(b))
+                    if b != chr(cp) and ord(b) in cmap:
+                        name = cmap[ord(b)]
+                        base_used.add(cp)
                 if name is None and (0xFB50 <= cp <= 0xFDFF or 0xFE70 <= cp <= 0xFEFC):
                     name = form_glyph(cp, font, cmap, forms, near_used)
                     if name is None and unicodedata.decomposition(chr(cp)).startswith("<") and len(unicodedata.decomposition(chr(cp)).split()) == 2:
@@ -271,14 +302,22 @@ def main():
             pbf_bytes += len(data)
             ranges_done += 1
         total += pbf_bytes
-        report["stacks"][stack] = {"weight": weight, "glyphs": len(made), "ranges": ranges_done, "bytes": pbf_bytes, "letters_borrowed": sorted(hex(c) for c in near_used), "forms_with_no_glyph": missing_forms,
-                                   "code_points": sorted(made)}
-        print(stack, "glyphs", len(made), "ranges", ranges_done, "bytes", pbf_bytes, "borrowed", len(near_used), "forms with no glyph", len(missing_forms), flush=True)
+        code_points = set(made)
+        report["stacks"][stack] = {"glyphs": len(made), "ranges": ranges_done, "bytes": pbf_bytes, "letters_borrowed": sorted(hex(c) for c in near_used), "marks_dropped_from": sorted(hex(c) for c in base_used), "forms_with_no_glyph": missing_forms, "code_points": sorted(made)}
+        print(stack, "glyphs", len(made), "ranges", ranges_done, "bytes", pbf_bytes, "borrowed", len(near_used), "marks dropped from", len(base_used), "forms with no glyph", len(missing_forms), flush=True)
     db.commit()
     db.execute("VACUUM")
     db.close()
     report["file_bytes"] = os.path.getsize(a.out)
     print("file", report["file_bytes"], flush=True)
+    if a.labels:
+        seen = label_code_points(a.labels.split(","))
+        missing = {c: n for c, n in seen.items() if ord(c) not in code_points and ord(c) not in NO_INK and ord(c) >= 0x20}
+        rows = sorted(missing.items(), key=lambda x: -x[1])
+        report["labels"] = {"characters": sum(seen.values()), "code_points": len(seen), "no_glyph_code_points": len(missing), "no_glyph_characters": sum(missing.values()),
+                            "no_glyph": [{"cp": f"U+{ord(c):04X}", "n": n, "name": unicodedata.name(c, "?")} for c, n in rows],
+                            "borrowed_in_labels": sum(n for c, n in seen.items() if hex(ord(c)) in set(report["stacks"][next(iter(stacks))]["letters_borrowed"]))}
+        print(f"labels: {sum(seen.values()):,} characters, {len(seen)} code points; no glyph for {len(missing)} code points, {sum(missing.values()):,} characters:", [(f"U+{ord(c):04X}", n, unicodedata.name(c, "?")) for c, n in rows[:40]], flush=True)
     if a.report:
         with open(a.report, "w", encoding="utf-8") as f:
             json.dump(report, f, ensure_ascii=False)

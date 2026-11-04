@@ -7,14 +7,14 @@ Told manoeuvres on the 30 trips, start and arrival aside: 382.
 
 | The road's name for the Arabic voice | Steps | Share |
 |---|---:|---:|
-| Arabic name (5 of them through the index's Arabic for a Latin name) | 152 | 40 % |
-| Latin only: the banner shows it, the voice does not read it | 24 | 6 % |
-| A road number only | 31 | 8 % |
+| Arabic name (0 of them through the index's Arabic for a Latin name) | 174 | 46 % |
+| Latin only: the banner shows it, the voice does not read it | 3 | 1 % |
+| A road number only | 30 | 8 % |
 | No name at all | 175 | 46 % |
 
-Of the 24 Latin-only ones, 8 have a landmark instead and 16 are a plain instruction. Of the 175 with no name, 23 have a landmark.
+Of the 3 Latin-only ones, 0 have a landmark instead and 3 are a plain instruction. Of the 175 with no name, 24 have a landmark.
 
-Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number, 15 by direction), 0 a flyover or tunnel (flyovers only on the 6 trips with `trace_attributes` here), 3 a place on the corner. Exit signs on 24, lanes on 0.
+Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number, 15 by direction), 5 a flyover or tunnel (flyovers only on the trips with `trace_attributes` here), 3 a place on the corner. Exit signs on 24, lanes on 0.
 
 ## jubail-dammam: Jubail town to Dammam
 
@@ -28,18 +28,18 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
 
 ```
 1. km 0.0  [depart]
-   sign: انطلق / Madeena Street
+   sign: انطلق / شارع المدينة
    en:   Head out / Madeena Street
 2. km 0.2  [rotary | slight right | exit 1]
-   sign: عند الدوار المخرج الأول / King Abdul Aziz street
-   near: عند الدوار المخرج الأول
+   sign: عند الدوار المخرج الأول / شارع الملك عبدالعزيز
+   near: عند الدوار المخرج الأول باتجاه شارع الملك عبدالعزيز
    en:   At the roundabout, take the 1st exit / King Abdul Aziz street | At the roundabout, take the 1st exit toward King Abdul Aziz street
 3. km 10.6  [roundabout | slight right | exit 1]
    sign: عند الدوار كمّل على طول
    far:  بعد 500 متر، عند الدوار كمّل على طول
    near: عند الدوار كمّل على طول
    en:   At the roundabout, go straight | In 500 metres, at the roundabout, go straight | At the roundabout, go straight
-   on:   كمّل لمسافة 10 كيلومترات | Continue on King Abdul Aziz street for 10 kilometres
+   on:   كمّل على شارع الملك عبدالعزيز لمسافة 10 كيلومترات | Continue on King Abdul Aziz street for 10 kilometres
 4. km 11.2  [turn | left]
    sign: لف يسار / طريق الظهران الجبيل السريع / [613]
    near: بعد 150 مترًا، لف يسار على طريق الظهران الجبيل السريع
@@ -175,7 +175,7 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
 - choice 1, the router's 1: 411.3 km, 241.8 min: الأسرع | fastest
 - choice 2, the router's 2: 453.0 km, 314.2 min: أبطأ بـ 1 س 12 د، أطول بـ 42 كم | slower by 1 h 12 min, longer by 42 km
 - fuel on the way: 48, longest gap 99.6 km; at the start: أقرب محطة بعد 3.3 كم
-- on the road, going its way: 3 cameras, 0 bumps, 4 signal junctions
+- on the road, going its way: 3 cameras, 0 bumps, 3 signal junctions
 - arrival: وجهتك قدامك، أقرب مواقف 10 م
 
 ```
@@ -222,9 +222,9 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    near: بعد 150 مترًا، الزم اليسار
    en:   Keep left | In 150 metres, keep left
 11. km 9.9  [off ramp | slight right]
-   sign: خذ المخرج على اليمين / طريق أبوحدرية / [95]
-   near: بعد 150 مترًا، خذ المخرج على اليمين باتجاه طريق أبوحدرية
-   en:   Take the exit on the right / Abu Hadriah Rd | In 150 metres, take the exit on the right toward Abu Hadriah Rd
+   sign: بعد الجسر خذ المخرج على اليمين / طريق أبوحدرية / [95]
+   near: بعد الجسر خذ المخرج على اليمين باتجاه طريق أبوحدرية
+   en:   After the flyover, take the exit on the right / Abu Hadriah Rd | After the flyover, take the exit on the right toward Abu Hadriah Rd
 12. km 12.4  [off ramp | slight right]
    sign: خذ المخرج على اليمين / طريق الدمام الرياض السريع / [40]
    far:  بعد كيلومتر ونصف، خذ المخرج على اليمين باتجاه طريق الدمام الرياض السريع
@@ -243,9 +243,9 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    en:   Keep left / Route 40 | In 1.5 kilometres, keep left | In 150 metres, keep left
    on:   كمّل على طريق 40 لمسافة 343 كيلومترًا | Continue on Route 40 for 343 kilometres
 15. km 396.0  [off ramp | slight right]
-   sign: خذ مخرج 8 على اليمين / طريق 539
-   near: بعد 150 مترًا، خذ مخرج 8 على اليمين باتجاه طريق 539
-   en:   Take exit 8 on the right / Route 539 | In 150 metres, take exit 8 on the right toward Route 539
+   sign: بعد الجسر خذ مخرج 8 على اليمين / طريق 539
+   near: بعد الجسر خذ مخرج 8 على اليمين باتجاه طريق 539
+   en:   After the flyover, take exit 8 on the right / Route 539 | After the flyover, take exit 8 on the right toward Route 539
 16. km 402.6  [off ramp | slight right]
    sign: خذ مخرج 11 على اليمين / طريق الدائري الشرقي
    far:  بعد كيلومتر ونصف، خذ مخرج 11 على اليمين
@@ -266,7 +266,7 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
 - choice 1, the router's 1: 948.4 km, 618.1 min: الأسرع | fastest
 - choice 2, the router's 2: 1224.9 km, 724.9 min: أبطأ بـ 1 س 47 د، أطول بـ 277 كم | slower by 1 h 47 min, longer by 277 km
 - fuel on the way: 76, longest gap 83.3 km; at the start: أقرب محطة بعد 950 م
-- on the road, going its way: 3 cameras, 0 bumps, 8 signal junctions
+- on the road, going its way: 3 cameras, 0 bumps, 4 signal junctions
 - arrival: وجهتك على يسارك، أقرب مواقف 50 م
 
 ```
@@ -334,15 +334,15 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    near: بعد 150 مترًا، الزم اليمين
    en:   Keep right | In 150 metres, keep right
 13. km 905.8  [fork | slight left]
-   sign: الزم اليسار / طريق هدى الشام / [4050]
-   far:  بعد 500 متر، الزم اليسار باتجاه طريق هدى الشام
-   near: بعد 150 مترًا، الزم اليسار باتجاه طريق هدى الشام
-   en:   Keep left / Huda Al Sham Road | In 500 metres, keep left toward Huda Al Sham Road | In 150 metres, keep left toward Huda Al Sham Road
+   sign: بعد الجسر الزم اليسار / طريق هدى الشام / [4050]
+   far:  بعد 500 متر، بعد الجسر الزم اليسار باتجاه طريق هدى الشام
+   near: بعد الجسر الزم اليسار باتجاه طريق هدى الشام
+   en:   After the flyover, keep left / Huda Al Sham Road | In 500 metres, after the flyover, keep left toward Huda Al Sham Road | After the flyover, keep left toward Huda Al Sham Road
 14. km 934.5  [on ramp | slight right]
-   sign: خذ المدخل على اليمين / طريق الحرمين / [5]
-   far:  بعد كيلومتر ونصف، خذ المدخل على اليمين باتجاه طريق الحرمين
-   near: بعد 150 مترًا، خذ المدخل على اليمين باتجاه طريق الحرمين
-   en:   Take the ramp on the right / Al Harameen Road | In 1.5 kilometres, take the ramp on the right toward Al Harameen Road | In 150 metres, take the ramp on the right toward Al Harameen Road
+   sign: بعد الجسر خذ المدخل على اليمين / طريق الحرمين / [5]
+   far:  بعد كيلومتر ونصف، بعد الجسر خذ المدخل على اليمين باتجاه طريق الحرمين
+   near: بعد الجسر خذ المدخل على اليمين باتجاه طريق الحرمين
+   en:   After the flyover, take the ramp on the right / Al Harameen Road | In 1.5 kilometres, after the flyover, take the ramp on the right toward Al Harameen Road | After the flyover, take the ramp on the right toward Al Harameen Road
    on:   كمّل على طريق هدى الشام لمسافة 28 كيلومترًا | Continue on Huda Al Sham Road for 28 kilometres
 15. km 939.4  [off ramp | slight right]
    sign: خذ المخرج على اليمين / شارع الأمير محمد بن عبدالعزيز / [295]
@@ -582,7 +582,7 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
 - choice 1, the router's 1: 952.3 km, 737.8 min: الأسرع | fastest
 - choice 2, the router's 2: 1055.2 km, 827.2 min: أبطأ بـ 1 س 29 د، أطول بـ 103 كم | slower by 1 h 29 min, longer by 103 km
 - fuel on the way: 52, longest gap 252.6 km; at the start: أقرب محطة بعد 1.5 كم
-- on the road, going its way: 2 cameras, 0 bumps, 4 signal junctions
+- on the road, going its way: 2 cameras, 0 bumps, 3 signal junctions
 - arrival: وجهتك قدامك، أقرب مواقف 10 م
 
 ```
@@ -668,10 +668,10 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    near: بعد 150 مترًا، الزم اليسار باتجاه طريق العروبة
    en:   Keep left / Al Uaroba Road | In 500 metres, keep left toward Al Uaroba Road | In 150 metres, keep left toward Al Uaroba Road
 17. km 950.4  [turn | left]
-   sign: عند الإشارة الثالثة لف يسار / شارع العليا
+   sign: عند الإشارة الثانية لف يسار / شارع العليا
    far:  بعد 500 متر، عند الإشارة الثانية لف يسار على شارع العليا
    near: عند الإشارة لف يسار، ثم لف يمين
-   en:   At the third signal, turn left / Al Olaya Street | In 500 metres, at the second signal, turn left onto Al Olaya Street | At the signal, turn left, then turn right
+   en:   At the second signal, turn left / Al Olaya Street | In 500 metres, at the second signal, turn left onto Al Olaya Street | At the signal, turn left, then turn right
    on:   كمّل على طريق العروبة لمسافة 4 كيلومترات | Continue on Al Uaroba Road for 4 kilometres
 18. km 950.5  [turn | right]
    sign: لف يمين / الخرمة
@@ -734,7 +734,7 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    near: بعد 150 مترًا، الزم اليسار، ثم لف يسار
    en:   Keep left / Prince Mohammed Bin Fahd Road | In 500 metres, keep left | In 150 metres, keep left, then turn left
 9. km 1.6  [turn | left]
-   sign: عند الإشارة لف يسار / Ali Ibn Abi Taleb Street
+   sign: عند الإشارة لف يسار / شارع علي بن أبي طالب
    near: عند الإشارة لف يسار، ثم لف يمين
    en:   At the signal, turn left / Ali Ibn Abi Taleb Street | At the signal, turn left, then turn right
 10. km 1.7  [turn | right]
@@ -805,8 +805,8 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    near: بعد 100 متر، لف يمين، ثم لف يسار
    en:   Turn right | In 100 metres, turn right, then turn left
 3. km 0.1  [turn | left]
-   sign: لف يسار / fatma alzahra street
-   near: لف يسار
+   sign: لف يسار / شارع فاطمة الزهراء
+   near: لف يسار على شارع فاطمة الزهراء
    en:   Turn left / fatma alzahra street | Turn left onto fatma alzahra street
 4. km 1.0  [turn | right]
    sign: لف يمين
@@ -839,9 +839,9 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    near: عند الإشارة لف يمين على شارع عثمان بن عفان
    en:   At the signal, turn right / Othman Bin Affan Street | At the signal, turn right onto Othman Bin Affan Street
 11. km 7.2  [turn | sharp left]
-   sign: لفة حادة يسار / 28th Street
-   far:  بعد 500 متر، لفة حادة يسار
-   near: بعد 150 مترًا، لفة حادة يسار
+   sign: لفة حادة يسار / شارع 28
+   far:  بعد 500 متر، لفة حادة يسار على شارع 28
+   near: بعد 150 مترًا، لفة حادة يسار على شارع 28
    en:   Make a sharp left / 28th Street | In 500 metres, make a sharp left onto 28th Street | In 150 metres, make a sharp left onto 28th Street
 12. km 7.4  [turn | right]
    sign: لف يمين
@@ -879,7 +879,7 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    near: بعد 50 مترًا، لف يمين
    en:   Turn right | In 50 metres, turn right
 3. km 0.2  [end of road | left]
-   sign: في آخر الطريق لف يسار / King Faisal Street
+   sign: في آخر الطريق لف يسار / شارع الملك فيصل
    near: بعد 150 مترًا، في آخر الطريق لف يسار، ثم لف يمين
    en:   At the end of the road, turn left / King Faisal Street | In 150 metres, at the end of the road, turn left, then turn right
 4. km 0.2  [turn | right]
@@ -891,12 +891,12 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    near: بعد 150 مترًا، في آخر الطريق لف يمين على شارع الملك خالد
    en:   At the end of the road, turn right / شارع الملك خالد | In 150 metres, at the end of the road, turn right
 6. km 2.8  [turn | left]
-   sign: لف يسار / 28th Street
-   far:  بعد 500 متر، لف يسار
-   near: بعد 150 مترًا، لف يسار
+   sign: لف يسار / شارع 28
+   far:  بعد 500 متر، لف يسار على شارع 28
+   near: بعد 150 مترًا، لف يسار على شارع 28
    en:   Turn left / 28th Street | In 500 metres, turn left onto 28th Street | In 150 metres, turn left onto 28th Street
 7. km 3.5  [fork | slight right]
-   sign: الزم اليمين / 28th Street
+   sign: الزم اليمين / شارع 28
    far:  بعد 500 متر، الزم اليمين
    near: بعد 150 مترًا، الزم اليمين
    en:   Keep right / 28th Street | In 500 metres, keep right | In 150 metres, keep right
@@ -911,9 +911,9 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    near: بعد 150 مترًا، الزم اليسار باتجاه طريق الملك فهد
    en:   Keep left / King Fahd Road | In 500 metres, keep left toward King Fahd Road | In 150 metres, keep left toward King Fahd Road
 10. km 8.3  [turn | slight right]
-   sign: خذ يمين / King Fahad Ibn Abdul Aziz Road
-   far:  بعد كيلومتر ونصف، خذ يمين
-   near: بعد 150 مترًا، خذ يمين
+   sign: خذ يمين / طريق الملك فهد بن عبدالعزيز
+   far:  بعد كيلومتر ونصف، خذ يمين على طريق الملك فهد بن عبدالعزيز
+   near: بعد 150 مترًا، خذ يمين على طريق الملك فهد بن عبدالعزيز
    en:   Bear right / King Fahad Ibn Abdul Aziz Road | In 1.5 kilometres, bear right onto King Fahad Ibn Abdul Aziz Road | In 150 metres, bear right onto King Fahad Ibn Abdul Aziz Road
 11. km 9.1  [off ramp | slight left]
    sign: خذ المخرج على اليسار
@@ -925,8 +925,8 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    near: بعد 150 مترًا، الزم اليمين، ثم خذ يسار
    en:   Keep right | In 150 metres, keep right, then bear left
 13. km 9.3  [turn | slight left]
-   sign: عند الإشارة خذ يسار / Abu Baker Al Siddiq Street
-   near: عند الإشارة خذ يسار
+   sign: عند الإشارة خذ يسار / شارع أبو بكر الصديق
+   near: عند الإشارة خذ يسار على شارع أبو بكر الصديق
    en:   At the signal, bear left / Abu Baker Al Siddiq Street | At the signal, bear left onto Abu Baker Al Siddiq Street
 14. km 9.7  [turn | right]
    sign: لف يمين
@@ -960,7 +960,7 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
 19.5 km, Valhalla 15.8 min, estimate 18.6 min
 - choice 1, the router's 2: 17.4 km, 18.4 min: الأسرع | fastest
 - choice 2, the router's 1: 19.5 km, 18.6 min: نفس الوقت، أطول بـ 2.1 كم | same time, longer by 2.1 km
-- on the road, going its way: 0 cameras, 0 bumps, 7 signal junctions
+- on the road, going its way: 0 cameras, 0 bumps, 5 signal junctions
 - arrival: وجهتك على يمينك، أقرب مواقف 50 م
 
 ```
@@ -1173,11 +1173,11 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    near: بعد 50 مترًا، الزم اليسار، ثم خذ يسار
    en:   Keep left | In 50 metres, keep left, then bear left
 13. km 9.0  [turn | slight left]
-   sign: خذ يسار / شارع الأشرعة
+   sign: خذ يسار / الأشرعة
    near: بعد 100 متر، خذ يسار على شارع الأشرعة
    en:   Bear left / Al Ashreah | In 100 metres, bear left onto Al Ashreah
 14. km 10.3  [continue | slight right]
-   sign: خذ يمين / شارع الأشرعة
+   sign: خذ يمين / الأشرعة
    far:  بعد 500 متر، خذ يمين
    near: بعد 150 مترًا، خذ يمين
    en:   Bear right / Al Ashreah | In 500 metres, bear right | In 150 metres, bear right
@@ -1277,12 +1277,12 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    near: بعد 150 مترًا، الزم اليمين باتجاه شارع الأمير تركي
    en:   Keep right / Prince Turki Street | In 150 metres, keep right toward Prince Turki Street
 5. km 6.5  [turn | right]
-   sign: لف يمين / 19th Street
-   near: بعد 150 مترًا، لف يمين
+   sign: لف يمين / شارع 19
+   near: بعد 150 مترًا، لف يمين على شارع 19
    en:   Turn right / 19th Street | In 150 metres, turn right onto 19th Street
 6. km 6.7  [turn | left]
-   sign: لف يسار / Prince Saad Street
-   near: بعد 150 مترًا، لف يسار
+   sign: لف يسار / شارع الأمير سعد
+   near: بعد 150 مترًا، لف يسار على شارع الأمير سعد
    en:   Turn left / Prince Saad Street | In 150 metres, turn left onto Prince Saad Street
 7. km 6.7  [arrive | right]
    sign: وجهتك على يمينك
@@ -1312,19 +1312,19 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    near: بعد 150 مترًا، لف يسار، ثم لف يمين
    en:   Turn left | In 150 metres, turn left, then turn right
 4. km 0.3  [turn | right]
-   sign: لف يمين / Bashar bin Bard Street
-   near: لف يمين
+   sign: لف يمين / شارع بشار بن برد
+   near: لف يمين على شارع بشار بن برد
    en:   Turn right / Bashar bin Bard Street | Turn right onto Bashar bin Bard Street
 5. km 0.5  [end of road | left]
    sign: في آخر الطريق لف يسار
    near: بعد 150 مترًا، في آخر الطريق لف يسار
    en:   At the end of the road, turn left | In 150 metres, at the end of the road, turn left
 6. km 0.7  [turn | right]
-   sign: لف يمين / Abdullah bin Omar Street
-   near: بعد 150 مترًا، لف يمين
+   sign: لف يمين / شارع عبدالله بن عمر
+   near: بعد 150 مترًا، لف يمين على شارع عبدالله بن عمر
    en:   Turn right / Abdullah bin Omar Street | In 150 metres, turn right onto Abdullah bin Omar Street
 7. km 1.2  [continue | left]
-   sign: لف يسار / Abdullah bin Omar Street
+   sign: لف يسار / شارع عبدالله بن عمر
    near: بعد 150 مترًا، لف يسار
    en:   Turn left / Abdullah bin Omar Street | In 150 metres, turn left
 8. km 1.4  [turn | right]
@@ -1630,11 +1630,11 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    near: بعد 150 مترًا، لف يمين
    en:   Turn right | In 150 metres, turn right
 4. km 0.4  [end of road | left]
-   sign: في آخر الطريق لف يسار / King Abdul Aziz street
-   near: بعد 150 مترًا، في آخر الطريق لف يسار
+   sign: في آخر الطريق لف يسار / شارع الملك عبدالعزيز
+   near: بعد 150 مترًا، في آخر الطريق لف يسار على شارع الملك عبدالعزيز
    en:   At the end of the road, turn left / King Abdul Aziz street | In 150 metres, at the end of the road, turn left onto King Abdul Aziz street
 5. km 1.4  [rotary | slight right | exit 2]
-   sign: عند الدوار المخرج الثاني / King Abdul Aziz street
+   sign: عند الدوار المخرج الثاني / شارع الملك عبدالعزيز
    far:  بعد 500 متر، عند الدوار المخرج الثاني
    near: عند الدوار المخرج الثاني
    en:   At the roundabout, take the 2nd exit / King Abdul Aziz street | In 500 metres, at the roundabout, take the 2nd exit | At the roundabout, take the 2nd exit
@@ -1666,17 +1666,17 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    near: بعد 150 مترًا، لف يسار
    en:   Turn left | In 150 metres, turn left
 3. km 0.5  [end of road | right]
-   sign: في آخر الطريق لف يمين / King Abdul Aziz street
-   near: بعد 150 مترًا، في آخر الطريق لف يمين
+   sign: في آخر الطريق لف يمين / شارع الملك عبدالعزيز
+   near: بعد 150 مترًا، في آخر الطريق لف يمين على شارع الملك عبدالعزيز
    en:   At the end of the road, turn right / King Abdul Aziz street | In 150 metres, at the end of the road, turn right onto King Abdul Aziz street
 4. km 0.8  [rotary | slight right | exit 2]
-   sign: عند الدوار المخرج الثاني / King Abdul Aziz street
+   sign: عند الدوار المخرج الثاني / شارع الملك عبدالعزيز
    near: عند الدوار المخرج الثاني
    en:   At the roundabout, take the 2nd exit / King Abdul Aziz street | At the roundabout, take the 2nd exit
 5. km 2.0  [rotary | slight right | exit 3]
-   sign: عند الدوار المخرج الثالث / King Faisal Northern Street
-   far:  بعد 500 متر، عند الدوار المخرج الثالث
-   near: عند الدوار المخرج الثالث
+   sign: عند الدوار المخرج الثالث / شارع الملك فيصل الشمالي
+   far:  بعد 500 متر، عند الدوار المخرج الثالث باتجاه شارع الملك فيصل الشمالي
+   near: عند الدوار المخرج الثالث باتجاه شارع الملك فيصل الشمالي
    en:   At Mina port round about, take the 3rd exit / King Faisal Northern Street | In 500 metres, at Mina port round about, take the 3rd exit toward King Faisal Northern Street | At Mina port round about, take the 3rd exit toward King Faisal Northern Street
 6. km 3.9  [turn | right]
    sign: لف يمين / طريق الملك فيصل
@@ -1827,10 +1827,10 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    near: بعد 150 مترًا، لف يمين
    en:   Turn right | In 150 metres, turn right
 5. km 2.3  [turn | left]
-   sign: لف يسار
-   far:  بعد 500 متر، لف يسار
-   near: بعد 150 مترًا، لف يسار
-   en:   Turn left | In 500 metres, turn left | In 150 metres, turn left
+   sign: بعد الجسر لف يسار
+   far:  بعد 500 متر، بعد الجسر لف يسار
+   near: بعد الجسر لف يسار
+   en:   After the flyover, turn left | In 500 metres, after the flyover, turn left | After the flyover, turn left
 6. km 5.1  [fork | slight left]
    sign: الزم اليسار
    far:  بعد 500 متر، الزم اليسار
@@ -1861,16 +1861,16 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
 
 ```
 1. km 0.0  [depart]
-   sign: انطلق / Madeena Street
+   sign: انطلق / شارع المدينة
    en:   Head out / Madeena Street
 2. km 0.2  [rotary | slight right | exit 3]
-   sign: عند الدوار المخرج الثالث / King Abdul Aziz street
-   near: عند الدوار المخرج الثالث
+   sign: عند الدوار المخرج الثالث / شارع الملك عبدالعزيز
+   near: عند الدوار المخرج الثالث باتجاه شارع الملك عبدالعزيز
    en:   At the roundabout, take the 3rd exit / King Abdul Aziz street | At the roundabout, take the 3rd exit toward King Abdul Aziz street
 3. km 1.5  [rotary | slight right | exit 3]
-   sign: عند الدوار المخرج الثالث / King Faisal Northern Street
-   far:  بعد 500 متر، عند الدوار المخرج الثالث
-   near: عند الدوار المخرج الثالث
+   sign: عند الدوار المخرج الثالث / شارع الملك فيصل الشمالي
+   far:  بعد 500 متر، عند الدوار المخرج الثالث باتجاه شارع الملك فيصل الشمالي
+   near: عند الدوار المخرج الثالث باتجاه شارع الملك فيصل الشمالي
    en:   At Mina port round about, take the 3rd exit / King Faisal Northern Street | In 500 metres, at Mina port round about, take the 3rd exit toward King Faisal Northern Street | At Mina port round about, take the 3rd exit toward King Faisal Northern Street
 4. km 3.3  [turn | right]
    sign: لف يمين / طريق الملك فيصل
@@ -2008,7 +2008,6 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
 473.8 km, Valhalla 270.1 min, estimate 323.3 min
 - choice 1, the router's 2: 523.4 km, 320.6 min: الأسرع | fastest
 - choice 2, the router's 1: 473.8 km, 323.3 min: أبطأ بـ 3 دقائق، أقصر بـ 50 كم | slower by 3 min, shorter by 50 km
-- before starting: وجهتك داخل منطقة عسكرية (منطقة استبعاد الحدود) | Your destination is inside a military area, at 473.3 km
 - fuel on the way: 47, longest gap 69.1 km; at the start: أقرب محطة بعد 550 م
 - on the road, going its way: 1 cameras, 1 bumps, 2 signal junctions
 - arrival: وجهتك على يسارك
@@ -2046,17 +2045,17 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    near: عند الدوار كمّل على طول باتجاه طريق 522
    en:   At the roundabout, go straight / Route 522 | At the roundabout, go straight toward Route 522
 8. km 282.8  [on ramp | slight right]
-   sign: خذ المدخل على اليمين / طريق 75
-   far:  بعد 500 متر، خذ المدخل على اليمين باتجاه طريق 75
-   near: بعد 150 مترًا، خذ المدخل على اليمين باتجاه طريق 75
-   en:   Take the ramp on the right / Route 75 | In 500 metres, take the ramp on the right toward Route 75 | In 150 metres, take the ramp on the right toward Route 75
+   sign: خذ المدخل على اليمين / طريق الهفوف / [75]
+   far:  بعد 500 متر، خذ المدخل على اليمين باتجاه طريق الهفوف
+   near: بعد 150 مترًا، خذ المدخل على اليمين باتجاه طريق الهفوف
+   en:   Take the ramp on the right / طريق الهفوف | In 500 metres, take the ramp on the right | In 150 metres, take the ramp on the right
    on:   كمّل على طريق 522 لمسافة 172 كيلومترًا | Continue on Route 522 for 172 kilometres
 9. km 308.5  [fork | slight right]
    sign: الزم اليمين
    far:  بعد كيلومتر ونصف، الزم اليمين
    near: بعد 150 مترًا، الزم اليمين
    en:   Keep right | In 1.5 kilometres, keep right | In 150 metres, keep right
-   on:   كمّل على طريق 75 لمسافة 26 كيلومترًا | Continue on Route 75 for 26 kilometres
+   on:   كمّل على طريق الهفوف لمسافة 26 كيلومترًا | Continue for 26 kilometres
 10. km 309.9  [turn | slight right]
    sign: خذ يمين / طريق 85
    near: بعد 150 مترًا، خذ يمين على طريق 85
@@ -2469,13 +2468,13 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
    near: بعد 150 مترًا، الزم اليمين
    en:   Keep right / Rolling Hills Boulevard | In 500 metres, keep right | In 150 metres, keep right
 11. km 12.5  [turn | left]
-   sign: لف يسار / Riyadh Boulevard
-   far:  بعد 500 متر، لف يسار
-   near: بعد 150 مترًا، لف يسار
+   sign: لف يسار / بوليفارد الرياض
+   far:  بعد 500 متر، لف يسار على شارع بوليفارد الرياض
+   near: بعد 150 مترًا، لف يسار على شارع بوليفارد الرياض
    en:   Turn left / Riyadh Boulevard | In 500 metres, turn left onto Riyadh Boulevard | In 150 metres, turn left onto Riyadh Boulevard
 12. km 12.6  [turn | left]
-   sign: لف يسار / Arabian Gulf Road
-   near: بعد 150 مترًا، لف يسار
+   sign: لف يسار / طريق الخليج العربي
+   near: بعد 150 مترًا، لف يسار على طريق الخليج العربي
    en:   Turn left / Arabian Gulf Road | In 150 metres, turn left onto Arabian Gulf Road
 13. km 13.0  [turn | right]
    sign: لف يمين
@@ -2493,7 +2492,6 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
 - choice 1, the router's 1: 21.7 km, 19.0 min: الأسرع | fastest
 - choice 2, the router's 2: 23.7 km, 22.1 min: أبطأ بـ 3 دقائق، أطول بـ 2 كم | slower by 3 min, longer by 2 km
 - choice 3, the router's 3: 23.3 km, 23.3 min: أبطأ بـ 4 دقائق، أطول بـ 1.6 كم | slower by 4 min, longer by 1.6 km
-- before starting: الطريق يدخل منطقة عسكرية (قاعدة الملك عبد العزيز الجوية) | The route goes into a military area, at 18.2 km
 - on the road, going its way: 0 cameras, 0 bumps, 1 signal junctions
 - arrival: وجهتك على يسارك
 
@@ -2567,7 +2565,6 @@ Landmarks: 24 manoeuvres at a signal, 44 roundabouts (29 with the exit's number,
 - choice 2, the router's 2: 187.9 km, 132.4 min: أبطأ بـ 9 دقائق، أطول بـ 15 كم | slower by 9 min, longer by 15 km
 - choice 3, the router's 3: 210.6 km, 164.8 min: أبطأ بـ 41 دقيقة، أطول بـ 38 كم | slower by 41 min, longer by 38 km
 - before starting: الطريق يدخل حدود الحرم، والدخول للمسلمين فقط (حدود الحرم المكي) | The route enters the Haram boundary: Muslims only, at 57.1 km
-- before starting: الطريق فيه رسوم | The route has a toll, at 65.8 km
 - fuel on the way: 46, longest gap 21.9 km; at the start: أقرب محطة بعد 2.8 كم
 - on the road, going its way: 0 cameras, 0 bumps, 1 signal junctions
 - arrival: وجهتك على يسارك

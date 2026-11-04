@@ -4,7 +4,8 @@
 # mounted with exec (sqlite-jdbc unpacks its native library into the Java temp dir):
 #   build_base.sh <in.osm.pbf> <w,s,e,n> <water polygons .zip> <out.mbtiles> [more planetiler args...]
 # The output is a rectangle, not the Kingdom's outline: a tile with no row shows the style's background, which is land, so
-# an outline cut the sea into land-coloured blocks along the border. ksa.poly stays for the app's own "is this inside the
+# an outline cut the sea into land-coloured blocks along the border, and Planetiler cuts the sea polygons exactly at --bounds, so the rectangle
+# must lie beyond every tile the app takes from the pack (run_build.ps1, merge_low_zoom.py). ksa.poly stays for the app's own "is this inside the
 # pack" test. --transliterate=false: Planetiler would otherwise spell Arabic names in Latin letters as name:latin
 # ("tryq almlk"), and the English map would show those, with letters the glyph ranges do not hold.
 # D: is a spinning disk behind Docker Desktop's file share, shared with the emulators' disks: under load it gave 1.3 MB/s,

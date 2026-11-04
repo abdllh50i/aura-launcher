@@ -66,6 +66,8 @@ def main():
             continue
         if tid == "ferry":
             continue
+        if not os.path.exists(os.path.join(out, "osrm", tid + ".json")):
+            continue  # (a trip added with no OSRM answer: run_route_trips.py --no-osrm)
         v = json.load(open(os.path.join(out, folder, tid + ".json"), encoding="utf-8"))
         o = json.load(open(os.path.join(out, "osrm", tid + ".json"), encoding="utf-8"))
         if v.get("code") != "Ok" or o.get("code") != "Ok":

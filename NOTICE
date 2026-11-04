@@ -35,7 +35,7 @@ The map pack (a separate download, or a USB stick: base.mbtiles, route.tar, plac
     Copyright 2024 Foursquare Labs, Inc. All rights reserved. Foursquare data was transformed to the Overture schema. Merged with OpenStreetMap's rows in places.db, under the ODbL with these notices kept.
   Overture Maps Divisions: © OpenStreetMap contributors, Overture Maps Foundation. ODbL; some sources CC BY 4.0.
   The signals, cameras and limits the owner of the unit added to the map (the repository's branch mapdata), under the same terms.
-  glyphs.db: the map's words in Readex Pro AMRI, as above, SIL Open Font License 1.1.
+  glyphs.db: the map's words in IBM Plex Sans Arabic, Copyright 2017 IBM Corp. with Reserved Font Name "Plex", SIL Open Font License 1.1; a modified form, as AMRI Map Sans.
   On the map, while the pack draws: © OpenStreetMap contributors · © OpenMapTiles · Overture Maps.
 
 Map data © OpenStreetMap contributors, available under the Open Database License (ODbL) — https://www.openstreetmap.org/copyright

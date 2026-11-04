@@ -203,7 +203,7 @@ object TileServer {
             // a range the font has nothing in is no row (204: no internet could give it, no one else has this font)
             PackTiles.glyph("$stack/$range")?.let { write(out, if (it.isEmpty()) Reply(204) else Reply(200, it)); return null }
             // glyphs.db cannot be read: words in the other font rather than a map with no words
-            stack = stack.replace(MapStyle.PACK_FONT, MapStyle.ONLINE_FONT)
+            stack = stack.replace(MapStyle.PACK_FONT, MapStyle.ONLINE_FONT).replace(MapStyle.PACK_HEAVY, MapStyle.ONLINE_HEAVY)
         }
         val name = "$stack/$range"
         store?.let { st -> try { st.glyph(name) } catch (_: Throwable) { null } }?.let { write(out, Reply(200, it)); return null }

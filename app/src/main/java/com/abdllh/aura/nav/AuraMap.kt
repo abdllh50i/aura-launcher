@@ -331,13 +331,15 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         var bestD = Double.MAX_VALUE
         for (f in hits) {
             val g = f.geometry() as? Point ?: continue
+            // (a dot with no word: a name of 3 letters or less, tools/mapbuild/build_poi_tiles.py. Nothing to say of it: the nearest place that has a name)
+            if (text(f, "name") == null && text(f, "name:en") == null) continue
             val pos = LatLon(g.latitude(), g.longitude())
             val sp = m.projection.toScreenLocation(LatLng(pos.lat, pos.lon))
             val d = Math.hypot((sp.x - at.x).toDouble(), (sp.y - at.y).toDouble())
             if (d < bestD) { bestD = d; best = f; bestPos = pos }
         }
         val f = best ?: return false
-        val name = (if (arabic) text(f, "name:ar") else text(f, "name:en") ?: text(f, "name:latin")) ?: text(f, "name") ?: return false
+        val name = (if (arabic) text(f, "name:ar") else text(f, "name:en") ?: text(f, "name:latin")) ?: text(f, "name") ?: text(f, "name:en") ?: return false
         // (a place of the pack says what it is by number, and which row it is)
         fun number(key: String) = if (f.hasNonNullValueForProperty(key)) f.getNumberProperty(key) else null
         val at2 = bestPos ?: return false

@@ -132,7 +132,7 @@ def shape(text):
 
 def main():
     db = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro", uri=True)
-    stacks = sys.argv[3:] or ["Readex Pro AMRI Regular", "Readex Pro AMRI Bold"]
+    stacks = sys.argv[3:] or ["AMRI Map Sans Regular", "AMRI Map Sans SemiBold"]
     width, row_h, scale = 720, 44, 1.5
     canvas = np.full((row_h * len(TEXTS) * len(stacks) // 1 + 20, width), 245, dtype=np.uint8)
     y = 34

@@ -44,7 +44,7 @@ STYLE = {
 
     "water_name": ({"name", "name:ar", "name:en", "name:latin"}, set()),
     "housenumber": ({"housenumber"}, set()),
-    "transportation_name": ({"class", "name", "name:ar", "name:en", "name:latin", "ref"},
+    "transportation_name": ({"class", "name", "name:ar", "name:en", "name:latin", "name:nonlatin", "ref"},
                             {"primary", "secondary", "tertiary", "minor", "service", "motorway", "trunk"}),
     "aerodrome_label": ({"name", "name:ar", "name:en", "name:latin"}, set()),
     "place": ({"class", "name", "name:ar", "name:en", "name:latin"},

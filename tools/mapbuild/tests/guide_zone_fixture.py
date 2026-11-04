@@ -11,7 +11,7 @@ import sqlite3
 import sys
 
 # id, and which of the line to keep in km from its start (None for the end)
-TRIPS = {"j6": (0, 6), "j1": (0, None), "khafji": (-6, None), "gate-jana": (0, 6), "airport": (0, 8), "gate-air": (-6, None), "ithra": (0, None)}
+TRIPS = {"j6": (0, 6), "j1": (0, None), "khafji": (-6, None), "gate-jana": (0, 6), "airport": (0, 8), "gate-air": (-6, None), "base-air": (-6, None), "ithra": (0, None)}
 
 
 def main():
