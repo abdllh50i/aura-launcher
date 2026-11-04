@@ -22,6 +22,9 @@ for test in json.loads(manifest.read_text()):
         exported = source / item["exportedFileName"]
         readable = item.get("suggestedHumanReadableName") or exported.name
         name = re.sub(r'[/\\"\s:<>|*?`]+', "_", f"{test_name}--{readable}")
+        # A failed test's video and its synthesized touches are big, and the log and the pictures have said it already.
+        if name.endswith(".mp4") or "Synthesized_Event" in name:
+            continue
         if exported.exists():
             shutil.copy(exported, target / name)
             count += 1
