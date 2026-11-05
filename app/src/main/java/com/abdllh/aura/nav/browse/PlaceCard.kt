@@ -34,7 +34,7 @@ import com.abdllh.aura.ui.plateView
 import com.abdllh.aura.ui.pressScale
 
 /**
- * The place's card (SPEC.md section 6.3 and 12: `place-routes`, `place-loading`, `place-no-route`, `place-moving`): a card at (12, 44), 364 wide, name and address, close and save at the far
+ * The place's card (SPEC.md section 6.3 and 12: `place-routes`, `place-loading`, `place-no-route`, `place-moving`): a card at (16, 48), 364 wide, name and address, close and save at the far
  * end, one or two route choices, the arrival line, Go. Everything has its rect from the build on and shows by visibility, so between computing and an answer nothing moves and nothing is laid
  * out: Go is at y 362 before the route comes and after. Only no route is a shorter card.
  */
@@ -105,7 +105,7 @@ internal class PlaceCard(ctx: Context) : SurfaceCard(ctx, Surface.CARD) {
     private fun height(h: Int) {
         if (h == heightNow) return
         heightNow = h
-        layoutParams = Surface.CARD.at(12, 44, W, h)
+        layoutParams = Surface.CARD.at(16, 48, W, h)
     }
 
     /** `place-loading`: the route's being found, or the first fix awaited. [spin]: not while moving, nothing spins on a driving screen. */
@@ -288,7 +288,7 @@ private class ChoiceDot(ctx: Context) : View(ctx), Recolours {
 }
 
 /**
- * The card of a place sent from the phone with no trip (section 5, `from-phone`): 364 x 284 at (12, 44): who sent it, the place, `18 دقيقة · 21.8 كم`, the count in whole seconds, no ring.
+ * The card of a place sent from the phone with no trip (section 5, `from-phone`): 364 x 284 at (16, 48): who sent it, the place, `18 دقيقة · 21.8 كم`, the count in whole seconds, no ring.
  * Start now, and Cancel on the driver's side because it has the deadline. [Trips] does the counting: the card only shows it.
  */
 internal class FromPhoneCard(ctx: Context) : SurfaceCard(ctx, Surface.CARD) {

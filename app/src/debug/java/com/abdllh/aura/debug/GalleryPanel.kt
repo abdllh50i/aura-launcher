@@ -653,15 +653,13 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
 
     // ------------------------------------------------------------------------------------------ song colour
     private fun wash(s: FrameLayout) {
-        s.head("Backdrop, computed here in this theme: panel 48 x 28 stretched; widget, mini; word pill", 12, 4)
+        s.head("Backdrop, computed here in this theme: panel 48 x 28 stretched; widget; word pill", 12, 4)
         val names = listOf("sea", "dusk", "neon", "oud", null)
         for ((i, n) in names.withIndex()) {
             val b = n?.let { name -> ctx.assets.open("gallery/$name.jpg").use { BitmapFactory.decodeStream(it) } }
             val y = 36 + 112 * i
             val panel = ImageView(ctx).apply { scaleType = ImageView.ScaleType.FIT_XY }
             s.addView(panel, at(4, y, 180, 105))
-            val mini = ImageView(ctx)
-            s.addView(mini, at(190, y - 20, 424, 140))
             val widget = ImageView(ctx)
             if (i == 0) s.addView(widget, at(600, 36, 424, 242))
             val pill = View(ctx)
@@ -670,7 +668,6 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
             s.addView(word, at(630, 318 + 44 * i, 180, 36))
             Backdrop.washAsync(ctx, b, Palette.dark) { w ->
                 panel.setImageBitmap(w.panel)
-                mini.setImageBitmap(w.mini)
                 if (i == 0) widget.setImageBitmap(w.widget)
                 pill.background = GradientDrawable().apply { cornerRadius = 14f; setColor(w.wordPill) }
                 word.setTextColor(w.wordPillInk)
@@ -879,7 +876,7 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
         }
     }
 
-    /** The driver's cards with what is in them: surfaces, the limit sign, End, the mini's wash and its two tonal buttons. */
+    /** The driver's cards with what is in them: surfaces, the limit sign, End. */
     private fun rColumn(s: FrameLayout) {
         s.mapPlate("drive-turn")
         s.scrims()
@@ -901,15 +898,6 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
         s.textR(Type.etaUnit, "الوصول", 360, 344, { Palette.ink2Move }, w = 110, moving = true)
         s.textR(Type.etaValue, "7:38 م", 281, 344, { Palette.ink }, w = 110).apply { textDirection = View.TEXT_DIRECTION_RTL }
         s.textR(Type.etaSub, "18 دقيقة · 21.8 كم", 360, 382, { Palette.ink2Move }, w = 222, moving = true)
-        val mini = ImageView(ctx)
-        s.addView(mini, at(12 - 30, 426 - 30, 424, 140))
-        val b = ctx.assets.open("gallery/sea.jpg").use { BitmapFactory.decodeStream(it) }
-        mini.look { Backdrop.washAsync(ctx, b, Palette.dark) { w -> mini.setImageBitmap(w.mini) } }
-        s.addView(coverView("sea", 52, 12).look { alpha = if (Palette.dark) .8f else 1f }, at(316, 440, 52, 52))
-        s.textR(Type.miniTitle, "سهر الطريق", 306, 434, { Palette.ink }, w = 160)
-        s.textR(Type.miniSub, "فرقة الساحل", 306, 468, { Palette.ink2Move }, w = 160, moving = true)
-        s.addView(IconButton(ctx, R.drawable.ic_pause, 36, 64, 80, IconButton.Kind.TONAL, plateToken = { Palette.fill }, plateRadius = 16, token = { Palette.ink }), at(12, 426, 64, 80))
-        s.addView(IconButton(ctx, R.drawable.ic_next, 36, 68, 80, IconButton.Kind.TONAL, plateToken = { Palette.fill }, plateRadius = 16, token = { Palette.ink }), at(76, 426, 68, 80))
         s.dockRow("maps")
     }
 

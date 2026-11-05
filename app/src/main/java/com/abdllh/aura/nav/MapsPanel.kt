@@ -306,9 +306,6 @@ class MapsPanel(shell: HomeActivity) : Panel(shell, Screens.MAPS) {
     internal companion object {
         /** What the camera leaves free at the left in both languages, for the column: map-*.json `camera`, so the car stands at x 701. */
         const val SIDE = 378
-        /** What the chrome's strip and bottom row leave of the screen, from the top and from the bottom (SPEC.md section 1). */
-        const val TOP_EDGE = 44
-        const val BOTTOM_EDGE = 94
         /** Moving with no trip, this long after the last touch: `drive-free`. */
         const val FREE_AFTER_TOUCH_MS = 10_000L
         // map-*.json `camera.overview`, in px of the surface

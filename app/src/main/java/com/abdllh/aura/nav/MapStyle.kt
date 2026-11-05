@@ -638,7 +638,7 @@ object MapStyle {
      *    three lamps, red over amber over green.
      *  - A bump: an amber dot with its word.
      * Since 1.14 a street's limit is no longer written along it (the owner found the numbers cluttered the map): it shows
-     * as the sign above the speed while driving that street ([RoadHud]).
+     * as the sign in the speed card while driving that street.
      */
     private fun extras(dark: Boolean, halo: String, bold: String): List<String> {
         fun kind(k: String) = """["==",["get","kind"],"$k"]"""

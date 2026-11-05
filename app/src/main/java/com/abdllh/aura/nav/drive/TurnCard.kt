@@ -33,15 +33,14 @@ import com.abdllh.aura.ui.surfaceImage
 import kotlin.math.min
 
 /**
- * The turn card (SPEC.md section 5), 364 x 190 at (12, 44): the tile at the reading edge, the distance, the road, one fact as the hint. Its states are what it is told: a manoeuvre on the blue tile, the quiet
+ * The turn card (simple/CHANGES.md section 4), 364 x 208 at (16, 48): the tile 84 at the reading edge, the distance, the road, one fact as the hint. Its states are what it is told: a manoeuvre on the blue tile, the quiet
  * tile of a long stretch, a roundabout, lanes in the hint's place, a message (rerouting, no GPS) and the arrival. Numbers are set when they change, in fixed line boxes, so a new fix redraws a line and lays nothing out.
  */
 internal class TurnCard(ctx: Context) : SurfaceCard(ctx, Surface.CARD) {
     private val ar = Fonts.arabicUi
-    private val tileX = if (ar) 260 else 14
-    private val roadX = if (ar) 6 else 118
-    private val roadW = if (ar) 240 else 234
-    private val hintX = if (ar) 12 else 16
+    private val tileX = if (ar) 264 else 16
+    private val roadX = if (ar) 8 else 112
+    private val roadW = if (ar) 244 else 240
 
     private val blue = object : View(ctx) { override fun hasOverlappingRendering() = false }.apply { background = ctx.getDrawable(R.drawable.tile_accent) }
     private val quiet = ctx.plateView(TILE_R) { Palette.fill2 }
@@ -69,18 +68,18 @@ internal class TurnCard(ctx: Context) : SurfaceCard(ctx, Surface.CARD) {
         // (the mockup's glow is 300 wide over the whole height, at the reading edge; flipped in English)
         val glow = ctx.surfaceImage(R.drawable.turn_glow_night, R.drawable.turn_glow_day)
         if (!ar) glow.scaleX = -1f
-        addView(glow, at(if (ar) 64 else 0, 0, 300, 190))
-        addView(blue, at(tileX - TILE_OUT, 14 - TILE_OUT, 90 + 2 * TILE_OUT, 90 + 2 * TILE_OUT))
-        addView(quiet, at(tileX, 14, 90, 90))
-        for (g in arrayOf(glyphA, glyphB)) addView(g, at(tileX + 3, 17, 84, 84))
+        addView(glow, at(if (ar) 64 else 0, 0, 300, 208))
+        addView(blue, at(tileX - TILE_OUT, 16 - TILE_OUT, TILE + 2 * TILE_OUT, TILE + 2 * TILE_OUT))
+        addView(quiet, at(tileX, 16, TILE, TILE))
+        for (g in arrayOf(glyphA, glyphB)) addView(g, at(tileX + (TILE - GLYPH_PX) / 2, 16 + (TILE - GLYPH_PX) / 2, GLYPH_PX, GLYPH_PX))
         glyphB.alpha = 0f
         quiet.alpha = 0f
-        addView(dist, Type.dist.box(roadX, 2, roadW - 2))
+        addView(dist, Type.dist.box(roadX, 6, roadW))
         addView(title, Type.road.box(roadX, 12, roadW))
         title.visibility = View.INVISIBLE
-        addView(road, at(roadX, 57, roadW, Type.road.viewH))
-        addView(hint, Type.hint.box(hintX, 128, 336))
-        addView(lanes, at(12, 124, 340, 48))
+        addView(road, at(roadX, 62, roadW, Type.road.viewH))
+        addView(hint, Type.hint.box(16, 142, 332))
+        addView(lanes, at(12, 136, 340, 52))
         lanes.alpha = 0f
         look {
             colourGlyphs()
@@ -133,7 +132,7 @@ internal class TurnCard(ctx: Context) : SurfaceCard(ctx, Surface.CARD) {
         dist.visibility = View.INVISIBLE
         title.visibility = View.VISIBLE
         title.text = titleLine
-        setRoadUp(-1f)
+        setRoadUp(ARRIVED_UP)
         if (R.drawable.ic_arrive != glyphKey) setGlyph(R.drawable.ic_arrive, true, MESSAGE_PX) { g -> g.glyph = R.drawable.ic_arrive }
         setRoad(name)
         setHint(tripLine, null)
@@ -255,17 +254,20 @@ internal class TurnCard(ctx: Context) : SurfaceCard(ctx, Surface.CARD) {
     private companion object {
         /** `tile-accent`'s outset. */
         const val TILE_OUT = 16
+        const val TILE = 84
         const val TILE_R = 20
-        const val GLYPH_PX = 84
-        const val QUIET_PX = 76
-        const val MESSAGE_PX = 72
+        const val GLYPH_PX = 78
+        const val QUIET_PX = 70
+        const val MESSAGE_PX = 66
         /** With no distance over it the road line stands at y 30 of the card. */
-        const val ROAD_UP = -27f
+        const val ROAD_UP = -32f
+        /** The arrival's name, under `وصلت`, at y 58. */
+        const val ARRIVED_UP = -4f
     }
 }
 
 /**
- * The lanes at the junction (section 5), in the hint's place: cells 58 x 48, radius 10, gap 6, centred, left to right in every language as on the road's own signs. The lanes to take in `accent`
+ * The lanes at the junction (section 4), in the hint's place: cells 58 x 52, radius 10, gap 6, centred, left to right in every language as on the road's own signs. The lanes to take in `accent`
  * with a white glyph, the others `fill`, `ink2`. One view, drawn: it is set once per junction.
  */
 internal class LaneRow(ctx: Context) : View(ctx), Recolours {

@@ -3,28 +3,25 @@ package com.abdllh.aura.nav
 import android.location.Location
 import android.os.SystemClock
 import android.view.View
+import android.widget.ImageView
 import com.abdllh.aura.BuildConfig
 import com.abdllh.aura.R
-import com.abdllh.aura.chrome.Chrome
-import com.abdllh.aura.home.Screens
-import com.abdllh.aura.media.MediaMonitor
-import com.abdllh.aura.media.NowPlaying
-import com.abdllh.aura.music.Backdrop
 import com.abdllh.aura.nav.drive.ArrivedActions
 import com.abdllh.aura.nav.drive.EtaCard
-import com.abdllh.aura.nav.drive.MiniCard
-import com.abdllh.aura.nav.drive.SaherCard
 import com.abdllh.aura.nav.drive.SpeedCard
 import com.abdllh.aura.nav.drive.TurnCard
 import com.abdllh.aura.nav.drive.TurnWords
+import com.abdllh.aura.nav.drive.moveMs
 import com.abdllh.aura.nav.drive.showCard
 import com.abdllh.aura.nav.drive.up
 import com.abdllh.aura.system.DriveState
 import com.abdllh.aura.ui.Fonts
+import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Surface
 import com.abdllh.aura.ui.Tokens2
 import com.abdllh.aura.ui.Type
+import com.abdllh.aura.ui.anim
 import com.abdllh.aura.ui.at
 import com.abdllh.aura.ui.look
 import com.abdllh.aura.ui.surfaceImage
@@ -33,23 +30,23 @@ import com.abdllh.aura.util.Prefs
 import kotlin.math.roundToInt
 
 /**
- * What he watches at speed (SPEC.md section 6.2): the scrims, and the driver's cards at x 12..376, each at its own place, which none of them leaves when another comes or goes: turn y 44, speed y 242, Saher beside it,
- * ETA y 338, mini y 426. Trip or `drive-free`; browse keeps the scrims and the mini. Everything is built once, laid out once, and only its content and alpha change, so a fix redraws a number and nothing else.
+ * What he watches at speed (SPEC.md section 6.2, simple/CHANGES.md section 4): the scrims, and three cards at x 16..380 with air between them: turn y 48, speed y 268 with Saher inside it when real, ETA y 392. With no trip
+ * there is no column to protect: the side scrim goes, and `drive-free` has the speed under the search pill at y 112 and `رجّعها` in the ETA's rect. Everything is built once, and only its content and alpha change, so a fix
+ * redraws a number and nothing else.
  *
  * What the panel calls: [build], [sync], [tripChanged], [listen], [onFace], [coveredByCard].
  */
 internal class DriveColumn(panel: MapsPanel) : MapsPart(panel) {
+    private lateinit var scrimCol: ImageView
     private lateinit var turn: TurnCard
     private lateinit var speed: SpeedCard
-    private lateinit var saher: SaherCard
     private lateinit var eta: EtaCard
     private lateinit var actions: ArrivedActions
-    private lateinit var mini: MiniCard
     private var built = false
+    private var speedY = SPEED_Y_TRIP
 
     private var listening = false
     private var covered = false
-    private var song: NowPlaying? = null
     private var kmh: Int? = null
     private var gpsLost = false
     private var lastHint = ""
@@ -59,6 +56,9 @@ internal class DriveColumn(panel: MapsPanel) : MapsPart(panel) {
     private var stoodAtArrival = false
 
     private class Kept(val place: Place, val route: Route, val simKmh: Double)
+
+    /** `رجّعها` is up: on browse it has the rect the map's tools would take. */
+    val undoUp: Boolean get() = kept != null
 
     init {
         // (what is set in a span keeps the colour of its time)
@@ -72,7 +72,6 @@ internal class DriveColumn(panel: MapsPanel) : MapsPart(panel) {
     }
 
     fun destroy() {
-        if (built) mini.destroy()
         root.removeCallbacks(undoGone)
     }
 
@@ -95,7 +94,6 @@ internal class DriveColumn(panel: MapsPanel) : MapsPart(panel) {
             CarLocation.addListener(onFix)
             RoadWatch.addListener(onRoad)
             DriveState.addListener(onDrive)
-            MediaMonitor.observe(onSong)
             // (what came while it was away; a fix older than the design's 5 s is no fix)
             val l = CarLocation.last
             if (l != null && ageMs(l) < FIX_MAX_AGE_MS) takeFix(l) else gone()
@@ -103,7 +101,6 @@ internal class DriveColumn(panel: MapsPanel) : MapsPart(panel) {
             CarLocation.removeListener(onFix)
             RoadWatch.removeListener(onRoad)
             DriveState.removeListener(onDrive)
-            MediaMonitor.unobserve(onSong)
             root.removeCallbacks(fixGone)
         }
     }
@@ -118,14 +115,6 @@ internal class DriveColumn(panel: MapsPanel) : MapsPart(panel) {
             else if (stoodAtArrival) doneTrip() // ("or moving off again": back to browse)
         }
     }
-    private val onSong: (NowPlaying?) -> Unit = { n ->
-        song = n
-        if (built) {
-            n?.let { mini.bind(it) }
-            syncCards()
-        }
-    }
-
     private fun ageMs(l: Location) = (SystemClock.elapsedRealtimeNanos() - l.elapsedRealtimeNanos) / 1_000_000L
 
     private fun takeFix(l: Location) {
@@ -171,20 +160,31 @@ internal class DriveColumn(panel: MapsPanel) : MapsPart(panel) {
         val arrived = st == NavSession.State.ARRIVED
         val freeUp = st == NavSession.State.IDLE && DriveState.moving && !covered
         val tripDelay = if (turn.up) 0L else Tokens2.MS_columnDelay
+        scrimCol.showCard(nav || arrived, inMs = Tokens2.MS_cardIn, outMs = Tokens2.MS_cardOut, dy = 0f)
         turn.showCard(nav || arrived, inMs = Tokens2.MS_cardIn, outMs = Tokens2.MS_cardOut, delay = tripDelay)
         eta.showCard(nav || kept != null, inMs = Tokens2.MS_cardIn, outMs = Tokens2.MS_cardOut, delay = tripDelay)
+        if (nav) placeSpeed(SPEED_Y_TRIP) else if (freeUp) placeSpeed(SPEED_Y_FREE)
         speed.showCard(nav || freeUp, outMs = Tokens2.MS_cardOut, delay = if (nav) tripDelay else 0L)
         actions.showCard(arrived)
-        mini.showCard(song != null && !(covered && st == NavSession.State.IDLE))
         syncSaher(nav, freeUp)
+    }
+
+    /** The speed's place: in the column on a trip, under the search pill with none. Only when a trip begins or ends: a card that is up goes there and does not jump. */
+    private fun placeSpeed(y: Int) {
+        if (y == speedY) return
+        val from = speedY
+        speedY = y
+        speed.layoutParams = Surface.CARD.at(16, y, 364, 112)
+        if (!speed.up || !speed.isShown) return
+        speed.translationY = (from - y).toFloat()
+        speed.anim(moveMs(Tokens2.MS_cardIn), Motion.MOVE).translationY(0f).start()
     }
 
     private fun syncSaher(nav: Boolean, freeUp: Boolean) {
         val w = RoadWatch.state
         val s = w.spot
-        val show = s != null && w.metres <= SAHER_M && (nav || freeUp)
-        if (s != null && show) saher.set(s.kind == MapExtras.Kind.BUMP, Units.distance(w.metres.toDouble(), Fonts.arabicUi), w.metres <= SAHER_HOT_M)
-        saher.showCard(show)
+        val near = s != null && w.metres <= SAHER_M && (nav || freeUp)
+        speed.saher(if (near) Units.distance(w.metres.toDouble(), Fonts.arabicUi) else null, s?.kind == MapExtras.Kind.BUMP, w.metres <= SAHER_HOT_M)
     }
 
     private fun syncRoad() {
@@ -280,6 +280,7 @@ internal class DriveColumn(panel: MapsPanel) : MapsPart(panel) {
     private val undoGone = Runnable {
         kept = null
         syncCards()
+        panel.tools.sync()
     }
 
     private fun clearUndo() {
@@ -315,37 +316,33 @@ internal class DriveColumn(panel: MapsPanel) : MapsPart(panel) {
 
     // ------------------------------------------------------------------------------------------ UI
     override fun build() {
-        if (built) mini.destroy()
         val layer = panel.columnLayer
-        // scrims, under everything of the panel (section 4): the map under the column is hidden, a label at its edge fades instead of being cut
-        layer.addView(surfaceImage(R.drawable.scrim_col_night, R.drawable.scrim_col_day), at(0, 0, 392, 600))
+        // scrims, under everything of the panel (section 4): the map under the column is hidden, a label at its edge fades instead of being cut. The side one only on a trip: with none the map runs to the edge
+        scrimCol = surfaceImage(R.drawable.scrim_col_night, R.drawable.scrim_col_day)
+        layer.addView(scrimCol, at(0, 0, 396, 600))
         layer.addView(surfaceImage(R.drawable.scrim_top_night, R.drawable.scrim_top_day), at(0, 0, 1024, 76))
         layer.addView(surfaceImage(R.drawable.scrim_bot_night, R.drawable.scrim_bot_day), at(0, 482, 1024, 34))
 
         turn = TurnCard(this)
-        layer.addView(turn, Surface.CARD.at(12, 44, 364, 190))
+        layer.addView(turn, Surface.CARD.at(16, 48, 364, 208))
         speed = SpeedCard(this)
-        layer.addView(speed, Surface.CARD.at(12, 242, 232, 88))
-        saher = SaherCard(this)
-        layer.addView(saher, Surface.CARD.at(252, 242, 124, 88))
+        speedY = SPEED_Y_TRIP
+        layer.addView(speed, Surface.CARD.at(16, speedY, 364, 112))
         eta = EtaCard(this, { endNav() }, { undo() })
-        layer.addView(eta, Surface.CARD.at(12, 338, 364, 80))
+        layer.addView(eta, Surface.CARD.at(16, 392, 364, 112))
         actions = ArrivedActions(this, { savePlace() }, { doneTrip() })
-        layer.addView(actions, Surface.CARD.at(12, 242, 364, 92))
-        val m = Backdrop.CARD_MARGIN
-        // (the words: the dock's own way to Music, whatever a trip makes of it. The cover: the source sheet, section 6.4)
-        mini = MiniCard(this, { Chrome.of(panel.shell)?.open(Screens.MUSIC) ?: Unit }, { com.abdllh.aura.music.MusicPanel.openSources(panel.shell) })
-        layer.addView(mini, at(12 - m, 426 - m, 364 + 2 * m, 80 + 2 * m))
-        for (v in arrayOf<View>(turn, speed, saher, eta, actions, mini)) v.visibility = View.INVISIBLE
+        layer.addView(actions, Surface.CARD.at(16, 268, 364, 92))
+        for (v in arrayOf<View>(scrimCol, turn, speed, eta, actions)) v.visibility = View.INVISIBLE
         built = true
-        song?.let { mini.bind(it) }
         kept = null
         syncRoad()
     }
 
     companion object {
         private const val FIX_MAX_AGE_MS = 5000L
-        /** The Saher card shows a spot this near, and it is hot this near. */
+        private const val SPEED_Y_TRIP = 268
+        private const val SPEED_Y_FREE = 112
+        /** The Saher chip shows a spot this near, and it is hot this near. */
         private const val SAHER_M = 1000
         private const val SAHER_HOT_M = 400
         private const val LANES_M = 300.0

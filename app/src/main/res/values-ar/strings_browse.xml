@@ -11,7 +11,6 @@
     <string name="browse_retry">حاول مرة ثانية</string>
     <string name="browse_no_internet">ما فيه إنترنت</string>
     <string name="browse_nothing">ما لقينا شي بهالاسم</string>
-    <string name="browse_set_place">ما انحفظ للحين، اضغط واختر مكانه</string>
     <string name="browse_pick_home">اضغط مطوّل على المكان أو ابحث عنه، ثم النجمة</string>
     <string name="browse_pick_work">اضغط مطوّل على المكان أو ابحث عنه، ثم النجمة</string>
     <string name="browse_start_now">ابدأ الآن</string>
