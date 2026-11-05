@@ -82,6 +82,9 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
     private var lastResults: List<Place> = emptyList()
 
     /** He is choosing a place or searching: no new look under his hands, no `drive-free`. */
+    /** The field has the focus: the panel's soft input mode goes by this ([MapsPanel.softInput]). */
+    val fieldFocused: Boolean get() = ::search.isInitialized && input.hasFocus()
+
     val inUse: Boolean get() = search.isOn || selected != null || pickFor != null || input.hasFocus() || routing
 
     /** The old cards' lift for the old locate button: none of these is a bottom card any more. */
@@ -153,7 +156,7 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
                     Trips.legacy(which).isNotBlank() -> { // an address typed in 1.0: find it once and keep the place
                         panel.toast(getString(R.string.maps_searching))
                         Trips.findLegacy(which, arabic) { p ->
-                            if (!panel.isTop) return@findLegacy
+                            if (panel.isGone || panel.isOff) return@findLegacy
                             if (p == null) { panel.toast(getString(R.string.browse_nothing)); openSearch(); return@findLegacy }
                             driveTo(p)
                         }
@@ -716,7 +719,7 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
         syncOver()
         routing = true
         // (Back pressed meanwhile: no navigation the driver can no longer see starting)
-        val here = { panel.isTop && selected?.pos == p.pos }
+        val here = { !panel.isGone && !panel.isOff && selected?.pos == p.pos }
         Trips.goTo(panel, p, source = Trips.SCREEN, wanted = here) { outcome, _ ->
             routing = false
             when (outcome) {
@@ -819,7 +822,10 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
         search = SearchPanel(this).apply { visibility = View.GONE }
         layer.addView(search, Surface.CARD.at(12, 44, 364, 68))
         search.onClose = { closeSearch() }
-        input.setOnFocusChangeListener { _, f -> if (f) openSearch() }
+        input.setOnFocusChangeListener { _, f ->
+            panel.shell.panels.softInputChanged(panel) // (before the keyboard)
+            if (f) openSearch()
+        }
         input.setOnClickListener { if (DriveState.moving) pillTapped() else openSearch() }
         input.addTextChangedListener(object : TextWatcher {
             override fun afterTextChanged(s: Editable?) {

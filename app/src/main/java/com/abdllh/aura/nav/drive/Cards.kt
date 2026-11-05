@@ -247,38 +247,6 @@ internal class ArrivedActions(ctx: Context, onSave: () -> Unit, onDone: () -> Un
     }
 }
 
-/**
- * The lyric chip (section 5), a `pill` of 628 x 50 at (384, 456): one line `lyricChip`, reading edge 18, the part with the current word. Music feeds it ([com.abdllh.aura.nav.DriveColumn.lyricLine]); a new line
- * crossfades in 140 ms with no travel. Tap: off for this song, which is Music's to say.
- */
-internal class LyricChip(ctx: Context) : SurfaceCard(ctx, Surface.PILL) {
-    private val a: AText = ctx.line(Type.lyricChip, { Palette.ink })
-    private val b: AText = ctx.line(Type.lyricChip, { Palette.ink })
-    private var front = a
-    var onTap: (() -> Unit)? = null
-
-    init {
-        for (v in arrayOf(a, b)) addView(v, Type.lyricChip.box(18, 0, 592))
-        b.alpha = 0f
-        isClickable = true
-        setOnClickListener { onTap?.invoke() }
-    }
-
-    fun line(s: CharSequence) {
-        if (front.text.toString() == s.toString()) return
-        val next = if (front === a) b else a
-        next.text = s
-        if (isShown) {
-            next.fadeTo(1f, Tokens2.MS_swap)
-            front.fadeTo(0f, Tokens2.MS_swap)
-        } else {
-            next.alpha = 1f
-            front.alpha = 0f
-        }
-        front = next
-    }
-}
-
 /** A group whose touch stops within its visible rect, like a surface's; for a card whose surface is an image ([MiniCard]). */
 internal open class Hit(ctx: Context, private val outset: Int) : FrameLayout(ctx) {
     private var kept = false

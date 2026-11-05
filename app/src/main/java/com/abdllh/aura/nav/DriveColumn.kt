@@ -12,7 +12,6 @@ import com.abdllh.aura.media.NowPlaying
 import com.abdllh.aura.music.Backdrop
 import com.abdllh.aura.nav.drive.ArrivedActions
 import com.abdllh.aura.nav.drive.EtaCard
-import com.abdllh.aura.nav.drive.LyricChip
 import com.abdllh.aura.nav.drive.MiniCard
 import com.abdllh.aura.nav.drive.SaherCard
 import com.abdllh.aura.nav.drive.SpeedCard
@@ -37,7 +36,7 @@ import kotlin.math.roundToInt
  * What he watches at speed (SPEC.md section 6.2): the scrims, and the driver's cards at x 12..376, each at its own place, which none of them leaves when another comes or goes: turn y 44, speed y 242, Saher beside it,
  * ETA y 338, mini y 426. Trip or `drive-free`; browse keeps the scrims and the mini. Everything is built once, laid out once, and only its content and alpha change, so a fix redraws a number and nothing else.
  *
- * What the panel calls: [build], [sync], [tripChanged], [listen], [onFace], [coveredByCard]. Music calls [lyricChip] and [lyricLine].
+ * What the panel calls: [build], [sync], [tripChanged], [listen], [onFace], [coveredByCard].
  */
 internal class DriveColumn(panel: MapsPanel) : MapsPart(panel) {
     private lateinit var turn: TurnCard
@@ -46,7 +45,6 @@ internal class DriveColumn(panel: MapsPanel) : MapsPart(panel) {
     private lateinit var eta: EtaCard
     private lateinit var actions: ArrivedActions
     private lateinit var mini: MiniCard
-    private lateinit var chip: LyricChip
     private var built = false
 
     private var listening = false
@@ -57,7 +55,6 @@ internal class DriveColumn(panel: MapsPanel) : MapsPart(panel) {
     private var lastHint = ""
     /** The trip End took off, for 5 s of `رجّعها`: the route stays in memory, and [NavSession] resumes from the car's place. */
     private var kept: Kept? = null
-    private var chipOn = false
     /** On the arrival's card: the car has stood since it came, so driving off again ends the trip. */
     private var stoodAtArrival = false
 
@@ -73,22 +70,6 @@ internal class DriveColumn(panel: MapsPanel) : MapsPart(panel) {
         covered = on
         if (built) syncCards()
     }
-
-    /** Music, moving: the chip comes, y +8 to 0, 180 `move`; nothing in the column moves. */
-    fun lyricChip(on: Boolean) {
-        chipOn = on
-        if (built) chip.showCard(on)
-    }
-
-    /** The line it shows, the part with the current word: the caller cuts it at word boundaries. Crossfades by itself. */
-    fun lyricLine(s: CharSequence) {
-        if (built) chip.line(s)
-    }
-
-    /** A tap on the chip: off for this song. */
-    var onLyricChipTap: (() -> Unit)?
-        get() = if (built) chip.onTap else null
-        set(v) { if (built) chip.onTap = v }
 
     fun destroy() {
         if (built) mini.destroy()
@@ -352,16 +333,12 @@ internal class DriveColumn(panel: MapsPanel) : MapsPart(panel) {
         actions = ArrivedActions(this, { savePlace() }, { doneTrip() })
         layer.addView(actions, Surface.CARD.at(12, 242, 364, 92))
         val m = Backdrop.CARD_MARGIN
-        // (the dock's own way to Music, whatever a trip makes of it. The cover's source sheet is Music's to give: until then the same)
-        val music = { Chrome.of(panel.shell)?.open(Screens.MUSIC) ?: Unit }
-        mini = MiniCard(this, music, music)
+        // (the words: the dock's own way to Music, whatever a trip makes of it. The cover: the source sheet, section 6.4)
+        mini = MiniCard(this, { Chrome.of(panel.shell)?.open(Screens.MUSIC) ?: Unit }, { com.abdllh.aura.music.MusicPanel.openSources(panel.shell) })
         layer.addView(mini, at(12 - m, 426 - m, 364 + 2 * m, 80 + 2 * m))
-        chip = LyricChip(this)
-        layer.addView(chip, Surface.PILL.at(384, 456, 628, 50))
-        for (v in arrayOf<View>(turn, speed, saher, eta, actions, mini, chip)) v.visibility = View.INVISIBLE
+        for (v in arrayOf<View>(turn, speed, saher, eta, actions, mini)) v.visibility = View.INVISIBLE
         built = true
         song?.let { mini.bind(it) }
-        if (chipOn) chip.visibility = View.VISIBLE
         kept = null
         syncRoad()
     }

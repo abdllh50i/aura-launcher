@@ -5,12 +5,10 @@ import android.content.ContextWrapper
 import android.location.Location
 import android.os.Bundle
 import android.os.SystemClock
-import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
-import android.widget.ImageView
 import com.abdllh.aura.BuildConfig
 import com.abdllh.aura.R
 import com.abdllh.aura.chrome.Chrome
@@ -19,16 +17,9 @@ import com.abdllh.aura.home.Panel
 import com.abdllh.aura.home.Screens
 import com.abdllh.aura.system.DriveState
 import com.abdllh.aura.ui.MATCH
-import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
-import com.abdllh.aura.ui.Radius
-import com.abdllh.aura.ui.Shapes
 import com.abdllh.aura.ui.Snack
-import com.abdllh.aura.ui.Space
 import com.abdllh.aura.ui.Theme
-import com.abdllh.aura.ui.WRAP
-import com.abdllh.aura.ui.flp
-import com.abdllh.aura.ui.pressScale
 import com.abdllh.aura.util.Prefs
 import com.abdllh.aura.util.dp
 
@@ -56,8 +47,11 @@ class MapsPanel(shell: HomeActivity) : Panel(shell, Screens.MAPS) {
     override val keep: Boolean get() = true
     // (a theme change recolours what shows in place: section 8. Every part reads its tokens at [com.abdllh.aura.ui.Look.apply])
     override val recolours: Boolean get() = true
-    // (the map's slot does not follow the keyboard, and the field is at the top, above it: this window never pans. See DEV.md, "One window")
-    override val softInput: Int get() = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN
+    // (the map's slot does not follow the keyboard, and the field is at the top, above it: this window never pans. See DEV.md, "One window".
+    // Only while the field has the focus: a mode of the whole panel made every move to and from it a relayout of the window, "Music and the map")
+    override val softInput: Int get() =
+        if (browse.fieldFocused) WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN
+        else super.softInput
 
     /** Whole-screen layers, bottom to top, section 6.0's order: a part puts its views in its own, at the mockups' pixels. */
     internal val columnLayer = FrameLayout(this)
@@ -76,9 +70,6 @@ class MapsPanel(shell: HomeActivity) : Panel(shell, Screens.MAPS) {
     internal var face = Face.BROWSE
         private set
     private var lastTouch = 0L
-
-    /** Old cards only: how wide. The camera's side is [SIDE]. */
-    internal val cardW: Int get() = CARD_W.dp
 
     private var tripShown = false
     private var listening = false
@@ -311,8 +302,6 @@ class MapsPanel(shell: HomeActivity) : Panel(shell, Screens.MAPS) {
     }
 
     internal companion object {
-        /** The old cards' width. */
-        const val CARD_W = 460
         /** What the camera leaves free at the left in both languages, for the column: map-*.json `camera`, so the car stands at x 701. */
         const val SIDE = 378
         /** What the chrome's strip and bottom row leave of the screen, from the top and from the bottom (SPEC.md section 1). */
@@ -354,32 +343,6 @@ internal abstract class MapsPart(@JvmField val panel: MapsPanel) : ContextWrappe
     /** Section 6.0's row changed ([MapsPanel.face]). */
     open fun onFace(face: MapsPanel.Face) {}
 
-    // ---- the old look's, shared until both parts are rebuilt
-    /**
-     * The fill of the cards with text over the map (results, place, trip, arrival): solid, not the shared glass. At the
-     * glass's 95 % the map's labels still showed through behind their text, clutter on a small screen in a moving car.
-     */
-    protected fun panelFill() = Shapes.rect(Palette.withAlpha(Palette.glass, 1f), Radius.XL, Palette.glassStroke)
-
-    protected fun bottomCard() = flp(panel.cardW, WRAP, Gravity.BOTTOM or Gravity.START).apply {
-        setMargins(Space.L.dp, 0, Space.L.dp, MapsPanel.BOTTOM_EDGE.dp)
-        marginStart = Space.L.dp
-    }
-
-    protected fun roundIcon(icon: Int, size: Int, desc: Int, flipRtl: Boolean = false, onClick: () -> Unit): FrameLayout = FrameLayout(this).apply {
-        background = Shapes.ghostOval()
-        isClickable = true
-        contentDescription = getString(desc)
-        pressScale(Motion.PRESS_ICON)
-        setOnClickListener { onClick() }
-        val side = (size * 0.45f).toInt().dp
-        addView(ImageView(this@MapsPart).apply {
-            setImageResource(icon)
-            setColorFilter(Palette.text)
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            if (flipRtl && rtl) scaleX = -1f
-        }, flp(side, side, Gravity.CENTER))
-    }
 }
 
 /** Visible and not on its way out. */

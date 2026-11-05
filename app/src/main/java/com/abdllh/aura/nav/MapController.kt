@@ -482,7 +482,8 @@ class MapController(private val shell: HomeActivity) {
         private const val HOME_BOTTOM = 286
         private const val HOME_TRIP_RIGHT = 640
         private const val HOME_TRIP_BOTTOM = 164
-        // the sprite from above, px; the tilted views fill its view\r\n        private const val CAR_HOME_PX = 48
+        // the sprite from above, px; the tilted views fill its view
+        private const val CAR_HOME_PX = 48
         private const val CAR_HOME_TRIP_PX = 40
         private const val CAR_MAPS_PX = 64
         private const val MAPS_NAV_TOP = 0.42

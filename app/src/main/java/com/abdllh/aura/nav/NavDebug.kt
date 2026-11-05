@@ -29,7 +29,6 @@ import java.util.Locale
  *   --es road limit,kmh,kind,metres           what the road watch says from now on (kind camera, bump or none); "off": it works it out again
  *   --es lanes l,s,s,r*,r*                    the next turn's lanes on the sign, * the ones to take; "off"
  *   --ez reroute true                         the rerouting card and the faded route, until false
- *   --es chip words                           the lyric chip with those words (underscores for spaces); "off"
  */
 internal object NavDebug {
     private const val TAG = "AuraNavDebug"
@@ -106,11 +105,6 @@ internal object NavDebug {
         }
         i.getStringExtra("lanes")?.let { s -> DriveColumn.debugLanes = if (s == "off") null else s }
         if (i.hasExtra("reroute")) NavSession.debugRerouting(i.getBooleanExtra("reroute", false))
-        i.getStringExtra("chip")?.let { s ->
-            val d = (com.abdllh.aura.home.HomeActivity.current?.panels?.top as? MapsPanel)?.drive
-            d?.lyricLine(s.replace('_', ' '))
-            d?.lyricChip(s != "off")
-        }
         if (i.getBooleanExtra("dump", false)) dump()
     }
 
