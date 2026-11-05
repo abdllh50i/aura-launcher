@@ -34,7 +34,9 @@ import com.mapbox.mapboxsdk.maps.MapboxMap
 import com.mapbox.mapboxsdk.maps.MapboxMapOptions
 import com.mapbox.mapboxsdk.maps.Style
 import com.mapbox.mapboxsdk.style.layers.Property
+import com.mapbox.mapboxsdk.style.expressions.Expression
 import com.mapbox.mapboxsdk.style.layers.PropertyFactory
+import com.mapbox.mapboxsdk.style.layers.SymbolLayer
 import com.mapbox.mapboxsdk.style.sources.GeoJsonSource
 import java.io.File
 import java.util.Locale
@@ -42,9 +44,11 @@ import java.util.concurrent.Executors
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.exp
+import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
+import kotlin.math.sin
 
 /**
  * A MapLibre map in the Aura style with the car, the route and the destination, plus the camera behaviour of a car
@@ -106,8 +110,11 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
     var pictureFile: File? = null
     /** The part of the view that picture is of (it is the home screen's card, not the whole map); null: all of it. */
     var pictureArea: Rect? = null
+    /** How big the car is drawn on a flat map. */
+    var carTopPx: Int
+        get() = carView.topPx
+        set(v) { carView.topPx = v }
 
-    private val rtl: Boolean
     private val app = ctx.applicationContext
     private val density = ctx.resources.displayMetrics.density
 
@@ -157,6 +164,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
     private var turnFrom = 0.0  // where along its line the arrow as drawn starts, and ends
     private var turnEnd = 0.0
     private var dest: LatLon? = null
+    private var destName: String? = null
     private var routeFaded = false
     private var extrasVersion = -1
 
@@ -168,9 +176,22 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
     // and a heading that looks a little down the road
     private var navZoom = 16.8
     private var navTilt = 50.0
-    private var navPad = 0.42
+    // (in px of the view: on Maps from the table of map-*.json, `camera.navigate`; on the home screen a share of its card)
+    private var navT = 0.0
+    private var navL = 0.0
+    private var navR = 0.0
+    private var navB = 0.0
     private var camBearing = 0.0
     private var steerReady = false
+    /** The driving camera has the shape of map-*.json, in px of the 1024 x 600 surface (Maps): the car at x 701 or 800, its height by speed. Else a share of the room (the home screen's card). */
+    var driveShape = false
+    // what [setAhead] says of the road ahead
+    private var leftAhead = false
+    private var ringSpan = Double.NaN
+    private var arriving = false
+    private var ringPts: List<LatLon> = emptyList()
+    private var ringOf: Polyline? = null
+    private var ringAt = Double.NaN
     // a change of camera (Go, Recenter, the zoom buttons, the end of a trip): from where the camera was to where it
     // follows the car, eased over BLEND_MS while the car keeps moving
     private var blendFrom: Cam? = null
@@ -259,7 +280,6 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         mapView.addOnLayoutChangeListener { _, l, t, r, b, ol, ot, or, ob ->
             if (r - l != or - ol || b - t != ob - ot) { mapView.post(placeAgain); mapView.postDelayed(placeAgain, 120) }
         }
-        rtl = ctx.resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL
         mapView.getMapAsync { m ->
             map = m
             m.uiSettings.apply {
@@ -302,9 +322,10 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         val m = map ?: return
         val arabic = Locale.getDefault().language == "ar"
         Log.i(TAG, "style load #${++styleLoads}")
-        m.setStyle(Style.Builder().fromJson(MapStyle.json(arabic)).withImage(MapStyle.POI_DOT, MapStyle.poiDot(), true)) { s ->
+        m.setStyle(Style.Builder().fromJson(MapStyle.json(arabic)).withImage(MapStyle.POI_DOT, MapStyle.poiDot(), true).withImage(MapStyle.DEST_PIN, MapStyle.destPin(), true)) { s ->
             style = s
             MapStyle.afterLoad(s)
+            namesKey = ""
             extrasVersion = -1
             routeFaded = false
             pushRoute()
@@ -632,6 +653,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         onRoute = false
         carView.setNav(false)
         syncRerouting()
+        syncNames()
         pushRoute()
     }
 
@@ -649,6 +671,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         trimAlong = 0.0 // (the old line's: the turn's arrow is cut there until this one is trimmed)
         carView.setNav(true)
         syncRerouting()
+        syncNames()
         pushRoute()
     }
 
@@ -658,7 +681,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         val s = style ?: return
         routeFaded = faded
         // (the style's own transition fades it)
-        for (id in MapStyle.ROUTE_LAYERS) s.getLayer(id)?.setProperties(PropertyFactory.lineOpacity(if (faded) 0.45f else 1f))
+        for (id in MapStyle.ROUTE_LAYERS) s.getLayer(id)?.setProperties(PropertyFactory.lineOpacity(if (faded) 0.38f else 1f))
     }
 
     /**
@@ -691,16 +714,19 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         if (turnLine === line && along > turnFrom + TURN_CUT_STEP_M && along < turnEnd) pushTurn()
     }
 
-    fun setDestination(p: LatLon?) {
-        if (p == dest) return
+    /** The pin, and [name] over it. */
+    fun setDestination(p: LatLon?, name: String? = null) {
+        if (p == dest && name == destName) return
         dest = p
+        destName = name
         pushDest()
     }
 
     private fun pushDest() {
         val s = style ?: return
         val d = dest
-        val json = if (d == null) EMPTY else """{"type":"Feature","properties":{},"geometry":{"type":"Point","coordinates":[${d.lon},${d.lat}]}}"""
+        val named = destName?.takeIf { it.isNotBlank() }?.let { org.json.JSONObject.quote(it) }
+        val json = if (d == null) EMPTY else """{"type":"Feature","properties":{${if (named != null) """"name":$named""" else ""}},"geometry":{"type":"Point","coordinates":[${d.lon},${d.lat}]}}"""
         try { s.getSourceAs<GeoJsonSource>(MapStyle.SRC_DEST)?.setGeoJson(json) } catch (_: Throwable) { }
     }
 
@@ -840,11 +866,55 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         syncLayers()
     }
 
-    /** Navigating, the minor places and house numbers go ([MapStyle.NAV_HIDDEN]); browsing, they come back. */
+    /** The camera drives: the browse map's places and names go ([MapStyle.NAV_HIDDEN]) and the driving ones come ([MapStyle.DRIVE_ONLY]); browsing, the other way round. */
     private fun syncLayers() {
         val s = style ?: return
-        val v = PropertyFactory.visibility(if (camera == Camera.NAVIGATE) Property.NONE else Property.VISIBLE)
-        for (id in MapStyle.NAV_HIDDEN) try { s.getLayer(id)?.setProperties(v) } catch (_: Throwable) { }
+        val drive = camera == Camera.NAVIGATE
+        val off = PropertyFactory.visibility(if (drive) Property.NONE else Property.VISIBLE)
+        val on = PropertyFactory.visibility(if (drive) Property.VISIBLE else Property.NONE)
+        for (id in MapStyle.NAV_HIDDEN) try { s.getLayer(id)?.setProperties(off) } catch (_: Throwable) { }
+        for (id in MapStyle.DRIVE_ONLY) try { s.getLayer(id)?.setProperties(on) } catch (_: Throwable) { }
+        syncNames()
+    }
+
+    /** The road the car is on and the road of the next turn, by the names the guidance shows: the driving names go by them, and never name the first. Set on every fix; a change is rare. */
+    fun setRoads(current: String, next: String) {
+        roadNow = current
+        roadNext = next
+        syncNames()
+    }
+
+    private var roadNow = ""
+    private var roadNext = ""
+    private var namesKey = ""
+
+    // (a new filter lays out what the source's tiles hold of that layer, on the map's worker: only when it changes, so at most once per turn)
+    private fun syncNames() {
+        val s = style ?: return
+        if (camera != Camera.NAVIGATE) return
+        val trip = routeLine != null
+        val key = "$trip|$roadNow|$roadNext"
+        if (key == namesKey) return
+        namesKey = key
+        val arabic = Locale.getDefault().language == "ar"
+        try {
+            s.getLayerAs<SymbolLayer>(MapStyle.DRIVE_NAME_MAJOR)?.setFilter(Expression.raw(MapStyle.driveMajorFilter(trip, arabic, roadNow)))
+            s.getLayerAs<SymbolLayer>(MapStyle.DRIVE_NAME_NEXT)?.setFilter(Expression.raw(MapStyle.driveNextFilter(arabic, roadNext, roadNow)))
+        } catch (t: Throwable) {
+            Log.w(TAG, "road names: $t")
+        }
+    }
+
+    /**
+     * What the camera must know of the road ahead, on every fix on a trip (map-*.json, `camera`). [left]: the next step is to the left within 1.5 km, and the car moves to x 800 so the route after
+     * it does not run under the column. [ring]: the next step is a roundabout, its way round this long; NaN for none. [arrived]: the arrival's camera. On a change the loop wakes: the car may stand still.
+     */
+    fun setAhead(left: Boolean, ring: Double, arrived: Boolean) {
+        val same = left == leftAhead && arrived == arriving && (ring == ringSpan || (ring.isNaN() && ringSpan.isNaN()))
+        leftAhead = left
+        ringSpan = ring
+        arriving = arrived
+        if (!same) wake()
     }
 
     /**
@@ -889,7 +959,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         val p = carPos ?: map?.cameraPosition?.target?.let { LatLon(it.latitude, it.longitude) } ?: return null
         return when (camera) {
             Camera.FOLLOW -> Cam(p.lat, p.lon, followZoom, 0.0, 0.0, roomL, roomT, roomR, roomB)
-            Camera.NAVIGATE -> Cam(p.lat, p.lon, navZoom, navTilt, camBearing, roomL, roomT + (mapView.height - roomT - roomB).coerceAtLeast(0.0) * navPad, roomR, roomB)
+            Camera.NAVIGATE -> Cam(p.lat, p.lon, navZoom, navTilt, camBearing, navL, navT, navR, navB)
             else -> null
         }
     }
@@ -906,25 +976,91 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         var z = zoomFor(v)
         var tilt = NAV_TILT
         val ahead = turnAt - drawnAlong
-        if (turnLine != null && onRoute && ahead > -15 && ahead < max(120.0, v / 3.6 * 7)) { z = max(z, 16.9); tilt = NAV_TILT_TURN }
+        val span = if (ringSpan.isNaN()) 0.0 else ringSpan
+        val near = turnLine != null && onRoute && ahead > -15 - span && ahead < max(120.0, v / 3.6 * 7)
+        if (near) { z = max(z, 16.9); tilt = NAV_TILT_TURN }
         z = (z + navZoomOffset).coerceIn(12.0, 19.0)
-        val pad = navTopPadding * (0.95 + 0.19 * ((v - 40) / 50).coerceIn(0.0, 1.0))
+        val k = ((v - 40) / 50).coerceIn(0.0, 1.0)
+        var l = roomL
+        var r = roomR
+        var bottom = roomB
+        var t: Double
+        if (driveShape) {
+            t = DRIVE_TOP_SLOW + (DRIVE_TOP_FAST - DRIVE_TOP_SLOW) * k
+            if (leftAhead) l = LEFT_SHIFT
+            if (arriving) { z = 17.0; tilt = NAV_TILT_TURN; t = ARRIVE_TOP }
+            else if (near && !ringSpan.isNaN()) ringFit()?.let { f ->
+                z = f[0]; l = f[1]; r = f[2]; t = f[3]; bottom = f[4]
+                tilt = NAV_TILT_RING
+            }
+        } else t = roomT + (mapView.height - roomT - roomB).coerceAtLeast(0.0) * navTopPadding * (0.95 + 0.19 * k)
         val b = lookBearing(v)
         if (!steerReady) {
-            navZoom = z; navTilt = tilt; navPad = pad; camBearing = b
+            navZoom = z; navTilt = tilt; navT = t; navL = l; navR = r; navB = bottom; camBearing = b
             steerReady = true
             return false
         }
-        navZoom += (z - navZoom) * (1 - exp(-dt / 1.2))
-        navTilt += (tilt - navTilt) * (1 - exp(-dt / 0.8))
-        navPad += (pad - navPad) * (1 - exp(-dt / 0.8))
+        navZoom += (z - navZoom) * (1 - exp(-dt / ZOOM_TAU))
+        navTilt += (tilt - navTilt) * (1 - exp(-dt / PAD_TAU))
+        navT += (t - navT) * (1 - exp(-dt / PAD_TAU))
+        navL += (l - navL) * (1 - exp(-dt / PAD_TAU))
+        navR += (r - navR) * (1 - exp(-dt / PAD_TAU))
+        navB += (bottom - navB) * (1 - exp(-dt / PAD_TAU))
         val turn = Geo.angleDiff(camBearing, b)
         if (v >= HOLD_KMH - 1) {
             val most = 75.0 * dt
             camBearing = (camBearing + (turn * (1 - exp(-dt / 0.45))).coerceIn(-most, most) + 360) % 360
         }
-        return abs(z - navZoom) > 0.005 || abs(tilt - navTilt) > 0.1 || abs(pad - navPad) > 0.0005 ||
+        return abs(z - navZoom) > 0.005 || abs(tilt - navTilt) > 0.1 || abs(t - navT) > 0.5 || abs(l - navL) > 0.5 || abs(r - navR) > 0.5 || abs(bottom - navB) > 0.5 ||
             (v >= HOLD_KMH - 1 && abs(turn) > 0.1)
+    }
+
+    /**
+     * The roundabout's camera (map-*.json, `camera.roundabout`): the ring, 100 m of the exit arm and the car fit in x 388..1020, y 44..506 by bounds along the map's bearing, so the exit he must
+     * take is seen; the navigate zoom's floor does not hold. The car stands wherever that leaves it. Zoom, then left, right, top and bottom padding. Null with no ring on the line.
+     */
+    private fun ringFit(): DoubleArray? {
+        val line = turnLine ?: return null
+        val c = carPos ?: return null
+        if (line !== ringOf || turnAt != ringAt) {
+            ringOf = line
+            ringAt = turnAt
+            val end = turnAt + ringSpan + RING_EXIT_M
+            ringPts = generateSequence(turnAt) { it + RING_STEP_M }.takeWhile { it < end }.map { line.at(it).first }.toList() + line.at(end).first
+        }
+        val cosLat = cos(Math.toRadians(c.lat))
+        val bearing = Math.toRadians(camBearing)
+        val sinB = sin(bearing)
+        val cosB = cos(bearing)
+        var minX = 0.0
+        var maxX = 0.0
+        var minY = 0.0
+        var maxY = 0.0
+        for (p in ringPts) {
+            val e = (p.lon - c.lon) * M_PER_DEG * cosLat
+            val n = (p.lat - c.lat) * M_PER_DEG
+            val x = e * cosB - n * sinB
+            val y = e * sinB + n * cosB
+            if (x < minX) minX = x
+            if (x > maxX) maxX = x
+            if (y < minY) minY = y
+            if (y > maxY) maxY = y
+        }
+        val wide = (maxX - minX).coerceAtLeast(20.0)
+        val tall = (maxY - minY).coerceAtLeast(20.0) * RING_FORESHORTEN
+        // MapLibre's world is 512 units wide at zoom 0, a unit being a dp ([far])
+        val world = 40075016.686 * cosLat / (512 * density)
+        val zoom = (ln(min(RING_W * RING_FILL / wide, RING_H * RING_FILL / tall) * world) / ln(2.0)).coerceIn(12.0, 18.5)
+        val s = 2.0.pow(zoom) / world
+        val carX = RING_X + (RING_W - wide * s) / 2 - minX * s
+        val carY = RING_Y + (RING_H - tall * s) / 2 + maxY * RING_FORESHORTEN * s
+        val w = mapView.width.toDouble()
+        val h = mapView.height.toDouble()
+        val l = (2 * carX - w).coerceAtLeast(0.0)
+        val r = (w - 2 * carX).coerceAtLeast(0.0)
+        val t = (2 * carY - h + roomB).coerceAtLeast(0.0)
+        val b = (h - 2 * carY + t).coerceAtLeast(0.0)
+        return doubleArrayOf(zoom, l, r, t, b)
     }
 
     /** Street zoom up to 20 km/h, further out with speed, motorway zoom from 110 km/h. */
@@ -981,15 +1117,15 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         return 1 - (1 + x) * exp(-x)
     }
 
-    /** Shows the whole route (or the car and a place) with room for the panels. */
-    fun overview(points: List<LatLon>, padStart: Int, padTop: Int, padEnd: Int, padBottom: Int) {
+    /** Shows the whole route (or the car and a place) with room for the panels, which do not swap sides with the language: north up, flat, at most zoom 16 (map-*.json, `camera.overview`). */
+    fun overview(points: List<LatLon>, padLeft: Int, padTop: Int, padRight: Int, padBottom: Int) {
         val m = map ?: return
         if (points.isEmpty()) return
         blendFrom = null
         flightUntil = 0L
         setMode(Camera.OVERVIEW)
-        val l = if (rtl) padEnd else padStart
-        val r = if (rtl) padStart else padEnd
+        val l = padLeft
+        val r = padRight
         if (points.size == 1) {
             m.animateCamera(CameraUpdateFactory.newCameraPosition(CameraPosition.Builder()
                 .target(LatLng(points[0].lat, points[0].lon)).zoom(15.5).bearing(0.0).tilt(0.0)
@@ -999,7 +1135,9 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         val b = LatLngBounds.Builder()
         points.forEach { b.include(LatLng(it.lat, it.lon)) }
         try {
-            m.animateCamera(CameraUpdateFactory.newLatLngBounds(b.build(), 0.0, 0.0, l, padTop, r, padBottom), OVERVIEW_MS, landed)
+            val fit = m.getCameraForLatLngBounds(b.build(), intArrayOf(l, padTop, r, padBottom), 0.0, 0.0)
+            if (fit != null && fit.zoom > OVERVIEW_MAX_ZOOM) m.animateCamera(CameraUpdateFactory.newCameraPosition(CameraPosition.Builder(fit).zoom(OVERVIEW_MAX_ZOOM).build()), OVERVIEW_MS, landed)
+            else m.animateCamera(CameraUpdateFactory.newLatLngBounds(b.build(), 0.0, 0.0, l, padTop, r, padBottom), OVERVIEW_MS, landed)
         } catch (_: Throwable) {
         }
     }
@@ -1031,7 +1169,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
     }
 
     fun northUp() {
-        map?.animateCamera(CameraUpdateFactory.bearingTo(0.0), 400)
+        map?.animateCamera(CameraUpdateFactory.bearingTo(0.0), 480)
     }
 
     // ------------------------------------------------------------------------------------------ the frame loop
@@ -1170,7 +1308,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         private const val HOLD_KMH = 6.0     // slower: the heading is kept, the car is not moved ahead
         private const val STALE_MS = 5000L   // no fix for this long: the car is shown as not current
         // the camera
-        private const val BLEND_MS = 650L
+        private const val BLEND_MS = 750L
         private const val LANDING_MS = 400L
         /** A new room: 95 % at 365 ms, settled by here (the design's section 9). */
         private const val ROOM_MS = 520L
@@ -1180,6 +1318,25 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         private const val OVERVIEW_MS = 750
         private const val NAV_TILT = 50.0
         private const val NAV_TILT_TURN = 44.0
+        private const val NAV_TILT_RING = 32.0
+        private const val OVERVIEW_MAX_ZOOM = 16.0
+        // the driving camera on Maps, map-*.json `camera.navigate`, in px of the surface: the top's padding at 40 km/h and under and at 90 km/h and over (the car at y 395 to 430), and before a turn to the left (the car at x 800)
+        private const val DRIVE_TOP_SLOW = 270.0
+        private const val DRIVE_TOP_FAST = 340.0
+        private const val ARRIVE_TOP = 240.0
+        private const val LEFT_SHIFT = 576.0
+        private const val ZOOM_TAU = 1.2
+        private const val PAD_TAU = 0.8
+        // the roundabout's frame ([ringFit])
+        private const val RING_X = 388.0
+        private const val RING_Y = 44.0
+        private const val RING_W = 632.0
+        private const val RING_H = 462.0
+        private const val RING_FILL = 0.9
+        private const val RING_EXIT_M = 100.0
+        private const val RING_STEP_M = 10.0
+        private const val RING_FORESHORTEN = 0.85 // (cos 32 degrees)
+        private const val M_PER_DEG = 111_320.0
         private const val DRAWN_LATE_MS = 2500L
         private const val PICTURE_REST_MS = 3000L
         private const val PICTURE_EVERY_MS = 60_000L
@@ -1262,6 +1419,9 @@ private class CarMarker(ctx: Context) : View(ctx) {
     private var navK = 0f
     private var staleK = 0f
     private val navSpring = Spring(0f, 520f, 1f) { navK = it; invalidate() }
+    /** How big the view from above is drawn while the map is flat: 64 browsing, 48 on the home screen's card. The tilted views fill the view. */
+    var topPx = TOP_PX
+        set(v) { if (v != field) { field = v; invalidate() } }
     // (the fade is in the paints, not the view's alpha: the marker's shapes overlap, and a view alpha below 1 would
     // send every frame of it through an offscreen layer for as long as the fixes stay away)
     private val staleSpring = Spring(0f, 300f, 1f) { staleK = it; invalidate() }
@@ -1350,9 +1510,9 @@ private class CarMarker(ctx: Context) : View(ctx) {
         }
         // 0 = from above, 1 = the tilted views (the map is flat while browsing, 52° navigating)
         val k = ((tiltDeg - 12f) / 18f).coerceIn(0f, 1f).let { it * it * (3 - 2 * it) }
-        val half = width / 2f
-        dst.set(cx - half, cy - half, cx + half, cy + half)
         if (k < 0.99f) {
+            val half = (topPx + (width - topPx) * k) / 2f
+            dst.set(cx - half, cy - half, cx + half, cy + half)
             c.save()
             c.rotate(yaw, cx, cy)
             bmp.alpha = (255 * fade * (1f - k)).toInt()
@@ -1360,6 +1520,8 @@ private class CarMarker(ctx: Context) : View(ctx) {
             c.restore()
         }
         if (k > 0.01f) {
+            val half = width / 2f
+            dst.set(cx - half, cy - half, cx + half, cy + half)
             // the frame of the heading and the next one, blended by how far between them it is
             val y = (((90f - yaw) % 360f) + 360f) % 360f / STEP
             val i = y.toInt() % frames.size
@@ -1416,8 +1578,9 @@ private class CarMarker(ctx: Context) : View(ctx) {
     }
 
     companion object {
-        /** The view (dp): the car's frames fill it; the drawn marker sits in its middle. */
-        const val SIZE = 92
+        /** The view (dp): the car's frames fill it (assets/carmap, pack_map.py --size 108); the drawn marker sits in its middle. */
+        const val SIZE = 108
+        const val TOP_PX = 64
         /** Degrees between two tilted views. */
         const val STEP = 5f
     }

@@ -248,6 +248,18 @@ object Units {
         return if (arabic) "$h س" + (if (m > 0) " $m د" else "") else "$h h" + (if (m > 0) " $m min" else "")
     }
 
+    /** A duration spelled out with the Arabic number agreement (SPEC.md section 3): "دقيقة", "دقيقتين", "3 دقائق" to "10 دقائق", "11 دقيقة"; an hour and over as [duration]. */
+    fun spelled(sec: Double, arabic: Boolean): String {
+        val min = (sec / 60).roundToInt().coerceAtLeast(1)
+        if (!arabic || min >= 60) return duration(sec, arabic)
+        return when {
+            min == 1 -> "دقيقة"
+            min == 2 -> "دقيقتين"
+            min <= 10 -> "$min دقائق"
+            else -> "$min دقيقة"
+        }
+    }
+
     /** The clock at arrival; on the 12-hour clock with "ص" / "م" in Arabic (an English "PM" in an Arabic line read wrong). */
     fun arrival(secFromNow: Double, clock24: Boolean, arabic: Boolean = Locale.getDefault().language == "ar"): String {
         val at = Date(System.currentTimeMillis() + (secFromNow * 1000).toLong())

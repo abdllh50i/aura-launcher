@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The driver's column: nav/DriveColumn.kt, nav/drive/ -->
+    <string name="drive_arrive">Arrive</string>
+    <string name="drive_keep_then">Keep on, then %1$s</string>
+    <string name="drive_rerouting">Updating route</string>
+    <string name="drive_off_route">Off the route, one moment</string>
+    <string name="drive_no_gps">Waiting for GPS</string>
+    <string name="drive_off_gps">No position yet</string>
+    <string name="drive_working_time">Working it out</string>
+    <string name="drive_last_value">Last value</string>
+    <string name="drive_arrived">You have arrived</string>
+    <string name="drive_save_place">Save place</string>
+    <string name="drive_trip_ended">Trip ended</string>
+    <string name="drive_route_kept">Route kept</string>
+    <string name="drive_undo">Undo</string>
+    <string name="drive_saher">Saher</string>
+    <string name="drive_bump">Bump</string>
+</resources>

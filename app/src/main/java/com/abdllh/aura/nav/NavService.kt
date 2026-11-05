@@ -110,6 +110,8 @@ object NavSim {
     private var along = 0.0
     private var kmh = 60.0
     private var running = false
+    /** The speed it drives at; 0 while it does not. */
+    val driving: Double get() = if (running) kmh else 0.0
 
     fun start(speedKmh: Double = 60.0) {
         kmh = speedKmh

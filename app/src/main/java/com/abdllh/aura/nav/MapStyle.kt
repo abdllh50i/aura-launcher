@@ -52,20 +52,47 @@ object MapStyle {
     private const val SRC_PLACES = "places"
 
     /** The layers a tap looks in for a place ([AuraMap.onPoiTap]): the pack's, then those of the online tiles. */
-    val POI_LAYERS = arrayOf("poi-holy", "poi-a", "poi-b", "poi-c", "poi-d", "omt-poi-a", "omt-poi-b", "omt-poi-c", "omt-poi-d")
+    val POI_LAYERS = arrayOf("poi-holy", "poi-drive", "poi-a", "poi-b", "poi-c", "poi-d", "omt-poi-drive", "omt-poi-a", "omt-poi-b", "omt-poi-c", "omt-poi-d")
 
     /** The route's line layers (faded while a new route is being found). */
     val ROUTE_LAYERS = arrayOf("route-casing", "route-near-casing", "route", "route-near")
 
     /**
-     * Hidden while navigating: the minor places and the house numbers. A driver needs the road, the route and the next
+     * Hidden while the camera drives (SPEC.md section 11): the places of the browse map and every street's name. A driver needs the road, the route and the next
      * turn; dozens of shop names compete with them, and on the turning heading-up map they are placed again all the
-     * time (labels flicker, and the weak CPU pays for it). The most important places (band a) stay.
+     * time (labels flicker, and the weak CPU pays for it). [DRIVE_ONLY] take their place.
      */
-    val NAV_HIDDEN = arrayOf("poi-b", "poi-c", "poi-d", "omt-poi-b", "omt-poi-c", "omt-poi-d", "housenumber")
+    val NAV_HIDDEN = arrayOf("poi-a", "poi-b", "poi-c", "poi-d", "omt-poi-a", "omt-poi-b", "omt-poi-c", "omt-poi-d", "housenumber", "road-name", "road-name-major", "place-minor")
+
+    /** The driving names, one layer for the big roads and one for the road of the next turn. Their filters change with the route ([AuraMap]). */
+    const val DRIVE_NAME_MAJOR = "drive-name-major"
+    const val DRIVE_NAME_NEXT = "drive-name-next"
+
+    /** Shown only while the camera drives: fuel and mosques, and the names of [driveMajorFilter] and [driveNextFilter]. */
+    val DRIVE_ONLY = arrayOf("poi-drive", "omt-poi-drive", DRIVE_NAME_MAJOR, DRIVE_NAME_NEXT)
+
+    /** The big roads while the camera drives, never the one the car is on ([current]); with no route ([trip] false, `drive-free`) the primary and secondary too. */
+    fun driveMajorFilter(trip: Boolean, arabic: Boolean, current: String): String {
+        val classes = if (trip) """"motorway","trunk"""" else """"motorway","trunk","primary","secondary""""
+        val big = """["match",["get","class"],[$classes],true,false]"""
+        return if (current.isBlank()) big else """["all",$big,["!=",${roadNameOf(arabic)},${org.json.JSONObject.quote(current)}]]"""
+    }
+
+    /** The road of the next turn, whatever its class, unless it is the one the car is on. */
+    fun driveNextFilter(arabic: Boolean, next: String, current: String): String =
+        if (next.isBlank() || next == current) NO_FEATURE else """["==",${roadNameOf(arabic)},${org.json.JSONObject.quote(next)}]"""
+
+    private const val NO_FEATURE = """["==",1,0]"""
+
+    // (a motorway often has only its number)
+    private fun roadNameOf(arabic: Boolean) = if (arabic) """["coalesce",["get","name:ar"],["get","name"],["get","ref"]]"""
+        else """["coalesce",["get","name:en"],["get","name:latin"],["get","name"],["get","ref"]]"""
 
     /** The image of a place's dot ([poiDot]), drawn in each kind's colour. */
     const val POI_DOT = "poi-dot"
+
+    /** The destination's pin ([destPin]). */
+    const val DEST_PIN = "dest-pin"
 
     /**
      * The pack's map fonts, IBM Plex Sans Arabic as glyphs (a modified form of it, so under a name without the reserved "Plex": tools/mapbuild/NOTICE-PACK.md): make_glyphs.py's --family, with
@@ -142,6 +169,55 @@ object MapStyle {
         }
         return Bitmap.createBitmap(px, size, size, Bitmap.Config.ARGB_8888).apply { density = DisplayMetrics.DENSITY_DEFAULT }
     }
+
+    /**
+     * The destination's pin, 40 x 52, as a signed distance field like [poiDot]: the map tints it and rings it with a halo, and icons in colours once drew black on the unit's tilted map.
+     * The boundary as a polygon, 3,808 pixels against 63 sides, once.
+     */
+    fun destPin(): Bitmap = pin ?: run {
+        val buffer = 8
+        val w = 40 + 2 * buffer
+        val h = 52 + 2 * buffer
+        val cx = w / 2.0
+        val r = 20.0
+        val cy = buffer + r
+        val tipY = buffer + 52.0
+        // the circle, from where the tip's tangents touch it round over the top, then the tip
+        val alpha = Math.acos(r / (tipY - cy))
+        val n = 62
+        val xs = DoubleArray(n + 1)
+        val ys = DoubleArray(n + 1)
+        for (i in 0 until n) {
+            val a = Math.PI / 2 + alpha + (2 * Math.PI - 2 * alpha) * i / (n - 1)
+            xs[i] = cx + r * Math.cos(a)
+            ys[i] = cy + r * Math.sin(a)
+        }
+        xs[n] = cx
+        ys[n] = tipY
+        val px = IntArray(w * h)
+        for (y in 0 until h) for (x in 0 until w) {
+            val mx = x + 0.5
+            val my = y + 0.5
+            var best = Double.MAX_VALUE
+            var inside = false
+            var j = n
+            for (i in 0..n) {
+                val ax = xs[j]; val ay = ys[j]; val bx = xs[i]; val by = ys[i]
+                val dx = bx - ax; val dy = by - ay
+                val t = (((mx - ax) * dx + (my - ay) * dy) / (dx * dx + dy * dy)).coerceIn(0.0, 1.0)
+                val d = hypot(mx - (ax + t * dx), my - (ay + t * dy))
+                if (d < best) best = d
+                if ((ay > my) != (by > my) && mx < ax + (my - ay) / dy * dx) inside = !inside
+                j = i
+            }
+            val signed = if (inside) -best else best
+            val a = (1.0 - (signed / buffer + 0.25)).coerceIn(0.0, 1.0)
+            px[y * w + x] = ((a * 255).toInt() shl 24) or 0xFFFFFF
+        }
+        Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888).apply { density = DisplayMetrics.DENSITY_DEFAULT }.also { pin = it }
+    }
+
+    private var pin: Bitmap? = null
 
     /** 3D buildings when zoomed in (fill-extrusion). */
     @JvmField var buildings3d = true
@@ -279,8 +355,11 @@ object MapStyle {
         val omtText = Poi.matchClass(c.texts)
         fun omtPoi(id: String, minzoom: Double, r: String) = poi(id, omtSource, omtDot, omtText, name, minzoom, all("""["has","name"]""", r))
         // (the least important band first: a layer further down the list places its names first)
-        val omtPois = if (pack) listOf(omtPoi("omt-poi-d", 17.0, rank(40, 0)), omtPoi("omt-poi-c", 16.0, rank(12, 40)), omtPoi("omt-poi-b", 15.0, rank(3, 12)), omtPoi("omt-poi-a", 13.6, rank(0, 3)))
-            else listOf(omtPoi("poi-d", 17.0, rank(40, 0)), omtPoi("poi-c", 16.0, rank(12, 40)), omtPoi("poi-b", 15.0, rank(3, 12)), omtPoi("poi-a", 13.6, rank(0, 3)))
+        // (only while the camera drives: fuel and mosques. SPEC.md section 11)
+        fun hidden(json: String) = json.replaceFirst(""""layout":{""", """"layout":{"visibility":"none",""")
+        val omtDrive = all(rank(0, 12), """["match",["get","class"],["fuel","place_of_worship"],true,false]""")
+        val omtPois = if (pack) listOf(omtPoi("omt-poi-d", 17.0, rank(40, 0)), omtPoi("omt-poi-c", 16.0, rank(12, 40)), omtPoi("omt-poi-b", 15.0, rank(3, 12)), omtPoi("omt-poi-a", 13.6, rank(0, 3)), hidden(omtPoi("omt-poi-drive", 13.6, omtDrive)))
+            else listOf(omtPoi("poi-d", 17.0, rank(40, 0)), omtPoi("poi-c", 16.0, rank(12, 40)), omtPoi("poi-b", 15.0, rank(3, 12)), omtPoi("poi-a", 13.6, rank(0, 3)), hidden(omtPoi("poi-drive", 13.6, omtDrive)))
         // The pack's places (rank: 1 to 100, the higher the more important; a dense z14 tile holds 420 of them, about
         // 40 above 60), and already thinned by the tiles at z12 and z13. The very top show earlier: from z14 band a is
         // the shop on the corner, at z13 only a hospital, a mall or a big hotel. (zoom in a filter: per tile, so a whole number.)
@@ -294,7 +373,11 @@ object MapStyle {
                 poi("poi-d", source, dot, text, label, 17.0, """["<",["get","rank"],30]"""),
                 poi("poi-c", source, dot, text, label, 16.0, band(30, 45)),
                 poi("poi-b", source, dot, text, label, 15.0, band(45, 60)),
-                poi("poi-a", source, dot, text, label, 12.6, """[">=",["get","rank"],["step",["zoom"],80,14,60]]""")
+                poi("poi-a", source, dot, text, label, 12.6, """[">=",["get","rank"],["step",["zoom"],80,14,60]]"""),
+                // Fuel (kind 4) and mosques (kind 7), and in Arabic only those with an Arabic name: a name compares by its letters, so one that starts at the Arabic block's first letter or after.
+                // Band b's rank too: while driving these are the only places on the map, and most stations are under band a.
+                hidden(poi("poi-drive", source, dot, text, label, 13.0, all("""[">=",["get","rank"],45]""", """["match",["get","kind"],[4,7],true,false]""",
+                    if (arabic) """[">=",["get","name"],"ء"]""" else """["has","name"]""")))
             )
         } else emptyList()
         val pois = omtPois + packPois
@@ -386,6 +469,9 @@ object MapStyle {
             """{"id":"rail","type":"line","source":"omt","source-layer":"transportation","minzoom":12,"filter":${cls("rail", "transit")},
                "paint":{"line-color":"${c.rail}","line-width":${width(12 to 0.6, 18 to 2.5)},"line-dasharray":[4,3]}}""",
             building3d,
+            // The names while the camera drives (SPEC.md section 11): one size, a wider halo, far apart, and under the route, so a name never lies across it. Their filters come with the route.
+            driveName(DRIVE_NAME_MAJOR, c.motorLabel, c.roadHalo, regular, arabic),
+            driveName(DRIVE_NAME_NEXT, c.motorLabel, c.roadHalo, bold, arabic),
             // our route, under the labels (the arrow of the next turn is over them, further down the list)
             // (both casings under both lines: the two parts join without a seam)
             """{"id":"route-casing","type":"line","source":"$SRC_ROUTE","layout":{"line-cap":"round","line-join":"round"},
@@ -467,7 +553,7 @@ object MapStyle {
                "paint":{"line-color":"${c.turn}","line-width":${width(wTurn)}}}""",
             """{"id":"turn-head","type":"fill","source":"$SRC_TURN","filter":["==","${'$'}type","Polygon"],
                "paint":{"fill-color":"${c.turn}"}}"""
-        ) + dest(route, c.destRing)
+        ) + dest(route, c.destRing, regular, c.place, c.placeHalo)
         val empty ="""{"type":"geojson","data":{"type":"FeatureCollection","features":[]}}"""
         val source = if (local) """"tiles":["${TileServer.tilesUrl}"],"minzoom":0,"maxzoom":14"""
             else """"url":"$TILES""""
@@ -497,20 +583,26 @@ object MapStyle {
         }
     }
 
+    /** A driving name: 21 px in Arabic, 20 in Latin, halo 2.2, spacing 900. Hidden until the camera drives; its filter comes with the route. */
+    private fun driveName(id: String, color: String, halo: String, font: String, arabic: Boolean) =
+        """{"id":"$id","type":"symbol","source":"omt","source-layer":"transportation_name","minzoom":11,"filter":$NO_FEATURE,
+           "layout":{"visibility":"none","symbol-placement":"line","text-field":${roadNameOf(arabic)},"text-font":$font,"symbol-spacing":900,
+           "text-size":${if (arabic) 21 else 20},"text-max-angle":30,"text-padding":8,"text-rotation-alignment":"map","text-pitch-alignment":"viewport"},
+           "paint":{"text-color":"$color","text-halo-color":"$halo","text-halo-width":2.2}}"""
+
     /**
-     * The destination over everything else: a ringed dot in the route's colour with a soft halo, lying on the ground
-     * like the route it ends (an ellipse on the tilted map), so it reads as a place, not as a button.
+     * The destination over everything else (SPEC.md section 11): a plain pin, 40 x 52, in the route's colour with a ring, its tip on the place, a white eye in it, and the place's name
+     * at 22 px above it, ignoring collisions, so the name stays on screen wherever the car is.
      */
-    private fun dest(route: String, ring: String): List<String> {
-        fun circle(id: String, color: String, r: String, opacity: Double = 1.0) =
-            """{"id":"$id","type":"circle","source":"$SRC_DEST",
-               "paint":{"circle-color":"$color","circle-radius":$r,"circle-opacity":$opacity,"circle-pitch-alignment":"map"}}"""
-        return listOf(
-            circle("dest-halo", route, """["interpolate",["linear"],["zoom"],10,11,16,18]""", 0.22),
-            circle("dest-ring", ring, """["interpolate",["linear"],["zoom"],10,8,16,12]"""),
-            circle("dest-core", route, """["interpolate",["linear"],["zoom"],10,5.5,16,8.5]""")
-        )
-    }
+    private fun dest(route: String, ring: String, font: String, name: String, halo: String): List<String> = listOf(
+        """{"id":"dest-pin","type":"symbol","source":"$SRC_DEST",
+           "layout":{"icon-image":"$DEST_PIN","icon-anchor":"bottom","icon-offset":[0,8],"icon-allow-overlap":true,"icon-ignore-placement":true,"icon-pitch-alignment":"viewport","icon-rotation-alignment":"viewport",
+           "text-field":["coalesce",["get","name"],""],"text-font":$font,"text-size":22,"text-anchor":"bottom","text-offset":[0,-2.5],"text-allow-overlap":true,"text-ignore-placement":true,"text-max-width":14},
+           "paint":{"icon-color":"$route","icon-halo-color":"$ring","icon-halo-width":1.6,"text-color":"$name","text-halo-color":"$halo","text-halo-width":2.2}}""",
+        """{"id":"dest-eye","type":"symbol","source":"$SRC_DEST",
+           "layout":{"icon-image":"$POI_DOT","icon-anchor":"center","icon-offset":[0,-32],"icon-size":1.0,"icon-allow-overlap":true,"icon-ignore-placement":true,"icon-pitch-alignment":"viewport","icon-rotation-alignment":"viewport"},
+           "paint":{"icon-color":"#FFFFFF"}}"""
+    )
 
     /**
      * The owner's additions, drawn without icons like the places (icon images once drew black on the unit's tilted

@@ -25,9 +25,11 @@ import kotlin.math.abs
  */
 object RoadWatch {
     private const val TAG = "AuraRoad"
-    /** A camera is announced from this far, a bump from this far (metres along a straight line). */
-    private const val CAMERA_M = 600.0
+    /** A camera is known from this far (the Saher card, SPEC.md section 5), a bump from this far (metres along a straight line). */
+    private const val CAMERA_M = 1000.0
     private const val BUMP_M = 180.0
+    /** The tone for a camera comes this far before it. */
+    private const val CAMERA_TONE_M = 600.0
     /** Ahead: within this many degrees of where the car is heading. */
     private const val AHEAD_DEG = 55.0
     /** A limit is kept this long after the car left the marked stretch (a gap in the line, a wide junction). */
@@ -107,25 +109,34 @@ object RoadWatch {
         // what lies on the route's line, going its way. The owner's live set stays on top: his of the pack's build are his live set's to say
         // (he may have taken one away since), and a spot about as near as one of his gives way to it
         if (heading != null && guide != null && along != null) {
-            guide.nextAlert(along) { it.owner && MapExtras.updatedAt > 0 }?.let { a ->
+            guide.nextAlert(along, CAMERA_M) { it.owner && MapExtras.updatedAt > 0 }?.let { a ->
                 if (spot == null || a.metres + SAME_SPOT_M < best) {
                     spot = routeSpot(guide, a)
                     best = a.metres
                 }
             }
         }
-        spot?.let { if (announced.add(it)) beep(it.kind) }
+        spot?.let { if ((it.kind != MapExtras.Kind.CAMERA || best <= CAMERA_TONE_M) && announced.add(it)) beep(it.kind) }
         // far from every announced one: they may be announced again (the same road, another day)
         if (announced.size > 64) announced.clear()
         announced.removeAll { Geo.distance(here, it.pos) > 1500 }
 
-        val next = State(limit.kmh, spot, if (spot == null) 0 else best.toInt(), speed.toInt(), limit.fromMap, estimate)
+        val next = debugSays ?: State(limit.kmh, spot, if (spot == null) 0 else best.toInt(), speed.toInt(), limit.fromMap, estimate)
         val old = state
         state = next
         if (next.limit != old.limit || next.limitFromMap != old.limitFromMap || next.estimate != old.estimate || next.spot !== old.spot || next.metres / 10 != old.metres / 10 || next.over != old.over) {
             for (x in listeners) x()
         }
     }
+
+    /** Debug builds, the emulator's way to a sign and a Saher card (`NavDebug --es road`): what it says from now on instead of what it works out. */
+    fun debugSay(s: State?) {
+        debugSays = s
+        state = s ?: State(0, null, 0, 0)
+        for (x in listeners) x()
+    }
+
+    private var debugSays: State? = null
 
     /** Whose word the limit is: his first; on a route with its words, the road's and then its class's; on any route, the limits by place. */
     private fun limitOf(route: Route?, guide: Guidance?, along: Double?, here: LatLon, heading: Double?, owner: Int): LimitNow {

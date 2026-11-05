@@ -51,6 +51,9 @@ object NavSession {
         private set
     var rerouting = false
         private set
+    /** When this trip began (elapsedRealtime). */
+    var startedAt = 0L
+        private set
     /** When the car arrived (elapsedRealtime): the trip ends by itself [ARRIVED_HOLD_MS] later. */
     var arrivedAt = 0L
         private set
@@ -100,6 +103,7 @@ object NavSession {
         destination = dest
         route = r
         state = State.NAVIGATING
+        startedAt = SystemClock.elapsedRealtime()
         trip++
         main.removeCallbacks(endAfterArrival)
         rerouting = false

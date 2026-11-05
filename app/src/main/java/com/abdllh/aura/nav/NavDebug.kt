@@ -25,6 +25,8 @@ import java.util.Locale
  *   --es turn nav|amri|free                   the car's voice ([VoiceTurn]) taken for one of them, or given back
  *   --es fetch url,name                       OfflineMaps.fetchFile into files/fetchtest/name
  *   --ez dump true                            what navigation, the road watch and the media card know, in the log (tag AuraNavDebug)
+ *   --es road limit,kmh,kind,metres           what the road watch says from now on (kind camera, bump or none); "off": it works it out again
+ *   --es lanes l,s,s,r*,r*                    the next turn's lanes on the sign, * the ones to take; "off"
  */
 internal object NavDebug {
     private const val TAG = "AuraNavDebug"
@@ -83,6 +85,16 @@ internal object NavDebug {
                 }
             }, "aura-fetchtest").start()
         }
+        i.getStringExtra("road")?.let { s ->
+            if (s == "off") RoadWatch.debugSay(null)
+            else {
+                val v = s.split(',').map { it.trim() }
+                val at = CarLocation.lastKnown() ?: LatLon(26.4, 50.1)
+                val kind = when (v.getOrNull(2)) { "camera" -> MapExtras.Kind.CAMERA; "bump" -> MapExtras.Kind.BUMP; else -> null }
+                RoadWatch.debugSay(RoadWatch.State(v[0].toInt(), kind?.let { MapExtras.Spot(it, at, 0) }, v.getOrNull(3)?.toInt() ?: 0, v[1].toInt()))
+            }
+        }
+        i.getStringExtra("lanes")?.let { s -> DriveColumn.debugLanes = if (s == "off") null else s }
         if (i.getBooleanExtra("dump", false)) dump()
     }
 
