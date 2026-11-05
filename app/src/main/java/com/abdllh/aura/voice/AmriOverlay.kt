@@ -160,8 +160,8 @@ internal object AmriOverlay {
         init {
             tallPlate.visibility = View.INVISIBLE
             lines.visibility = View.INVISIBLE
-            stage.addView(tallPlate, Surface.OVERLAY.at(CARD_X, TALL_Y, CARD_W, TALL_H))
             stage.addView(plate, Surface.OVERLAY.at(CARD_X, CARD_Y, CARD_W, CARD_H))
+            stage.addView(tallPlate, Surface.OVERLAY.at(CARD_X, TALL_Y, CARD_W, TALL_H))
             stage.addView(line, Type.transcript.box(TEXT_X, CARD_Y + 20, TEXT_W))
             stage.addView(lines, at(TEXT_X, TALL_Y + 26 + Type.transcript.viewTop, TEXT_W, Type.transcript.viewH + Type.transcript.line))
             stage.addView(cancel, at(CARD_X, CARD_Y, 76, 80))
@@ -214,7 +214,7 @@ internal object AmriOverlay {
             lines.setPadding(pad, 0, 0, 0)
         }
 
-        /** The grown plate lies under the small one, so the part they share never lets the map through, and fades in above it: no layout, nothing slides. */
+        /** The grown plate fades in over the small one, which stays under it until then, so the part they share never lets the map through: no layout, nothing slides. */
         private fun setTall(on: Boolean, animate: Boolean) {
             if (on == tall) return
             tall = on
@@ -223,8 +223,17 @@ internal object AmriOverlay {
             tallPlate.animate().cancel()
             if (on) {
                 tallPlate.visibility = View.VISIBLE
-                if (animate) { tallPlate.alpha = 0f; tallPlate.fadeTo(1f, overlayMs(Tokens2.MS_cardIn), Motion.MOVE) } else tallPlate.alpha = 1f
-            } else tallPlate.visibility = View.INVISIBLE
+                if (animate) {
+                    tallPlate.alpha = 0f
+                    tallPlate.fadeTo(1f, overlayMs(Tokens2.MS_cardIn), Motion.MOVE) { plate.visibility = View.INVISIBLE }
+                } else {
+                    tallPlate.alpha = 1f
+                    plate.visibility = View.INVISIBLE
+                }
+            } else {
+                plate.visibility = View.VISIBLE
+                tallPlate.visibility = View.INVISIBLE
+            }
             window.visible(CARD_X, if (on) TALL_Y else CARD_Y, CARD_X + CARD_W, CARD_Y + CARD_H)
         }
 

@@ -128,7 +128,7 @@ object MessageBanner {
     @SuppressLint("ClickableViewAccessibility")
     private class Card(c: Context) {
         val lang = Prefs.lang
-        val window = OverlayWindow(c, "AuraMessage", WINDOW_X, 0, CARD_W + 2 * ROOM, WINDOW_H)
+        val window = OverlayWindow(c, "AuraMessage", WINDOW_X, 0, 1024 - WINDOW_X, WINDOW_H)
         private val stage = FrameLayout(c)
         private val card = SurfaceCard(c, Surface.OVERLAY)
         private val from: AText = c.label(Type.msgFrom, { Palette.ink2Move }, gravity = Gravity.RIGHT or Gravity.CENTER_VERTICAL)

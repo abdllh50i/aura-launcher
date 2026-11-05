@@ -40,7 +40,7 @@ internal object PlaceInbox {
     private const val TAG = "AuraPlaceInbox"
     private const val CANCEL_MS = 5_000L
     private const val VOICE_GO_MS = 5_000L
-    private const val REPLACE_MS = 20_000L
+    private const val REPLACE_MS = 30_000L
     private const val ASK_MS = 30_000L
     private const val FAILED_MS = 6_000L
     /** A place held for a call or for reverse is old news after this. */
@@ -210,6 +210,8 @@ internal object PlaceInbox {
     // ------------------------------------------------------------------------------------------ the cards
     private fun caption(c: Context, x: Incoming) = words(c).getString(if (x.voice) R.string.link_from_voice else R.string.link_from_phone)
 
+    private fun icon(x: Incoming) = if (x.voice) R.drawable.ic_mic else R.drawable.ic_iphone
+
     /** The place's detail and how far it is from the car, whatever is known of them. */
     private fun where(x: Incoming): String {
         val arabic = Locale.getDefault().language == "ar"
@@ -221,12 +223,12 @@ internal object PlaceInbox {
 
     private fun askCard(c: Context, x: Incoming) {
         val w = words(c)
-        val shown = TripCard.show(c, caption(c, x), w.getString(R.string.link_ask, x.place.name), where(x), listOf(
+        val shown = TripCard.show(c, caption(c, x), x.place.name, where(x), listOf(
             TripCard.Action(w.getString(R.string.link_start), true) { if (current === x) begin(c, x) },
             TripCard.Action(w.getString(R.string.link_no), false) { if (current === x) { tell(x, "ignored", null); note(x, "ignored"); finishWith(x) } }
-        ), ASK_MS) {
+        ), ASK_MS, {
             if (current === x) { tell(x, "expired", null); note(x, "expired"); finishWith(x) }
-        }
+        }, icon(x))
         if (!shown) { onTheMap(c, x); return }
         stage = Stage.ASKING
         tell(x, "card", JSONObject().put("kind", "ask"))
@@ -236,8 +238,7 @@ internal object PlaceInbox {
 
     private fun replaceCard(c: Context, x: Incoming) {
         val w = words(c)
-        val now = NavSession.destination?.name.orEmpty()
-        val replace = { if (current === x) begin(c, x) }
+        val replace ={ if (current === x) begin(c, x) }
         val keep = { if (current === x) { tell(x, "ignored", JSONObject().put("kept", true)); note(x, "ignored"); finishWith(x) } }
         // nobody answered: the trip goes on
         val nobody = { if (current === x) { tell(x, "ignored", JSONObject().put("kept", true).put("by", "timeout")); note(x, "ignored"); finishWith(x) } }
@@ -246,10 +247,10 @@ internal object PlaceInbox {
             AmriOverlay.Action(w.getString(R.string.link_replace)) { replace() },
             AmriOverlay.Action(w.getString(R.string.link_keep), primary = false) { keep() }
         ), REPLACE_MS) { nobody() }
-        else TripCard.show(c, caption(c, x), x.place.name, w.getString(R.string.link_replace_q, now), listOf(
+        else TripCard.show(c, caption(c, x), x.place.name, null, listOf(
             TripCard.Action(w.getString(R.string.link_replace), true) { replace() },
             TripCard.Action(w.getString(R.string.link_keep), false) { keep() }
-        ), REPLACE_MS) { nobody() }
+        ), REPLACE_MS, { nobody() }, icon(x))
         if (!shown) { // no card can ask: the trip goes on
             tell(x, "ignored", JSONObject().put("kept", true).put("reason", "no_card"))
             note(x, "ignored")
@@ -279,7 +280,7 @@ internal object PlaceInbox {
         val w = words(c)
         TripCard.show(c, caption(c, x), x.place.name,
             w.getString(if (phase == Trips.Phase.WAITING_FIX) R.string.maps_waiting_gps else R.string.maps_routing),
-            listOf(TripCard.Action(w.getString(R.string.link_cancel), false) { if (current === x) cancelled(x, "card") }), 0L, null)
+            listOf(TripCard.Action(w.getString(R.string.link_cancel), false) { if (current === x) cancelled(x, "card") }), 0L, null, icon(x))
     }
 
     // ------------------------------------------------------------------------------------------ going
@@ -340,9 +341,9 @@ internal object PlaceInbox {
         // (nothing over the camera or a call's card: then the trip just runs, with its End button on the Maps screen)
         val busy = blocker()
         val shown = busy == null && TripCard.show(c, caption(c, x), line, where(x),
-            listOf(TripCard.Action(w.getString(R.string.link_cancel), false) { if (current === x) cancelled(x, "card") }), CANCEL_MS) {
+            listOf(TripCard.Action(w.getString(R.string.link_cancel), false) { if (current === x) cancelled(x, "card") }), CANCEL_MS, {
             if (current === x) current = null
-        }
+        }, icon(x))
         if (shown) {
             main.removeCallbacks(tick)
             main.postDelayed(tick, 1000L)

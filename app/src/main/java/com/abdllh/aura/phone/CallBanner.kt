@@ -82,7 +82,7 @@ internal object CallBanner {
     /** The banner, wide over small: the small one is covered until the wide one fades off it, and no pixel of the part they share ever lets the map through. */
     private class Card(c: Context) {
         val lang = Prefs.lang
-        val window = OverlayWindow(c, "AuraCall", WINDOW_X, 0, WIDE_W + 2 * ROOM, WINDOW_H, keepScreenOn = true)
+        val window = OverlayWindow(c, "AuraCall", WINDOW_X, 0, 1024 - WINDOW_X, WINDOW_H, keepScreenOn = true)
         private val stage = FrameLayout(c)
         private val narrow = SurfaceCard(c, Surface.OVERLAY)
         private val wide = SurfaceCard(c, Surface.OVERLAY)
@@ -205,6 +205,7 @@ internal object CallBanner {
                 on.alpha = 1f
                 return
             }
+            on.alpha = 0f
             on.visibility = View.VISIBLE
             on.bringToFront()
             on.fadeTo(1f, Tokens2.MS_swap, Motion.MOVE)

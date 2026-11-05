@@ -373,7 +373,10 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
     }
 
     private fun openControls() {
-        sheet<ControlsSheet>()?.open()
+        val s = sheet<ControlsSheet>() ?: return
+        // (a tap on the strip while it is open: that very touch has just closed it)
+        if (SystemClock.uptimeMillis() - s.closedByTouchAt < SAME_TOUCH_MS) return
+        s.open()
     }
 
     private inline fun <reified T : com.abdllh.aura.ui.Sheet> sheet(): T? {
@@ -406,7 +409,8 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
         Amri.addStateListener(onVoice)
         Amri.onLevel = { l -> voice.level(l) }
         MediaMonitor.observe(onSong)
-        Theme.changed = { post { if (appliedDark != Palette.dark) Look.apply(this) } }
+        // (the overlay windows too: a theme changed by an old panel's own path does not go through ThemeSwap, which tells them)
+        Theme.changed = { post { if (appliedDark != Palette.dark) { Look.apply(this); Look.applyToWindows() } } }
     }
 
     override fun onDetachedFromWindow() {
@@ -520,6 +524,7 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
         private const val VOLUME_CHANGED = "android.media.VOLUME_CHANGED_ACTION"
         private const val STREAM_MUTE_CHANGED = "android.media.STREAM_MUTE_CHANGED_ACTION"
         private const val DEBUG_OTHER = Screens.MAPS
+        private const val SAME_TOUCH_MS = 700L
 
         /** Debug builds, until the window's next start: off for the gallery's pages, which draw their own (debug/GalleryPanel.kt, debug/ChromeProbe.kt). */
         internal fun debugOn(shell: HomeActivity, on: Boolean) {

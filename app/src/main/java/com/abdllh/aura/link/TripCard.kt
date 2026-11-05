@@ -2,133 +2,90 @@ package com.abdllh.aura.link
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.graphics.PixelFormat
-import android.os.SystemClock
 import android.provider.Settings
-import android.text.TextUtils
 import android.util.Log
 import android.view.Gravity
 import android.view.View
-import android.view.WindowManager
-import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
-import android.widget.LinearLayout
+import android.widget.ImageView
 import com.abdllh.aura.R
-import com.abdllh.aura.nav.Guide
-import com.abdllh.aura.nav.NavSession
 import com.abdllh.aura.ui.ABtn
 import com.abdllh.aura.ui.AText
-import com.abdllh.aura.ui.Elev
-import com.abdllh.aura.ui.MATCH
-import com.abdllh.aura.ui.Motion
+import com.abdllh.aura.ui.Fonts
+import com.abdllh.aura.ui.IconButton
+import com.abdllh.aura.ui.OverlayWindow
 import com.abdllh.aura.ui.Palette
-import com.abdllh.aura.ui.Radius
-import com.abdllh.aura.ui.Shapes
-import com.abdllh.aura.ui.Space
+import com.abdllh.aura.ui.Surface
+import com.abdllh.aura.ui.SurfaceCard
+import com.abdllh.aura.ui.TallHit
+import com.abdllh.aura.ui.Tint
+import com.abdllh.aura.ui.Tokens2
 import com.abdllh.aura.ui.Type
-import com.abdllh.aura.ui.WRAP
-import com.abdllh.aura.ui.anim
+import com.abdllh.aura.ui.at
+import com.abdllh.aura.ui.box
 import com.abdllh.aura.ui.enter
 import com.abdllh.aura.ui.exit
-import com.abdllh.aura.ui.flp
-import com.abdllh.aura.ui.iconView
+import com.abdllh.aura.ui.glyph
 import com.abdllh.aura.ui.label
-import com.abdllh.aura.ui.lift
-import com.abdllh.aura.ui.lp
-import com.abdllh.aura.ui.roundedClip
+import com.abdllh.aura.ui.look
+import com.abdllh.aura.ui.overlayMs
 import com.abdllh.aura.util.LocaleHelper
 import com.abdllh.aura.util.Prefs
-import com.abdllh.aura.util.dp
-import java.util.Locale
 
 /**
- * The one card about a place that came from outside ([PlaceInbox]), over any app, at the top like the call and message
- * cards and in their look (2.0 reskins it): who sent it, the place, what is going on, and the answers a driver can hit
- * without looking twice. With a time limit, a line runs out along its bottom edge. [show] false: this unit may not draw
- * over other apps. Main thread only.
+ * The one card about a place that came from outside ([PlaceInbox]), over any app: the banner of SPEC.md's `from-phone-on-trip`, in the call's and the message's place. Who sent it, the place, and the answers
+ * a driver can hit without looking twice: the main one at x 397, and "no" as the close at x 543; alone and quiet, a cancel is a plain button at x 397. No countdown: it waits for one touch. With nothing to
+ * press, what happened gets the card's whole width. [show] false: this unit may not draw over other apps. Main thread only.
  */
 internal object TripCard {
     class Action(val label: String, val primary: Boolean, val run: () -> Unit)
 
     private const val TAG = "AuraTripCard"
     private var view: Card? = null
-    private var attached = false
 
-    /**
-     * [ms] > 0: goes by itself after that, [onTimeout] then. A card showing is replaced in place. While a trip is driven
-     * the top of the driver's side belongs to the next turn ([com.abdllh.aura.nav.GuidanceBanner]): the card is narrower,
-     * on the other side.
-     */
-    fun show(ctx: Context, caption: String, title: String, sub: String?, actions: List<Action>, ms: Long, onTimeout: (() -> Unit)?): Boolean {
+    fun show(ctx: Context, caption: String, title: String, sub: String?, actions: List<Action>, ms: Long, onTimeout: (() -> Unit)?): Boolean =
+        show(ctx, caption, title, sub, actions, ms, onTimeout, R.drawable.ic_pin)
+
+    /** [ms] > 0: goes by itself after that, [onTimeout] then. A card showing is replaced in place. [sub], when there is one, follows the caption on its line. */
+    fun show(ctx: Context, caption: String, title: String, sub: String?, actions: List<Action>, ms: Long, onTimeout: (() -> Unit)?, icon: Int): Boolean {
         val c = ctx.applicationContext
         if (!Settings.canDrawOverlays(c)) { Log.w(TAG, "no overlay permission"); return false }
-        val beside = NavSession.state == NavSession.State.NAVIGATING
         var v = view
-        if (v == null || v.dark != Palette.dark || v.accent != Palette.accent || v.lang != Prefs.lang || v.beside != beside) {
+        if (v == null || v.lang != Prefs.lang) {
             remove()
-            v = Card(LocaleHelper.wrap(c), beside).also { view = it }
+            v = Card(LocaleHelper.wrap(c)).also { view = it }
         }
-        v.bind(caption, title, sub, actions, ms, onTimeout)
-        if (attached) { v.stay(); return true }
-        val lp = WindowManager.LayoutParams(
-            WRAP, WRAP, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            val rtl = TextUtils.getLayoutDirectionFromLocale(Locale.getDefault()) == View.LAYOUT_DIRECTION_RTL
-            gravity = Gravity.TOP or (if (!beside) Gravity.CENTER_HORIZONTAL else if (rtl) Gravity.LEFT else Gravity.RIGHT)
-            this.title = "AuraTrip"
-        }
-        return try {
-            (c.getSystemService(Context.WINDOW_SERVICE) as WindowManager).addView(v, lp)
-            attached = true
-            v.enter()
-            true
-        } catch (t: Throwable) {
-            Log.w(TAG, "show: $t")
-            view = null
-            false
-        }
+        v.bind(caption, title, sub, actions, ms, onTimeout, icon)
+        if (v.window.attached) { v.stay(); return true }
+        if (!v.window.add()) { view = null; return false }
+        v.enter()
+        return true
     }
 
     fun hide() {
         val v = view ?: return
-        if (!attached) return
+        if (!v.window.attached) return
         v.leave { if (view === v) remove() }
     }
 
     private fun remove() {
         val v = view ?: return
         v.stop()
-        if (attached) {
-            try { (v.context.applicationContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager).removeView(v) } catch (_: Throwable) { }
-        }
-        attached = false
+        v.window.remove()
         view = null
     }
 
-    /** The card, with a little room around it for its shadow and its entrance (the window is no larger than that). */
     @SuppressLint("ViewConstructor")
-    private class Card(c: Context, val beside: Boolean) : FrameLayout(c) {
-        val dark = Palette.dark
-        val accent = Palette.accent
+    private class Card(c: Context) {
         val lang = Prefs.lang
-        private val card = FrameLayout(c)
-        private val column = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
-        private val row = LinearLayout(c).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPaddingRelative(Space.L.dp, Space.M.dp, Space.L.dp, Space.M.dp)
-        }
-        private val from: AText = c.label(Type.CAPTION, Palette.text3)
-        private val name: AText = c.label(Type.TITLE, Palette.text, lines = 2).apply { ellipsize = TextUtils.TruncateAt.END }
-        private val sub: AText = c.label(Type.BODY, Palette.text2).apply { ellipsize = TextUtils.TruncateAt.END; textDirection = View.TEXT_DIRECTION_LOCALE }
-        private val buttons = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        private val bar = View(c).apply { setBackgroundColor(Guide.color()) }
-        private val rtl get() = layoutDirection == View.LAYOUT_DIRECTION_RTL
-        private var endsAt = 0L
-        private var total = 0L
+        val window = OverlayWindow(c, "AuraTrip", WINDOW_X, 0, 1024 - WINDOW_X, WINDOW_H)
+        private val stage = FrameLayout(c)
+        private val plate = ImageView(c)
+        private val from: AText = c.label(Type.msgFrom, { Palette.ink2Move }, gravity = Gravity.RIGHT or Gravity.CENTER_VERTICAL)
+        private val name: AText = c.label(Type.msgTitle, { Palette.ink }, gravity = Gravity.RIGHT or Gravity.CENTER_VERTICAL)
+        private val whole: AText = c.label(Type.msgTitle, { Palette.ink }, lines = 2, gravity = Gravity.RIGHT or Gravity.TOP)
+        private val left = TallHit(c, BUTTON_Y, BUTTON_H)
+        private val close = IconButton(c, R.drawable.ic_close, 28, 76, 84, token = { Palette.ink2 })
         private var onTimeout: (() -> Unit)? = null
         private var leaving = false
 
@@ -139,116 +96,103 @@ internal object TripCard {
             try { then?.invoke() } catch (t: Throwable) { Log.w(TAG, "timeout: $t") }
         }
 
-        /** The line moves on a step a second, each step a short glide (no animation for every vsync on top of the map). */
-        private val barTick = object : Runnable {
-            override fun run() {
-                val left = (endsAt - SystemClock.elapsedRealtime()).coerceAtLeast(0L) / total.coerceAtLeast(1L).toFloat()
-                bar.anim(Motion.SHORT, LinearInterpolator()).scaleX(left).start()
-                if (left > 0f) postDelayed(this, 1000L)
-            }
-        }
-
         init {
-            layoutDirection = TextUtils.getLayoutDirectionFromLocale(Locale.getDefault())
-            clipChildren = false
-            card.background = Shapes.rect(Palette.overlay, Radius.XL, Palette.overlayStroke)
-            card.roundedClip(Radius.XL)
-            card.lift(Elev.OVERLAY, overMap = true)
-            card.isClickable = true // (a touch on the card is not a touch on the map under it)
-
-            val icon = FrameLayout(c).apply { background = Shapes.oval(Palette.accentSoft()) }
-            icon.addView(c.iconView(R.drawable.ic_pin, 28, Palette.accentFg), flp(28.dp, 28.dp, Gravity.CENTER))
-            row.addView(icon, lp(56.dp, 56.dp))
-            val texts = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
-            texts.addView(from, lp(MATCH, WRAP))
-            texts.addView(name, lp(MATCH, WRAP))
-            texts.addView(sub, lp(MATCH, WRAP).apply { topMargin = Space.XXS.dp })
-            row.addView(texts, lp(0, WRAP, 1f).apply { marginStart = Space.L.dp; marginEnd = Space.M.dp })
-            column.addView(row, lp(MATCH, WRAP))
-            card.addView(column, flp(MATCH, WRAP).apply { bottomMargin = 3.dp })
-            bar.visibility = GONE
-            card.addView(bar, flp(MATCH, 3.dp, Gravity.BOTTOM))
-
-            val room = resources.displayMetrics.widthPixels - 2 * SIDE_DP.dp
-            val w = minOf(if (beside) BESIDE_DP.dp else WIDE_DP.dp, room)
-            addView(card, flp(w, WRAP).apply { setMargins(SIDE_DP.dp, TOP_DP.dp, SIDE_DP.dp, BOTTOM_DP.dp) })
+            stage.addView(SurfaceCard(c, Surface.OVERLAY).apply { isClickable = true }, Surface.OVERLAY.at(ROOM, ROOM, CARD_W, CARD_H))
+            val t = Tint(c, R.drawable.plate_18) { Palette.fill2 }
+            plate.background = t.drawable
+            plate.setPadding(13, 13, 13, 13)
+            plate.look { t.recolour() }
+            plate.glyph { Palette.ink }
+            stage.addView(plate, at(ROOM + 558, ROOM + 21, 56, 56))
+            stage.addView(from, Type.msgFrom.box(ROOM + TEXT_END - TEXT_W, ROOM + 14, TEXT_W))
+            stage.addView(name, Type.msgTitle.box(ROOM + TEXT_END - TEXT_W, ROOM + 50, TEXT_W))
+            stage.addView(whole, at(ROOM + TEXT_END - WHOLE_W, ROOM + 15 + Type.msgTitle.viewTop, WHOLE_W, Type.msgTitle.viewH + Type.msgTitle.line))
+            stage.addView(left, at(ROOM + 13, ROOM, BUTTON_W, CARD_H))
+            stage.addView(close, at(ROOM + 159, ROOM + 7, 76, 84))
+            window.root.addView(stage, FrameLayout.LayoutParams(CARD_W + 2 * ROOM, WINDOW_H))
+            window.visible(ROOM, ROOM, ROOM + CARD_W, ROOM + CARD_H)
         }
 
-        fun bind(caption: String, title: String, subText: String?, actions: List<Action>, ms: Long, after: (() -> Unit)?) {
-            from.text = caption
+        fun bind(caption: String, title: String, sub: String?, actions: List<Action>, ms: Long, after: (() -> Unit)?, icon: Int) {
+            window.syncLook()
+            plate.setImageResource(icon)
+            val words = actions.isNotEmpty()
+            from.text = if (sub.isNullOrBlank()) caption else "$caption · $sub"
             name.text = title
-            sub.text = subText.orEmpty()
-            sub.visibility = if (subText.isNullOrBlank()) GONE else VISIBLE
-            buttons.removeAllViews()
-            // (narrow, two answers take the words' room: they go under them, at the card's end)
-            (buttons.parent as? android.view.ViewGroup)?.removeView(buttons)
-            if (beside && actions.size > 1) column.addView(buttons, lp(WRAP, WRAP).apply {
-                gravity = Gravity.END
-                marginEnd = Space.L.dp
-                bottomMargin = Space.M.dp
-            })
-            else if (actions.isNotEmpty()) row.addView(buttons, lp(WRAP, WRAP))
-            for ((i, a) in actions.withIndex()) {
-                buttons.addView(ABtn(context).apply {
-                    kind = if (a.primary) ABtn.Kind.PRIMARY else ABtn.Kind.TONAL
-                    text = a.label
-                    setOnClickListener {
-                        removeCallbacks(timeout)
-                        onTimeout = null
-                        hide()
-                        try { a.run() } catch (t: Throwable) { Log.w(TAG, "action: $t") }
-                    }
-                }, lp(WRAP, WRAP).apply { if (i > 0) marginStart = Space.S.dp })
-            }
-            removeCallbacks(timeout)
-            removeCallbacks(barTick)
-            bar.animate().cancel()
+            whole.text = title
+            from.visibility = if (words) View.VISIBLE else View.INVISIBLE
+            name.visibility = if (words) View.VISIBLE else View.INVISIBLE
+            whole.visibility = if (words) View.INVISIBLE else View.VISIBLE
+            left.removeAllViews()
+            val main = actions.firstOrNull { it.primary } ?: actions.firstOrNull()
+            if (main != null) left.addView(button(main), at(0, BUTTON_Y, BUTTON_W, BUTTON_H))
+            val other = actions.firstOrNull { it !== main }
+            close.visibility = if (other != null) View.VISIBLE else View.INVISIBLE
+            close.contentDescription = other?.label
+            close.setOnClickListener { if (other != null) tapped(other) }
+            stage.removeCallbacks(timeout)
             onTimeout = after
-            total = ms
-            if (ms > 0L) {
-                endsAt = SystemClock.elapsedRealtime() + ms
-                bar.visibility = VISIBLE
-                bar.scaleX = 1f
-                bar.post { bar.pivotX = if (rtl) bar.width.toFloat() else 0f } // (it runs out toward the start)
-                postDelayed(barTick, 200L)
-                postDelayed(timeout, ms)
+            if (ms > 0L) stage.postDelayed(timeout, ms)
+        }
+
+        private fun button(a: Action) = ABtn(left.context).apply {
+            layoutDirection = if (Fonts.arabicUi) View.LAYOUT_DIRECTION_RTL else View.LAYOUT_DIRECTION_LTR
+            sidePad = BUTTON_SIDE
+            if (a.primary) {
+                kind = ABtn.Kind.PRIMARY
+                size = ABtn.Size.ARRIVAL // (the nearest bitmap: shrunk by its middle, which a gradient hides better than stretching)
+                setHeightOverride(BUTTON_H)
             } else {
-                bar.visibility = GONE
+                kind = ABtn.Kind.TONAL
+                size = ABtn.Size.CALL
             }
+            text = a.label
+            setOnClickListener { tapped(a) }
+        }
+
+        private fun tapped(a: Action) {
+            stage.removeCallbacks(timeout)
+            onTimeout = null
+            hide()
+            try { a.run() } catch (t: Throwable) { Log.w(TAG, "action: $t") }
         }
 
         fun enter() {
             leaving = false
-            card.enter(dy = -16f, scaleFrom = 0.96f)
+            stage.enter(dy = -ENTER_DY, dur = overlayMs(Tokens2.MS_banner))
         }
 
         fun stay() {
             if (!leaving) return
             leaving = false
-            card.enter(dy = -16f, scaleFrom = 0.96f, dur = Motion.SHORT)
+            stage.enter(dy = -ENTER_DY, dur = overlayMs(Tokens2.MS_banner))
         }
 
         fun leave(done: () -> Unit) {
-            removeCallbacks(timeout)
-            removeCallbacks(barTick)
+            if (leaving) return
             leaving = true
-            card.exit(dy = -10f, end = done)
+            stage.removeCallbacks(timeout)
+            stage.exit(dur = overlayMs(Tokens2.MS_bannerOut), end = done)
         }
 
         fun stop() {
-            removeCallbacks(timeout)
-            removeCallbacks(barTick)
-            card.animate().cancel()
-            bar.animate().cancel()
-        }
-
-        companion object {
-            const val SIDE_DP = 12
-            const val TOP_DP = 16
-            const val BOTTOM_DP = 18
-            const val WIDE_DP = 720
-            /** Beside the guidance banner (460 dp wide on the Maps screen, from 24 dp). */
-            const val BESIDE_DP = 500
+            stage.removeCallbacks(timeout)
+            stage.animate().cancel()
         }
     }
+
+    /** The visible rect from the window's left and top: the overlay's outset. */
+    private const val ROOM = 44
+    private const val WINDOW_X = 340
+    private const val WINDOW_H = 186
+    private const val CARD_W = 628
+    private const val CARD_H = 98
+    private const val BUTTON_W = 138
+    private const val BUTTON_H = 72
+    private const val BUTTON_Y = 13
+    private const val BUTTON_SIDE = 6
+    private const val TEXT_END = 544
+    private const val TEXT_W = 300
+    private const val WHOLE_W = 520
+    private const val ENTER_DY = 24f
 }

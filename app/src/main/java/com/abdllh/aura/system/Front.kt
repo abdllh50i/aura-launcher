@@ -56,6 +56,11 @@ object Front {
         for (l in panelListeners) l(name)
     }
 
+    private val ownListeners = CopyOnWriteArrayList<() -> Unit>()
+
+    /** Told on the main thread when [ownResumed] may have changed: AMRI's window coming to the front or leaving it. */
+    fun addOwnListener(l: () -> Unit) { ownListeners.add(l) }
+
     private val panelListeners = CopyOnWriteArrayList<(String) -> Unit>()
 
     /** Told [panel] when it changes, on the main thread: the moment a panel comes to the top. */
@@ -73,8 +78,8 @@ object Front {
         val application = ctx.applicationContext as? Application ?: return
         app = application
         application.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
-            override fun onActivityResumed(a: Activity) { own = a.javaClass.name; ownLeftAt = 0L; setPanel(Screens.panelOf(a)) }
-            override fun onActivityPaused(a: Activity) { if (own == a.javaClass.name) ownLeftAt = SystemClock.elapsedRealtime() }
+            override fun onActivityResumed(a: Activity) { own = a.javaClass.name; ownLeftAt = 0L; setPanel(Screens.panelOf(a)); for (l in ownListeners) l() }
+            override fun onActivityPaused(a: Activity) { if (own == a.javaClass.name) ownLeftAt = SystemClock.elapsedRealtime(); for (l in ownListeners) l() }
             override fun onActivityCreated(a: Activity, b: Bundle?) {}
             override fun onActivityStarted(a: Activity) {}
             override fun onActivityStopped(a: Activity) {}
