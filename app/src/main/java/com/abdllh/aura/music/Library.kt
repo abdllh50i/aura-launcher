@@ -157,6 +157,9 @@ object ArtLoader {
     private val pending = HashMap<String, MutableList<(Bitmap?) -> Unit>>() // main thread only
     private val main = Handler(Looper.getMainLooper())
 
+    /** Short of memory: what is decoded goes (asked for again, it comes back from the disk). */
+    fun clear() = cache.evictAll()
+
     private class Decode(val key: String, body: Runnable) : Runnable by body
 
     private val pool = ThreadPoolExecutor(2, 2, 0L, TimeUnit.MILLISECONDS, LinkedBlockingQueue<Runnable>(24)) { r, e ->

@@ -12,10 +12,10 @@ internal object MapPalette {
     val KINDS = arrayOf("other", "food", "cafe", "shop", "fuel", "transport", "health", "worship", "lodging", "bank", "school", "park", "sight", "public")
 
     val DAY = MapColors(
-        land = "#F1F2EF", built = "#EEEFEC", commercial = "#F0F0EA", industrial = "#EBECEB", care = "#F3EEEC", sand = "#F1F2EF",
-        park = "#CBE8BF", wood = "#C2E2B6", water = "#A3D4F7", waterway = "#9ACEF3", building = "#E7E8E6", buildingLine = "#DDDEDD",
-        building3d = "#EAEBEA", casing = "#D5D9DF", service = "#FFFFFF", minor = "#FFFFFF", tertiary = "#FFFFFF", secondary = "#FFFFFF",
-        primary = "#FFFFFF", primaryCasing = "#C2C8D2", motorway = "#FDFDFE", motorwayCasing = "#AEB8C7", tunnel = "#D5D9DF", rail = "#C4C8D0",
+        land = "#E4E5E0", built = "#E1E2DD", commercial = "#E3E3DC", industrial = "#DEDFDD", care = "#E7E2DF", sand = "#E4E5E0",
+        park = "#CBE8BF", wood = "#C2E2B6", water = "#A3D4F7", waterway = "#9ACEF3", building = "#D8DAD7", buildingLine = "#CBCDCC",
+        building3d = "#DDDFDC", casing = "#AEB8C7", service = "#FFFFFF", minor = "#FFFFFF", tertiary = "#FFFFFF", secondary = "#FFFFFF",
+        primary = "#FFFFFF", primaryCasing = "#A4AFBF", motorway = "#FDFDFE", motorwayCasing = "#94A1B4", tunnel = "#CDD2D9", rail = "#C4C8D0",
         boundary = "#B6BCC7", roadLabel = "#4A5260", roadHalo = "#FFFFFF", motorLabel = "#2C3749", place = "#1C2230", placeHalo = "#FFFFFF",
         minorPlace = "#5A6371", waterLabel = "#2A6BA2", poiStroke = "#FFFFFF", route = "#1F6BFF", routeCasing = "#0E47BE", routeAlt = "#93B4EE",
         routeAltCasing = "#6C8DC8", turn = "#FFFFFF", turnCasing = "#0E47BE", dest = "#1F6BFF", destRing = "#FFFFFF", poi = "#59626F",

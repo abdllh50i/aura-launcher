@@ -26,5 +26,16 @@
                 <action android:name="com.abdllh.aura.debug.PANELS" />
             </intent-filter>
         </receiver>
+        <!-- The -PstandIn copy in the place of YouTube's app, for the hand-over and its way back (YtStandIn.kt) -->
+        <activity
+            android:name=".debug.YtStandIn"
+            android:exported="true"
+            android:screenOrientation="landscape">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="https" android:host="www.youtube.com" />
+            </intent-filter>
+        </activity>
     </application>
 </manifest>

@@ -6,7 +6,13 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
+import android.graphics.RectF
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -24,6 +30,7 @@ import com.abdllh.aura.ui.CarFrames
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
+import com.abdllh.aura.ui.Radius
 import com.abdllh.aura.ui.Snack
 import com.abdllh.aura.ui.Spring
 import com.abdllh.aura.ui.Theme
@@ -36,12 +43,17 @@ import com.abdllh.aura.util.Prefs
 import com.abdllh.aura.util.dp
 
 /**
- * The home screen, the panel at the bottom of the stack: the car on the start side, the map with the player on the end
+ * The home screen, the panel at the bottom of the stack: the car on the start side, the map's card with the player on the end
  * side, the dock, and two sheets. Its views are built on the activity itself ([shell]), as they always were (the car's GL
- * view asks its context for the window).
+ * view asks its context for the window). The map is not its own: the one map lies under the window, and this panel is a wall
+ * with a hole where the card is ([Wall]), once that map has drawn; its camera keeps the car in the hole ([MapController.setHomeRoom]).
+ * Going to Maps the wall simply fades off it, with nothing of the map touched.
  */
-class HomePanel(shell: HomeActivity, savedInstanceState: Bundle?) : Panel(shell, Screens.HOME), HomeHost {
+class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
     private val room = FrameLayout(shell)
+    private lateinit var wall: Wall
+    /** The map has drawn: the wall opens where the card is, as soon as this card has a place. */
+    private var cardOpen = false
     private lateinit var carPanel: CarPanel
     private lateinit var mapPanel: MapPanel
     private lateinit var dock: Dock
@@ -58,7 +70,8 @@ class HomePanel(shell: HomeActivity, savedInstanceState: Bundle?) : Panel(shell,
     private var packagesWatched = false
 
     override val root: View get() = room
-    override val opaque: Boolean get() = true // (the map is its own, in its card, until step 3)
+    override val opaque: Boolean get() = false // (the map shows in its card, so it stays awake)
+    override val solid: Boolean get() = true // (but no touch reaches it: a tap on the card opens Maps)
     override val keep: Boolean get() = true
     override val navBar: Int get() = Palette.dock
 
@@ -101,7 +114,6 @@ class HomePanel(shell: HomeActivity, savedInstanceState: Bundle?) : Panel(shell,
             processStarted = true
             if (!Palette.dark) coverStart()
         }
-        mapPanel.onCreate(savedInstanceState)
         try {
             registerReceiver(packages, IntentFilter().apply {
                 addAction(Intent.ACTION_PACKAGE_ADDED)
@@ -135,13 +147,18 @@ class HomePanel(shell: HomeActivity, savedInstanceState: Bundle?) : Panel(shell,
     // (the panel's own room is the screen's one full-screen fill: the window has no background of its own, and a second
     // view painting the same colour over the whole screen was a second fill in every frame of the map)
     private fun buildUi() {
-        room.setBackgroundColor(Palette.bg)
+        wall = Wall(Palette.bg, Radius.XL.dp.toInt())
+        room.background = wall
+        cardOpen = false
+        shell.map.homeCard(false)
         val col = LinearLayout(shell).apply { orientation = LinearLayout.VERTICAL }
         val content = LinearLayout(shell).apply { orientation = LinearLayout.HORIZONTAL }
         carPanel = CarPanel(shell, this)
         content.addView(carPanel, lp(0, MATCH, 0.40f))
-        mapPanel = MapPanel(shell, this)
-        content.addView(mapPanel, lp(0, MATCH, 0.60f).apply { topMargin = 12.dp; bottomMargin = 12.dp; marginEnd = 12.dp })
+        val card = MapPanel(shell, this)
+        mapPanel = card
+        content.addView(card, lp(0, MATCH, 0.60f).apply { topMargin = 12.dp; bottomMargin = 12.dp; marginEnd = 12.dp })
+        card.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> if (card === mapPanel) cardPlaced() }
         col.addView(content, lp(MATCH, 0, 1f))
         dock = Dock(shell, this)
         col.addView(dock, lp(MATCH, DOCK_DP.dp))
@@ -151,10 +168,45 @@ class HomePanel(shell: HomeActivity, savedInstanceState: Bundle?) : Panel(shell,
         shell.root.sheets.addView(controls, MATCH, MATCH)
         drawer = AppDrawer(shell, this)
         shell.root.sheets.addView(drawer, MATCH, MATCH)
+        // the map has drawn: the card opens on it, under the picture that has been standing in for it (none of it is seen until the
+        // picture fades, and with no map ever, the wall simply stays whole, as a plain room and an opaque window)
+        shell.map.whenDrawn {
+            if (card === mapPanel) {
+                cardOpen = true
+                cardPlaced()
+                card.mapDrawn()
+            }
+        }
+    }
+
+    /** Where the map's card is in this panel (its layout, whatever is moving it for the moment); null before there is one. */
+    private fun cardRect(): Rect? {
+        val c = mapPanel
+        if (c.width == 0 || c.height == 0) return null
+        var x = c.left
+        var y = c.top
+        var p = c.parent as? View
+        while (p != null && p !== room) {
+            x += p.left
+            y += p.top
+            p = p.parent as? View
+        }
+        return Rect(x, y, x + c.width, y + c.height)
+    }
+
+    /** A layout pass has placed the card: the camera and the hole go there. */
+    private fun cardPlaced() {
+        val r = cardRect() ?: return
+        shell.map.setHomeRoom(r, room.width, room.height)
+        if (cardOpen && wall.hole != r) {
+            wall.hole = r
+            shell.map.homeCard(true)
+        }
     }
 
     override fun onShow(args: Bundle?) {
         NwdBridge.notifyHomeForeground(this)
+        shell.map.toHome()
         mapPanel.onStart()
         startedNow = true
     }
@@ -165,7 +217,6 @@ class HomePanel(shell: HomeActivity, savedInstanceState: Bundle?) : Panel(shell,
     }
 
     override fun onDestroy() {
-        if (::mapPanel.isInitialized) mapPanel.onDestroy()
         if (packagesWatched) try { unregisterReceiver(packages) } catch (_: Throwable) { }
     }
 
@@ -177,8 +228,7 @@ class HomePanel(shell: HomeActivity, savedInstanceState: Bundle?) : Panel(shell,
     }
 
     override fun onPermission(code: Int, grants: IntArray) {
-        // (under another panel: the map asks for it itself when the home screen is back, onShow)
-        if (startedNow && CarLocation.hasPermission(this)) CarLocation.acquire(this, "home")
+        if (CarLocation.hasPermission(this)) shell.map.locationAllowed()
     }
 
     override fun onResume() {
@@ -189,7 +239,6 @@ class HomePanel(shell: HomeActivity, savedInstanceState: Bundle?) : Panel(shell,
             registerReceiver(volume, IntentFilter("android.media.VOLUME_CHANGED_ACTION").apply { addAction("android.media.STREAM_MUTE_CHANGED_ACTION") })
         } catch (_: Throwable) { }
         CarAudio.addListener(carAudio)
-        mapPanel.onResume()
         resumedNow = true
         refreshAll()
         UpdateManager.observe(updateObserver)
@@ -200,6 +249,8 @@ class HomePanel(shell: HomeActivity, savedInstanceState: Bundle?) : Panel(shell,
             room.postDelayed({ if (!isGone) drawer.prewarm() }, PREWARM_AFTER_MS)
             room.postDelayed({ if (!isGone) askLocationOnce() }, 2600)
         }
+        // (not in the start's first seconds, and once it is there this is one look in a map)
+        shell.panels.prepareWhenQuiet(Screens.MUSIC, PREPARE_MUSIC_AFTER_MS)
     }
 
     override fun onTick() {
@@ -208,13 +259,13 @@ class HomePanel(shell: HomeActivity, savedInstanceState: Bundle?) : Panel(shell,
     }
 
     /**
-     * "Auto" reached sunrise or sunset, or the theme or accent changed in Settings; not while a sheet is in use (the next
-     * minute's tick retries). Coming out from under a panel that is leaving: built again there, before it goes, and no
-     * picture to take (it would be of that panel).
+     * "Auto" reached sunrise or sunset, or the theme or accent changed in Settings; not while a sheet is in use or the map
+     * says it is no time for it (the next minute's tick retries). Coming out from under a panel that is leaving: built again
+     * there, before it goes, and no picture to take (it would be of that panel).
      */
     override fun onLook() {
         if (Theme.isDarkNow() == builtDark && Prefs.accent == builtAccent) return
-        if (drawer.isOpen || controls.isOpen) return
+        if (drawer.isOpen || controls.isOpen || !shell.map.lookMayChange) return
         if (shell.panels.leaving != null) rebuild(null) else restyle()
     }
 
@@ -250,7 +301,8 @@ class HomePanel(shell: HomeActivity, savedInstanceState: Bundle?) : Panel(shell,
         for (i in 0 until mapPanel.places.childCount) rise(mapPanel.places.getChildAt(i), -8f, 80L + 30L * i)
         rise(mapPanel.media, 12f, 140L)
         rise(carPanel.quick, 12f, 160L)
-        mapPanel.translationY = 16f.dp
+        // (once the card is a hole, what shows in it is the map, which does not move: it can only come to this late, Maps opened first)
+        if (wall.hole == null) mapPanel.translationY = 16f.dp
         dock.translationY = DOCK_DP.dp.toFloat()
         for (i in 0 until dock.apps.childCount) dock.apps.getChildAt(i).translationY = 18.dp.toFloat()
 
@@ -275,14 +327,15 @@ class HomePanel(shell: HomeActivity, savedInstanceState: Bundle?) : Panel(shell,
             startCover = null
             com.abdllh.aura.nav.MapLib.preload(this) // (the map below will want it: off the main thread, and not before this frame)
             // (counted from here too: from onResume, the first frame's wait brought it into the middle of the entrance)
-            r.postDelayed({ if (!isGone) mapPanel.startLive() }, LIVE_MAP_AFTER_MS)
+            r.postDelayed({ if (!isGone) shell.map.startForHome() }, LIVE_MAP_AFTER_MS)
+            // (Maps' panel ahead of time, with no entrance going on and the map up: its first open then has nothing to build)
+            if (Prefs.builtInMaps) r.postDelayed({ if (!isGone) shell.panels.prepare(Screens.MAPS) }, MAPS_PANEL_AFTER_MS)
         }
     }
 
     override fun onPause() {
         try { unregisterReceiver(volume) } catch (_: Throwable) { }
         CarAudio.removeListener(carAudio)
-        mapPanel.onPause()
         resumedNow = false
         UpdateManager.unobserve(updateObserver)
         com.abdllh.aura.system.ZLinkGuard.onHomeHidden()
@@ -293,8 +346,6 @@ class HomePanel(shell: HomeActivity, savedInstanceState: Bundle?) : Panel(shell,
             // keep only the resting views of the car while another app is in front
             CarFrames.meta(this)?.let { m -> CarFrames.trim(listOf(m.defaultFrame, m.defaultFrameRtl)) }
         }
-        // the stopped home map keeps its tile caches until told (Maps may be running its own engine meanwhile)
-        if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW && ::mapPanel.isInitialized) mapPanel.onLowMemory()
     }
 
     // ---- HomeHost
@@ -335,7 +386,7 @@ class HomePanel(shell: HomeActivity, savedInstanceState: Bundle?) : Panel(shell,
         try {
             PixelCopy.request(window, Rect(at[0], at[1], at[0] + r.width, at[1] + r.height), snap, { result ->
                 main.removeCallbacks(fallback)
-                if (restyling) rebuild(if (result == PixelCopy.SUCCESS) snap else null)
+                if (restyling) rebuild(if (result == PixelCopy.SUCCESS) openCard(snap) else null)
             }, main)
             main.postDelayed(fallback, 600)
         } catch (_: Throwable) {
@@ -343,27 +394,39 @@ class HomePanel(shell: HomeActivity, savedInstanceState: Bundle?) : Panel(shell,
         }
     }
 
+    /**
+     * The window's picture holds no map, only what is drawn over it; the map is seen through the card in the fade if the copy kept the
+     * window's alpha there. A copy that came out solid there would fade a black card off the new screen: cut open in that case
+     * (the middle of the card's edge is open map, or it is not worth knowing). The card's own cards are lost from the picture then.
+     */
+    private fun openCard(snap: Bitmap): Bitmap {
+        val h = wall.hole ?: return snap
+        try {
+            if (Color.alpha(snap.getPixel(h.left + 2, h.centerY())) == 255) {
+                snap.setHasAlpha(true)
+                val rad = Radius.XL.dp.toFloat()
+                Canvas(snap).drawRoundRect(RectF(h), rad, rad, Paint(Paint.ANTI_ALIAS_FLAG).apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR) })
+            }
+        } catch (_: Throwable) {
+        }
+        return snap
+    }
+
     private fun rebuild(snap: Bitmap?) {
         restyling = false
         if (isGone) return
         val reopen = ::controls.isInitialized && controls.isOpen
-        // the live map of the old view tree owns a GL surface: shut it down before the views are replaced
-        if (::mapPanel.isInitialized) {
-            if (resumedNow) mapPanel.onPause()
-            if (startedNow) mapPanel.onStop()
-            mapPanel.onDestroy()
-        }
+        if (::mapPanel.isInitialized && startedNow) mapPanel.onStop()
         Theme.refresh()
         builtDark = Palette.dark
         builtAccent = Prefs.accent
         shell.windowLook(navBar)
         room.removeAllViews()
         shell.root.sheets.removeAllViews()
+        shell.map.lookChanged() // (the same map, with the style of now: the new card opens when that has drawn)
         buildUi()
-        mapPanel.onCreate(null)
-        mapPanel.startLive() // (no entrance to wait for)
+        shell.map.startForHome() // (no entrance to wait for)
         if (startedNow) mapPanel.onStart()
-        if (resumedNow) mapPanel.onResume()
         refreshAll()
         if (reopen) controls.open(false)
         room.postDelayed({ if (!isGone) drawer.prewarm() }, PREWARM_AFTER_MS)
@@ -383,7 +446,11 @@ class HomePanel(shell: HomeActivity, savedInstanceState: Bundle?) : Panel(shell,
         const val DOCK_DP = 92
         /** The live map starts once the entrance has settled. */
         private const val LIVE_MAP_AFTER_MS = 700L
+        /** Maps' panel is built ahead of time once that has come. */
+        private const val MAPS_PANEL_AFTER_MS = 3000L
         /** The app drawer's cells are built while nothing else happens. */
         private const val PREWARM_AFTER_MS = 2500L
+        /** The music screen is built ahead of time ([PanelStack.prepareWhenQuiet]). */
+        private const val PREPARE_MUSIC_AFTER_MS = 6000L
     }
 }

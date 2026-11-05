@@ -4,6 +4,7 @@ import com.abdllh.aura.nav.Geo
 import com.abdllh.aura.nav.LatLon
 import com.abdllh.aura.nav.Turn
 import com.abdllh.aura.nav.Units
+import com.abdllh.aura.system.PrayerTimes
 
 /** A manoeuvre the driver is told about. [road]: where it leads. [sameRoad]: it stays on the road the car is on, so the voice need not name it. */
 class Told(

@@ -1,5 +1,6 @@
 package com.abdllh.aura.nav.guide
 
+import com.abdllh.aura.system.PrayerTimes
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull

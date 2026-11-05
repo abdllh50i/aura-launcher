@@ -123,12 +123,11 @@ It follows "Design system (1.12)" throughout: type roles, `Radius` / `Space` / `
   a second fill of the same colour, is gone from home and Settings, and deleted).
 * **Entrance.** Everything but the car settles in about half a second (it was ~1 s): header at 0 ms, the map row's
   three parts at 80/110/140, the player at 140, the quick buttons at 160, each `View.enter`. The map panel only moves
-  (16 dp, `LONG`): it holds the live map's surface, which a fade would draw through a layer on every frame. The dock
+  (16 dp, `LONG`), with its picture: the live map comes later, under the window, where nothing moves it. The dock
   rises with its tiles 25 ms apart, translation only. The car's spin is 1400 ms (was 1900) from 100 ms.
 * **Start-up.** Nothing heavy competes with the entrance any more:
-  * The live map is built by `MapPanel.startLive()`, 700 ms after the entrance starts (at once after a restyle).
-    `MapPanel` keeps the activity's lifecycle (created/started/resumed) and replays it on the map when it is built.
-    Until then, and until the map has drawn, its last picture shows (see Aura Maps, "The home map's start").
+  * The live map is built by `MapController.startForHome()`, 700 ms after the entrance starts. Until then, and until the map
+    has drawn, its last picture shows in the card, and the wall has no hole yet (see "One engine"; Aura Maps, "The home map's start").
   * The CPU path's decoding threads run at default priority (they were above the UI thread). `CarFrames.warmUp`
     only runs when the GPU cannot draw this start's spin (no frame file known yet, or the GPU failed): see "Memory and
     start-up cuts" below. Until 1.19 it decoded the whole spin at every start.
@@ -166,7 +165,7 @@ It follows "Design system (1.12)" throughout: type roles, `Radius` / `Space` / `
   language, like the transport row) within 3 s of the press, else rising; the movement follows the title only
   (Bluetooth sends title, artist and cover separately). A new song without a cover keeps the old one dimmed for up to
   1.5 s. App names for the source line are cached.
-* **Small things.** A tap on the map shows the press tint (a drawable state; nothing moves the TextureView). The gear's
+* **Small things.** A tap on the map shows the press tint (a drawable state). The gear's
   letters take their lit colour by how much of the sliding circle covers them, frame by frame, with one weight, so a
   shift only redraws. Both sheets' close buttons are 56 dp.
 * Checking it: force-stop and start `.home.HomeActivity` for the entrance; pin six apps (long-press in the drawer) and
@@ -245,10 +244,10 @@ Checking it on the emulator (Android's own rules, not the firmware's: `persist.n
 
 ### One window (2.0 step 2: `home/HomeActivity.kt`, `Panel.kt`, `PanelStack.kt`, `PanelMotion.kt`, `ShellRoot.kt`, `Entry.kt`)
 `HomeActivity` is the shell: one window, and nothing of any screen in it. `ShellRoot` is its content, in layers: `mapHost`
-(the map's slot, empty until step 3: always attached, always visible, never follows the keyboard), `panelLayer`, `chrome`
+(the map's slot, see "One engine" below: always attached, always visible, never follows the keyboard), `panelLayer`, `chrome`
 (empty until the new design), `sheets` (Controls and the drawer, the same classes). `setContentView` runs once: a new theme
 rebuilds what is in the layers. The home screen moved unchanged to `HomePanel`, the bottom of the stack; Settings to
-`SettingsPanel`, the first panel above it, built on open, dropped on close. Maps and Music are still activities. Nothing
+`SettingsPanel`, the first panel above it, built on open, dropped on close. Maps followed at step 3 and Music at step 4 (both below). Nothing
 looks different; a screen that is a panel opens in the window, with no activity start.
 
 **A panel** (`Panel`) is a `ContextWrapper` of the activity, so code moved from an activity keeps working on `this`, and its
@@ -293,7 +292,7 @@ panel changes. That is also what ends the enrolment card on the Home key, whose 
 more (the Home key no longer stops anything under a panel).
 
 **The window has no background** (`Theme.window(fill = false)`): each opaque panel draws its own room, the one full-screen
-fill at rest, as the design wants and as a map under the window will need. The car still stands on `Palette.bg`: it is the
+fill at rest, as the design wants and as the map under the window needs. The car still stands on `Palette.bg`: it is the
 room's colour now. `CarStage.redraw` no longer pushes frames to the GPU while it is not shown: nothing takes them under another
 panel, and its thread would hang in the swap two frames later (an animation does not stop for that).
 
@@ -342,6 +341,148 @@ GC, two passes each, before and after: Home at rest 94.6, 107.9 / 100.5, 104.3 M
 102.6, 106.2 / 102.5, 104.0; after 15 more rounds 107.5, 116.8 / 104.7, 108.7 (native 69-73 / 61-66). Views 222 / 228 on Home, 317 / 320
 with Settings; window roots 2 / 1 with Settings open. On the unit that is one window's buffers instead of two while Settings is
 up, plus one screen-sized layer during a move; not measured. Not tried on the unit: all of it.
+
+### One engine (2.0 step 3: `nav/MapController.kt`, `nav/AuraMap.kt`, `nav/MapsPanel.kt`, `home/Wall.kt`, `home/ShellRoot.kt`)
+One `AuraMap` for the window's whole life, on a SurfaceView, in `ShellRoot.mapHost`, under everything. It is never moved, resized, hidden or
+faded, from the first time it is wanted until the window ends: only covered, and only its camera changes. Maps is `MapsPanel` now, nothing but cards
+over that map, and the home screen is a wall with a hole in it. So going from one to the other is the wall fading off and the camera easing: no engine to
+build, no surface to make, no tile to load, no activity to start. Why a surface and not a TextureView is measured in `understand/home-shell.md` 4 (a moving
+map makes the window redraw 23.6 times a second with a texture, and not at all with a surface). The new look lands on this; this step only moved what was there.
+
+**`MapController` is the only one that talks to the map.** It owns the `AuraMap` (`shell.map.map`), brings it through the window's lifecycle, and is the only listener to
+`NavSession` and `CarLocation` for it and the only caller of `setRoute`, `setRouteAhead`, `setDestination`, `setTurn`, `setCamera`, `setCar`. The home screen and Maps each had their
+own copy of that logic and the copies had drifted (the arrow's "shown" check was Maps' alone; it is everybody's now). A panel keeps its chrome, listens for that if it must (a banner, a
+speed) and calls the map's names on the controller: `setRoute` and `setDestination` there mean what the panel shows *when no trip is on the map*, and wait for the trip's end. It holds
+`CarLocation` as "shell" from the window's start to its stop, so under Settings the fixes (and `RoadWatch`'s tones) go on where they used to stop with Home's `onStop`. `toHome()` and
+`toMaps(side)` say who has the map: a panel calls one in its `onShow`, and a panel that says neither (Settings) leaves it as it is.
+
+**The room, not the layout.** `AuraMap.setRoom(l, t, r, b, navTop)` says what part of the view can be seen, and the camera keeps the car in the middle of that part; this replaces `startPadding`,
+and the home screen's "top padding of a smaller view" comes out the same inside its card. A new room is a blend (`springK`, the design's section 9: 95 % at 365 ms), and with the zoom the same that is
+a pure pan. `setInteractive` is the run-time switch for gestures. A map that follows nothing yet (no fix ever) still takes the room, around where it looks. Going home from Maps: gestures off,
+Maps' zoom given back (`zoomBack`), and a camera the driver dragged follows again; Maps does not remember it yet (the design wants that, `MapController` is where it goes).
+
+**The states** (`home-shell.md` 5.3). LIVE: as ever, the frame loop runs only while something moves and draws at most 30 a second, 60 only on Maps on a trip (and a map that fell back to 30 stays there
+for the trip: `fellBehind`). FROZEN: an opaque panel at rest on top (`mapHost.covered`, set by `PanelStack`, cleared *before* anything is uncovered); nothing sets the camera, so nothing is drawn (measured: 0
+map frames in 4 s under Settings on a trip, 10 a second just before); fixes go on being taken in and uncovered the camera is simply where the car is. STOPPED: the window's `onStop`; its surface goes with the window.
+ABSENT: `MapGuard` refused: no MapView at all, and the wall stays whole, an opaque screen with today's grid picture in the card, until the driver asks for Maps, which builds one (a crash then is
+a crash he asked for, and the next start still has none at Home).
+**The cover** (`mapHost.cover`, the land's colour, a flat fill) is over the map from a start until `onDrawn`, wherever it could be seen, so a surface that is not back yet never shows as black.
+Not for a new style: tried, and on a trip it hid the car and the route for seconds; the surface is there and shows the new land at once, with the car and the route on it, while the tiles come.
+
+**The window.** No background and `PixelFormat.TRANSLUCENT` from `onCreate` (a SurfaceView makes ViewRootImpl change an opaque format by itself with its first traversal; better not under a running window). `ShellRoot.gatherTransparentRegion` empties
+the region: the hint a SurfaceView asks for is worked out at layout passes, and nothing here moves or shows by layout, so what is drawn outside the last one can be cut (the design's section 14, question 2; DEV's views that vanished over a panned surface). The window is one rectangle, its alpha alone reveals the map.
+`PanelMotion.OverMap` is the move to and from Maps: what covered the map (Home with all that is on it, Settings' room) fades as one layer, 240 ms on `Motion.STANDARD`, a hole in it where the card is, and the cards come in. Nothing pops at the end: what stays under a panel at rest is not drawn, and by then it is transparent.
+
+**Home's wall** (`Wall`, the room's drawable): one flat fill until the map has drawn, so nothing of the entrance changes and a map that never comes costs nothing; then the card's rectangle is left out, four rectangles and four small corner bitmaps (the surface cannot be rounded: the corners are the wall's, no path, no layer). The picture of the
+card (`MapPanel`'s backdrop, the land's fill) stands over the hole and fades as ever, so nothing shows the moment it opens. The camera's room is the card's laid-out rectangle (`HomePanel.cardPlaced`, from a layout pass). The picture kept for the next start is cut to the card (`pictureArea`), so it is the same file for the same view, under the same name. On the light theme the card has
+lost its low shadow while it is a hole: a shadow reaches inside its caster (which normally covers it itself) and lay as a grey ring over the map; the design bakes it into the wall. `solid` is new on `Panel`: Home is not `opaque` any more (the map stays awake) but no touch reaches the map through it.
+
+**A panel that is kept** (`MapsPanel`: `keep`, built ahead 3 s after the entrance, `PanelStack.prepare`, so nothing is built in a tap): what an activity forgot at its destroy goes through `Panel.onOff`, told once it is off the stack and at rest, and `isOff` tells in `onHide` that this hide is the leaving kind. A search, a chosen place, a place being picked go; a trip does not; another app or a panel over it forgets nothing, as before. Listeners on the map must not touch hidden views: a change to a view under an INVISIBLE frame still asks the window for a frame (`turnCompass`).
+`softInput` stays `adjustResize|stateHidden`: on the unit (`policy_control`) the window does not resize, the keyboard covers the lower part of the results as it always did, and the only field is above it, so nothing pans; `mapHost` does not follow either way. The results' own measure is unchanged.
+
+**A new look.** `MapController.lookMayChange` is one rule for every panel, Maps' old one: not while the car moves on a trip with a manoeuvre near (a highway at dusk: on the first long stretch), and at once if the map has that look already. `MapsPanel.onLook` builds its cards again in place and `lookChanged` reloads the style on the same engine (`AuraMap.reloadStyle`): route, turn, destination and additions go back on as the style comes. `HomePanel.rebuild` the same; its picture of the window has a hole where the card is (the copy keeps the window's alpha, on the emulator; `openCard` cuts it open if the unit's comes out solid). A language is still the whole window, the one time the engine is built again.
+
+**MapGuard** also counts a map that goes down after its first frame: `no_backup/map-live` ("<boot id> <elapsedRealtime>") from the first frame to `onStop`. Found at the next start: counted only if the boot id is this one and the map came up less than 3 minutes ago (a car losing its power with the map up is another boot; a process killed later is not the map's fault as far as can be told; `liveMarkCounts`, unit tests). Two in a boot and it is ABSENT until the next boot: fewer than the guard's three dead starts in a row, so a map that cannot run costs the map and not the home screen. In prefs file `aura_shell`, as 1.19 reads `aura_mapguard`. Settings → About: "The map at this start" says when it drew, or why it is not there. Nothing about telling the map may throw into the home screen (`MapController.safely`); a native crash cannot be caught and is what the mark is for.
+
+**Hooks.** `setprop debug.aura.frames 1` and a restart: which view asks for each frame of the window (`AuraShell`). A force-stop with the map up counts as a death: `rm no_backup/map-live` first when testing, or the third force-stop within 3 minutes has no map. `MapsActivity --es mock_loc`, `--ez simulate true`, `--es q`, `--es pick`, `no3d` work as before, through `Entry`. `AuraMap` logs `engine #n`, `style load #n`: one engine, and one style per look, is the proof that nothing reloads.
+
+Walked on the emulator with AMRI the real home (`set-home-activity`, the Home key), the map up throughout and no second activity, ever: `['home']`, one instance, in every step. The last step's whole walk again (Settings' pages, the sheets, the Home key from a deep page and from a dialog, another app and back, a call card and the volume display, by the old names with one alive and with none and the trap after it, the hooks, language and theme both ways, a permission dialog, the keyboard, the pick, Screen check). And Maps: from the map, the dock, "Where to?" with the keyboard and a search and a result, the place card, Back through results and place, the Home key with a place up and a menu up (nothing of it the next time), the pick by Back and by Save, a trip by the Work button and by the debug hook, Home and Maps on a trip, a dragged map and the Home key, Settings over a trip, End, a third-party app over Home and over Maps, the old name from another app, the music key and Music as an activity, sunset on a trip (it waits near a turn, comes on a long stretch, reloads on the same engine with the car and the route showing throughout), Arabic and the light theme, 120 rounds of the stress with Settings, Maps and the probe. `scripts/phone-server-test.py` (taught that Maps is a panel), the phone's place and the voice's "go to" through `Trips`: 98 checks, 0 failed. A native crash (`kill -11`) with the map up, twice: the third start has the grid and no surface layer, Maps on request builds the map, a mark of another boot and one 200 s old count nothing. A map that cannot be built (`debug.aura.mapfail 1`): the kept picture at Home, the land under Maps' cards, no crash. No crash line in any of it. Black frames: 358 frames recorded across 24 moves (Home and Maps both ways, back from another app, from Settings, from Music), the card's rectangle never under a brightness of 36 where black would be 16 (that 36 is Music's own room; on Home and Maps never under 58).
+
+Numbers, emulator, a shared PC, interleaved with the build before the panels (`2fc4680`). Times do not carry over to the unit, GPU memory is in none of them, and PSS differences under about 5 MB mean nothing:
+
+| | before the panels | now |
+|---|---:|---:|
+| Home to Maps, to the first frame | `am start -W`, median per run of 10: 454, 654, 850, 1132 ms (315-5478), and then the map still has to draw | from the tap's handler, median per run of 10: 21-63 ms over six runs (14-118), the map is there |
+| Maps to Home, to the first frame | not comparable (a window animation) | median 20-33 ms (10-88, once 394) |
+| Window frames in a move, medians, and the longest frame's median | open 4-5, 314-938 ms; back 2, 80-224 ms | open and back 15-23, 24-139 ms |
+| Engines in 10 rounds | a new one at every open, by the code | 1 engine, 1 style (the log: `engine #1`, `style load #1`) |
+| Window frames with the car moving at Home (1 fix a second, no other change) | 23.6 a second (1.19.0, `home-shell.md` 4) | **0 in 30 s**, and 0 on Maps |
+| The same, one sitting on a loaded PC (the emulator's GL thread is encoder and pipe work): window frames, CPU of one core | 8.7 a second, 108 % (map thread 55, RenderThread 51) | 1 in 30 s (the clock), 57 % (map thread 54, RenderThread 0.3) |
+| Map frames at Home with the car stopped; under Settings on a trip | | 0 in 12 s; 0 in 4 s |
+| PSS after a GC / native, MB: Home at rest | 77.5 / 36.6, 77.6 / 37.1 | 82.3 / 41.5, 90.1 / 46.4, 89.7 / 48.2 |
+| Maps open | 89.7 / 48.1, 94.8 / 53.7 | 82.2 / 41.3, 90.5 / 46.9, 91.3 / 49.8 |
+| A trip at Home | 96.5 / 53.1, 96.4 / 54.4 | 108.2 / 65.2, 98.8 / 54.2, 112.4 / 68.7 |
+| A trip on Maps | 141.2 / 97.9, 144.3 / 102.0 | 114.6 / 72.5, 121.6 / 76.5, 119.7 / 75.9 |
+| After the trip and 10 more rounds of Maps | 128.1 / 83.6, 135.3 / 92.0 | 112.6 / 70.4, 121.4 / 77.2, 113.9 / 70.0 |
+| Views, window roots | 222 / 1 at Home, 317 / 2 on Maps | 316 / 1, always (Maps' panel is kept) |
+
+So Home itself weighs 5 to 12 MB more (a map of the whole screen, Maps' cards kept), and what used to be two engines costs 20 to 25 MB less on a trip and does not grow with rounds. On the unit, GPU memory: one surface of 1024 x 600 under the window where there were a 607 x 484 TextureView and a Maps surface; not measured.
+
+What the unit has said so far (its Screen check of 1.19.1, `tmp/v2/unit-facts.md`; `MapRig`, not this code): the map on a full-bleed SurfaceView and the window are two hardware planes, 55 fps at the 60 cap and 29 at the 30 cap, the window redrawing 0.4 times a second; motion over it HWUI p95 8 ms; 4 GB of RAM; GPS one fix in 2 s (hence `glideMs` up to 2600, off the route the car stood still for 400 ms in every fix); a baked 9-patch panel animated had p95 20 ms and 13 % jank, a warning for the new look's moves. Only the unit can tell about this code: the first frame of the move on that GPU (two window-sized layers), whether the surface comes back from a stop with a flash (the cover is there for it), a native crash or GPU hang of the real driver, and the firmware's behaviour around a translucent home window. Settings → About shows the map's line and the last panel's open time, for the owner's photo.
+
+### Music in the one window (2.0 step 4: `music/MusicPanel.kt`, `music/MusicActivity.kt`, `home/DrawWatch.kt`)
+Music moved unchanged to `MusicPanel` (`git diff -B -M` shows the rename), opaque and kept. `MusicActivity` is an `Entry` that keeps the
+name `StockMusic`'s `replace_source_list.xml` names, its MAIN, `action.MUSIC` and VIEW filters, `EXTRA_SOURCE` and `delaySeconds`. What
+an activity had: the backdrop is `root.background` and not the window's (the window has none); `recreate` is `buildAgain`; `onStart` and
+`onStop` are `onShow` and `onHide`; `isDestroyed` is `isGone`; `onCreate` is the `init` at the end of the class (Kotlin runs initialisers
+in order, and the class has fields all the way down). No `stateAlwaysHidden`: `onHide` clears the search field's focus instead, which is what
+that mode was for, and a soft input mode that differs from Home's would make every switch a `relayoutWindow`.
+
+**Built ahead of time.** The starting window went with the activity, and a first build on the unit's main thread would have nothing to hide
+behind. `HomePanel.onResume` asks `PanelStack.prepareWhenQuiet(MUSIC, 6 s)`, not in the start's first seconds: at that moment and later,
+only with Home at rest on top of a resumed window, no sheet open, no finger on the screen for 1.5 s; otherwise it looks again in 2 s, and at any
+other screen it stops until Home's next resume. A panel that could not be built is not tried again this way. `prepare` then gives it one
+real frame at alpha 1/255 before making it INVISIBLE: letters in the GPU's store, icons rasterised, shaders compiled, which a first open
+otherwise pays in its first frame (the frame's recording does not survive, HWUI deletes a display list nothing refers to, so later opens
+record anew, and so does the first). `init` also says all it can, list rows included, and lets `ArtLoader` decode the cover and the rows'
+pictures for its cache and `Backdrop` work out the look, holding none of them. So the first open has the cover and the colours at once, as a later one.
+
+**Kept, and what it holds.** Across the Home key and any panel: source, tab, open group, where each list was, the lyrics (large ones too),
+YouTube's search and results. Until 2.0 the Home key destroyed all of it. The source is looked at again when it comes back from off the stack
+(`Panel.newOnStack`), as a new activity did (Bluetooth when only the phone plays, written nowhere), not when the window comes back with it on top:
+from YouTube's app it stays on YouTube. `onHide` stops everything that runs, as `onStop` did. 2.5 s later, when nothing of it can be on the screen,
+`letGoOfPictures` empties the cover's three views and the rows' pictures, and the fields that remember them. They are in caches with limits
+(`ArtLoader` 12 MB, `CoverSearch`, the session's) and those limits hold only if nobody else keeps what they evict. The look stays (48 texels and
+two colours), by a weak reference to its cover: back on the same picture nothing is worked out, and a new one comes off the main thread, simply there
+if it lands in the first 400 ms and faded in after that. List rows keep their views: building them is what an open must not pay, and they are about 100
+small views. Short of memory (`onTrimMemory`: RUNNING_LOW, RUNNING_CRITICAL, from MODERATE; not UI_HIDDEN, which only says another app came)
+`ArtLoader` empties, and out of sight the lyric lines and the rows go too; their place is kept. `onShow` hides `root` from itself while it paints
+(`isShown` false, as in an activity's `onStart`), so what changed while it was away is just there: nothing inside it moves in the move that brings it in.
+
+**New look.** `onLook` and `onShow` build the views again in place when the theme or accent is not the one they were built in. State stays,
+which `recreate` lost (F7 in `understand/music.md`). A language is the whole window's. Recolouring in place is the new design's.
+
+**Lyrics listening ends with the screen** (the switch's text promises it): `LyricsSync.end()` in `onHide`. Measured with `LYRICS_FEED` and
+the stand-in: pieces every 10 s while it shows, a last short one at the Home key, none for 20 s at Home, a new `sync start` on the way back.
+
+**Keys.** `MusicKeys` asks `Front.panel` and `Front.ownIs(name, ms)`; there is no class to ask any more. "The same source" is `MusicPanel.onBluetooth`, set
+as long as the panel exists. First and second press of 83 and 99, the other source's key, a held key, over another app, the stock screens' signs: walked.
+
+**The way back from YouTube** is `Screens.music` as before. It had never run: `YtMusic.player` knew only the two real packages, so a stand-in could
+show its session but never take a song. Now `players` (debug: plus `debug.aura.ytpkg`), and `src/debug/.../YtStandIn` in the `-PstandIn` copy takes the
+link, plays its own library a moment later, and AMRI comes back on the YouTube source with that session. Disable the copy's two home components or Android asks
+which home. `setprop debug.aura.ytfake 1`: a search with one made-up song. Still never run with YouTube's real app.
+
+**FROZEN** needs nothing from Music: `opaque` makes the stack set `shell.root.mapHost.covered` at rest (`PanelStress --ez report true` logs it) and clear it before uncovering.
+
+**A window that stops drawing (`DrawWatch`).** Found here. When a window gets no buffer for 4 s HWUI writes its surface off for good (`dequeueBuffer failed,
+error = -110; switching to fallback`, then `reserveNext failed`): the renderer disables itself and releases the Surface, and `ViewRootImpl.draw` returns at once from then on,
+with no error and no log, until the window next relayouts and is given a Surface. With an activity per screen that mended itself at the next screen. In the one window
+the screen stays on its last picture with every touch working under it, until another app comes over. Seen on this PC's loaded emulators, whose composer stalls for seconds;
+reproduced at will with `kill -STOP` on surfaceflinger for 6 s while frames are coming. Not known on the unit, where a stalled composer would be the trigger. So at every panel change,
+minute's tick, resume and finger down a frame is expected: if none was drawn 3 s later (window resumed, display on) the window's attributes are set again, which makes it relayout and costs nothing if nothing was
+wrong; if still none, `recreate` once per process (not exercised: the relayout has always been enough). Settings → About keeps the last time ("Screen stopped drawing"). Tried: back within 3 s of a finger, and
+at the minute's tick with no finger. This applies to anything in the window, not to Music; the overlays are windows of their own and are not watched.
+
+**Fail-safe.** `setprop debug.aura.musicfail build|show`: the stack drops it, Home goes on, a Snack says so, About keeps the line, and with the property gone it opens. 120 rounds of `PanelStress` over
+Settings, Music and the probe: one frame at rest, the other INVISIBLE, alpha 1, no layer, no warning.
+
+**Stand-ins to try it with** (`scripts/`): `gen_test_songs.py` (silent songs with tags and covers, `small` and `big`), `lyrics_standin.py` (never port 8790; prefs `lyricsServer` `10.0.2.2:<port>`, `lyricsServerKey` any),
+`naghm_standin.py`. When a prefs file is edited with the app stopped: the notification listener's rebinding brings the process back at once, so force-stop again after copying. `am broadcast` to `PanelStress` needs `-f 0x01000000`.
+
+Walked before and after, AMRI the real home, the same steps, on the emulator: in and out by the dock, the card, the drawer, voice, Back, the chevron, the Home key; the unit's own songs (play, next, previous, seek, shuffle, repeat, all tabs, a group,
+Play all, scroll); the phone by the debug broadcasts (no phone, first song with no position, a progress report, next song, pause); Naghm's stand-in (bar seek, next, toggle, its lyrics, line tap seeks, hold measures); YouTube's source, its field, the keyboard
+and the Home key over it; lyrics with word times, tapped to seek, large, Home and back; the manual timing (tap sets the clock, tap again saves `offsetMs`, kept across Home, hold forgets); listening; keys; a call over Music and over Home, the key refused during it,
+the song back after it; another app and back, the Home key from it; the old name with Home alive, on top, over another app, with none alive (one activity in the home stack each time, and the trap sequence ends in one); `MAIN` as the firmware starts it, `action.MUSIC`,
+VIEW `audio/*` (opens, plays nothing, as before); the notification's PendingIntent; theme with Music hidden and in front, at the tick too; language both ways; the library changing while hidden and in front; permission denied and allowed; trim; no motion; Music first in a new process. Radio has no place in Music.
+What differs, as meant: the group and scroll survive the Home key; the theme by the hook comes back to Music where it used to find Home; by the old name with no Home alive Back goes to Home. The backdrop differs by a few levels on the emulator only: the root is 552 high there and the window was 600 (no navigation bar on the unit).
+
+Numbers, emulator, interleaved with the build before, on a PC the other agents were loading: they do not carry over to the unit, and the emulator composes at its own pace. From the tap's handler to the first frame complete, ms, two blocks on a rebooted emulator: before, first open medians 2114, 2483 (1717-4222), later opens 1805, 2033 (1627-3215); after, first open 394, 547 (313-1505), later opens 304, 336 (15-655). In a quieter spell, after only: first 83-160, later 16-140. With the frame ahead of time against without it, in turns: the first frame's GPU commands 21-31 ms against 41-97, uploads 0 against 1-19, first opens about 94 against 128. On the main thread (`AuraShell`, the frame recorded) a later open takes 6-63 ms, of which 2-14 before the frame; the build ahead 50-300 ms, once 1115 under load, plus a layout and the real frame. Memory, PSS after a GC, before / after, MB: Home at rest
+104.4 / 99.6, Music open 108.1 / 100.7, back 109.8 / 99.5, after 20 opens and closes 158.7 / 106.3 (native 113.0 / 62.7, Java heap allocated 3.8 / 3.8); with 210 songs and 43 covers 102.1 / 95.9, 107.0 / 98.0, 104.7 / 98.3, 163.2 / 104.6 (native 117.2 / 60.9). Over 40 rounds through the tabs
+the old screen grew about 2 MB a round without end (105, 122, 133, 155, 172); the panel 111, 138, 138, 138, 138, Java heap flat at 4.0. About 20 MB of that step is Home's map coming back and appears with Settings alone (103, 124, 124, 124). Views at Home 228 / 409 (Music's, not drawn), window roots with Music open 2 / 1.
+With a song playing at Home, 1.1 / 1.0 window frames a second. GPU memory is not in any of this. Not tried on the unit: all of it. About's "Last screen opened" now tells the first open and the build ahead too, for the owner's photo.
+The figures above are from the build just before the pictures were let go later. The last build, another hour: Home 100.7, Music 102.3, back 100.8, after 20 opens and closes 108.1 (native 66.1, Java heap 3.8);
+40 rounds through the tabs with the 210 songs 96, 106, 103, 106, 105 (native 63, Java heap 3.9); Settings alone 110, 118, 114, 118. So the level moves by tens of MB from one sitting to the next on this emulator (the 138 above is not there this time, and the reason was not chased), and what holds in every sitting is that it stays flat.
 
 ### Memory and start-up cuts (the foundations of 2.0: nothing looks different, while the GPU keeps its time)
 Home was the heavy screen, and almost none of its weight was code: the car's CPU path, its leftovers, the map's sprites and
@@ -758,13 +899,13 @@ last heading is kept anyway.
   colour, on top of everything). In 1.11 it was a pin view, which trailed the GL map by a frame during every flight
   and pan.
 
-**The home map's start** (`MapPanel`, `AuraMap.onDrawn` / `pictureFile`, `MapBackdropView`):
-* `MapPanel.startLive()` builds the live map 700 ms after the home screen's entrance starts (at once after a restyle),
-  and replays the activity's lifecycle on it (see "Home screen in 1.12").
+**The home map's start** (`MapController`, `MapPanel`, `AuraMap.onDrawn` / `pictureFile`, `MapBackdropView`; since 2.0's step 3 the one map, under
+the window, see "One engine"):
+* `MapController.startForHome()` builds the live map 700 ms after the home screen's entrance starts.
 * `AuraMap.onDrawn` fires when the map has drawn with its style loaded (`onDidFinishRenderingFrame(fully)`), or 2.5 s
   after its first frame (offline, tiles that never come); `MapGuard.ok` still comes on the first frame. It replaced
   `onFirstFrame`, which fired on the first frame of land colour before any tile.
-* The home map keeps a picture of itself (`pictureFile`, `cacheDir/home-map-{dark|light}-{lang}.webp`, WebP 80),
+* The home map keeps a picture of the card (`pictureFile`, `pictureArea`, `cacheDir/home-map-{dark|light}-{lang}.webp`, WebP 80),
   taken with `MapboxMap.snapshot` 3 s after the map came to rest, at most once a minute, and only of the view the next
   start opens on (`pictureWorthy()`: FOLLOW, no route, no destination; a picture taken at a red light while navigating
   cross-faded into the north-up start as a double exposure).
@@ -773,11 +914,9 @@ last heading is kept anyway.
   yet (the first start for a theme and language, or `cacheDir` cleared) it is the plain land colour: the invented
   street grid ghosted over the real streets during the fade. The grid (`grid = true`) is only for the `MapGuard`
   fallback, in the style's own colours (`MapStyle.tones()`).
-* The backdrop is not shown again at `onStop`: the TextureView keeps its last frame across a stop (going home from
-  Maps, the map is there at once). Once the map has drawn, the panel's own `mapLand` fill is dropped (it sat under an
-  opaque map on every frame). `Palette.mapLand` is the only map colour left in `Palette`; the others are the style's.
-* The Maps screen's window background is the map's land (no root background over it): the screen is all map, and
-  the two fills were drawn under every frame.
+* The backdrop is not shown again after a stop: the land-coloured cover over the slot stands in until the surface has
+  drawn again. Once the map has drawn, the panel's own `mapLand` fill is dropped and the wall opens.
+  `Palette.mapLand` is the only map colour left in `Palette`; the others are the style's.
 
 **MapExtras**: `spots`, `published`, `mine`, `speeds`, `grid` and `updatedAt` are written on the main thread only (the io
 thread parses and posts; a fetch that finished while a camera was being marked could put the old set back). `version`
@@ -785,7 +924,7 @@ counts every change; `geoJson(arabic)` is cached per (version, language) and `Au
 that map does not show it yet. Until 1.11 the whole FeatureCollection was rebuilt and parsed again at every start of
 the home screen and of Maps.
 
-### Guidance, panels and words (1.12: `GuidanceBanner`, `MapsActivity`, `Instructions`, `Router`, `NavSession`)
+### Guidance, panels and words (1.12: `GuidanceBanner`, `MapsPanel`, `Instructions`, `Router`, `NavSession`)
 **The guidance sign** (`nav/GuidanceBanner.kt`) is one view for every map that guides: Maps uses it full size, the home
 map `compact = true`. It reads `NavSession` itself; a caller adds it, calls `update()` on every session change and
 `reveal()`s it in and out.
@@ -898,12 +1037,12 @@ and the zoom capsule by scale. `TextView.setIfChanged(s)` (same file) sets a lab
   within 150 m; a route's first words at the start and after a reroute; "استمر على … لمسافة …" just past a manoeuvre with
   over 3 km to the next.
 
-**Theme, accent and language while Maps is open**: `MapsActivity` remembers what it was built in and checks it in
-`onResume` and on every minute's tick (and time, time zone and locale changes) while resumed: a sunset under "auto" or
-a change in Settings recreates it. A new language at once; a theme or accent not while a place is chosen, the search
-is open or a route is being found (the next tick tries again). A trip being driven goes on (`NavSession` is the
-app's). There is no snapshot cross-fade on this recreate yet (it would need HomeActivity's PixelCopy fade moved into a
-shared helper in `ui/`).
+**Theme, accent and language while Maps is open**: `MapsPanel` remembers what it was built in and checks it at `onShow`,
+in `onLook` and so on every minute's tick (and time, time zone and locale changes) while resumed: a sunset under "auto" or
+a change in Settings builds its cards again and reloads the style, on the same engine ("One engine", "A new look"). A new
+language at once (the whole window); a theme or accent not while a place is chosen, the search is open or a route is being
+found, nor when `MapController.lookMayChange` says no (the next tick tries again). A trip being driven goes on (`NavSession` is
+the app's). There is no picture cross-fade on the cards, and the map's colours cut: the design's section 8 replaces all of this.
 
 **Road additions**: "Camera here" (`CameraMark.mark`) takes only a fresh (under 5 s), precise (30 m or better) fix;
 NavSim's and the debug mock fixes count (NavSim stamps `elapsedRealtimeNanos`). `CarLocation.last` can be yesterday's
@@ -1241,7 +1380,7 @@ scroll it follows again); a tapped line is where the song goes: the unit's songs
 clock (the line's time + 450 ms, the owner taps what is being sung); while a Bluetooth song's position is unknown no line
 is lit and a hint asks for that tap. The lyrics button puts it in the library's panel (with Bluetooth the song gives the
 panel back for it); the progress tick runs every 200 ms while it shows.
-The lyrics alone on the whole screen (1.7): the button in the panel's corner (`MusicActivity.showFull`; Back, or the
+The lyrics alone on the whole screen (1.7): the button in the panel's corner (`MusicPanel.showFull`; Back, or the
 button where the screen's own way back is, returns; kept in `musicLyricsFull`). A second `LyricsView(big = true)` in a
 layer over the screen (38 sp lines), with a small bar: cover, names, previous / play / next and a thin progress line.
 Both views are fed alike and the layer is INVISIBLE, never GONE, so it stays laid out: going there and back measures
@@ -1348,7 +1487,7 @@ card followed. Not tried before the unit: the connection over the real hotspot, 
 ### The Bluetooth sound's delay (1.18)
 What the phone plays comes out of the car's speakers later: buffers on the phone, in the module, on to the amplifier.
 Naghm's clock (and the module's guesses) say what the phone plays, so the lyrics ran ahead of what is heard.
-`BtMusic.delayMs` (Prefs `btDelayMs`, 0–2 s) is that delay; `MusicActivity.lyricsShift` is, for a Bluetooth song, the
+`BtMusic.delayMs` (Prefs `btDelayMs`, 0–2 s) is that delay; `MusicPanel.lyricsShift` is, for a Bluetooth song, the
 owner's own correction of that song when he made one (1.15's tap: measured against what he heard, the delay is already in
 it), else minus the delay. A tapped line on Naghm's song seeks to the line itself (`l.ms - lyricsOffset`: the delay only
 makes it heard later) and stays lit until its sound comes out (`tapLitUntil`, the delay + 400 ms) instead of the line
@@ -1366,7 +1505,7 @@ Arabic. Not tried on the unit: the real delay of its module.
 Naghm (1.6) sends, with each song, when the screen connects, and on `{"type":"lyrics"}`, the lyrics the phone has:
 `{"type":"lyrics","id","title","synced","source","lines":[{"time": seconds or null,"text"}]}` (no lines: it has none).
 `PhoneLink.lyricsOf` makes them a `Lyrics.Result` (`SOURCE_NAGHM`, ms times), kept with `lyricsId` / `lyricsTitle`.
-For a Bluetooth song that is Naghm's (`MusicActivity.phoneLyrics`: the link's song, `sameSong` titles) they are shown
+For a Bluetooth song that is Naghm's (`MusicPanel.phoneLyrics`: the link's song, `sameSong` titles) they are shown
 in place of the screen's own lookup — at once in `refreshLyrics` when already there, by `phoneListener` when they
 come later, and a lookup that answers after them is dropped. They carry no correction of their own, so the Bluetooth
 delay applies (`lyricsShift`). `BtMusic.canSeek` is now the link playing the module's song (not only while Naghm owns
@@ -1386,7 +1525,8 @@ helpers, `Snack`). Strings added in 1.12 are in `res/values*/strings_music.xml`.
   the cover halved step by step and blurred for real (three box passes), and `applyLook` hands it to
   `window.setBackgroundDrawable` with filtering on: one opaque fill a frame, two while a new one crossfades in
   (`TransitionDrawable`, `Motion.AMBIENT`). It runs on its own single-thread executor (`lookAsync`); only the very first
-  look is made on the main thread, in `buildUi`. Nothing else may set this window's background.
+  look is made on the main thread, in `buildUi`. Nothing else may set this window's background. (Since 2.0 the panel's root
+  has it, not the window, which has none: "Music in the one window".)
 * **The cover's colour** comes from `Backdrop.colours` as `fill` (progress, play buttons, indicators, equaliser bars,
   the shadow's glow) brought to 3:1 on the background, and `fillText` (the playing row's title, Play all, the crumb's
   chevron, shuffle / repeat when on, the lyrics hint) brought to 4.5:1 on the playing row's tint (a dark blue cover was
@@ -1429,7 +1569,7 @@ helpers, `Snack`). Strings added in 1.12 are in `res/values*/strings_music.xml`.
   its artist meanwhile. After a seek the position shown is the one asked for (`holdSeek` / `held`) until the source
   agrees (within 1.2 s) or `SEEK_HOLD_MS` passes (YouTube and a USB stick answer a seek late, and the knob jumped back
   and forth). The times sit 8 dp into the strip's lower edge, with fixed equal halves, set only when they change
-  (`setTextIfChanged`, private to `MusicActivity.kt`): a WRAP label asked the whole screen for a layout every tick.
+  (`setTextIfChanged`, private to `MusicPanel.kt`): a WRAP label asked the whole screen for a layout every tick.
 * **The progress tick** comes when the next lyric line is due (`LyricsView.msToNext`, at most 250 ms with lyrics, 500
   without, at least 16), and the YouTube branch reads only `appPosition`, never the bitmap. `showNowPlaying` (every
   Bluetooth broadcast, about once a second) changes only what changed.
@@ -1453,9 +1593,10 @@ helpers, `Snack`). Strings added in 1.12 are in `res/values*/strings_music.xml`.
   dims what shows (`dim`); "Looking for the lyrics…" only after 600 ms (`lyricsLoading`); "failed" has Try again. The
   whole-screen lyrics: 34 sp lines, a 40 dp fading edge, and lines to be read rather than followed start near the
   top, below the sync hint's measured height.
-* **Theme and language while open**: Music lives in its own task, so it came back from Settings in the old language and
+* **Theme and language while open**: Music lived in its own task, so it came back from Settings in the old language and
   stayed on the day colours all night under "auto". `checkLook` (in `onResume`, and from a `TIME_TICK` receiver while
-  resumed) calls `recreate()` when the theme, accent or language it was built in changed; no snapshot crossfade yet.
+  resumed) called `recreate()` when the theme, accent or language it was built in changed; no snapshot crossfade yet. (Since
+  2.0: `onLook` builds the panel again in place, with its state, and the language is the whole window's.)
   `MusicService` wraps its context with `LocaleHelper`, and YouTube's "stopped out of sight" toast a wrapped context.
 
 ### Lyrics from the owner's server, timed by listening (1.13: `Lyrics`, `LyricsServer`, `LyricsSync`, `tools/lyrics-server`)
@@ -1594,13 +1735,13 @@ never past 0.15 s before the next line (a line sung quickly before a pause does 
 most 6 s. The app estimates with the same rule when it has no word times of the server's (LRCLIB's timed lyrics
 fetched by the unit itself, an older server).
 
-#### The screen (`LyricsView.timeLines`, `MusicActivity`)
+#### The screen (`LyricsView.timeLines`, `MusicPanel`)
 Timed lines that come for the very lines on the screen do not rebuild anything: the lines stay where they are, take
 taps from then on (a tap looks the line's time up when it happens, `tapLine`, since a timing by listening can be refined
 while it shows), the room above them grows to the timed lyrics' 38 % and the scroll moves by the same amount in the same
 layout pass (`shiftOnLayout`), and the line being sung lights and glides to the middle as with any timed lyrics. They
 keep the plain lines' size (measuring them again at the timed size would move every line); the next play shows the timed
-size. Other lines (another source's) are shown anew. `MusicActivity.lyricsSong` remembers the song as its lyrics were
+size. Other lines (another source's) are shown anew. `MusicPanel.lyricsSong` remembers the song as its lyrics were
 asked for, so a late answer is matched to the song on the screen.
 Fixed on the way: the phone skipping A → B → A before B's lyrics came left A's lyrics stepped back (dimmed, not
 following, not tappable) until the next song, since A's lines counted as already shown; `lyricsShown` is now cleared
@@ -1627,7 +1768,7 @@ address", before any request.
 * The unit's microphone shared with the assistant (`MicTap`) on the unit; on the emulator only the own recording and
   the debug feed ran.
 
-### Word by word lyrics and the saved timing (1.15: `Words`, `LyricsView`, `Lyrics`, `MusicActivity`)
+### Word by word lyrics and the saved timing (1.15: `Words`, `LyricsView`, `Lyrics`, `MusicPanel`)
 The owner asked for three things: the word being sung lit on the lyrics' lit line ("an effect on the word the song has
 reached", with a switch to turn it off), his own timing kept when he sets it by tapping the line being sung ("so that
 when I play the same song later the same timing comes"), and songs whose lyrics come without timing timed by his
@@ -1699,7 +1840,7 @@ the fill looks has to be judged on the unit.
 drawn exactly as before 1.15 (`super.onDraw`). The music screen reads it in `onStart`, so it applies on coming back
 from Settings; the word times are worked out either way, so turning it on needs no new lyrics.
 
-#### The saved timing (`MusicActivity.onLineTap`, `onLineHold`, `Lyrics.keepOffset`)
+#### The saved timing (`MusicPanel.onLineTap`, `onLineHold`, `Lyrics.keepOffset`)
 A tapped line on a Bluetooth song used to set the song's clock (the phone never says where a song is). Now:
 * The clock unknown (the first song after connecting, before any tap): the tap sets the clock, as before. This is not
   a correction. With a correction already kept for the song, the clock is set so that the lyrics land on the tapped
@@ -2480,7 +2621,7 @@ newer one replaces it); a screen listens (`addListener`) and reads `attempt` to 
 really happened: STARTED only after `NavSession.start` returned, FAILED, NO_FIX, DROPPED. The asker's own position
 (`origin`) is used only while the car has no fresh fix (2 minutes), and with no position at all it waits up to 10 minutes
 for the first fix, holding the GPS itself because no screen may be. A route gets 60 s (a router that never answers must
-not hold a place for ever). `NavSession.start` throwing is a FAILED, not a crash. `MapsActivity` keeps today's behaviour
+not hold a place for ever). `NavSession.start` throwing is a FAILED, not a crash. `MapsPanel` keeps today's behaviour
 for its own paths: Back during a Home/Work route still means no trip (`wanted`), no fix still means `select`.
 
 **`link/PhoneServer.kt`: HTTP/1.1 on every interface, port 47101.** Why the unit serves: Safari, a Shortcut, a share
@@ -2670,9 +2811,9 @@ sign, a trip resumed or not and why) is the first real measurement.
   (`Amri.giveWayToPrompt`, `WakeTurn`: from 2 s after the wake, until `onBeginningOfSpeech`; learned as not meant). Far and early prompts still wait, and a
   request being spoken, or a tap on the microphone, keeps it. Emulator, a drive simulated at 90 km/h: `AMRI takes the turn`, 2.2 s later
   `a turn prompt comes first`, `In 150 metres, turn left`; with speech begun: nothing for 25 s until it ended (`--ez wakevoice true`, `--ez speech true`).
-* **Lyrics** (`MusicActivity.phoneTakesOver`): Naghm's coming after the screen's own go up, unless they are the very same lines
+* **Lyrics** (`MusicPanel.phoneTakesOver`): Naghm's coming after the screen's own go up, unless they are the very same lines
   (the owner's correction goes on applying) or have no times where the shown ones do. The correction stays on disk with its lines.
-* **Music keys:** "the same source" is `MusicActivity.onBluetooth`, what the screen is really on; the pref only with no screen.
+* **Music keys:** "the same source" is `MusicPanel.onBluetooth`, what the screen is really on; the pref only with no screen.
 * **Prefs:** gone: `setupDone`, `setupBannerDismissed`, `adbBridge`, `hiddenApps` (no version ever wrote them). Kept, read-only:
   `homeAddress`, `workAddress`: their writer went in 1.3, but a unit where one was typed still drives there from it.
 

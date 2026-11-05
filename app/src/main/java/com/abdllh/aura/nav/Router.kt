@@ -39,11 +39,6 @@ class Step(
 class Route(val line: Polyline, val steps: List<Step>, val distance: Double, val duration: Double) {
     /** OpenStreetMap's speed limits along the way, when BRouter answered too (OSRM has none of its own). Main thread. */
     var limits: RouteLimits? = null
-    /**
-     * The answer to the same question that came after this one was taken: OSRM's, with road names, when the hotspot took
-     * longer than BRouter's head start. Whoever shows this route takes it over when it fits ([NavSession]). Main thread.
-     */
-    var better: Route? = null
     /** [duration] and the steps' times were scaled by a table fitted against another router, not real drives ([com.abdllh.aura.nav.route.EtaScale]). */
     var etaEstimate = false
     /** Its words and what lies along it ([com.abdllh.aura.nav.guide.Guidance]), once a route from the pack is taken; null: the old wording ([Instructions]). */
@@ -72,8 +67,7 @@ class Route(val line: Polyline, val steps: List<Step>, val distance: Double, val
 
 /**
  * Driving directions, one router after another ([com.abdllh.aura.nav.route.RouteChain]): Valhalla over the pack, BRouter on
- * the unit, the public OSRM server abroad or as the last try. No race and no head start: the local route is the route. So
- * [Route.better] is never set any more (the screens still read it until the shell's move is in).
+ * the unit, the public OSRM server abroad or as the last try. No race and no head start: the local route is the route.
  */
 object Router {
     /**

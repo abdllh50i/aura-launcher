@@ -26,8 +26,11 @@ abstract class Panel(val shell: HomeActivity, val name: String) : ContextWrapper
     /** Its views, asked for once. Never replaced, a rebuild changes what is in it; the stack moves the frame around it. */
     abstract val root: View
 
-    /** It covers the whole screen with its own room: nothing under it can be seen, and the map may sleep (step 3). */
+    /** It covers the whole screen with its own room: nothing under it can be seen, and the map sleeps ([MapHost.covered]). */
     open val opaque: Boolean get() = false
+
+    /** A touch on nothing of it stops here, and does not reach what is under it: the map, or another panel. */
+    open val solid: Boolean get() = opaque
 
     /** Off the stack it stays built and hidden, for the next time. False: dropped, [onDestroy], its views let go of. */
     open val keep: Boolean get() = false
@@ -59,8 +62,15 @@ abstract class Panel(val shell: HomeActivity, val name: String) : ContextWrapper
 
     open fun onPause() {}
 
-    /** Something came over it, or it left, or the window stopped. [isGone] tells when this is for good. */
+    /** Something came over it, or it left, or the window stopped. [isGone] tells when this is for good, and for a kept one [isOff]. */
     open fun onHide() {}
+
+    /**
+     * A kept panel, off the stack and at rest (Back, the Home key, [finish]: it is seen no more until it is asked for again): what
+     * belonged to that visit goes. It had its [onHide] before it began to leave, unless the window was stopped by then. What an activity
+     * lost at its onDestroy, except what is heavy to build. Not told for one that came back on the way.
+     */
+    open fun onOff() {}
 
     /** Back, while it is on top: true when it used it (a list closed); false, and it leaves. */
     open fun onBack(): Boolean = false
@@ -90,6 +100,9 @@ abstract class Panel(val shell: HomeActivity, val name: String) : ContextWrapper
 
     val isTop: Boolean get() = !isGone && shell.panels.top === this
 
+    /** Off the stack: Back or the Home key have taken it off, not only something come over it. */
+    val isOff: Boolean get() = !shell.panels.holds(this)
+
     /** Leaves the stack (what Back does, without asking [onBack]). */
     fun finish() = shell.panels.finish(this)
 
@@ -99,10 +112,19 @@ abstract class Panel(val shell: HomeActivity, val name: String) : ContextWrapper
 
     val window: Window get() = shell.window
 
+    /**
+     * During [onShow]: it has just come onto the stack from off it, which is what a new activity used to be, rather than the
+     * window starting again with it on top, or what was over it leaving.
+     */
+    var newOnStack = false
+        internal set
+
     // (the stack's: where it has it)
     internal var alive = true
     internal var shown = false
     internal var resumed = false
+    /** [onOff] is still to come. */
+    internal var offDue = false
     internal lateinit var frame: PanelFrame
 
     companion object {

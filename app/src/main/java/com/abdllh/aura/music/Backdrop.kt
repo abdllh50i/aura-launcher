@@ -32,8 +32,8 @@ import java.util.concurrent.Executors
  * and a translucent veil), filled on every frame the screen drew: the lyrics' glide, the playing row's bars, the
  * progress. On this GPU that was several milliseconds a frame before any content, and 18 texels stretched to 600 px
  * with bilinear filtering showed creases and blocks, not a blur. Now the same layers are worked out once per cover
- * into a picture of [W] texels across, blurred for real, and the window draws that one picture as its background:
- * one opaque fill a frame, two while a new cover crossfades in.
+ * into a picture of [W] texels across, blurred for real, and the screen's root draws that one picture as its background
+ * (the window has none, in the one window of 2.0): one opaque fill a frame, two while a new cover crossfades in.
  */
 internal object Backdrop {
     /** Texels across; the height follows the screen's shape. Upscaled with filtering, a blurred picture stays smooth. */

@@ -19,7 +19,6 @@ import com.abdllh.aura.voice.Amri
 import com.abdllh.aura.voice.VoiceTurn
 import java.util.Locale
 import java.util.concurrent.CopyOnWriteArrayList
-import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -61,15 +60,6 @@ object NavSession {
     private const val TAG = "AuraNav"
     /** Beside the destination with this much of the route left, the car is not there yet. */
     private const val ARRIVE_NEAR_M = 300.0
-    /** A route that came late ([takeBetter]) is given up when the car is this far from it. */
-    private const val BETTER_GONE_M = 300.0
-    /** Moving this fast, the car's course must agree with it this closely. */
-    private const val BETTER_COURSE_KMH = 20.0
-    private const val BETTER_COURSE_DEG = 60.0
-    /** Nothing to do on either route for this long (seconds, within these metres) before a late route takes over. */
-    private const val BETTER_CLEAR_S = 30.0
-    private const val BETTER_CLEAR_MIN_M = 300.0
-    private const val BETTER_CLEAR_MAX_M = 1500.0
     private const val NO_ANSWER_RETRY_MS = 2000L
 
     private var app: Context? = null
@@ -176,7 +166,6 @@ object NavSession {
         val snap = watch.locate(r.line, here, lastSeg, if (l.hasBearing()) l.bearing.toDouble() else null, speed, accuracy) ?: return
         val off = watch.off
         if (!off) lastSeg = snap.segment
-        if (!off && takeBetter(r, snap.along, here, l, speed, maxOf(OffRouteWatch.MIN_LIMIT_M, accuracy * 1.5))) { update(l); return }
         val along = snap.along
         // the next thing the driver is told (a street that only changes its name is not one); a roundabout stays the
         // next one until the car has left it, with the distance to its exit
@@ -217,41 +206,6 @@ object NavSession {
     private fun toStep(r: Route, next: Int, along: Double): Double {
         val step = r.steps[next]
         return ((if (along > step.at) step.at + step.span else step.at) - along).coerceAtLeast(0.0)
-    }
-
-    /**
-     * OSRM's route came after BRouter's was taken ([Route.better]): names on the signs and in the voice, and lanes where
-     * they exist. It takes over when it fits, without a word: the car on it and going its way, nothing to do soon on either
-     * route (no sign changing its mind before a turn). While that is not so it keeps waiting; a car that has left it behind
-     * (the two routes parted) has no use for it. True when it took over.
-     */
-    private fun takeBetter(r: Route, along: Double, here: LatLon, l: Location, speedKmh: Double, limit: Double): Boolean {
-        val b = r.better ?: return false
-        if (rerouting) return false
-        val s = b.line.snap(here, 0, 0, b.line.points.size)
-        if (s == null || s.offset > BETTER_GONE_M) {
-            r.better = null
-            NavNote.add("late route dropped: the car left it")
-            return false
-        }
-        if (s.offset > limit) return false
-        if (l.hasBearing() && speedKmh >= BETTER_COURSE_KMH && abs(Geo.angleDiff(l.bearing.toDouble(), s.bearing)) > BETTER_COURSE_DEG) return false
-        val clear = (speedKmh / 3.6 * BETTER_CLEAR_S).coerceIn(BETTER_CLEAR_MIN_M, BETTER_CLEAR_MAX_M)
-        if (toStep(r, nextStep(r, along), along) < clear) return false
-        val next = nextStep(b, s.along)
-        val toNext = toStep(b, next, s.along)
-        if (toNext < clear) return false
-        route = b
-        lastSeg = s.segment
-        watch.reset()
-        // not a word: the driver has heard what comes next, or will, at its time
-        forgetPrompts()
-        pendingIntro = false
-        saidLong.add(next)
-        saidEarly.add(next)
-        Log.i(TAG, "OSRM's late route taken over (${toNext.toInt()} m to its next step)")
-        NavNote.add("late route taken over")
-        return true
     }
 
     /** How far before a manoeuvre its near prompt is said: 8 s ahead, an Arabic sentence takes about 3 s. */

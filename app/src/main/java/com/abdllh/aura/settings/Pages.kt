@@ -579,6 +579,7 @@ class AboutPage(private val act: SettingsPanel) : Page(R.string.set_about, R.dra
         // the screens that are panels of the one window: how long the last one took, and the last that failed to open
         com.abdllh.aura.home.PanelStack.lastOpen.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_layers, R.string.about_panel_open, it) }
         com.abdllh.aura.home.PanelStack.failedNote(ctx).takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_alert, R.string.about_panel_failed, it) }
+        com.abdllh.aura.home.DrawWatch.note(ctx).takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_alert, R.string.about_window_lost, it) }
         // the last Bluetooth song's lookup: where its cover and length came from, or why nothing came
         com.abdllh.aura.music.CoverSearch.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_disc, R.string.about_cover, it) }
         // how the last song handed to YouTube's app went (it could not be tried before the unit)
@@ -592,6 +593,8 @@ class AboutPage(private val act: SettingsPanel) : Page(R.string.set_about, R.dra
         com.abdllh.aura.nav.NavNote.text.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_nav, R.string.about_nav, it) }
         // the start-up cuts of 2.0's foundations, none of which could be tried before the unit
         com.abdllh.aura.nav.MapLib.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_layers, R.string.about_map_lib, it) }
+        // the one map under the window: when it drew at this start, or why the home screen has none
+        com.abdllh.aura.nav.MapController.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_nav, R.string.about_map_state, it) }
         com.abdllh.aura.system.IdleGc.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_cpu, R.string.about_idle_gc, it) }
         com.abdllh.aura.system.DexCompile.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_cpu, R.string.about_compile, it) }
         col.addRow(ctx.group(*rows.toTypedArray()))

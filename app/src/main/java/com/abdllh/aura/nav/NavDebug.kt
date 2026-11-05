@@ -92,7 +92,7 @@ internal object NavDebug {
         val w = RoadWatch.state
         val named = r?.steps?.count { it.name.isNotBlank() } ?: 0
         Log.i(TAG, "nav state=${NavSession.state} dest=${NavSession.destination?.name} rerouting=${NavSession.rerouting} route=${r?.let { "${it.distance.toInt()}m/${it.steps.size}steps/named$named" }} " +
-            "limits=${r?.limits?.metres?.toInt()} better=${r?.better != null}")
+            "limits=${r?.limits?.metres?.toInt()}")
         Log.i(TAG, "progress along=${p?.along?.toInt()} next=${p?.next} toNext=${p?.toNext?.toInt()} left=${p?.remaining?.toInt()} kmh=${p?.speedKmh} off=${p?.offRoute}")
         Log.i(TAG, "road limit=${w.limit} fromMap=${w.limitFromMap} estimate=${w.estimate} over=${w.over} kmh=${w.speedKmh} spot=${w.spot?.kind} metres=${w.metres} guide=${r?.guide?.spots?.size}")
         Log.i(TAG, "media current=${MediaMonitor.current?.let { "'${it.title}' playing=${it.playing} from=${it.sourcePkg}" }}")

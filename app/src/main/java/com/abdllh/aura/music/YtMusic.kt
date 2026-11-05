@@ -66,7 +66,7 @@ object YtMusic {
     }
 
     /** The app that will play: YouTube Music, else YouTube; null when neither is on the unit. */
-    fun player(c: Context): String? = listOf(PKG, PKG_YOUTUBE).firstOrNull { p ->
+    fun player(c: Context): String? = players.firstOrNull { p ->
         try { c.packageManager.getApplicationInfo(p, 0).enabled } catch (_: Throwable) { false }
     }
 
@@ -75,6 +75,11 @@ object YtMusic {
     fun search(query: String, done: (List<Song>?) -> Unit) {
         val q = query.trim()
         if (q.isEmpty()) { done(emptyList()); return }
+        // (debug builds, for a hand-over with no catalogue to ask: setprop debug.aura.ytfake 1)
+        if (com.abdllh.aura.BuildConfig.DEBUG && com.abdllh.aura.system.SystemProps.get("debug.aura.ytfake") == "1") {
+            main.post { done(listOf(Song("standin1", "Stand-in song: $q", "Stand-in artist", "Stand-in album", 180, ""))) }
+            return
+        }
         io.execute {
             val r = try { find(q) } catch (t: Throwable) { Log.i(TAG, "search '$q': $t"); null }
             main.post { done(r) }

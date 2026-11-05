@@ -1,13 +1,9 @@
 package com.abdllh.aura.nav
 
 import android.Manifest
-import android.app.Activity
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.res.ColorStateList
-import android.graphics.drawable.ColorDrawable
 import android.location.Location
 import android.os.Bundle
 import android.os.SystemClock
@@ -17,6 +13,7 @@ import android.text.TextWatcher
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
+import android.view.WindowManager
 import android.view.animation.LinearInterpolator
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
@@ -28,6 +25,9 @@ import android.widget.ProgressBar
 import android.widget.ScrollView
 import com.abdllh.aura.BuildConfig
 import com.abdllh.aura.R
+import com.abdllh.aura.home.HomeActivity
+import com.abdllh.aura.home.Panel
+import com.abdllh.aura.home.Screens
 import com.abdllh.aura.ui.ABtn
 import com.abdllh.aura.ui.AText
 import com.abdllh.aura.ui.Elev
@@ -53,21 +53,25 @@ import com.abdllh.aura.ui.lift
 import com.abdllh.aura.ui.lp
 import com.abdllh.aura.ui.pressScale
 import com.abdllh.aura.ui.roundedClip
-import com.abdllh.aura.util.LocaleHelper
 import com.abdllh.aura.util.Prefs
 import com.abdllh.aura.util.dp
 import java.util.Locale
 import kotlin.math.abs
 
 /**
- * Aura's own maps: search a place, see the route, drive with turn-by-turn guidance. Full screen MapLibre map with
- * glass panels on top, sized for a car screen. Every panel comes in and goes ([reveal]) instead of popping, and only
- * when its state changes: the panels are synced on every fix.
- *  extras: "search" = open the search; "go" = "home" | "work" to drive there at once; "simulate" (debug builds).
+ * Aura's own maps: search a place, see the route, drive with turn-by-turn guidance. Glass panels, sized for a car screen, over the
+ * one map under the window: this panel is those panels and what they do, the map and what is on it are [MapController]'s, and it
+ * goes on being there when this panel is not. Every panel comes in and goes ([reveal]) instead of popping, and only
+ * when its state changes: the panels are synced on every fix. Kept once built, and built ahead of time ([PanelStack.prepare]); what
+ * belonged to a visit (a search, a place, a place being chosen) goes when it leaves the stack, as it went with the activity.
+ *  args: "search" = open the search; "go" = "home" | "work" to drive there at once; "simulate" (debug builds).
  */
-class MapsActivity : Activity() {
-    private lateinit var map: AuraMap
-    private lateinit var root: FrameLayout
+class MapsPanel(shell: HomeActivity) : Panel(shell, Screens.MAPS) {
+    private val map: MapController get() = shell.map
+    override val root = FrameLayout(this)
+    override val keep: Boolean get() = true
+    // (the map's slot does not follow the keyboard, and the field is at the top, above it: this window never pans. See DEV.md, "One window")
+    override val softInput: Int get() = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN
     /** The map's own controls at the end side, faded away together while the keyboard is up. */
     private lateinit var controls: FrameLayout
     private lateinit var searchCard: LinearLayout
@@ -114,54 +118,23 @@ class MapsActivity : Activity() {
     // the look this screen was built with: a sunset under "auto", or a change in Settings, builds it again
     private var builtDark = true
     private var builtAccent = 0
-    private var builtLang = ""
 
-    override fun attachBaseContext(base: Context) {
-        super.attachBaseContext(LocaleHelper.wrap(base))
+    override fun onArgs(args: Bundle) {
+        handle(args)
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        Fonts.refreshLocale(this)
-        Theme.refresh()
-        builtDark = Palette.dark
-        builtAccent = Prefs.accent
-        builtLang = Prefs.lang
-        Theme.window(this, Palette.bg)
-        // the map's land as the window's own colour, until the map has drawn (one fill: the screen is all map, so a
-        // root view's background over the window's filled it twice under every frame)
-        window.setBackgroundDrawable(ColorDrawable(Palette.mapLand))
-        map = AuraMap(this, interactive = true, texture = false)
-        map.startPadding = panelWidth() + 32.dp // the car sits in the part of the map the panels leave free
-        map.onCreate(savedInstanceState)
-        setContentView(buildUi())
-        map.onUserMoved = { onUserMoved() }
-        map.onLongPress = { p -> dropPin(p) }
-        // a shop, a mosque, a fuel station... tapped on the map: there, with the way to it
-        map.onPoiTap = { name, kind, at -> if (NavSession.state == NavSession.State.IDLE) select(Place(name, Poi.label(this, kind), at)) }
-        map.onReady = { syncNav(); CarLocation.last?.let { onFix(it) }; watchBearing() }
-        if (!CarLocation.hasPermission(this)) {
-            requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION), 1)
-        }
-        handle(intent)
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        handle(intent)
-    }
-
-    private fun handle(i: Intent?) {
-        if (BuildConfig.DEBUG && i?.hasExtra("no3d") == true) MapStyle.buildings3d = false
-        if (BuildConfig.DEBUG) i?.getStringExtra("mock_loc")?.split(",")?.mapNotNull { it.trim().toDoubleOrNull() }?.let { ll ->
-            // emulator testing:  am start -n com.abdllh.aura/.nav.MapsActivity --es mock_loc "24.7136,46.6753"
+    private fun handle(i: Bundle?) {
+        if (BuildConfig.DEBUG && i?.containsKey("no3d") == true) { MapStyle.buildings3d = false; map.reloadStyle() }
+        if (BuildConfig.DEBUG && i?.getBoolean("simulate", false) == true) simulate = true
+        if (BuildConfig.DEBUG) i?.getString("mock_loc")?.split(",")?.mapNotNull { it.trim().toDoubleOrNull() }?.let { ll ->
+            // emulator testing:  am start -n com.abdllh.aura/.nav.MapsActivity --es mock_loc "24.7136,46.6753" (forwarded: home/Entry.kt)
             if (ll.size >= 2) CarLocation.publish(Location("mock").apply {
                 latitude = ll[0]; longitude = ll[1]; accuracy = 5f; time = System.currentTimeMillis()
                 elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
                 if (ll.size >= 3) bearing = ll[2].toFloat()
             })
         }
-        when (val which = i?.getStringExtra("go")) {
+        when (val which = i?.getString("go")) {
             "home", "work" -> {
                 val saved = Trips.saved(which)
                 when {
@@ -169,7 +142,7 @@ class MapsActivity : Activity() {
                     Trips.legacy(which).isNotBlank() -> { // an address typed in 1.0: find it once and keep the place
                         toast(getString(R.string.maps_searching))
                         Trips.findLegacy(which, arabic) { p ->
-                            if (isDestroyed || isFinishing) return@findLegacy
+                            if (!isTop) return@findLegacy
                             if (p == null) { toast(getString(R.string.maps_no_results)); openSearch(); return@findLegacy }
                             driveTo(p)
                         }
@@ -180,30 +153,22 @@ class MapsActivity : Activity() {
         }
         // a place to show with its route and Go, the driver's to start: what the phone sent when no card can ask him,
         // or when no route was found for it ([com.abdllh.aura.link.PlaceInbox])
-        if (i != null && i.hasExtra(EXTRA_LAT) && i.hasExtra(EXTRA_LON)) {
-            val pos = LatLon(i.getDoubleExtra(EXTRA_LAT, 0.0), i.getDoubleExtra(EXTRA_LON, 0.0))
-            notKept = if (i.getBooleanExtra(EXTRA_KEEP, true)) null else pos
-            select(Place(i.getStringExtra(EXTRA_NAME).orEmpty(), i.getStringExtra(EXTRA_DETAIL).orEmpty(), pos))
-            i.removeExtra(EXTRA_LAT)
-            i.removeExtra(EXTRA_LON)
-            i.removeExtra(EXTRA_NAME)
-            i.removeExtra(EXTRA_DETAIL)
-            i.removeExtra(EXTRA_KEEP)
+        if (i != null && i.containsKey(MapsActivity.EXTRA_LAT) && i.containsKey(MapsActivity.EXTRA_LON)) {
+            val pos = LatLon(i.getDouble(MapsActivity.EXTRA_LAT, 0.0), i.getDouble(MapsActivity.EXTRA_LON, 0.0))
+            notKept = if (i.getBoolean(MapsActivity.EXTRA_KEEP, true)) null else pos
+            select(Place(i.getString(MapsActivity.EXTRA_NAME).orEmpty(), i.getString(MapsActivity.EXTRA_DETAIL).orEmpty(), pos))
         }
-        if (i?.getBooleanExtra("search", false) == true) openSearch()
+        if (i?.getBoolean("search", false) == true) openSearch()
         // a search asked for by name (the assistant's "where is the nearest petrol station", and the emulator's tests)
-        i?.getStringExtra("q")?.takeIf { it.isNotBlank() }?.let { q -> openSearch(); input.setText(q); runSearch(q); hideKeyboard() }
-        i?.getStringExtra("pick")?.let { which -> // Home / Work chosen on the map, then back to the home screen
+        i?.getString("q")?.takeIf { it.isNotBlank() }?.let { q -> openSearch(); input.setText(q); runSearch(q); hideKeyboard() }
+        i?.getString("pick")?.let { which -> // Home / Work chosen on the map, then back to the home screen
             pickFor = which
             finishAfterPick = true
             showPickHint()
         }
-        i?.removeExtra("go")
-        i?.removeExtra("search")
-        i?.removeExtra("pick")
-        i?.removeExtra("q") // (once: a recreate at sunset must not search it again)
     }
 
+    private var simulate = false
     private var pickFor: String? = null
     private var finishAfterPick = false
     /** The place sent here that must not go to the recent places when Go starts it ([EXTRA_KEEP]). */
@@ -222,7 +187,7 @@ class MapsActivity : Activity() {
         select(Place(getString(R.string.maps_dropped_pin), "", p))
         Places.reverse(p, arabic) { found ->
             // (the same spot, not the same object: the name replaces the selection, and the route stays the pin's)
-            if (isDestroyed || selected?.pos != p || found == null) return@reverse
+            if (isGone || selected?.pos != p || found == null) return@reverse
             val named = Place(found.name, found.detail, p)
             selected = named
             placeName.setIfChanged(named.name)
@@ -242,124 +207,155 @@ class MapsActivity : Activity() {
         if (finishAfterPick) { finishAfterPick = false; finish() }
     }
 
-    override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, grants: IntArray) {
-        if (CarLocation.hasPermission(this)) CarLocation.acquire(this, "maps")
+    override fun onPermission(code: Int, grants: IntArray) {
+        if (CarLocation.hasPermission(this)) map.locationAllowed()
         else toast(getString(R.string.maps_location_needed))
     }
 
     // ------------------------------------------------------------------------------------------ lifecycle
-    override fun onStart() {
-        super.onStart()
-        map.onStart()
-        CarLocation.acquire(this, "maps")
+    private var locationAsked = false
+    /** It left the stack, and what belonged to that visit is still on the screen ([onOff]). */
+    private var chromeDue = false
+
+    override fun onShow(args: Bundle?) {
+        if (chromeDue) freshChrome()
+        takeLook() // (a kept panel can be of another hour: before anything of this visit is on it)
+        map.toMaps(panelWidth() + 32.dp) // the car sits in the part of the map the panels leave free
+        map.onUserMoved = { onUserMoved() }
+        map.onLongPress = { p -> dropPin(p) }
+        // a shop, a mosque, a fuel station... tapped on the map: there, with the way to it
+        map.onPoiTap = { name, kind, at -> if (NavSession.state == NavSession.State.IDLE) select(Place(name, Poi.label(this, kind), at)) }
+        map.onReady = { syncNav(); CarLocation.last?.let { onFix(it) }; watchBearing() }
+        watchBearing()
         CarLocation.addListener(fixListener)
         NavSession.addListener(navListener)
         Trips.addListener(tripsListener)
         syncNav()
         syncAttempt()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        if (checkLook()) return
-        com.abdllh.aura.system.Animations.ensureAnimators()
-        map.onResume()
-        try {
-            registerReceiver(looks, IntentFilter(Intent.ACTION_TIME_TICK).apply {
-                addAction(Intent.ACTION_TIME_CHANGED)
-                addAction(Intent.ACTION_TIMEZONE_CHANGED)
-                addAction(Intent.ACTION_LOCALE_CHANGED)
-            })
-        } catch (_: Throwable) {
+        if (!locationAsked && !CarLocation.hasPermission(this)) {
+            locationAsked = true
+            requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION), 1)
         }
+        handle(args)
     }
 
-    override fun onPause() {
-        try { unregisterReceiver(looks) } catch (_: Throwable) { }
-        map.onPause()
-        super.onPause()
-    }
-
-    override fun onStop() {
+    override fun onHide() {
         root.removeCallbacks(autoRecenter)
         root.removeCallbacks(arrivedTick)
         arrivalShown = 0L // (back on the screen, the arrival line starts stepping again from where the hold is)
         CarLocation.removeListener(fixListener)
-        CarLocation.release("maps")
         NavSession.removeListener(navListener)
         Trips.removeListener(tripsListener)
-        map.onStop()
-        super.onStop()
+        map.onUserMoved = null
+        map.onLongPress = null
+        map.onPoiTap = null
+        map.onReady = null
+        // (off the stack: gone from the map at once, as the home screen comes back over it)
+        if (isOff) forgetVisit()
+    }
+
+    /** Back or the Home key took it off the stack: what the visit chose. An activity forgot this at its destroy. */
+    private fun forgetVisit() {
+        searchRunnable?.let { root.removeCallbacks(it) }
+        root.removeCallbacks(firstOverview)
+        Places.cancelSearch()
+        selected = null
+        preview = null
+        routing = false
+        following = null
+        pickFor = null
+        finishAfterPick = false
+        notKept = null
+        simulate = false
+        tripShown = false
+        resetRouteRetry()
+        map.setRoute(null)
+        map.setDestination(null)
+        chromeDue = true
+    }
+
+    override fun onOff() {
+        forgetVisit()
+        freshChrome()
+    }
+
+    /** The panel as it was built, at rest and not seen (the first show after this looks as if it had just been built). */
+    private fun freshChrome() {
+        chromeDue = false
+        input.clearFocus()
+        input.setHint(R.string.home_where_to)
+        input.setText("")
+        spinner.visibility = View.GONE
+        results.alpha = 1f
+        results.removeAllViews()
+        resultsCard.reveal(false, -8f, animate = false)
+        placeCard.reveal(false, 16f, animate = false)
+        recenterBtn.reveal(false, 12f, animate = false)
+        recenterHolder.translationY = 0f
+        recenterLift = 0f
+        syncClear(animate = false)
+        controls.animate().cancel()
+        controls.alpha = 1f
+        controls.visibility = View.VISIBLE
     }
 
     override fun onDestroy() {
         searchRunnable?.let { root.removeCallbacks(it) }
         root.removeCallbacks(firstOverview)
         Places.cancelSearch()
-        map.onDestroy()
-        super.onDestroy()
     }
 
-    override fun onLowMemory() { super.onLowMemory(); map.onLowMemory() }
-
-    override fun onTrimMemory(level: Int) {
-        super.onTrimMemory(level)
-        if (level >= TRIM_MEMORY_RUNNING_LOW) map.onLowMemory() // the map engine drops its tile caches
-    }
-
-    @Deprecated("back steps out of search / preview first")
-    override fun onBackPressed() {
-        when {
-            resultsCard.isOn -> closeSearch()
-            selected != null && NavSession.state == NavSession.State.IDLE -> clearPlace()
-            else -> finish()
-        }
-    }
-
-    /** Sunset or sunrise under "auto" (the minute's tick), a new language, theme or accent from Settings. */
-    private val looks = object : BroadcastReceiver() {
-        override fun onReceive(c: Context, i: Intent) { checkLook() }
+    override fun onBack(): Boolean = when {
+        resultsCard.isOn -> { closeSearch(); true }
+        selected != null && NavSession.state == NavSession.State.IDLE -> { clearPlace(); true }
+        else -> false
     }
 
     /**
-     * Builds the screen again when its look is out of date: the map's style, the panels and the car are made in the
-     * theme and accent of their time, and the words in the language of theirs. A new language at once (the old
-     * screen would mix the two); a theme or an accent not while the driver is choosing a place (the next minute's
-     * tick tries again), nor while the car moves on a trip with a manoeuvre coming up: the map and its surface are built
-     * anew, a blank map and seconds of heavy work on this SoC just when the driver may need it. It waits for a stop, the
-     * trip's end or a long stretch ahead: a highway at dusk must not stay on the day's bright map until the first red
-     * light. A trip being driven goes on: [NavSession] is the app's, not this screen's.
+     * Builds the panel again when its look is out of date: the map's style, the panels and the car are made in the
+     * theme and accent of their time (a language is the whole window's: [HomeActivity.languageChanged]). Not while the driver
+     * is choosing a place (the next minute's tick tries again), nor when the map says it is no time for it
+     * ([MapController.lookMayChange]). A trip being driven goes on: [NavSession] is the app's, not this screen's.
      */
-    private fun checkLook(): Boolean {
-        val lang = Prefs.lang != builtLang
-        if (!lang && Theme.isDarkNow() == builtDark && Prefs.accent == builtAccent) return false
-        if (!lang && (resultsCard.isOn || selected != null || pickFor != null || input.hasFocus() || routing)) return false
-        val p = NavSession.progress
-        val moving = NavSession.state == NavSession.State.NAVIGATING && (p?.speedKmh ?: 0) >= MOVING_KMH
-        val quiet = p != null && !p.offRoute && !NavSession.rerouting && p.toNext >= QUIET_AHEAD_M
-        if (!lang && moving && !quiet) return false
-        recreate()
-        return true
+    override fun onLook() {
+        if (shell.languageChanged()) return
+        takeLook()
+    }
+
+    private fun takeLook() {
+        if (Theme.isDarkNow() == builtDark && Prefs.accent == builtAccent) return
+        if (resultsCard.isOn || selected != null || pickFor != null || input.hasFocus() || routing || !map.lookMayChange) return
+        rebuildLook()
+    }
+
+    /** The cards in the look of now, over the same map with the style of now. Nothing of the trip goes: it is all read again. */
+    private fun rebuildLook() {
+        Theme.refresh()
+        builtDark = Palette.dark
+        builtAccent = Prefs.accent
+        shell.windowLook(navBar)
+        map.lookChanged()
+        root.removeAllViews()
+        clusterNav = null
+        tripShown = false
+        overShown = false
+        arrivalShown = 0L
+        recenterLift = 0f
+        compassAt = Float.NaN
+        buildUi()
+        syncNav()
+        syncAttempt()
+        watchBearing()
     }
 
     // ------------------------------------------------------------------------------------------ location / nav
     private val fixListener: (Location) -> Unit = { onFix(it) }
 
     private fun onFix(l: Location) {
-        if (NavSession.state != NavSession.State.NAVIGATING) { // (navigation moves the car itself, on the route)
-            val speed = if (l.hasSpeed()) l.speed * 3.6 else 0.0
-            map.setCar(LatLon(l.latitude, l.longitude), if (l.hasBearing()) l.bearing.toDouble() else 0.0, speed)
-        }
         // the preview route once a fix is there; a failed one is retried with growing pauses, not on every fix
         // (not for a place whose trip is being started from elsewhere: [Trips] is finding its route)
         if (selected != null && preview == null && !routing && following == null && NavSession.state == NavSession.State.IDLE &&
             SystemClock.elapsedRealtime() >= routeRetryAt) requestRoute()
-        // OSRM's route came after BRouter's was shown: the card and the line take it (nothing is being driven yet)
-        preview?.better?.let { b ->
-            preview = b
-            showPreview(b)
-            map.setRoute(b.line.points)
-        }
     }
 
     private var routeFails = 0
@@ -418,8 +414,7 @@ class MapsActivity : Activity() {
         val navigating = st == NavSession.State.NAVIGATING
         val active = st != NavSession.State.IDLE
         // (a trip started from elsewhere while this screen was away: nothing chosen earlier stays behind it)
-        if (navigating && selected != null && !routing && following == null) { selected = null; preview = null }
-        map.setFps(if (navigating) 60 else 30) // a turning, tilted map needs the frames
+        if (navigating && selected != null && !routing && following == null) { selected = null; preview = null; map.setRoute(null); map.setDestination(null) }
         searchCard.reveal(!active, -12f)
         // (a trip started from outside while the search was open: its keyboard-time fade must not hide the speed)
         if (active) { resultsCard.reveal(false, -8f); placeCard.reveal(false, 16f); showControls(true) }
@@ -436,49 +431,24 @@ class MapsActivity : Activity() {
             voiceHintShown = true
             toast(getString(R.string.maps_voice_missing))
         }
-        if (!navigating && turnShown != null) { turnShown = null; map.setTurn(null) }
         if (!active) {
             if (tripShown) { // the trip has just ended (Done, End, or by itself after arriving): back to browsing
                 tripShown = false
                 root.removeCallbacks(autoRecenter)
-                map.setRoute(preview?.line?.points)
-                map.setDestination(selected?.pos)
                 if (selected == null) input.setText("")
                 recenterBtn.reveal(false, 12f, scaleFrom = 0.92f)
-                map.setCamera(AuraMap.Camera.FOLLOW)
             }
             return
         }
         if (!tripShown) { tripShown = true; banner.reset(); hideKeyboard() } // (once: it is a call to the keyboard's service)
-        val r = NavSession.route ?: return
-        val p = NavSession.progress
-        map.setDestination(NavSession.destination?.pos)
-        if (map.camera != AuraMap.Camera.FREE && map.camera != AuraMap.Camera.OVERVIEW && map.camera != AuraMap.Camera.NAVIGATE) {
-            map.setCamera(AuraMap.Camera.NAVIGATE)
-        }
-        // only the part still ahead shows, from under the arrow on: the map cuts the line at the car as it draws it
-        map.setRouteAhead(r.line)
-        if (p == null) return
-        map.setCar(p.position, p.bearing, p.speedKmh.toDouble())
+        val p = NavSession.progress ?: return
         banner.update()
-        val step = r.steps[p.next]
-        // the turn ahead, as an arrow on the route itself (not the start or the arrival, nor a turn still far off);
-        // through a roundabout it runs on to the exit taken, so its head shows the way out, not the ring
-        val turn = if (step.type == "arrive" || step.type == "depart" || p.toNext > TURN_ARROW_FROM_M || NavSession.rerouting) null else r to p.next
-        if (turn != turnShown) {
-            turnShown = turn
-            if (turn == null) map.setTurn(null)
-            else map.setTurn(r.line, step.at, AuraMap.turnAfter(step))
-        }
         // how long is left first (what the driver asks), then how far and when
         tripEta.setIfChanged(GuidanceBanner.styled(Units.duration(p.timeLeft, arabic), 0.5f, Palette.success))
         tripLeft.setIfChanged("${Units.distance(p.remaining, arabic)} · ${getString(R.string.maps_arrival)} ${Units.arrival(p.timeLeft, Prefs.clock24)}")
         speedText.setIfChanged("${p.speedKmh}")
         showOver(RoadWatch.state.over)
     }
-
-    /** The turn whose arrow is on the map (the route and the step's index). */
-    private var turnShown: Pair<Route, Int>? = null
 
     private var overShown = false
 
@@ -590,15 +560,16 @@ class MapsActivity : Activity() {
 
     /** The compass shows where north is on the turned map (a transform, set only when it moved a degree or more). */
     private fun watchBearing() {
+        val m = map.map?.map ?: return
+        turnCompass(m.cameraPosition.bearing.toFloat())
         if (bearingWatched) return
-        val m = map.map ?: return
         bearingWatched = true
         m.addOnCameraMoveListener { turnCompass(m.cameraPosition.bearing.toFloat()) }
         m.addOnCameraIdleListener { turnCompass(m.cameraPosition.bearing.toFloat()) }
-        turnCompass(m.cameraPosition.bearing.toFloat())
     }
 
     private fun turnCompass(bearing: Float) {
+        if (!shown) return // (the map goes on moving under the home screen: a change to a hidden view would still ask for a frame)
         if (!compassAt.isNaN() && abs(Geo.angleDiff(compassAt.toDouble(), bearing.toDouble())) < 1) return
         compassAt = bearing
         compassIcon.rotation = -bearing
@@ -706,14 +677,14 @@ class MapsActivity : Activity() {
                 Router.afterOthers {
                     if (ask == routeAsk) {
                         routing = false
-                        if (!isDestroyed && selected?.pos == p.pos && preview == null && following == null && NavSession.state == NavSession.State.IDLE) requestRoute()
+                        if (!isGone && selected?.pos == p.pos && preview == null && following == null && NavSession.state == NavSession.State.IDLE) requestRoute()
                     }
                 }
                 return@route
             }
             routing = false
             // (the same spot: a dropped pin is replaced by its named place while the route is on its way)
-            if (isDestroyed || selected?.pos != p.pos) return@route
+            if (isGone || selected?.pos != p.pos) return@route
             if (r == null) { routeFailed(); return@route }
             resetRouteRetry()
             preview = r
@@ -774,7 +745,7 @@ class MapsActivity : Activity() {
 
     /** A trip has started: from the card to the trip's panels. */
     private fun afterStart() {
-        if (BuildConfig.DEBUG && intent?.getBooleanExtra("simulate", false) == true) NavSim.start(70.0)
+        if (BuildConfig.DEBUG && simulate) NavSim.start(70.0)
         selected = null
         preview = null
         root.removeCallbacks(firstOverview)
@@ -796,7 +767,7 @@ class MapsActivity : Activity() {
         placeCard.reveal(true, 16f, delay = 60)
         routing = true
         // (Back pressed meanwhile: no navigation the driver can no longer see starting)
-        val here = { !isDestroyed && !isFinishing && selected?.pos == p.pos }
+        val here = { isTop && selected?.pos == p.pos }
         Trips.goTo(this, p, source = Trips.SCREEN, wanted = here) { outcome, _ ->
             routing = false
             when (outcome) {
@@ -861,7 +832,7 @@ class MapsActivity : Activity() {
         searching(true)
         // near the car, or near where the map is looked at when there is no fix yet (else no bias at all, and
         // "pharmacy" found Toronto first)
-        val near = CarLocation.lastKnown() ?: map.map?.cameraPosition?.target?.let { LatLon(it.latitude, it.longitude) }
+        val near = CarLocation.lastKnown() ?: map.target
         Places.search(q, near, arabic) { list ->
             if (!resultsCard.isOn) return@search
             searching(false)
@@ -908,10 +879,7 @@ class MapsActivity : Activity() {
     }
 
     // ------------------------------------------------------------------------------------------ UI
-    private fun buildUi(): View {
-        root = FrameLayout(this)
-        root.addView(map.view, MATCH, MATCH)
-
+    private fun buildUi() {
         // ---- end side: the map's controls (one layer, faded away while typing)
         controls = FrameLayout(this)
         root.addView(controls, MATCH, MATCH)
@@ -972,7 +940,7 @@ class MapsActivity : Activity() {
             background = Shapes.glass(Radius.PILL)
             lift(Elev.FLOAT, overMap = true)
         }
-        searchCard.addView(roundIcon(R.drawable.ic_chevron_left, Touch.MIN, R.string.maps_close, flipRtl = true) { onBackPressed() },
+        searchCard.addView(roundIcon(R.drawable.ic_chevron_left, Touch.MIN, R.string.maps_close, flipRtl = true) { shell.panels.back() },
             lp(Touch.MIN.dp, Touch.MIN.dp).apply { marginStart = Space.S.dp })
         input = EditText(this).apply {
             setHint(R.string.home_where_to)
@@ -1041,8 +1009,6 @@ class MapsActivity : Activity() {
         }
         col.addView(resultsCard, lp(panelWidth(), WRAP).apply { topMargin = Space.M.dp })
         root.addView(col, flp(WRAP, WRAP, Gravity.TOP or Gravity.START).apply { setMargins(Space.L.dp, Space.L.dp, Space.L.dp, 0); marginStart = Space.L.dp })
-        // a new size of the screen (the keyboard came or went): the results measure their room again
-        root.addOnLayoutChangeListener { _, _, t, _, b, _, ot, _, ob -> if (b - t != ob - ot && resultsCard.isOn) resultsCard.post { resultsCard.requestLayout() } }
 
         // ---- the guidance banner, in the search pill's place (both there while one goes and the other comes)
         banner = GuidanceBanner(this)
@@ -1074,8 +1040,6 @@ class MapsActivity : Activity() {
         recenterBtn.addView(recenterText, lp(WRAP, WRAP).apply { marginStart = Space.M.dp })
         recenterHolder.addView(recenterBtn, flp(WRAP, Touch.MIN.dp))
         root.addView(recenterHolder, flp(WRAP, WRAP, Gravity.BOTTOM or Gravity.START).apply { setMargins(Space.L.dp, 0, Space.L.dp, Space.L.dp); marginStart = Space.L.dp })
-        root.viewTreeObserver.addOnGlobalLayoutListener { liftRecenter() }
-        return root
     }
 
     /**
@@ -1126,7 +1090,7 @@ class MapsActivity : Activity() {
             setText(R.string.maps_go)
             alpha = 0.5f
             setOnClickListener { go() }
-            if (BuildConfig.DEBUG) setOnLongClickListener { intent.putExtra("simulate", true); go(); true }
+            if (BuildConfig.DEBUG) setOnLongClickListener { simulate = true; go(); true }
         }
         actions.addView(goBtn, lp(0, Touch.LARGE.dp, 1f))
         // Saving is one quiet choice beside Go, its two kinds in a menu: labelled "Home" next to Go it read as "drive
@@ -1258,7 +1222,7 @@ class MapsActivity : Activity() {
         pressScale(Motion.PRESS_ICON)
         setOnClickListener { onClick() }
         val side = (size * 0.45f).toInt().dp
-        addView((img ?: ImageView(this@MapsActivity)).apply {
+        addView((img ?: ImageView(this@MapsPanel)).apply {
             setImageResource(icon)
             setColorFilter(Palette.text)
             scaleType = ImageView.ScaleType.FIT_CENTER
@@ -1304,9 +1268,17 @@ class MapsActivity : Activity() {
         addView(iconView(icon, 26, Palette.text), flp(26.dp, 26.dp, Gravity.CENTER))
     }
 
-    companion object {
-        /** The turn's arrow is on the map from this far before it (its size is the map's: [AuraMap.setTurn]). */
-        private const val TURN_ARROW_FROM_M = 900.0
+    // (last in the class: what is declared above is what this builds on)
+    init {
+        builtDark = Palette.dark
+        builtAccent = Prefs.accent
+        buildUi()
+        // a new size of the screen (the keyboard came or went): the results measure their room again
+        root.addOnLayoutChangeListener { _, _, t, _, b, _, ot, _, ob -> if (b - t != ob - ot && resultsCard.isOn) resultsCard.post { resultsCard.requestLayout() } }
+        root.viewTreeObserver.addOnGlobalLayoutListener { if (shown) liftRecenter() }
+    }
+
+    private companion object {
         /** After the driver moved the map while driving, it goes back to the car by itself after this long, */
         private const val AUTO_RECENTER_MS = 12_000L
         /** and after a look at the whole route, this long. */
@@ -1317,17 +1289,5 @@ class MapsActivity : Activity() {
         private const val MAP_BTN = 66
         /** A search result's height. */
         private const val ROW_DP = 74
-        /** At this speed and above the car moves on a trip: a new theme or accent waits ([checkLook]). */
-        private const val MOVING_KMH = 3
-        /** Nothing to do for this far: a minute and a half at 120 km/h, for a few seconds of a screen being rebuilt. */
-        private const val QUIET_AHEAD_M = 3000.0
-
-        /** Extras: a place to show with its route and Go ([handle]; sent by [com.abdllh.aura.home.Screens.mapsPlace]). */
-        const val EXTRA_LAT = "dest_lat"
-        const val EXTRA_LON = "dest_lon"
-        const val EXTRA_NAME = "dest_name"
-        const val EXTRA_DETAIL = "dest_detail"
-        /** false: not for the recent places (Apple's place data: companion.md 2.6). */
-        const val EXTRA_KEEP = "dest_keep"
     }
 }
