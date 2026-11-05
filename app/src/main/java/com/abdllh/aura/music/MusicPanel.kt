@@ -737,17 +737,17 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
     }
 
     /**
-     * One step of the move. The two copies of the cover cross under the shadow's scale: the big one comes up over the small one in the first half, the small one goes under it in the second, so nothing shows through. What
-     * leaves is gone by 40 % of the way, what comes starts there.
+     * One step of the move. The two copies of the cover cross under the shadow's scale: the big one comes up over the small one in the first half, the small one goes under it in the second, so nothing shows through. The
+     * small cover's side and what lies beside it show only near the end, once the cover has left them room; the big side from 40 % of the way.
      */
     private fun setBigK(k: Float) {
         bigK = k
         poseCover()
         coverBig.alpha = (k * 2f).coerceAtMost(1f)
         coverSmall.alpha = ((1f - k) * 2f).coerceAtMost(1f)
-        val leaving = (1f - k * 2.5f).coerceAtLeast(0f)
-        sideSmall.alpha = leaving
-        beside.alpha = leaving
+        val small = (1f - k * 4f).coerceAtLeast(0f)
+        sideSmall.alpha = small
+        beside.alpha = small
         sideBig.alpha = ((k - 0.4f) / 0.6f).coerceAtLeast(0f)
     }
 
@@ -795,7 +795,7 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         // (another song: its own correction comes with its lyrics; the same one shown again keeps its own meanwhile)
         if (lyricsShown != s?.key) { lyricsOffset = 0L; lyricsResult = null }
         lyricsView.removeCallbacks(lyricsLoading)
-        if (s == null) { lyricsShown = null; lyricsOff = false; lyrics { it.showStatus("") }; return }
+        if (s == null) { lyricsShown = null; lyricsOff = false; noLyrics = false; lyrics { it.showStatus("") }; return }
         lyricsOff = Lyrics.isOff(this, s.title, s.artist, s.offSec)
         if (lyricsOff) { lyricsAnswer(s.key, null, false); return }
         // 1.19: Naghm's song with the phone's lyrics already here: those, at once (the same lines as on the phone, timed
@@ -1562,6 +1562,8 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         if (to == Src.BT) BtMusic.activate() else BtMusic.deactivate()
         if (to == Src.YT) Player.pauseForOtherSource()
         if (was == Src.YT) MediaMonitor.appControl(YtMusic.players, MediaMonitor.Do.PAUSE)
+        // (the library lay beside the small cover whatever the song had: that is the last state, not its lyrics)
+        if (was == Src.LOCAL) noLyrics = false
         cancelArtWait()
         lastArtKey = Long.MIN_VALUE
         seekTarget = -1L

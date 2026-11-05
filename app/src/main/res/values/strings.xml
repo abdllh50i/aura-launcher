@@ -170,7 +170,6 @@
     <string name="lyrics_nothing">Play a song to see its lyrics here</string>
     <string name="lyrics_tap_sync">Tap the line being sung to sync</string>
     <string name="lyrics_synced">Lyrics synced ✓</string>
-    <string name="lyrics_bigger">Lyrics on the whole screen</string>
     <string name="lyrics_smaller">Back to the song</string>
     <string name="maps_dropped_pin">Dropped pin</string>
     <string name="maps_pick_home_short">Long-press your home on the map</string>

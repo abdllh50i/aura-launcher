@@ -75,6 +75,8 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
     private val rowPitch = nowRole.line + ROW_EXTRA
     private val ascent = nowRole.px * 1.085f
     private val smallDy = lineRole.baseline - ascent * small
+    /** A row is laid out from the font's ascent, which is a little over what the role's line box leaves above the baseline. */
+    private val litDy = kotlin.math.round(nowRole.baseline - ascent)
 
     private val scroll = ScrollView(c).apply {
         isVerticalScrollBarEnabled = false
@@ -488,7 +490,7 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
             val lit = k == current
             val s = if (lit) 1f else small
             val after = current in 0 until k
-            val y = if (lit) 0f else smallDy + if (after) extra else 0f
+            val y = if (lit) litDy else smallDy + if (after) extra else 0f
             val a = when {
                 lit -> 1f
                 windowOn && laid && !inWindow(k, top, after, extra) -> 0f

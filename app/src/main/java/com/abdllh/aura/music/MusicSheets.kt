@@ -267,7 +267,7 @@ internal class MoreRow(ctx: Context, title: Int, first: Boolean, far: View, onTa
         glyphView.setImageResource(glyph)
         subView.text = sub
         subView.visibility = if (sub.isEmpty()) GONE else VISIBLE
-        titleView.translationY = if (sub.isEmpty()) (HEIGHT - Type.resultTitle.viewH) / 2f else 11f
+        titleView.translationY = if (sub.isEmpty()) (HEIGHT - Type.resultTitle.viewH) / 2f else 16f
     }
 
     /** Nothing to do now: dimmed, and no taps. */
