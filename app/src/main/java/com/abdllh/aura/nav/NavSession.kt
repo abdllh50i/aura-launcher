@@ -51,6 +51,9 @@ object NavSession {
         private set
     var rerouting = false
         private set
+    /** When this trip began (elapsedRealtime). */
+    var startedAt = 0L
+        private set
     /** When the car arrived (elapsedRealtime): the trip ends by itself [ARRIVED_HOLD_MS] later. */
     var arrivedAt = 0L
         private set
@@ -100,6 +103,7 @@ object NavSession {
         destination = dest
         route = r
         state = State.NAVIGATING
+        startedAt = SystemClock.elapsedRealtime()
         trip++
         main.removeCallbacks(endAfterArrival)
         rerouting = false
@@ -288,6 +292,12 @@ object NavSession {
         val i = g.told.indexOfLast { it.index <= current }
         if (i < 0) return null
         return com.abdllh.aura.nav.guide.Speech.text(g.keepOn(i, metres), ttsArabic).ifBlank { null }
+    }
+
+    /** Debug builds, the emulator's way to the rerouting card (`NavDebug --ez reroute`): a real one is over in a moment here. */
+    internal fun debugRerouting(on: Boolean) {
+        rerouting = on
+        changed()
     }
 
     private fun reroute(here: LatLon, l: Location) {

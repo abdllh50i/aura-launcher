@@ -1,13 +1,20 @@
 package com.abdllh.aura.nav
 
+import android.location.LocationManager
+import android.os.SystemClock
+import android.text.Layout
 import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
 import com.abdllh.aura.R
+import com.abdllh.aura.nav.drive.line
+import com.abdllh.aura.nav.drive.moveMs
+import com.abdllh.aura.nav.drive.showCard
+import com.abdllh.aura.nav.drive.up
+import com.abdllh.aura.system.DriveState
 import com.abdllh.aura.ui.AText
 import com.abdllh.aura.ui.IconButton
-import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.PressGesture
@@ -18,176 +25,281 @@ import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.anim
 import com.abdllh.aura.ui.at
 import com.abdllh.aura.ui.box
-import com.abdllh.aura.ui.glyph
-import com.abdllh.aura.ui.label
+import com.abdllh.aura.ui.fadeTo
+import com.abdllh.aura.ui.iconView
 import com.abdllh.aura.ui.look
-import com.abdllh.aura.ui.pressScale
 import kotlin.math.abs
 
 /**
- * What belongs to the map itself over [MapsPanel], at x 384 beside the column in both languages (SPEC.md sections 1, 5): the compass at y 138, the zoom stack at y 330, locate at y 450, and what
- * the camera does after a touch. Browse only ever calls [forSearch], [recenter], [hideRecenter].
+ * What belongs to the map itself over [MapsPanel], at x 384 in both languages, beside the column and clear of the route (SPEC.md sections 1 and 6.2): compass, camera here, overview, zoom, locate, and the attribution, and
+ * what the camera does after a touch. Browse has zoom and locate always, and the compass when the map is turned. On a trip they come with a touch on the map and go 5 s after the last one, unless the camera is free: then locate
+ * is `accentInk` and stays. While moving a free camera comes back by itself 10 s after the last touch, a whole route 20 s, and at once under 300 m to a turn; parked it stays until locate is pressed.
+ * `drive-free` has none of them. The guidance mute of the mockups is not here: no spoken navigation in 2.0.
  */
 internal class MapTools(panel: MapsPanel) : MapsPart(panel) {
-    /** The whole layer's own, which the old speed cluster of the column still lies in, until the column is rebuilt. */
-    lateinit var controls: FrameLayout
-        private set
-    /** The tools, faded together: their alpha goes straight into what they draw, no layer. */
-    private lateinit var group: FrameLayout
-    private lateinit var zoom: SurfaceCard
-    private lateinit var locate: IconButton
     private lateinit var compass: SurfaceCard
     private lateinit var compassGlyph: ImageView
+    private lateinit var camHere: IconButton
+    private lateinit var overview: IconButton
+    private lateinit var zoom: SurfaceCard
+    private lateinit var locate: IconButton
     private lateinit var attribution: AText
+    private lateinit var markNote: SurfaceCard
+    private lateinit var markText: AText
+    private var built = false
 
     private var bearingWatched = false
     private var compassAt = Float.NaN
-    private var searchOpen = false
+    private var turned = false
+    /** On a trip: the tools are up from a touch, until [hideTools]. */
+    private var touched = false
+    /** The keyboard is up: nothing here is needed while typing. */
+    private var searching = false
+    private var lastMarked: MapExtras.Spot? = null
+    private var listening = false
+
+    private fun pill(icon: Int, desc: Int, token: () -> Int = { Palette.icon }, onClick: () -> Unit) =
+        IconButton(this, icon, GLYPH, BTN, BTN, IconButton.Kind.PILL, PressGesture.CONTROL, token = token).apply {
+            contentDescription = getString(desc)
+            setOnClickListener { onClick() }
+        }
 
     override fun build() {
         compassAt = Float.NaN
-        controls = FrameLayout(this)
-        panel.toolsLayer.addView(controls, MATCH, MATCH)
-        group = object : FrameLayout(this) {
-            override fun hasOverlappingRendering() = false
-        }
-        panel.toolsLayer.addView(group, MATCH, MATCH)
-
-        attribution = label(Type.attribution, { Palette.ink3 }, gravity = Gravity.RIGHT).apply {
+        val layer = panel.toolsLayer
+        attribution = line(Type.attribution, { Palette.ink3 }, moving = false).apply {
+            gravity = Gravity.RIGHT
             textDirection = View.TEXT_DIRECTION_LTR
             text = MapStyle.attribution(CarLocation.lastKnown())
         }
-        panel.toolsLayer.addView(attribution, Type.attribution.box(512, 492, 500))
+        layer.addView(attribution, Type.attribution.box(512, 492, 500))
         // (the credit follows what is drawn: the pack inside the Kingdom, OpenFreeMap's tiles outside it)
         map.onCameraIdle = { at -> MapStyle.attribution(at).let { if (attribution.text != it) attribution.text = it } }
 
-        compass = pillCard()
-        compassGlyph = ImageView(this).apply { setImageResource(R.drawable.ic_compass); scaleType = ImageView.ScaleType.FIT_CENTER }.glyph { Palette.icon }
-        compass.addView(compassGlyph, at(13, 13, GLYPH, GLYPH))
-        compass.contentDescription = getString(R.string.maps_north)
-        compass.pressScale(PressGesture.CONTROL)
-        compass.setOnClickListener { if (NavSession.state == NavSession.State.NAVIGATING) recenter() else map.northUp() }
-        compass.visibility = View.GONE
-        group.addView(compass, Surface.PILL.at(TOOL_X, COMPASS_Y, BTN, BTN))
+        compass = SurfaceCard(this, Surface.PILL).apply {
+            isClickable = true
+            contentDescription = getString(R.string.maps_north)
+            setOnClickListener { map.northUp() }
+        }
+        compassGlyph = iconView(R.drawable.ic_compass, GLYPH) { Palette.icon }
+        compass.addView(compassGlyph, at((BTN - GLYPH) / 2, (BTN - GLYPH) / 2, GLYPH, GLYPH))
+        layer.addView(compass, Surface.PILL.at(X, 138, BTN, BTN))
 
-        // + and − as one stack with a hairline, one surface
-        zoom = pillCard()
-        zoom.addView(IconButton(this, R.drawable.ic_plus, ZOOM_GLYPH, BTN, BTN, press = PressGesture.CONTROL).apply {
+        camHere = pill(R.drawable.ic_cam_add, R.string.mark_camera, { Palette.red }) { mark() }
+        layer.addView(camHere, Surface.PILL.at(X, 202, BTN, BTN))
+        overview = pill(R.drawable.ic_overview, R.string.maps_overview) { overviewOfTrip() }
+        layer.addView(overview, Surface.PILL.at(X, 266, BTN, BTN))
+
+        zoom = SurfaceCard(this, Surface.PILL)
+        zoom.addView(IconButton(this, R.drawable.ic_plus, GLYPH, BTN, BTN, press = PressGesture.CONTROL).apply {
             contentDescription = getString(R.string.maps_zoom_in)
             setOnClickListener { map.zoomBy(1.0) }
         }, at(0, 0, BTN, BTN))
         zoom.addView(View(this).look { setBackgroundColor(Palette.line) }, at(12, BTN, BTN - 24, 1))
-        zoom.addView(IconButton(this, R.drawable.ic_minus, ZOOM_GLYPH, BTN, BTN, press = PressGesture.CONTROL).apply {
+        zoom.addView(IconButton(this, R.drawable.ic_minus, GLYPH, BTN, BTN, press = PressGesture.CONTROL).apply {
             contentDescription = getString(R.string.maps_zoom_out)
             setOnClickListener { map.zoomBy(-1.0) }
         }, at(0, BTN, BTN, BTN))
-        group.addView(zoom, Surface.PILL.at(TOOL_X, ZOOM_Y, BTN, 2 * BTN))
+        layer.addView(zoom, Surface.PILL.at(X, 330, BTN, 2 * BTN))
 
-        locate = IconButton(this, R.drawable.ic_locate, GLYPH, BTN, BTN, IconButton.Kind.PILL, PressGesture.CONTROL).apply {
-            contentDescription = getString(R.string.maps_my_location)
-            setOnClickListener { recenter() }
+        locate = pill(R.drawable.ic_locate, R.string.maps_my_location) { recenter() }
+        layer.addView(locate, Surface.PILL.at(X, 450, BTN, BTN))
+
+        // "a camera here": what happened, beside the button, and a tap on it takes it back
+        markNote = SurfaceCard(this, Surface.PILL).apply {
+            isClickable = true
+            setOnClickListener { unmark() }
+            visibility = View.INVISIBLE
         }
-        group.addView(locate, Surface.PILL.at(TOOL_X, LOCATE_Y, BTN, BTN))
+        markText = line(Type.chip, { Palette.ink }, moving = false)
+        markNote.addView(markText, Type.chip.box(16, 12, MARK_W - 32))
+        layer.addView(markNote, Surface.PILL.at(X + BTN + 8, 202, MARK_W, BTN))
+
+        for (v in arrayOf<View>(compass, camHere, overview, zoom, locate)) { v.alpha = 0f; v.visibility = View.INVISIBLE }
+        built = true
+        syncTools(false)
     }
 
-    private fun pillCard() = object : SurfaceCard(this@MapTools, Surface.PILL) {
-        override fun hasOverlappingRendering() = false
+    override fun sync() {
+        syncTools(true)
+        val p = NavSession.progress
+        // a turn under 300 m: the camera comes back at once, and whatever it was showing goes (moving: parked at a light the look is his)
+        if (NavSession.state == NavSession.State.NAVIGATING && p != null && p.toNext < TURN_NEAR_M && DriveState.moving &&
+            (map.camera == AuraMap.Camera.FREE || map.camera == AuraMap.Camera.OVERVIEW)) recenter()
     }
-
-    override fun sync() = syncTools()
 
     override fun tripChanged(on: Boolean) {
-        if (on) return
-        root.removeCallbacks(autoRecenter) // the trip has just ended (Done, End, or by itself after arriving): back to browsing
-        syncTools()
+        root.removeCallbacks(autoRecenter)
+        root.removeCallbacks(hideTools)
+        touched = false
+    }
+
+    override fun onFace(face: MapsPanel.Face) {
+        // `drive-free`: the driving camera, with no trip. Back on browse with the car moving it stays until he moves it or the 10 s bring the face back
+        when (face) {
+            MapsPanel.Face.DRIVE_FREE -> if (map.camera != AuraMap.Camera.NAVIGATE) map.setCamera(AuraMap.Camera.NAVIGATE)
+            MapsPanel.Face.BROWSE -> if (DriveState.parked && map.camera == AuraMap.Camera.NAVIGATE) map.setCamera(AuraMap.Camera.FOLLOW)
+            MapsPanel.Face.TRIP -> {}
+        }
+        syncTools(true)
     }
 
     override fun listen(on: Boolean) {
-        if (!on) root.removeCallbacks(autoRecenter)
+        if (on == listening) return
+        listening = on
+        if (on) DriveState.addListener(onDrive)
+        else {
+            DriveState.removeListener(onDrive)
+            root.removeCallbacks(autoRecenter)
+            root.removeCallbacks(hideTools)
+            root.removeCallbacks(hideNote)
+            touched = false
+        }
     }
 
-    override fun onFace(face: MapsPanel.Face) = syncTools()
+    private val onDrive: () -> Unit = { armReturn() }
 
     /** The panel as it was built, at rest. */
     fun fresh() {
-        searchOpen = false
-        group.animate().cancel()
-        group.alpha = 1f
-        group.visibility = View.VISIBLE
-        controls.visibility = View.VISIBLE
-        syncTools()
+        searching = false
+        touched = false
+        root.removeCallbacks(hideTools)
+        syncTools(false)
     }
 
-    /** A search or a place card is up, or not: the tools go while it is (`search`, `place-routes`), 180 `exit`, and come back in 140 `move`. */
+    /** The map's buttons go while the keyboard is up: nothing in them is needed while typing. */
     fun forSearch(open: Boolean) {
-        if (open == searchOpen) return
-        searchOpen = open
-        syncTools()
-        // (the old speed cluster goes with them: it would lie over the card)
-        controls.visibility = if (open) View.INVISIBLE else View.VISIBLE
-        if (!open) {
-            group.visibility = View.VISIBLE
-            group.anim(Tokens2.MS_mapToolsIn, Motion.MOVE).alpha(1f).start()
-        } else if (group.visibility == View.VISIBLE) {
-            group.anim(Tokens2.MS_mapToolsOut, Motion.EXIT).alpha(0f).withEndAction { if (searchOpen) group.visibility = View.INVISIBLE }.start()
+        searching = open
+        syncTools(true)
+    }
+
+    // ------------------------------------------------------------------------------------------ which are up
+    private val freeCamera: Boolean get() = map.camera == AuraMap.Camera.FREE
+    private val trip: Boolean get() = NavSession.state != NavSession.State.IDLE
+
+    private fun syncTools(animate: Boolean) {
+        if (!built) return
+        val face = panel.face
+        val free = freeCamera
+        val whole = map.camera == AuraMap.Camera.OVERVIEW
+        val onTrip = trip && !searching
+        val browsing = !trip && !searching && face == MapsPanel.Face.BROWSE
+        val all = onTrip && (touched || free)
+        tool(compass, browsing && turned, animate)
+        tool(camHere, all && !whole && CameraMark.enabled, animate)
+        tool(overview, all && !whole && NavSession.state == NavSession.State.NAVIGATING, animate)
+        tool(zoom, (all && !whole) || browsing, animate)
+        tool(locate, all || (onTrip && whole) || browsing, animate)
+        attribution.visibility = if (!trip && !searching && face == MapsPanel.Face.BROWSE) View.VISIBLE else View.INVISIBLE
+        val want = if (free || whole) ACCENT else ICON
+        if (want != locateTint) {
+            locateTint = want
+            locate.setGlyphToken(if (want == ACCENT) { { Palette.accentInk } } else { { Palette.icon } })
         }
     }
 
-    // ------------------------------------------------------------------------------------------ camera
-    /** The driver moved the map: a way back, and while driving the map goes back to the car by itself after a while. */
+    private var locateTint = ICON
+
+    /** Map tools in, out: alpha, 140 and 180 (section 9). */
+    private fun tool(v: View, show: Boolean, animate: Boolean) {
+        if (show == v.up) return
+        if (!animate || !v.isAttachedToWindow || !root.isShown) {
+            v.animate().cancel()
+            v.setTag(R.id.aura_exiting, null)
+            v.alpha = if (show) 1f else 0f
+            v.visibility = if (show) View.VISIBLE else View.INVISIBLE
+            return
+        }
+        if (show) {
+            v.setTag(R.id.aura_exiting, null)
+            v.visibility = View.VISIBLE
+            v.anim(moveMs(Tokens2.MS_mapToolsIn), Motion.MOVE).alpha(1f).start()
+        } else {
+            v.setTag(R.id.aura_exiting, true)
+            v.anim(moveMs(Tokens2.MS_mapToolsOut), Motion.EXIT).alpha(0f).withEndAction {
+                v.setTag(R.id.aura_exiting, null)
+                v.visibility = View.INVISIBLE
+            }.start()
+        }
+    }
+
+    // ------------------------------------------------------------------------------------------ touches
+    /** A touch on the map that nothing over it took. */
+    fun mapTouched() {
+        if (!trip) return
+        touched = true
+        syncTools(true)
+        keepUp()
+    }
+
+    /** Any touch on the panel: the tools stay while he is at them, and a camera he holds does not leave under his hand. */
+    fun keepUp() {
+        if (touched) {
+            root.removeCallbacks(hideTools)
+            root.postDelayed(hideTools, TOOLS_HIDE_MS)
+        }
+        armReturn()
+    }
+
+    private val hideTools = Runnable {
+        touched = false
+        syncTools(true)
+    }
+
+    /** The driver moved the map: locate says so, and while moving it comes back by itself. */
     fun onUserMoved() {
-        syncTools()
-        if (NavSession.state == NavSession.State.NAVIGATING) {
-            root.removeCallbacks(autoRecenter)
-            root.postDelayed(autoRecenter, AUTO_RECENTER_MS)
+        syncTools(true)
+        armReturn()
+    }
+
+    private fun armReturn() {
+        root.removeCallbacks(autoRecenter)
+        if (!trip || !DriveState.moving) return
+        when (map.camera) {
+            AuraMap.Camera.FREE -> root.postDelayed(autoRecenter, RETURN_FREE_MS)
+            AuraMap.Camera.OVERVIEW -> root.postDelayed(autoRecenter, RETURN_OVERVIEW_MS)
+            else -> {}
         }
     }
 
-    /** A brush of the screen while driving must not leave the car off the screen until the pill is found. */
+    /** A brush of the screen while driving must not leave the car off the screen until locate is found. */
     private val autoRecenter = Runnable {
-        if (NavSession.state == NavSession.State.NAVIGATING && map.camera != AuraMap.Camera.NAVIGATE) recenter()
+        if (NavSession.state == NavSession.State.NAVIGATING && DriveState.moving && map.camera != AuraMap.Camera.NAVIGATE) recenter()
     }
 
     fun recenter() {
         root.removeCallbacks(autoRecenter)
         map.setCamera(if (NavSession.state == NavSession.State.NAVIGATING) AuraMap.Camera.NAVIGATE else AuraMap.Camera.FOLLOW)
-        syncTools()
+        // (the tools stay as long as the touch that brought them says)
+        if (touched) keepUp()
+        syncTools(true)
     }
 
-    /** The way back has nothing to go back to any more: a trip has just taken the camera. */
-    fun hideRecenter() = syncTools()
+    /** The old name for what the place card calls when a trip starts: the tools of browse go with [syncTools]. */
+    fun hideRecenter() {
+        root.removeCallbacks(autoRecenter)
+        syncTools(true)
+    }
 
-    /** The trip being driven, whole, for a while: a look at it lasts longer than a brush of the screen. */
-    fun overviewOfTrip() {
-        NavSession.route?.let { r ->
-            panel.overview(r.line.points)
-            syncTools()
-            root.removeCallbacks(autoRecenter)
-            root.postDelayed(autoRecenter, AUTO_RECENTER_OVERVIEW_MS)
-        }
+    /** The trip being driven, whole, north up, the column staying. A look lasts longer than a brush of the screen. */
+    private fun overviewOfTrip() {
+        val r = NavSession.route ?: return
+        panel.overview(r.line.points)
+        touched = false
+        root.removeCallbacks(hideTools)
+        syncTools(true)
+        armReturn()
     }
 
     /** End pressed: the way back has nothing to go back to. */
     fun tripEnded() {
         root.removeCallbacks(autoRecenter)
-        syncTools()
+        touched = false
+        syncTools(true)
     }
 
-    /**
-     * On browse always; on a trip only while the camera is the driver's. Locate says the camera is free in `accentInk`, for as long as it is (section 5). No tools in `drive-free`:
-     * the column is there.
-     */
-    private fun syncTools() {
-        val nav = NavSession.state == NavSession.State.NAVIGATING
-        val free = map.camera == AuraMap.Camera.FREE || map.camera == AuraMap.Camera.OVERVIEW
-        val show = panel.face != MapsPanel.Face.DRIVE_FREE && (!nav || free)
-        val v = if (show) View.VISIBLE else View.INVISIBLE
-        if (zoom.visibility != v) { zoom.visibility = v; locate.visibility = v }
-        locate.setGlyphToken(if (free) ({ Palette.accentInk }) else ({ Palette.icon }))
-        attribution.visibility = if (NavSession.state == NavSession.State.IDLE && !searchOpen && panel.face == MapsPanel.Face.BROWSE) View.VISIBLE else View.INVISIBLE
-    }
-
-    /** The compass shows where north is on the turned map (a transform, set only when it moved a degree or more), and only when it is turned. */
+    // ------------------------------------------------------------------------------------------ the compass
+    /** The compass shows where north is on the turned map (a transform, set only when it moved a degree or more), and only then: section 5. */
     fun watchBearing() {
         val m = map.map?.map ?: return
         turnCompass(m.cameraPosition.bearing.toFloat())
@@ -198,26 +310,66 @@ internal class MapTools(panel: MapsPanel) : MapsPart(panel) {
     }
 
     private fun turnCompass(bearing: Float) {
-        if (!panel.shown) return // (the map goes on moving under the home screen: a change to a hidden view would still ask for a frame)
+        if (!panel.shown || !built) return // (the map goes on moving under the home screen: a change to a hidden view would still ask for a frame)
         if (!compassAt.isNaN() && abs(Geo.angleDiff(compassAt.toDouble(), bearing.toDouble())) < 1) return
         compassAt = bearing
-        compassGlyph.rotation = -bearing
-        val turned = abs(Geo.angleDiff(0.0, bearing.toDouble())) >= 1 && NavSession.state != NavSession.State.NAVIGATING
-        val v = if (turned) View.VISIBLE else View.GONE
-        if (compass.visibility != v) compass.visibility = v
+        val t = abs(Geo.angleDiff(0.0, bearing.toDouble())) >= 1
+        if (t != turned) {
+            turned = t
+            syncTools(true)
+        }
+        if (t) compassGlyph.rotation = -bearing
     }
 
+    // ------------------------------------------------------------------------------------------ a camera here
+    /**
+     * Only a fix of now, from the GPS, precise: [CarLocation] keeps the last fix of the day before until the GPS has found the sky again, and a camera marked with it would be stored at the wrong
+     * place and beeped there on every drive. The simulator's and the debug `mock_loc` fixes count as GPS ones. As [CameraMark] on the old screens.
+     */
+    private fun mark() {
+        val car = CarLocation.last
+        val fresh = car != null &&
+            (car.provider == LocationManager.GPS_PROVIDER || car.provider == "sim" || car.provider == "mock") &&
+            SystemClock.elapsedRealtimeNanos() - car.elapsedRealtimeNanos < MARK_FRESH_NS &&
+            (!car.hasAccuracy() || car.accuracy <= MARK_ACCURACY_M)
+        if (car == null || !fresh) { say(getString(R.string.mark_camera_no_gps), false); return }
+        // its speed: the limit of the marked street the car is on, when there is one
+        val (spot, added) = MapExtras.addMine(LatLon(car.latitude, car.longitude), RoadWatch.state.limit)
+        if (!added) { say(getString(R.string.mark_camera_known), false); return }
+        RoadWatch.quiet(spot)
+        lastMarked = spot
+        say(getString(R.string.mark_camera_saved), true)
+    }
+
+    private fun unmark() {
+        val s = lastMarked ?: return
+        lastMarked = null
+        MapExtras.removeMine(s)
+        say(getString(R.string.mark_camera_undone), false)
+    }
+
+    private fun say(s: String, canUndo: Boolean) {
+        if (!canUndo) lastMarked = null
+        markText.text = s
+        markNote.showCard(true)
+        root.removeCallbacks(hideNote)
+        root.postDelayed(hideNote, if (canUndo) 5000L else 2500L)
+    }
+
+    private val hideNote = Runnable { markNote.showCard(false) }
+
     private companion object {
-        /** After the driver moved the map while driving, it goes back to the car by itself after this long, */
-        private const val AUTO_RECENTER_MS = 12_000L
-        /** and after a look at the whole route, this long. */
-        private const val AUTO_RECENTER_OVERVIEW_MS = 20_000L
-        const val TOOL_X = 384
-        const val COMPASS_Y = 138
-        const val ZOOM_Y = 330
-        const val LOCATE_Y = 450
+        const val X = 384
         const val BTN = 56
         const val GLYPH = 30
-        const val ZOOM_GLYPH = 28
+        const val ICON = 0
+        const val ACCENT = 1
+        const val MARK_W = 300
+        const val TOOLS_HIDE_MS = 5000L
+        const val RETURN_FREE_MS = Tokens2.MS_cameraBack
+        const val RETURN_OVERVIEW_MS = 20_000L
+        const val TURN_NEAR_M = 300.0
+        const val MARK_FRESH_NS = 5_000_000_000L
+        const val MARK_ACCURACY_M = 50f
     }
 }

@@ -275,6 +275,39 @@ class Guidance internal constructor(
         }
     }
 
+    /**
+     * The sign's hint line, one fact about where told step [i] is, with the car at [along]: the signal it is at counted from there, the roundabout, a flyover or a tunnel, the place on the
+     * corner. Null when nothing marks it. The same order as [doing], without the action.
+     */
+    fun landmark(i: Int, along: Double): String? {
+        val t = told.getOrNull(i) ?: return null
+        val count = signalCount(t, along)
+        val parts: List<Part> = when {
+            t.step.entersRing -> {
+                val name = t.step.rotaryName.takeIf { it.isNotEmpty() && Names.hasArabic(it) == arabic && it.length <= 24 }
+                if (name != null) listOf(Part.Name(name, "ring.at.named")) else listOf(Part.Clip("ring.at"))
+            }
+            count in 1..3 -> listOf(Part.Clip(when (count) { 1 -> "signal.next"; 2 -> "signal.2"; else -> "signal.3" }))
+            else -> when (val m = t.mark) {
+                is Mark.AfterStructure -> listOf(Part.Clip(if (m.tunnel) "tunnel.after" else "bridge.after"))
+                is Mark.OntoStructure -> listOf(Part.Clip(if (m.tunnel) "tunnel.into" else "bridge.onto"))
+                is Mark.Place -> listOf(Part.Clip(when (m.mark.relation) { Relation.BEFORE_IT -> "poi.before"; Relation.AT_IT -> "poi.at"; Relation.AFTER_IT -> "poi.after" })) + m.mark.phrase
+                null -> return null
+            }
+        }
+        return Speech.text(parts, arabic, said = false).ifBlank { null }
+    }
+
+    /** What to do at told step [i], with no landmark: "لف يمين", "خذ مخرج 40 على اليمين". */
+    fun actionWords(i: Int): String = told.getOrNull(i)?.let { Speech.text(action(it), arabic, said = false) }.orEmpty()
+
+    /** A roundabout's way out, for the sign's road line: "المخرج الثالث", or the direction measured where the number may not be said. */
+    fun ringWay(i: Int): String {
+        val t = told.getOrNull(i) ?: return ""
+        val id = if (t.ringNumber > 0) "ring.exit.${t.ringNumber}" else Ring.wordFor(Ring.way(t.step.angle)) ?: "ring.enter"
+        return Speech.text(listOf(Part.Clip(id)), arabic, said = false)
+    }
+
     /** The junction for the sign's view, null when there is no choice to show. */
     fun junction(i: Int): JunctionView? {
         val t = told.getOrNull(i) ?: return null
@@ -285,11 +318,11 @@ class Guidance internal constructor(
      * The next camera or bump within reach of [along] ("ساهر بعد 500 متر، السرعة 80"), its limit from the spot or the road. [skip]: spots not to count, as the
      * owner's own of the pack's build when his live set is known ([com.abdllh.aura.nav.RoadWatch]).
      */
-    fun nextAlert(along: Double, skip: ((AlongSpot) -> Boolean)? = null): SpotAlert? {
+    fun nextAlert(along: Double, cameraM: Double = CAMERA_M, skip: ((AlongSpot) -> Boolean)? = null): SpotAlert? {
         for (s in spots) {
             if (s.along <= along) continue
-            if (s.along - along > CAMERA_M) break
-            val reach = when (s.kind) { SpotRow.CAMERA -> CAMERA_M; SpotRow.BUMP -> BUMP_M; else -> continue }
+            if (s.along - along > cameraM) break
+            val reach = when (s.kind) { SpotRow.CAMERA -> cameraM; SpotRow.BUMP -> BUMP_M; else -> continue }
             if (s.along - along > reach) continue
             if (skip != null && skip(s)) continue
             val kmh = if (s.kind == SpotRow.CAMERA) s.kmh.takeIf { it > 0 } ?: route.facts?.at(s.along)?.limit ?: 0 else 0

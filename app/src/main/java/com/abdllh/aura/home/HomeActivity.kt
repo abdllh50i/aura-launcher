@@ -55,11 +55,18 @@ class HomeActivity : Activity() {
         }
     }
 
+    // (a change of the system's configuration puts the system's language back as the process's default, and what asks the default, the map's style and the route's words, would not follow the UI's)
+    override fun onConfigurationChanged(c: android.content.res.Configuration) {
+        super.onConfigurationChanged(c)
+        java.util.Locale.setDefault(resources.configuration.locales[0])
+    }
+
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(LocaleHelper.wrap(base))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        java.util.Locale.setDefault(resources.configuration.locales[0])
         super.onCreate(savedInstanceState)
         if (CrashGuard.bailedOut) { // (AuraApp has done it: nothing else of AMRI started in this process)
             finish()
@@ -109,6 +116,7 @@ class HomeActivity : Activity() {
     }
 
     override fun onResume() {
+        java.util.Locale.setDefault(resources.configuration.locales[0])
         super.onResume()
         resumedNow = true
         if (languageChanged()) return

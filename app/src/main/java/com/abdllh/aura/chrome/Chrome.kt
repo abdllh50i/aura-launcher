@@ -358,7 +358,7 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
     fun clockChanged() = minute()
 
     // ------------------------------------------------------------------------------------------ opening what the row names
-    private fun open(name: String) {
+    internal fun open(name: String) {
         if (name == panel) {
             // (the selected Map cell is inert; the selected Music cell returns to the panel he came from: section 1)
             if (name == Screens.MUSIC) shell.panels.back()

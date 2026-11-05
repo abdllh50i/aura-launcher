@@ -59,17 +59,43 @@ object MapStyle {
     private const val SRC_PLACES = "places"
 
     /** The layers a tap looks in for a place ([AuraMap.onPoiTap]): the pack's, then those of the online tiles. */
-    val POI_LAYERS = arrayOf("poi-holy", "poi-a", "poi-b", "poi-c", "poi-d", "omt-poi-a", "omt-poi-b", "omt-poi-c", "omt-poi-d")
+    val POI_LAYERS = arrayOf("poi-holy", "poi-drive", "poi-a", "poi-b", "poi-c", "poi-d", "omt-poi-drive", "omt-poi-a", "omt-poi-b", "omt-poi-c", "omt-poi-d")
 
     /** The route's line layers (faded while a new route is being found). */
     val ROUTE_LAYERS = arrayOf("route-casing", "route-near-casing", "route", "route-near")
 
     /**
-     * Hidden while navigating: the minor places and the house numbers. A driver needs the road, the route and the next
+     * Hidden while the camera drives (SPEC.md section 11): the places of the browse map and every street's name. A driver needs the road, the route and the next
      * turn; dozens of shop names compete with them, and on the turning heading-up map they are placed again all the
-     * time (labels flicker, and the weak CPU pays for it). The most important places (band a) stay.
+     * time (labels flicker, and the weak CPU pays for it). [DRIVE_ONLY] take their place.
      */
-    val NAV_HIDDEN = arrayOf("poi-b", "poi-c", "poi-d", "omt-poi-b", "omt-poi-c", "omt-poi-d", "housenumber")
+    val NAV_HIDDEN = arrayOf("poi-a", "poi-b", "poi-c", "poi-d", "omt-poi-a", "omt-poi-b", "omt-poi-c", "omt-poi-d", "housenumber", "road-name", "road-name-major", "place-minor")
+
+    /** The driving names, one layer for the big roads and one for the road of the next turn. Their filters change with the route ([AuraMap]). */
+    const val DRIVE_NAME_MAJOR = "drive-name-major"
+    const val DRIVE_NAME_NEXT = "drive-name-next"
+
+    /** Shown only while the camera drives: fuel and mosques, and the names of [driveMajorFilter] and [driveNextFilter]. */
+    val DRIVE_ONLY = arrayOf("poi-drive", "omt-poi-drive", DRIVE_NAME_MAJOR, DRIVE_NAME_NEXT)
+
+    /** The big roads while the camera drives, never the one the car is on ([current]); with no route ([trip] false, `drive-free`) the primary and secondary too. */
+    fun driveMajorFilter(trip: Boolean, arabic: Boolean, current: String): String {
+        // (not a `match`: Expression.raw takes the list of a match's labels for an expression, and the layer then shows nothing)
+        val classes = (if (trip) listOf("motorway", "trunk") else listOf("motorway", "trunk", "primary", "secondary")).joinToString(",") { """["==",["get","class"],"$it"]""" }
+        val big = """["any",$classes]"""
+        return if (current.isBlank()) big else """["all",$big,["!=",${roadNameOf(arabic)},${org.json.JSONObject.quote(current)}]]"""
+    }
+
+    /** The road of the next turn, whatever its class, unless it is the one the car is on. */
+    fun driveNextFilter(arabic: Boolean, next: String, current: String): String =
+        if (next.isBlank() || next == current) NO_FEATURE else """["==",${roadNameOf(arabic)},${org.json.JSONObject.quote(next)}]"""
+
+    // (`["==",1,0]` reads as an old-style filter, "filter property must be a string", and the style then has no such layer at all)
+    private const val NO_FEATURE = """["==",["get","class"],""]"""
+
+    // (a motorway often has only its number)
+    private fun roadNameOf(arabic: Boolean) = if (arabic) """["coalesce",["get","name:ar"],["get","name"],["get","ref"]]"""
+        else """["coalesce",["get","name:en"],["get","name:latin"],["get","name"],["get","ref"]]"""
 
     /** The image of a place's dot ([poiDot]), drawn in each kind's colour. */
     const val POI_DOT = "poi-dot"
@@ -338,8 +364,11 @@ object MapStyle {
         val omtText = Poi.matchClass(c.texts)
         fun omtPoi(id: String, minzoom: Double, r: String) = poi(id, omtSource, omtDot, omtText, name, minzoom, all("""["has","name"]""", r))
         // (the least important band first: a layer further down the list places its names first)
-        val omtPois = if (pack) listOf(omtPoi("omt-poi-d", 17.0, rank(40, 0)), omtPoi("omt-poi-c", 16.0, rank(12, 40)), omtPoi("omt-poi-b", 15.0, rank(3, 12)), omtPoi("omt-poi-a", 13.6, rank(0, 3)))
-            else listOf(omtPoi("poi-d", 17.0, rank(40, 0)), omtPoi("poi-c", 16.0, rank(12, 40)), omtPoi("poi-b", 15.0, rank(3, 12)), omtPoi("poi-a", 13.6, rank(0, 3)))
+        // (only while the camera drives: fuel and mosques. SPEC.md section 11)
+        fun hidden(json: String) = json.replaceFirst(""""layout":{""", """"layout":{"visibility":"none",""")
+        val omtDrive = all(rank(0, 12), """["match",["get","class"],["fuel","place_of_worship"],true,false]""")
+        val omtPois = if (pack) listOf(omtPoi("omt-poi-d", 17.0, rank(40, 0)), omtPoi("omt-poi-c", 16.0, rank(12, 40)), omtPoi("omt-poi-b", 15.0, rank(3, 12)), omtPoi("omt-poi-a", 13.6, rank(0, 3)), hidden(omtPoi("omt-poi-drive", 13.6, omtDrive)))
+            else listOf(omtPoi("poi-d", 17.0, rank(40, 0)), omtPoi("poi-c", 16.0, rank(12, 40)), omtPoi("poi-b", 15.0, rank(3, 12)), omtPoi("poi-a", 13.6, rank(0, 3)), hidden(omtPoi("poi-drive", 13.6, omtDrive)))
         // The pack's places (rank: 1 to 100, the higher the more important; a dense z14 tile holds 420 of them, about
         // 40 above 60), and already thinned by the tiles at z12 and z13. The very top show earlier: from z14 band a is
         // the shop on the corner, at z13 only a hospital, a mall or a big hotel. (zoom in a filter: per tile, so a whole number.)
@@ -353,7 +382,11 @@ object MapStyle {
                 poi("poi-d", source, dot, text, label, 17.0, """["<",["get","rank"],30]"""),
                 poi("poi-c", source, dot, text, label, 16.0, band(30, 45)),
                 poi("poi-b", source, dot, text, label, 15.0, band(45, 60)),
-                poi("poi-a", source, dot, text, label, 12.6, """[">=",["get","rank"],["step",["zoom"],80,14,60]]""")
+                poi("poi-a", source, dot, text, label, 12.6, """[">=",["get","rank"],["step",["zoom"],80,14,60]]"""),
+                // Fuel (kind 4) and mosques (kind 7), and in Arabic only those with an Arabic name: a name compares by its letters, so one that starts at the Arabic block's first letter or after.
+                // Band b's rank too: while driving these are the only places on the map, and most stations are under band a.
+                hidden(poi("poi-drive", source, dot, text, label, 13.0, all("""[">=",["get","rank"],45]""", """["match",["get","kind"],[4,7],true,false]""",
+                    if (arabic) """[">=",["get","name"],"ء"]""" else """["has","name"]""")))
             )
         } else emptyList()
         val pois = omtPois + packPois
@@ -445,6 +478,9 @@ object MapStyle {
             """{"id":"rail","type":"line","source":"omt","source-layer":"transportation","minzoom":12,"filter":${cls("rail", "transit")},
                "paint":{"line-color":"${c.rail}","line-width":${width(12 to 0.6, 18 to 2.5)},"line-dasharray":[4,3]}}""",
             building3d,
+            // The names while the camera drives (SPEC.md section 11): one size, a wider halo, far apart, and under the route, so a name never lies across it. Their filters come with the route.
+            driveName(DRIVE_NAME_MAJOR, c.motorLabel, c.roadHalo, regular, arabic),
+            driveName(DRIVE_NAME_NEXT, c.motorLabel, c.roadHalo, bold, arabic),
             // our route, under the labels (the arrow of the next turn is over them, further down the list)
             // (the second route, quieter and under the chosen one, a little narrower: where they share a road only the chosen one shows)
             """{"id":"route-alt-casing","type":"line","source":"$SRC_ROUTE_ALT","layout":{"line-cap":"round","line-join":"round"},
@@ -560,6 +596,13 @@ object MapStyle {
         } catch (_: Throwable) {
         }
     }
+
+    /** A driving name: 21 px in Arabic, 20 in Latin, halo 2.2, spacing 900. Hidden until the camera drives; its filter comes with the route. */
+    private fun driveName(id: String, color: String, halo: String, font: String, arabic: Boolean) =
+        """{"id":"$id","type":"symbol","source":"omt","source-layer":"transportation_name","minzoom":11,"filter":$NO_FEATURE,
+           "layout":{"visibility":"none","symbol-placement":"line","text-field":${roadNameOf(arabic)},"text-font":$font,"symbol-spacing":900,
+           "text-size":${if (arabic) 21 else 20},"text-max-angle":30,"text-padding":8,"text-rotation-alignment":"map","text-pitch-alignment":"viewport"},
+           "paint":{"text-color":"$color","text-halo-color":"$halo","text-halo-width":2.2}}"""
 
     /**
      * The destination over everything else (SPEC.md section 11): a plain pin, 40 x 52, in the route's colour with a ring, its tip on the place, a white eye in it, and the place's name

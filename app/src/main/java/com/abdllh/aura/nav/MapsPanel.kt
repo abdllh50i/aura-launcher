@@ -45,8 +45,12 @@ class MapsPanel(shell: HomeActivity) : Panel(shell, Screens.MAPS) {
     internal val map: MapController get() = shell.map
     override val root: FrameLayout = object : FrameLayout(this) {
         override fun dispatchTouchEvent(e: MotionEvent): Boolean {
-            if (e.actionMasked == MotionEvent.ACTION_DOWN) touched()
-            return super.dispatchTouchEvent(e)
+            val down = e.actionMasked == MotionEvent.ACTION_DOWN
+            if (down) touched()
+            val used = super.dispatchTouchEvent(e)
+            // (what nothing over the map took goes through to the map)
+            if (down && !used) tools.mapTouched()
+            return used
         }
     }
     override val keep: Boolean get() = true
@@ -97,8 +101,11 @@ class MapsPanel(shell: HomeActivity) : Panel(shell, Screens.MAPS) {
     /** The whole of [points] in what the cards and the chrome leave of the map. */
     internal fun overview(points: List<LatLon>) = map.overview(points, OVERVIEW_LEFT, OVERVIEW_TOP, OVERVIEW_RIGHT, OVERVIEW_BOTTOM)
 
-    /** The old cards' lift for the locate button; goes with them. */
-    internal fun bottomCard(): View? = drive.bottomCard ?: browse.bottomCard
+    /** The trip has just ended by End: with the car moving, `drive-free` now and not 10 s after that touch. */
+    internal fun freeNow() {
+        if (DriveState.moving) lastTouch = 0L
+        syncFace()
+    }
 
     internal fun toast(s: String, outlives: Boolean = false) = Snack.show(this, s, outlives = outlives)
 
@@ -116,7 +123,10 @@ class MapsPanel(shell: HomeActivity) : Panel(shell, Screens.MAPS) {
     // ---- Moving, no trip, no card, 10 s after the last touch: drive-free. A touch brings browse back for 10 s
     private fun touched() {
         lastTouch = SystemClock.uptimeMillis()
-        if (listening) syncFace()
+        if (listening) {
+            syncFace()
+            tools.keepUp()
+        }
     }
 
     private val faceCheck = Runnable { syncFace() }
@@ -250,6 +260,7 @@ class MapsPanel(shell: HomeActivity) : Panel(shell, Screens.MAPS) {
     override fun onDestroy() {
         root.removeCallbacks(faceCheck)
         browse.destroy()
+        drive.destroy()
     }
 
     override fun onBack(): Boolean = browse.onBack()

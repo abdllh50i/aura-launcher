@@ -9,6 +9,7 @@ import android.view.View
 import com.abdllh.aura.BuildConfig
 import com.abdllh.aura.R
 import com.abdllh.aura.home.HomeActivity
+import com.abdllh.aura.nav.drive.TurnWords
 import com.abdllh.aura.system.SystemProps
 import com.abdllh.aura.ui.MapBackdropView
 import com.abdllh.aura.ui.Motion
@@ -16,6 +17,7 @@ import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Theme
 import com.abdllh.aura.ui.fadeTo
 import com.abdllh.aura.util.Prefs
+import java.util.Locale
 
 /**
  * The one map of the one window (docs/DEV.md, "One engine"): owns the [AuraMap] in [com.abdllh.aura.home.MapHost], from the
@@ -331,6 +333,7 @@ class MapController(private val shell: HomeActivity) {
                 m.setInteractive(false)
                 m.zoomBack()
                 m.pictureFile = MapBackdropView.pictureFile(shell)
+                m.driveShape = false
                 m.pictureArea = homeRoom
                 placeHome(m)
             }
@@ -338,6 +341,7 @@ class MapController(private val shell: HomeActivity) {
                 m.setInteractive(true)
                 m.pictureFile = null
                 m.flatNav = false
+                m.driveShape = true
                 // (the column is on the left in both languages: seat, not language)
                 m.setRoom(mapsSide, MAPS_TOP, 0, MAPS_BOTTOM, MAPS_NAV_TOP)
             }
@@ -385,9 +389,10 @@ class MapController(private val shell: HomeActivity) {
         val navigating = st == NavSession.State.NAVIGATING
         val onMaps = front == Front.MAPS
         if (!navigating) m.fellBehind = false
-        m.setFps(if (navigating && onMaps && !m.fellBehind) 60 else 30) // a turning, tilted map needs the frames; the home screen's card does not
+        // (a turning, tilted map needs the frames, `drive-free` too; the home screen's card does not)
+        m.setFps(if ((navigating || m.camera == AuraMap.Camera.NAVIGATE) && onMaps && !m.fellBehind) 60 else 30)
         if (front == Front.HOME) placeHome(m)
-        m.setCarPx(if (onMaps) (if (navigating) 0 else CAR_MAPS_PX) else if (navigating) CAR_HOME_TRIP_PX else CAR_HOME_PX)
+        m.setCarPx(if (onMaps) CAR_MAPS_PX else if (navigating) CAR_HOME_TRIP_PX else CAR_HOME_PX)
         if (!navigating && turnShown != null) { turnShown = null; m.setTurn(null) }
         val trip = if (onMaps) st != NavSession.State.IDLE else navigating
         if (!trip) {
@@ -397,6 +402,8 @@ class MapController(private val shell: HomeActivity) {
                 m.setRouteAlt(previewAlt)
                 m.setDestination(previewDest, previewName)
                 m.setCamera(AuraMap.Camera.FOLLOW)
+                m.setAhead(false, Double.NaN, false)
+                m.setRoads("", "")
             } else if (!onMaps && m.camera != AuraMap.Camera.FOLLOW) m.setCamera(AuraMap.Camera.FOLLOW)
             return
         }
@@ -413,6 +420,9 @@ class MapController(private val shell: HomeActivity) {
         if (p == null) return
         m.setCar(p.position, p.bearing, p.speedKmh.toDouble())
         val step = r.steps[p.next]
+        val arabic = Locale.getDefault().language == "ar"
+        m.setRoads(TurnWords.currentRoad(r, p.next, arabic), TurnWords.nextRoad(r, p.next, arabic))
+        m.setAhead(TurnWords.isLeft(step) && p.toNext <= LEFT_SHIFT_FROM_M, if (Instructions.entersRoundabout(step)) step.span else Double.NaN, st == NavSession.State.ARRIVED)
         // the turn ahead, as an arrow on the route itself (not the start or the arrival, nor a turn still far off);
         // through a roundabout it runs on to the exit taken, so its head shows the way out, not the ring
         // (on the home screen's card, the route ahead and no arrow: Home hands over to Maps before the turn)
@@ -447,7 +457,10 @@ class MapController(private val shell: HomeActivity) {
     /** The rows of a search, a numbered pin each. */
     fun setResults(points: List<LatLon>) { if (!tripShown) map?.setResults(points) }
 
-    fun setCamera(c: AuraMap.Camera) { map?.setCamera(c) }
+    fun setCamera(c: AuraMap.Camera) {
+        map?.setCamera(c)
+        if (front == Front.MAPS) safely("camera") { sync() } // (its frames: `drive-free` drives with no trip)
+    }
     val camera: AuraMap.Camera get() = map?.camera ?: AuraMap.Camera.FOLLOW
     /** [padLeft] is the left in both languages: the cards do not swap sides. */
     fun overview(points: List<LatLon>, padLeft: Int, padTop: Int, padRight: Int, padBottom: Int, maxZoom: Double = 16.0) { map?.overview(points, padLeft, padTop, padRight, padBottom, maxZoom) }
@@ -469,14 +482,15 @@ class MapController(private val shell: HomeActivity) {
         private const val HOME_BOTTOM = 286
         private const val HOME_TRIP_RIGHT = 640
         private const val HOME_TRIP_BOTTOM = 164
-        // the sprite, px; 0: its own size, the navigating one
-        private const val CAR_HOME_PX = 48
+        // the sprite from above, px; the tilted views fill its view\r\n        private const val CAR_HOME_PX = 48
         private const val CAR_HOME_TRIP_PX = 40
         private const val CAR_MAPS_PX = 64
         private const val MAPS_NAV_TOP = 0.42
         /** map-*.json `camera.browse`: what the strip and the row leave, so the car stands at (701, 280). The driving camera's top is [AuraMap]'s table. */
         private const val MAPS_TOP = 40
         private const val MAPS_BOTTOM = 80
+        /** A turn to the left this near: the car moves right, so the route after it does not run under the column. */
+        private const val LEFT_SHIFT_FROM_M = 1500.0
         /** The turn's arrow is on the map from this far before it (its size is the map's: [AuraMap.setTurn]). */
         private const val TURN_ARROW_FROM_M = 900.0
         /** At this speed and above the car moves on a trip: a new theme or accent waits ([lookMayChange]). */

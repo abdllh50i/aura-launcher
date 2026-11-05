@@ -1,270 +1,380 @@
 package com.abdllh.aura.nav
 
+import android.location.Location
 import android.os.SystemClock
-import android.view.Gravity
 import android.view.View
-import android.view.animation.LinearInterpolator
-import android.widget.FrameLayout
-import android.widget.LinearLayout
+import com.abdllh.aura.BuildConfig
 import com.abdllh.aura.R
-import com.abdllh.aura.ui.ABtn
-import com.abdllh.aura.ui.AText
-import com.abdllh.aura.ui.Elev
+import com.abdllh.aura.chrome.Chrome
+import com.abdllh.aura.home.Screens
+import com.abdllh.aura.media.MediaMonitor
+import com.abdllh.aura.media.NowPlaying
+import com.abdllh.aura.music.Backdrop
+import com.abdllh.aura.nav.drive.ArrivedActions
+import com.abdllh.aura.nav.drive.EtaCard
+import com.abdllh.aura.nav.drive.LyricChip
+import com.abdllh.aura.nav.drive.MiniCard
+import com.abdllh.aura.nav.drive.SaherCard
+import com.abdllh.aura.nav.drive.SpeedCard
+import com.abdllh.aura.nav.drive.TurnCard
+import com.abdllh.aura.nav.drive.TurnWords
+import com.abdllh.aura.nav.drive.showCard
+import com.abdllh.aura.nav.drive.up
+import com.abdllh.aura.system.DriveState
 import com.abdllh.aura.ui.Fonts
-import com.abdllh.aura.ui.MATCH
-import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
-import com.abdllh.aura.ui.Shapes
-import com.abdllh.aura.ui.Space
-import com.abdllh.aura.ui.Touch
+import com.abdllh.aura.ui.Surface
+import com.abdllh.aura.ui.Tokens2
 import com.abdllh.aura.ui.Type
-import com.abdllh.aura.ui.Radius
-import com.abdllh.aura.ui.WRAP
-import com.abdllh.aura.ui.anim
-import com.abdllh.aura.ui.flp
-import com.abdllh.aura.ui.iconView
-import com.abdllh.aura.ui.label
-import com.abdllh.aura.ui.lift
-import com.abdllh.aura.ui.lp
-import com.abdllh.aura.ui.roundedClip
+import com.abdllh.aura.ui.at
+import com.abdllh.aura.ui.look
+import com.abdllh.aura.ui.surfaceImage
+import com.abdllh.aura.ui.withUnit
 import com.abdllh.aura.util.Prefs
-import com.abdllh.aura.util.dp
+import kotlin.math.roundToInt
 
 /**
- * The driver's cards over [MapsPanel]: on a trip, and in `drive-free`. Today's look (banner, trip bar, speed disc, arrival), for the driving column's builder to replace (SPEC.md section 6.2): what
- * the panel calls is [build], [sync], [tripChanged], [listen], [onFace], [coveredByCard], [bottomCard], and browse calls nothing here. What the owner cut stays out: no guidance mute, no spoken word from here.
+ * What he watches at speed (SPEC.md section 6.2): the scrims, and the driver's cards at x 12..376, each at its own place, which none of them leaves when another comes or goes: turn y 44, speed y 242, Saher beside it,
+ * ETA y 338, mini y 426. Trip or `drive-free`; browse keeps the scrims and the mini. Everything is built once, laid out once, and only its content and alpha change, so a fix redraws a number and nothing else.
+ *
+ * What the panel calls: [build], [sync], [tripChanged], [listen], [onFace], [coveredByCard]. Music calls [lyricChip] and [lyricLine].
  */
 internal class DriveColumn(panel: MapsPanel) : MapsPart(panel) {
-    private lateinit var banner: GuidanceBanner
-    private lateinit var tripBar: LinearLayout
-    private lateinit var tripEta: AText
-    private lateinit var tripLeft: AText
-    private lateinit var speedBubble: LinearLayout
-    private lateinit var speedText: AText
-    private lateinit var speedUnit: AText
-    private lateinit var speedSign: RoadHud
-    private lateinit var cameraMark: CameraMark
-    private lateinit var arrivedCard: FrameLayout
-    private lateinit var arrivedCaption: AText
-    private lateinit var arrivedName: AText
-    private lateinit var arrivedBar: View
+    private lateinit var turn: TurnCard
+    private lateinit var speed: SpeedCard
+    private lateinit var saher: SaherCard
+    private lateinit var eta: EtaCard
+    private lateinit var actions: ArrivedActions
+    private lateinit var mini: MiniCard
+    private lateinit var chip: LyricChip
+    private var built = false
 
-    private var overShown = false
-    private var arrivalShown = 0L
-    private var clusterNav: Boolean? = null
+    private var listening = false
+    private var covered = false
+    private var song: NowPlaying? = null
+    private var kmh: Int? = null
+    private var gpsLost = false
+    private var lastHint = ""
+    /** The trip End took off, for 5 s of `رجّعها`: the route stays in memory, and [NavSession] resumes from the car's place. */
+    private var kept: Kept? = null
+    private var chipOn = false
+    /** On the arrival's card: the car has stood since it came, so driving off again ends the trip. */
+    private var stoodAtArrival = false
 
-    /** A search or a place card lies over the column ([MapsPanel.cardOverColumn]): what is under it steps aside. Nothing of today's look lies there. */
-    fun coveredByCard(@Suppress("UNUSED_PARAMETER") on: Boolean) {
+    private class Kept(val place: Place, val route: Route, val simKmh: Double)
+
+    init {
+        // (what is set in a span keeps the colour of its time)
+        panel.columnLayer.look { if (built) sync() }
     }
 
-    /** The old trip bar or arrival card, for the old locate button's lift. */
-    val bottomCard: View? get() = if (tripBar.isOn) tripBar else if (arrivedCard.isOn) arrivedCard else null
+    /** A search or a place card lies over the column: with no trip what is under it steps aside. On a trip no card is over it, whatever is near (section 1: never covered). */
+    fun coveredByCard(on: Boolean) {
+        covered = on
+        if (built) syncCards()
+    }
+
+    /** Music, moving: the chip comes, y +8 to 0, 180 `move`; nothing in the column moves. */
+    fun lyricChip(on: Boolean) {
+        chipOn = on
+        if (built) chip.showCard(on)
+    }
+
+    /** The line it shows, the part with the current word: the caller cuts it at word boundaries. Crossfades by itself. */
+    fun lyricLine(s: CharSequence) {
+        if (built) chip.line(s)
+    }
+
+    /** A tap on the chip: off for this song. */
+    var onLyricChipTap: (() -> Unit)?
+        get() = if (built) chip.onTap else null
+        set(v) { if (built) chip.onTap = v }
+
+    fun destroy() {
+        if (built) mini.destroy()
+        root.removeCallbacks(undoGone)
+    }
 
     override fun tripChanged(on: Boolean) {
-        if (on) banner.reset()
+        if (on) {
+            turn.forget()
+            lastHint = ""
+            lastEta = ""
+            actions.save.isEnabled = true
+            clearUndo()
+        }
     }
+
+    override fun onFace(face: MapsPanel.Face) = syncCards()
 
     override fun listen(on: Boolean) {
-        if (on) return
-        root.removeCallbacks(arrivedTick)
-        arrivalShown = 0L // (back on the screen, the arrival line starts stepping again from where the hold is)
+        if (on == listening) return
+        listening = on
+        if (on) {
+            CarLocation.addListener(onFix)
+            RoadWatch.addListener(onRoad)
+            DriveState.addListener(onDrive)
+            MediaMonitor.observe(onSong)
+            // (what came while it was away; a fix older than the design's 5 s is no fix)
+            val l = CarLocation.last
+            if (l != null && ageMs(l) < FIX_MAX_AGE_MS) takeFix(l) else gone()
+        } else {
+            CarLocation.removeListener(onFix)
+            RoadWatch.removeListener(onRoad)
+            DriveState.removeListener(onDrive)
+            MediaMonitor.unobserve(onSong)
+            root.removeCallbacks(fixGone)
+        }
     }
 
-    /** Shows the navigation UI for NavSession's state. */
+    // ------------------------------------------------------------------------------------------ what it hears
+    private val onFix: (Location) -> Unit = { takeFix(it) }
+    private val onRoad: () -> Unit = { syncRoad() }
+    private val onDrive: () -> Unit = {
+        syncCards()
+        if (NavSession.state == NavSession.State.ARRIVED) {
+            if (DriveState.parked) stoodAtArrival = true
+            else if (stoodAtArrival) doneTrip() // ("or moving off again": back to browse)
+        }
+    }
+    private val onSong: (NowPlaying?) -> Unit = { n ->
+        song = n
+        if (built) {
+            n?.let { mini.bind(it) }
+            syncCards()
+        }
+    }
+
+    private fun ageMs(l: Location) = (SystemClock.elapsedRealtimeNanos() - l.elapsedRealtimeNanos) / 1_000_000L
+
+    private fun takeFix(l: Location) {
+        val age = ageMs(l)
+        if (age >= FIX_MAX_AGE_MS) return
+        root.removeCallbacks(fixGone)
+        root.postDelayed(fixGone, FIX_MAX_AGE_MS - age)
+        val v = if (l.hasSpeed()) l.speed * 3.6f else null
+        // (GPS reports 1-3 km/h for a parked car: that is standing still)
+        kmh = v?.let { if (it < 3f) 0 else it.roundToInt() }
+        val was = gpsLost
+        gpsLost = false
+        syncRoad()
+        if (was) sync()
+    }
+
+    private val fixGone = Runnable { gone() }
+
+    private fun gone() {
+        kmh = null
+        gpsLost = true
+        syncRoad()
+        sync()
+    }
+
+    // ------------------------------------------------------------------------------------------ the cards
+    /** NavSession said something (every fix on a trip: only what changed reaches a view), or the panel is back. */
     override fun sync() {
+        if (!built) return
+        syncCards()
+        when (NavSession.state) {
+            NavSession.State.IDLE -> return
+            NavSession.State.ARRIVED -> arrived()
+            NavSession.State.NAVIGATING -> guiding()
+        }
+    }
+
+    /** Which cards are up: section 6.2's table. Each at its own place, so a card that goes leaves its gap. */
+    private fun syncCards() {
+        if (!built) return
         val st = NavSession.state
-        val navigating = st == NavSession.State.NAVIGATING
-        banner.reveal(navigating, -16f)
-        tripBar.reveal(navigating, 16f, delay = 60)
-        speedBubble.reveal(navigating, 0f, scaleFrom = 0.9f)
-        arrivedCard.reveal(st == NavSession.State.ARRIVED, 16f, delay = 60)
-        if (st == NavSession.State.ARRIVED) showArrival() else root.removeCallbacks(arrivedTick)
-        placeEndCluster(navigating)
-        if (st == NavSession.State.IDLE) return
+        val nav = st == NavSession.State.NAVIGATING
+        val arrived = st == NavSession.State.ARRIVED
+        val freeUp = st == NavSession.State.IDLE && DriveState.moving && !covered
+        val tripDelay = if (turn.up) 0L else Tokens2.MS_columnDelay
+        turn.showCard(nav || arrived, inMs = Tokens2.MS_cardIn, outMs = Tokens2.MS_cardOut, delay = tripDelay)
+        eta.showCard(nav || kept != null, inMs = Tokens2.MS_cardIn, outMs = Tokens2.MS_cardOut, delay = tripDelay)
+        speed.showCard(nav || freeUp, outMs = Tokens2.MS_cardOut, delay = if (nav) tripDelay else 0L)
+        actions.showCard(arrived)
+        mini.showCard(song != null && !(covered && st == NavSession.State.IDLE))
+        syncSaher(nav, freeUp)
+    }
+
+    private fun syncSaher(nav: Boolean, freeUp: Boolean) {
+        val w = RoadWatch.state
+        val s = w.spot
+        val show = s != null && w.metres <= SAHER_M && (nav || freeUp)
+        if (s != null && show) saher.set(s.kind == MapExtras.Kind.BUMP, Units.distance(w.metres.toDouble(), Fonts.arabicUi), w.metres <= SAHER_HOT_M)
+        saher.showCard(show)
+    }
+
+    private fun syncRoad() {
+        if (!built) return
+        val w = RoadWatch.state
+        speed.set(kmh, w.limit, w.over)
+        syncSaher(NavSession.state == NavSession.State.NAVIGATING, NavSession.state == NavSession.State.IDLE && DriveState.moving && !covered)
+    }
+
+    private fun guiding() {
+        val r = NavSession.route ?: return
         val p = NavSession.progress ?: return
-        banner.update()
-        // how long is left first (what the driver asks), then how far and when
-        tripEta.setIfChanged(GuidanceBanner.styled(Units.duration(p.timeLeft, arabic), 0.5f, Palette.success))
-        tripLeft.setIfChanged("${Units.distance(p.remaining, arabic)} · ${getString(R.string.maps_arrival)} ${Units.arrival(p.timeLeft, Prefs.clock24)}")
-        speedText.setIfChanged("${p.speedKmh}")
-        showOver(RoadWatch.state.over)
-    }
-
-    /** Over the street's limit: the speed disc turns red and beats once, not only its digits. */
-    private fun showOver(over: Boolean) {
-        if (over == overShown) return
-        overShown = over
-        speedBubble.background = if (over) Shapes.oval(Palette.danger) else Shapes.oval(Palette.glass, Palette.glassStroke)
-        val fg = if (over) Palette.onColor(Palette.danger) else Palette.text
-        speedText.setTextColor(fg)
-        speedUnit.setTextColor(if (over) Palette.withAlpha(fg, 0.8f) else Palette.text2)
-        if (over) speedBubble.anim(Motion.XSHORT, Motion.STANDARD).scaleX(1.08f).scaleY(1.08f).withEndAction {
-            speedBubble.anim(Motion.MEDIUM, Motion.EMPHASIZED).scaleX(1f).scaleY(1f).start()
-        }.start()
-    }
-
-    /** The arrival card: where, and a line that runs out in the time left before the trip ends by itself. */
-    private fun showArrival() {
-        val at = NavSession.arrivedAt
-        if (at == arrivalShown) return
-        arrivalShown = at
-        // (a pin whose address was not found has no name worth announcing: "arrived at Dropped pin")
-        val name = NavSession.destination?.name?.takeIf { it.isNotBlank() && it != getString(R.string.maps_dropped_pin) }
-        arrivedCaption.setText(if (name == null) R.string.maps_arrived else R.string.maps_arrived_at)
-        arrivedName.text = name.orEmpty()
-        arrivedName.visibility = if (name == null) View.GONE else View.VISIBLE
-        root.removeCallbacks(arrivedTick)
-        arrivedBar.animate().cancel()
-        arrivedBar.scaleX = arrivedLeft()
-        arrivedBar.post { arrivedBar.pivotX = if (rtl) arrivedBar.width.toFloat() else 0f } // (it runs out toward the start)
-        root.postDelayed(arrivedTick, ARRIVED_STEP_MS)
-    }
-
-    /** The share of the arrival's hold still left. */
-    private fun arrivedLeft(): Float =
-        (NavSession.ARRIVED_HOLD_MS - (SystemClock.elapsedRealtime() - NavSession.arrivedAt)).coerceAtLeast(0L) / NavSession.ARRIVED_HOLD_MS.toFloat()
-
-    /**
-     * The arrival line moves on a step a second, each step a short glide: one animation over the whole hold drew a
-     * frame at every vsync for half a minute, on top of the map, for a line moving a few pixels a second.
-     */
-    private val arrivedTick = object : Runnable {
-        override fun run() {
-            val left = arrivedLeft()
-            arrivedBar.anim(Motion.SHORT, LinearInterpolator()).scaleX(left).start()
-            if (left > 0f && NavSession.state == NavSession.State.ARRIVED) root.postDelayed(this, ARRIVED_STEP_MS)
+        val ar = Fonts.arabicUi
+        val clock = Units.arrival(p.timeLeft, Prefs.clock24, ar)
+        when {
+            NavSession.rerouting -> {
+                turn.message(R.drawable.ic_reroute, R.drawable.ic_reroute, getString(R.string.drive_rerouting), getString(R.string.drive_off_route))
+                eta.set("—", getString(R.string.drive_working_time))
+            }
+            gpsLost -> {
+                turn.message(R.drawable.ic_gps_off, R.drawable.ic_gps_off, getString(R.string.drive_no_gps), lastHint.ifBlank { getString(R.string.drive_off_gps) })
+                eta.set(lastEta.ifEmpty { clock }, getString(R.string.drive_last_value))
+            }
+            else -> {
+                val step = r.steps[p.next]
+                val g = r.guide?.takeIf { it.arabic == ar }
+                val told = g?.toldOfStep(p.next) ?: -1
+                val destination = destinationName()
+                val lines = TurnWords.lines(r, p, ar, destination) { getString(R.string.drive_keep_then, it) }
+                lastHint = lines.hint
+                val quiet = step.type != "arrive" && p.toNext > TurnWords.QUIET_M
+                val parts = Units.distance(p.toNext, ar).split(' ', limit = 2)
+                val dist = withUnit(parts[0], parts.getOrElse(1) { "" }, Type.distUnit, Palette.ink2Move, moving = true)
+                val exit = if (g != null && told >= 0) g.told[told].ringNumber else step.exit
+                // the lanes, while it matters which one the car is in: only real ones, and within 300 m (section 5)
+                val real = step.lanes.takeIf { it.size >= 2 && it.any { l -> !l.valid } && it.any { l -> l.valid } && p.toNext < LANES_M }
+                turn.manoeuvre(r to p.next, step, exit, !quiet, dist, lines.road, lines.hint, debugLaneList(p) ?: real)
+                lastEta = clock
+                eta.set(clock, "${Units.spelled(p.timeLeft, ar)} · ${Units.distance(p.remaining, ar)}")
+            }
         }
     }
 
-    /**
-     * The camera button and the limit sign: while a route is driven the speed is at the screen's end edge and they
-     * stand beside and above it; without one the camera button takes the speed's place. Moved by translation (the
-     * layout is the driving one), so they glide instead of jumping by their margins.
-     */
-    private fun placeEndCluster(navigating: Boolean) {
-        if (clusterNav == navigating) return
-        val animate = clusterNav != null && root.isLaidOut
-        clusterNav = navigating
-        fun move(v: View, dx: Int, dy: Int) {
-            val x = if (navigating) 0f else (if (rtl) -dx else dx).dp.toFloat()
-            val y = if (navigating) 0f else dy.dp.toFloat()
-            if (animate) v.anim(Motion.MEDIUM, Motion.STANDARD).translationX(x).translationY(y).start()
-            else { v.translationX = x; v.translationY = y }
+    private var lastEta = ""
+
+    private fun debugLaneList(p: NavSession.Progress): List<Lane>? {
+        val d = debugLanes
+        if (!BuildConfig.DEBUG || d == null || p.toNext >= LANES_M) return null
+        return d.split(',').map { c ->
+            val way = when (c.trim().trimEnd('*')) { "l" -> "left"; "r" -> "right"; "sl" -> "slight left"; "sr" -> "slight right"; "u" -> "uturn"; else -> "straight" }
+            Lane(listOf(way), c.endsWith("*"), if (c.endsWith("*")) way else "")
         }
-        move(cameraMark, 106, 13)
-        move(speedSign, 15, 20)
     }
 
+    private fun arrived() {
+        val r = NavSession.route
+        val ar = Fonts.arabicUi
+        val name = destinationName()
+        val took = (SystemClock.elapsedRealtime() - NavSession.startedAt) / 1000.0
+        val line = if (r == null) "" else "${Units.spelled(took, ar)} · ${Units.distance(r.distance, ar)}"
+        turn.arrived(NavSession.arrivedAt, getString(R.string.drive_arrived), name.orEmpty(), line)
+        if (DriveState.parked) stoodAtArrival = true
+    }
+
+    /** (a pin whose address was not found has no name worth announcing: "arrived at Dropped pin") */
+    private fun destinationName(): String? = NavSession.destination?.name?.takeIf { it.isNotBlank() && it != getString(R.string.maps_dropped_pin) }
+
+    // ------------------------------------------------------------------------------------------ End and its undo
+    /** One touch, no confirm: the trip ends, and the same rect offers it back for 5 s. */
     private fun endNav() {
+        val place = NavSession.destination
+        val route = NavSession.route
+        kept = if (place != null && route != null) Kept(place, route, NavSim.driving) else null
         NavSession.stop()
+        leaveMap()
+        if (kept != null) {
+            eta.ended(true, animate = true)
+            root.removeCallbacks(undoGone)
+            root.postDelayed(undoGone, Tokens2.MS_undoEnd)
+        }
+        // (moving: `drive-free` now, not 10 s after this touch)
+        panel.freeNow()
+        panel.syncNav()
+    }
+
+    private fun leaveMap() {
         map.setRoute(null)
         map.setDestination(null)
         map.setCamera(AuraMap.Camera.FOLLOW)
         panel.tools.tripEnded()
+    }
+
+    private val undoGone = Runnable {
+        kept = null
+        syncCards()
+    }
+
+    private fun clearUndo() {
+        root.removeCallbacks(undoGone)
+        kept = null
+        eta.ended(false, animate = eta.up)
+    }
+
+    private fun undo() {
+        val k = kept ?: return
+        clearUndo()
+        NavSession.start(this, k.place, k.route, remember = false)
+        if (BuildConfig.DEBUG && k.simKmh > 0) NavSim.start(k.simKmh)
+        map.setCamera(AuraMap.Camera.NAVIGATE)
         panel.syncNav()
+    }
+
+    /** Done, or moving off from the arrival: back to browse. */
+    private fun doneTrip() {
+        stoodAtArrival = false
+        NavSession.stop()
+        leaveMap()
+        panel.syncNav()
+    }
+
+    /** The place he arrived at goes to his places, kept for the phone's list ([Places.favourites]). */
+    private fun savePlace() {
+        val p = NavSession.destination ?: return
+        if (Places.favourites.none { Geo.distance(it.pos, p.pos) <= SAME_PLACE_M }) Places.favourites = listOf(p) + Places.favourites
+        actions.save.isEnabled = false
+        panel.toast(getString(R.string.maps_saved))
     }
 
     // ------------------------------------------------------------------------------------------ UI
     override fun build() {
-        overShown = false
-        arrivalShown = 0L
-        clusterNav = null
-        val controls = panel.tools.controls
-        speedBubble = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            background = Shapes.oval(Palette.glass, Palette.glassStroke)
-            lift(Elev.FLOAT, overMap = true)
-            visibility = View.GONE
-        }
-        speedText = label(Type.DISPLAY_S, Palette.text, gravity = Gravity.CENTER)
-        speedBubble.addView(speedText, lp(MATCH, WRAP))
-        speedUnit = label(Type.CAPTION, Palette.text2, gravity = Gravity.CENTER).apply { setText(R.string.maps_kmh) }
-        speedBubble.addView(speedUnit, lp(MATCH, WRAP))
-        controls.addView(speedBubble, flp(92.dp, 92.dp, Gravity.BOTTOM or Gravity.END).apply { setMargins(0, 0, 18.dp, MapsPanel.BOTTOM_EDGE.dp + 40.dp); marginEnd = 18.dp })
-        // the owner's additions: the street's limit above the speed, and the camera or bump ahead at the top beside the
-        // compass (beside the limit it covered the car while navigating)
-        speedSign = RoadHud(this, parts = RoadHud.Parts.SIGN)
-        controls.addView(speedSign, flp(WRAP, WRAP, Gravity.BOTTOM or Gravity.END).apply { setMargins(0, 0, 33.dp, MapsPanel.BOTTOM_EDGE.dp + 138.dp); marginEnd = 33.dp })
-        controls.addView(RoadHud(this, parts = RoadHud.Parts.ALERT), flp(WRAP, WRAP, Gravity.TOP or Gravity.END).apply { setMargins(0, MapsPanel.TOP_EDGE.dp + 31.dp, 94.dp, 0); marginEnd = 94.dp })
-        // "a camera here": beside the speed, in reach of the driver's hand (Settings → Navigation hides it); laid out
-        // where it stands while driving, moved into the speed's place by translation otherwise ([placeEndCluster])
-        cameraMark = CameraMark(this)
-        controls.addView(cameraMark, flp(WRAP, WRAP, Gravity.BOTTOM or Gravity.END).apply { setMargins(0, 0, 122.dp, MapsPanel.BOTTOM_EDGE.dp + 53.dp); marginEnd = 122.dp })
+        if (built) mini.destroy()
+        val layer = panel.columnLayer
+        // scrims, under everything of the panel (section 4): the map under the column is hidden, a label at its edge fades instead of being cut
+        layer.addView(surfaceImage(R.drawable.scrim_col_night, R.drawable.scrim_col_day), at(0, 0, 392, 600))
+        layer.addView(surfaceImage(R.drawable.scrim_top_night, R.drawable.scrim_top_day), at(0, 0, 1024, 76))
+        layer.addView(surfaceImage(R.drawable.scrim_bot_night, R.drawable.scrim_bot_day), at(0, 482, 1024, 34))
 
-        // ---- the guidance banner, in the search pill's place (both there while one goes and the other comes)
-        banner = GuidanceBanner(this)
-        panel.columnLayer.addView(banner, flp(panel.cardW, WRAP, Gravity.TOP or Gravity.START).apply { setMargins(Space.L.dp, MapsPanel.TOP_EDGE.dp, Space.L.dp, 0); marginStart = Space.L.dp })
-
-        // ---- bottom start: trip bar / arrived, in one place with the place card
-        tripBar = buildTripBar()
-        panel.columnLayer.addView(tripBar, bottomCard())
-        arrivedCard = buildArrivedCard()
-        panel.columnLayer.addView(arrivedCard, bottomCard())
+        turn = TurnCard(this)
+        layer.addView(turn, Surface.CARD.at(12, 44, 364, 190))
+        speed = SpeedCard(this)
+        layer.addView(speed, Surface.CARD.at(12, 242, 232, 88))
+        saher = SaherCard(this)
+        layer.addView(saher, Surface.CARD.at(252, 242, 124, 88))
+        eta = EtaCard(this, { endNav() }, { undo() })
+        layer.addView(eta, Surface.CARD.at(12, 338, 364, 80))
+        actions = ArrivedActions(this, { savePlace() }, { doneTrip() })
+        layer.addView(actions, Surface.CARD.at(12, 242, 364, 92))
+        val m = Backdrop.CARD_MARGIN
+        // (the dock's own way to Music, whatever a trip makes of it. The cover's source sheet is Music's to give: until then the same)
+        val music = { Chrome.of(panel.shell)?.open(Screens.MUSIC) ?: Unit }
+        mini = MiniCard(this, music, music)
+        layer.addView(mini, at(12 - m, 426 - m, 364 + 2 * m, 80 + 2 * m))
+        chip = LyricChip(this)
+        layer.addView(chip, Surface.PILL.at(384, 456, 628, 50))
+        for (v in arrayOf<View>(turn, speed, saher, eta, actions, mini, chip)) v.visibility = View.INVISIBLE
+        built = true
+        song?.let { mini.bind(it) }
+        if (chipOn) chip.visibility = View.VISIBLE
+        kept = null
+        syncRoad()
     }
 
-    private fun buildTripBar(): LinearLayout {
-        val c = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            background = panelFill()
-            lift(Elev.FLOAT, overMap = true)
-            visibility = View.GONE
-            setPaddingRelative(Space.XL.dp, Space.M.dp, Space.M.dp, Space.M.dp)
-        }
-        val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        // (the time left in green, as on every navigation screen: all is well, this is how long; its unit small)
-        tripEta = label(Type.DISPLAY_S, Palette.success).apply { weight = Fonts.MEDIUM }
-        tripLeft = label(Type.FOOTNOTE, Palette.text2).apply { fontFeatureSettings = "tnum" }
-        t.addView(tripEta, lp(MATCH, WRAP))
-        t.addView(tripLeft, lp(MATCH, WRAP).apply { topMargin = Space.XXS.dp })
-        c.addView(t, lp(0, WRAP, 1f))
-        c.addView(roundIcon(R.drawable.ic_layers, 60, R.string.maps_overview) { panel.tools.overviewOfTrip() }, lp(60.dp, 60.dp))
-        // a red word on a red tint, not a red block: stopping is there, but the time left is what draws the eye
-        c.addView(ABtn(this).apply {
-            kind = ABtn.Kind.DANGER
-            size = ABtn.Size.L
-            setPadding(Space.L.dp, 0, Space.L.dp, 0)
-            setText(R.string.maps_end)
-            setOnClickListener { endNav() }
-        }, lp(WRAP, Touch.LARGE.dp).apply { marginStart = Space.S.dp })
-        return c
-    }
+    companion object {
+        private const val FIX_MAX_AGE_MS = 5000L
+        /** The Saher card shows a spot this near, and it is hot this near. */
+        private const val SAHER_M = 1000
+        private const val SAHER_HOT_M = 400
+        private const val LANES_M = 300.0
+        private const val SAME_PLACE_M = 60.0
 
-    private fun buildArrivedCard(): FrameLayout {
-        val c = FrameLayout(this).apply {
-            background = panelFill()
-            roundedClip(Radius.XL)
-            lift(Elev.FLOAT, overMap = true)
-            visibility = View.GONE
-        }
-        val row = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPaddingRelative(Space.XL.dp, Space.L.dp, Space.M.dp, Space.L.dp)
-        }
-        row.addView(iconView(R.drawable.ic_check_circle, 34, Palette.success), lp(34.dp, 34.dp))
-        val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        arrivedCaption = label(Type.FOOTNOTE, Palette.text2)
-        arrivedName = label(Type.TITLE, Palette.text)
-        t.addView(arrivedCaption, lp(MATCH, WRAP))
-        t.addView(arrivedName, lp(MATCH, WRAP).apply { topMargin = Space.XXS.dp })
-        row.addView(t, lp(0, WRAP, 1f).apply { marginStart = Space.M.dp; marginEnd = Space.S.dp })
-        row.addView(ABtn(this).apply {
-            kind = ABtn.Kind.PRIMARY
-            size = ABtn.Size.L
-            setText(R.string.maps_done)
-            setOnClickListener { endNav() }
-        }, lp(WRAP, Touch.LARGE.dp))
-        c.addView(row, flp(MATCH, WRAP))
-        // the time before the trip ends by itself, running out along the bottom edge
-        arrivedBar = View(this).apply { setBackgroundColor(Guide.color()) }
-        c.addView(arrivedBar, flp(MATCH, 3.dp, Gravity.BOTTOM))
-        return c
-    }
-
-    private companion object {
-        /** The arrival card's line moves on this often. */
-        private const val ARRIVED_STEP_MS = 1000L
+        /** Debug builds: the next turn's lanes on the sign (`NavDebug --es lanes`): no route here has real ones. */
+        @JvmField var debugLanes: String? = null
     }
 }
