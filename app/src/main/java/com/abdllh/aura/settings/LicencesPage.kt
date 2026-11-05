@@ -15,14 +15,16 @@ import com.abdllh.aura.ui.lp
 import java.io.File
 
 /**
- * What AMRI OS and its map are made of (SPEC.md section 6.6, About › الرخص): the repository's NOTICE, which ships in assets, and the map pack's own NOTICE-PACK.md with the licences it names, read
- * through [PackPaths] from the pack in use. With no pack on the unit only the first.
+ * What AMRI OS and its map are made of, behind the About row of Car and system: the map's credit whole, the repository's NOTICE, which ships in assets, and the map pack's own NOTICE-PACK.md with the
+ * licences it names, read through [PackPaths] from the pack in use. With no pack on the unit none of those.
  */
 class LicencesPage(private val act: SettingsPanel) : Page(R.string.st_licences) {
     override val keep: Boolean get() = false
 
     override fun build(ctx: Context): View {
         val rows = ArrayList<View?>()
+        // the credit whole, as the map's data asks, for the data that draws: on its own line, reading left to right in Arabic as well
+        rows.add(ctx.settingRow(null, ctx.getString(R.string.st_maps), "⁦${com.abdllh.aura.nav.MapStyle.attribution(null)}⁩"))
         rows.add(ctx.settingRow(null, ctx.getString(R.string.st_lic_app), null, ctx.chevron()) {
             act.open(TextPage(R.string.st_lic_app) { c -> c.assets.open("NOTICE.txt").use { it.reader().readText() } })
         })

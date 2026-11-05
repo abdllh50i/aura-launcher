@@ -34,7 +34,7 @@ class AuraNotificationListener : NotificationListenerService() {
         // what other apps posted while AMRI was not listening goes too — a moment later: the listener is bound while
         // AMRI starts, and the start-up has the main thread then
         main.postDelayed({
-            if (Notices.hideAndroid && !off) try { activeNotifications?.forEach { if (hideable(it)) cancel(it) } } catch (t: Throwable) { Log.w(TAG, "clear: $t") }
+            if (!off) try { activeNotifications?.forEach { if (hideable(it)) cancel(it) } } catch (t: Throwable) { Log.w(TAG, "clear: $t") }
         }, 2000L)
     }
 
@@ -47,7 +47,7 @@ class AuraNotificationListener : NotificationListenerService() {
         } catch (t: Throwable) {
             Log.w(TAG, "message: $t")
         }
-        if (Notices.hideAndroid && hideable(n)) cancel(n)
+        if (hideable(n)) cancel(n)
     }
 
     /** Taken away only what can be: an ongoing notification (a running service, a download) cannot be cancelled. */

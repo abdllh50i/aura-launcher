@@ -38,6 +38,13 @@ give_back() {
     ) >/dev/null 2>&1 </dev/null &
     K=/data/nwdappconfig/app/KeyRuleConfig.xml
     [ -f $K.pre-aura ] && cat $K.pre-aura > $K && rm -f $K.pre-aura
+    # the stock music app, where the firmware's source list names AMRI's (a living AMRI: system/StockMusic.kt)
+    L=/data/nwdappconfig/app/replace_source_list.xml
+    if grep -q com.abdllh.aura.music.MusicActivity $L 2>/dev/null; then
+        if [ -f $L.pre-aura ]; then cat $L.pre-aura > $L && rm -f $L.pre-aura; else rm -f $L; fi
+        am broadcast -a com.nwd.ACTION_REPLACE_SOURCE_LIST_CHANGE >/dev/null 2>&1
+        pm enable com.nwd.android.music.ui >/dev/null 2>&1
+    fi
     # AMRI's ring (only while it still is AMRI's: the marker holds its MD5); the owner's own comes back
     D=$(getprop ro.nwd.internal.path); [ -n "$D" ] || D=/mnt/media_rw/sdcard
     if [ -f "$D/.aura-ring" ]; then

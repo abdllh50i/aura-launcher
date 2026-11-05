@@ -228,7 +228,7 @@ object PhoneServer {
     @Volatile private var lastAt = 0L
     @Volatile private var lastPeer = ""
 
-    /** "18:22 from 172.20.10.1": the last request, for Settings → About. */
+    /** "18:22 from 172.20.10.1": the last request, for GET /v1/diag and the Screen check's report. */
     val lastRequest: String
         get() = if (lastAt == 0L) "" else "${clock(lastAt)}  $lastPeer"
 

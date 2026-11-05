@@ -90,20 +90,16 @@ object Amri {
         get() = Prefs.raw.getBoolean("amriOn", false)
         set(v) { Prefs.raw.edit().putBoolean("amriOn", v).apply(); app?.let { refresh(it) } }
 
-    /** Answers are spoken (text to speech); otherwise only shown. */
-    var spoken: Boolean
-        get() = Prefs.raw.getBoolean("amriSpeak", true)
-        set(v) { Prefs.raw.edit().putBoolean("amriSpeak", v).apply() }
+    /** Answers are spoken (text to speech); otherwise only shown. Its switch went in 2.0.0-beta.3: as it was left (off on the owner's unit). */
+    val spoken: Boolean get() = Prefs.raw.getBoolean("amriSpeak", true)
 
     /** 0 strict, 1 normal, 2 relaxed: how close to the recordings a word must be. */
     var sensitivity: Int
         get() = Prefs.raw.getInt("amriSens", 1)
         set(v) { Prefs.raw.edit().putInt("amriSens", v.coerceIn(0, 2)).apply() }
 
-    /** The microphone (an AudioDeviceInfo id; 0: the system's choice). */
-    var micId: Int
-        get() = Prefs.raw.getInt("amriMic", 0)
-        set(v) { Prefs.raw.edit().putInt("amriMic", v).apply(); app?.let { AmriService.restartMic() } }
+    /** The microphone (an AudioDeviceInfo id; 0, or one that is gone: the system's choice). As it was left when its row went (2.0.0-beta.3). */
+    val micId: Int get() = Prefs.raw.getInt("amriMic", 0)
 
     /** How close a word must come to the owner's recordings, at this sensitivity ([Limits], [WakeModel.judge]). */
     internal fun limits(): Limits = Limits.of(sensitivity)
@@ -590,11 +586,7 @@ object Amri {
             Command.BluetoothMusic -> { openMusic(c, true); Answer(s(R.string.amri_bt_music)) }
             Command.OpenMaps -> { com.abdllh.aura.home.Actions.nav(c); Answer(s(R.string.amri_maps)) }
             is Command.Navigate -> {
-                val which = if (cmd.home) "home" else "work"
-                // (the navigation app chosen in Settings, when it is not AMRI Maps and the place is known to hand over)
-                if (com.abdllh.aura.util.Prefs.builtInMaps || !com.abdllh.aura.home.Actions.driveWithApp(c, which)) {
-                    com.abdllh.aura.home.Screens.mapsGo(c, which)
-                }
+                com.abdllh.aura.home.Screens.mapsGo(c, if (cmd.home) "home" else "work")
                 Answer(s(if (cmd.home) R.string.amri_go_home else R.string.amri_go_work))
             }
             Command.HomeScreen -> {
@@ -637,10 +629,10 @@ object Amri {
     /** An answer with its numbers in Western digits, the app's rule everywhere (%d alone gives ١٢ in Arabic, beside 12 on the dock). */
     private fun digits(c: Context, id: Int, vararg a: Any): String = String.format(Locale.ROOT, c.getString(id), *a)
 
-    /** What is left of the route on AMRI Maps (another navigation app does not say). */
+    /** What is left of the route. */
     private fun eta(c: Context): Answer {
         val nav = com.abdllh.aura.nav.NavSession
-        val none = c.getString(if (com.abdllh.aura.util.Prefs.builtInMaps) R.string.amri_eta_none else R.string.amri_eta_other_app)
+        val none = c.getString(R.string.amri_eta_none)
         if (nav.state != com.abdllh.aura.nav.NavSession.State.NAVIGATING) return Answer(none, error = true)
         // (no progress yet just after the start, before a fix: the whole route)
         val p = nav.progress
@@ -682,16 +674,11 @@ object Amri {
     }
 
     /**
-     * The nearest place of a kind: with AMRI Maps, searched near the car and the nearest one said, then the map's
-     * search opened on it; with another navigation app (Settings), that app's own search.
+     * The nearest place of a kind: searched near the car and the nearest one said, then the map's search opened on it.
      */
     private fun nearby(c: Context, place: Command.Place): Answer {
         val kind = c.getString(place.label)
         val query = if (arabic) place.ar else place.en
-        if (!com.abdllh.aura.util.Prefs.builtInMaps) {
-            return if (searchWithApp(c, query)) Answer(c.getString(R.string.amri_nearby_map, kind))
-            else Answer(c.getString(R.string.amri_nearby_none, kind), error = true)
-        }
         val car = com.abdllh.aura.nav.CarLocation.lastKnown()
         if (car == null) { // no position yet: the map's search, around where the map is
             openMapSearch(c, query)
@@ -730,17 +717,13 @@ object Amri {
     private var placeSearching = false
 
     /**
-     * "ودني المطار": with AMRI Maps the search runs here, and when it gives one clear place ([com.abdllh.aura.nav.Places.
+     * "ودني المطار": the search runs here, and when it gives one clear place ([com.abdllh.aura.nav.Places.
      * clearWinner]) the trip to it starts: it says what it chose, the card offers to cancel ([com.abdllh.aura.link.PlaceInbox],
      * which also asks first during another trip). A weak or an ambiguous answer, or no position to judge it from: the
-     * map's search on it, as it always was (or the navigation app's).
+     * map's search on it, as it always was.
      */
     private fun searchPlace(c: Context, query: String): Answer {
         val places = com.abdllh.aura.nav.Places
-        if (!com.abdllh.aura.util.Prefs.builtInMaps) {
-            searchWithApp(c, query)
-            return Answer(c.getString(R.string.amri_search_place, query))
-        }
         val near = com.abdllh.aura.nav.CarLocation.lastKnown()
         if (near == null) {
             openMapSearch(c, query)
@@ -785,21 +768,6 @@ object Amri {
     /** AMRI Maps with its search open on [query] and its results showing (MapsActivity's "q"). */
     private fun openMapSearch(c: Context, query: String) {
         com.abdllh.aura.home.Screens.mapsSearch(c, query)
-    }
-
-    /** The navigation app chosen in Settings, searching [query] around the car (Google Maps: geo:, Waze: its link). */
-    private fun searchWithApp(c: Context, query: String): Boolean {
-        val pkg = com.abdllh.aura.home.AppRepo.navPackage(c) ?: return false
-        val car = com.abdllh.aura.nav.CarLocation.lastKnown()
-        val at = car?.let { String.format(Locale.ROOT, "%.6f,%.6f", it.lat, it.lon) } ?: "0,0"
-        val uri = if (pkg == "com.waze") "waze://?q=${android.net.Uri.encode(query)}" else "geo:$at?q=${android.net.Uri.encode(query)}"
-        com.abdllh.aura.system.HomeGuard.launching(pkg)
-        return try {
-            c.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(uri)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            true
-        } catch (_: Throwable) {
-            false
-        }
     }
 
     /** An app by its name: the installed app whose label is closest (Arabic or Latin: "يوتيوب" finds YouTube). */

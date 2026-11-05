@@ -8,14 +8,10 @@
 
     <!-- الإعدادات › الشاشة والصوت › الموسيقى: بطاقة خادم الكلمات -->
     <string name="lyr_srv_title">خادم الكلمات</string>
-    <string name="lyr_srv_off">مو مضبوط: الكلمات تجي من ⁨LRCLIB⁩ بس</string>
-    <string name="lyr_srv_set">مضبوط. اضغط «اختبار» وتأكد إنه يرد</string>
     <string name="lyr_srv_address">العنوان</string>
     <string name="lyr_srv_address_hint">https://lyrics.example.com</string>
     <string name="lyr_srv_key">المفتاح</string>
     <string name="lyr_srv_key_hint">المفتاح اللي يطلع لك لما يشتغل الخادم</string>
-    <string name="lyr_srv_none">مو مضبوط</string>
-    <string name="lyr_srv_test">اختبار</string>
     <string name="lyr_srv_testing">جاري الاختبار…</string>
     <string name="lyr_srv_ok">الخادم يرد (⁨%1$s⁩)</string>
     <string name="lyr_srv_wrong_key">الخادم يرد، بس المفتاح غلط</string>

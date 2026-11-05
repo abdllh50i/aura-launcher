@@ -4,24 +4,12 @@
     <!-- Settings -> Voice assistant: more of what it understands (under the intro) -->
     <string name="voice_more">Also: “what\'s playing?”, “how much longer?”, “nearest petrol station”, “brighter”, “open YouTube”, “play Abadi Al Johar”.</string>
 
-    <!-- Settings -> Voice assistant: sounds it learned to ignore -->
-    <string name="voice_learned">Sounds it learned to ignore</string>
-    <string name="voice_learned_none">None yet. When it wakes by mistake and you say nothing, or tap it away, it learns that sound</string>
-    <plurals name="voice_learned_some">
-        <item quantity="one">%1$d sound. Tap to forget it</item>
-        <item quantity="other">%1$d sounds. Tap to forget them</item>
-    </plurals>
-    <string name="voice_learned_forget_title">Forget the learned sounds?</string>
-    <string name="voice_learned_forget_text">Amri may wake on them again until it learns them anew. Do it if it stopped answering your call.</string>
-    <string name="voice_learned_forget">Forget</string>
-
     <!-- requests and answers -->
     <string name="amri_now_playing">This is “%1$s” by %2$s</string>
     <string name="amri_now_playing_title">This is “%1$s”</string>
     <string name="amri_nothing_playing">Nothing is playing</string>
     <string name="amri_eta">%1$s to go, there at %2$s</string>
     <string name="amri_eta_none">No route is running</string>
-    <string name="amri_eta_other_app">I can\'t tell: another app is navigating</string>
     <string name="amri_nearby_looking">Looking for the nearest %1$s…</string>
     <string name="amri_nearby_found">Nearest %1$s: %2$s, %3$s away</string>
     <string name="amri_nearby_map">The nearest %1$s, on the map</string>

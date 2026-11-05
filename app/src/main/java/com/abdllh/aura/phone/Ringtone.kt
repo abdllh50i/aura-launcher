@@ -1,8 +1,6 @@
 package com.abdllh.aura.phone
 
 import android.content.Context
-import android.media.AudioAttributes
-import android.media.MediaPlayer
 import android.util.Log
 import com.abdllh.aura.BuildConfig
 import com.abdllh.aura.R
@@ -15,7 +13,7 @@ import java.security.MessageDigest
 import java.util.concurrent.Executors
 
 /**
- * AMRI's ring for an incoming call (Settings → Display & sound → Calls; on by default).
+ * AMRI's ring for an incoming call (Settings → Phone; on by default).
  *
  * The ring is not an app's to play on this firmware: the Bluetooth service (com.bt.bc03.PlayerService) plays it
  * itself when a call comes in, a file looped on the phone-call stream at the phone-call volume, and stops it when the
@@ -35,7 +33,6 @@ object Ringtone {
     private const val END = "__aura_end__"
 
     private val worker = Executors.newSingleThreadExecutor()
-    private var preview: MediaPlayer? = null
 
     /** The user's switch (on by default). */
     var enabled: Boolean
@@ -152,29 +149,6 @@ object Ringtone {
         }
         to.setReadable(true, false)
         return md.digest().joinToString("") { String.format(java.util.Locale.ROOT, "%02x", it.toInt() and 0xFF) }
-    }
-
-    // ------------------------------------------------------------------------------------------ hearing it
-    /** Plays the ring once through, for the settings page (the media volume: no call is going on). */
-    fun play(ctx: Context) {
-        stop()
-        try {
-            preview = MediaPlayer.create(ctx.applicationContext, R.raw.aura_ring,
-                AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build(), 0)
-                ?.apply {
-                    setOnCompletionListener { stop() }
-                    start()
-                }
-        } catch (t: Throwable) {
-            Log.w(TAG, "play: $t")
-        }
-    }
-
-    fun stop() {
-        val p = preview ?: return
-        preview = null
-        try { p.stop() } catch (_: Throwable) { }
-        try { p.release() } catch (_: Throwable) { }
     }
 
     /** The folder the firmware's ring player looks in (the shell's D), or out: nothing to do on this unit. */

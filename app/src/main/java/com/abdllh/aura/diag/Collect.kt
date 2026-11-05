@@ -337,6 +337,13 @@ internal object Collect {
         o.put("googleApp", version(pm, VoiceSetup.GOOGLE_APP))
         o.put("defaultTts", Settings.Secure.getString(c.contentResolver, "tts_default_synth") ?: JSONObject.NULL)
         o.put("defaultRecogniser", Settings.Secure.getString(c.contentResolver, "voice_recognition_service") ?: JSONObject.NULL)
+        // the assistant's own: what its pages no longer say. The microphone it holds to, by id, among the inputs there are (id:type)
+        o.put("amriEnrolled", VoiceSetup.enrolled(c)).put("amriLearned", com.abdllh.aura.voice.Amri.learnedSounds(c))
+        o.put("amriTaught", com.abdllh.aura.voice.OfflineCommands.items.count { com.abdllh.aura.voice.OfflineCommands.taught(c, it.id) })
+        o.put("amriMic", com.abdllh.aura.voice.Amri.micId)
+        o.put("inputs", JSONArray(try {
+            (c.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager).getDevices(android.media.AudioManager.GET_DEVICES_INPUTS).map { "${it.id}:${it.type}" }
+        } catch (_: Throwable) { emptyList<String>() }))
         // whether a voice can really speak Arabic here (the engine asked, nothing is said)
         val ready = CountDownLatch(1)
         var status = -99
@@ -364,7 +371,7 @@ internal object Collect {
     // ------------------------------------------------------------------------------------------ K: the settings
     /** The switches and choices on this unit, by name: an allow list, so nothing new ever goes out unasked. */
     private val SETTINGS = listOf(
-        "theme", "accent", "clock24", "dockLabels", "lang", "updateAuto", "updateBeta", "updateRepo", "hideStatusBar", "screenAnimations",
+        "theme", "accent", "clock24", "dockLabels", "lang", "updateAuto", "updateBeta", "updateRepo", "hideStatusBar", "screenAnimations", "pressTick", "saherTone", "mapView",
         "volumeHud", "musicKeysAura", "btCoverOnline", "lyricsWords", "replaceStockMusic", "btDelayMs", "lyricsListen", "callCard", "auraRing",
         "hideAndroidNotices", "showPhoneMessages", "showMessageText", "builtInMaps", "navPackage", "offlineMapState", "offlineMapUpdated",
         "mapExtrasFetched", "markCameraButton", "wifiKeeper", "wifiOnStart", "zlinkGuard", "fullOffOnAccOff", "amriOn", "amriSens", "amriSpeak",
@@ -390,10 +397,43 @@ internal object Collect {
             g.put(k, Settings.System.getString(c.contentResolver, k) ?: JSONObject.NULL)
         }
         o.put("system", g)
-        o.put("notes", JSONObject()
-            .put("homeGuard", com.abdllh.aura.system.HomeGuard.note)
-            .put("musicKey", com.abdllh.aura.system.MusicKeys.note))
+        o.put("notes", notes(c))
+        val w = com.abdllh.aura.update.Rollback.info(c)
+        o.put("wayback", JSONObject().put("version", w.payload?.version ?: JSONObject.NULL).put("usable", com.abdllh.aura.update.Rollback.usable(w.payload))
+            .put("why", w.why).put("detail", w.detail).put("lastExit", w.lastExit).put("lastFrom", w.lastFrom).put("lastTo", w.lastTo)
+            .put("lastDataStayed", w.lastDataStayed).put("lastPm", w.lastPm))
+        o.put("guardLog", JSONArray(com.abdllh.aura.guard.GuardLog.tail(c, 40)))
         return o
+    }
+
+    /**
+     * What the unit noted by itself, at any time: what Settings' workshop showed up to 2.0.0-beta.2 (docs/DEV.md, "Far fewer settings"). The notes that
+     * hold a song's or a place's name give only what came of it: nothing of that goes out.
+     */
+    private fun notes(c: Context): JSONObject {
+        val cover = com.abdllh.aura.music.CoverSearch.note
+        val extras = com.abdllh.aura.nav.MapExtras
+        val heard = com.abdllh.aura.music.LyricsSync.lastHeard()
+        return JSONObject()
+            .put("homeGuard", com.abdllh.aura.system.HomeGuard.note)
+            .put("musicKey", com.abdllh.aura.system.MusicKeys.note)
+            .put("homeStart", com.abdllh.aura.home.Screens.note)
+            .put("panelOpen", com.abdllh.aura.home.PanelStack.lastOpen)
+            .put("panelFailed", com.abdllh.aura.home.PanelStack.failedNote(c))
+            .put("windowLost", com.abdllh.aura.home.DrawWatch.note(c))
+            .put("cover", if (cover.isEmpty()) "" else cover.take(11) + cover.substringAfter("→", ""))
+            .put("youtube", com.abdllh.aura.music.YtMusic.note)
+            .put("place", com.abdllh.aura.link.PlaceInbox.lastOutcome)
+            .put("phoneServer", if (com.abdllh.aura.link.PhoneServer.enabled) "${com.abdllh.aura.link.PhoneServer.status} ${com.abdllh.aura.link.PhoneServer.failure} ${com.abdllh.aura.link.PhoneServer.lastRequest}".trim() else "")
+            .put("nav", com.abdllh.aura.nav.NavNote.text.replace(Regex("trip to .*? (resumed|not resumed)"), "trip $1"))
+            .put("mapLib", com.abdllh.aura.nav.MapLib.note)
+            .put("mapState", com.abdllh.aura.nav.MapController.note)
+            .put("idleGc", com.abdllh.aura.system.IdleGc.note)
+            .put("compile", com.abdllh.aura.system.DexCompile.note)
+            .put("packLast", com.abdllh.aura.nav.pack.PackManager.lastInstall().orEmpty())
+            .put("mapExtras", "cameras ${extras.count(com.abdllh.aura.nav.MapExtras.Kind.CAMERA)}, bumps ${extras.count(com.abdllh.aura.nav.MapExtras.Kind.BUMP)}, " +
+                "signals ${extras.count(com.abdllh.aura.nav.MapExtras.Kind.SIGNAL)}, limits ${extras.speeds.size}, marked ${extras.mine.size}, published ${extras.updatedAt}")
+            .put("lyricsHeard", if (heard == null) "" else "${heard.db} dB, ${heard.words} words")
     }
 
     // ------------------------------------------------------------------------------------------ H: network and phone
@@ -475,6 +515,13 @@ internal object Collect {
             })
         }
         o.put("naghmLinked", PhoneLink.connected).put("naghmNews", PhoneLink.note)
+        // the keeper: what it finds now, and its last events with their causes (a network's name stays out)
+        val keeper = com.abdllh.aura.system.WifiKeeper
+        o.put("keeper", JSONObject().put("state", keeper.state.name).put("cause", keeper.cause?.name ?: JSONObject.NULL).put("rssi", keeper.rssi))
+        val at = java.text.SimpleDateFormat("MM-dd HH:mm:ss", Locale.ROOT)
+        o.put("keeperLog", JSONArray(keeper.log().takeLast(30).map { e ->
+            "${at.format(java.util.Date(e.at))} ${e.type} ${if (e.type == "join" || e.type == "online") "" else e.a} ${e.b}".replace("  ", " ").trim()
+        }))
         val hosts = JSONObject()
         for ((h, f) in tasks) {
             hosts.put(h, try { f.get(9, TimeUnit.SECONDS) } catch (t: Throwable) { f.cancel(true); JSONObject().put("reached", false).put("error", "no answer in 9 s") })
@@ -651,8 +698,10 @@ internal object Collect {
         o.put("firmwareSettings", sys)
         o.put("bluetoothOn", Settings.Global.getString(c.contentResolver, "bluetooth_on") ?: JSONObject.NULL)
         o.put("btPhoneNamed", !Settings.System.getString(c.contentResolver, "bt_phone_name").isNullOrBlank())
-        o.put("canManager", CanGear.manager(c) ?: JSONObject.NULL)
+        val manager = CanGear.manager(c)
+        o.put("canManager", manager ?: JSONObject.NULL)
         o.put("canBoxVersion", CanGear.boxVersion(c) ?: JSONObject.NULL)
+        o.put("canBox", CanGear.boxInfo(c) ?: JSONObject.NULL).put("canAppKnowsGear", CanGear.supported(c)).put("canGearPossible", CanGear.gearPossible(manager) ?: JSONObject.NULL)
         o.put("canMessages", CanGear.messages).put("canGearRaw", CanGear.raw)
         return o
     }

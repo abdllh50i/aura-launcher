@@ -105,7 +105,7 @@ object HomeGuard {
         if (pkg.isEmpty() || pkg == c.packageName) return
         val music = pkg == Known.BT_MUSIC || pkg == Known.MUSIC
         when {
-            music && MusicKeys.enabled -> MusicKeys.stockScreen(c, pkg == Known.BT_MUSIC)
+            music -> MusicKeys.stockScreen(c, pkg == Known.BT_MUSIC)
             // the stock home screen itself (com.android.launcher2.Launcher): never while AMRI is the home screen
             pkg == Device.STOCK_LAUNCHER && cls.endsWith(".Launcher") -> if (Device.isDefaultHome(c)) home(c, pkg, cls)
             comingOn && !covered && (pkg == Device.STOCK_LAUNCHER || pkg in SOURCE_SCREENS || music) -> {

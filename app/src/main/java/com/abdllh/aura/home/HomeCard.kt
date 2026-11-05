@@ -339,7 +339,6 @@ internal class HomeCard(private val shell: HomeActivity, private val host: HomeH
     }
 
     private fun openMaps(search: Boolean) {
-        if (!Prefs.builtInMaps) { if (!Actions.nav(context)) host.toast(context.getString(R.string.err_no_nav)); return }
         if (search) Screens.mapsSearch(context) else Screens.maps(context)
     }
 

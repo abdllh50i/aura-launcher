@@ -156,10 +156,7 @@ class AmriService : Service() {
         /** Back on it, if nothing keeps it off. */
         fun resumeMic() { instance?.sync() }
 
-        /** Another microphone was chosen. */
-        fun restartMic() { instance?.let { it.stopMic(); it.sync() } }
-
-        /** The chosen input ([id] from Settings; 0 or a device that is gone: the system's choice). */
+        /** The chosen input (0 or a device that is gone: the system's choice). */
         fun device(ctx: Context, id: Int): AudioDeviceInfo? {
             if (id == 0) return null
             return try {

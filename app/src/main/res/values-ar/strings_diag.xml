@@ -225,6 +225,7 @@
     <string name="diag_hwui_textures">صور HWUI</string>
     <string name="diag_bt_on">البلوتوث</string>
     <string name="diag_sec_settings">الإعدادات على هالجهاز</string>
+    <string name="diag_sec_notes">اللي سجّله الجهاز</string>
     <string name="diag_system_language">لغة النظام</string>
     <string name="diag_s_route">محرك الخريطة الجديد</string>
     <string name="diag_route">محرك الخريطة الجديد</string>

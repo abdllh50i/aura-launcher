@@ -166,17 +166,5 @@ class PhoneLinkCard(private val ctx: Context) {
     companion object {
         /** SPEC.md section 12: 168, and the 10 of white round the code that it reads by. */
         private const val QR = 188
-
-        /** One line for Settings → About: the server and its last request; "" while it is off. */
-        fun aboutLine(c: Context): String {
-            if (!PhoneServer.enabled) return ""
-            val state = when (PhoneServer.status) {
-                PhoneServer.Status.RUNNING -> c.getString(R.string.link_status_on, PhoneServer.address() ?: "-")
-                PhoneServer.Status.FAILED -> c.getString(R.string.link_status_failed, PhoneServer.failure)
-                else -> c.getString(R.string.link_status_starting)
-            }
-            val last = PhoneServer.lastRequest
-            return if (last.isEmpty()) state else "$state · ${c.getString(R.string.link_last_request, last)}"
-        }
     }
 }

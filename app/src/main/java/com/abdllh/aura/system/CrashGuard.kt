@@ -137,6 +137,8 @@ object CrashGuard {
                 // (the stock call window, the stock ring, the firmware's own music keys and Android's notifications with it)
                 VolumeHud.release(ctx); com.abdllh.aura.phone.Calls.release(ctx); MusicKeys.release(); Notices.release(ctx)
             }
+            // (the stock music app and the phone link: each looks at the kill switch itself. Their switches are gone: this is their way back)
+            StockMusic.apply(ctx); ZLinkGuard.apply(ctx)
         } catch (_: Throwable) {
         }
         return flipHome && Device.setHome(if (enabled) ctx.packageName else Device.STOCK_LAUNCHER)

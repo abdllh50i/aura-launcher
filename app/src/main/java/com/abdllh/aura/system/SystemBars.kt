@@ -9,8 +9,7 @@ import com.abdllh.aura.util.Prefs
  * Hides Android's top status bar on the whole unit (it slides in when you swipe down from the top edge), using the
  * window manager's immersive policy (Settings.Global "policy_control", present in this firmware's PolicyControl).
  * Other entries of that setting are kept; what Aura added is removed again (and a value it replaced is put back) when
- * the option is switched off or Aura stops being the home screen. Needs WRITE_SECURE_SETTINGS (granted to the
- * /system/priv-app build).
+ * Aura stops being the home screen. Needs WRITE_SECURE_SETTINGS (granted to the /system/priv-app build).
  */
 object SystemBars {
     private const val TAG = "AuraBars"
@@ -20,10 +19,10 @@ object SystemBars {
     private const val ADDED = "barsAdded"          // entries Aura put there
     private const val REPLACED = "barsReplacedStatus" // an immersive.status value that was there before Aura's
 
-    /** Brings the setting in line with the user's choice (Settings → Display & sound). */
-    fun apply(ctx: Context): Boolean = update(ctx, Prefs.hideStatusBar)
+    /** The status bar hidden, part of owning the screen: whatever the switch that was once here last said. */
+    fun apply(ctx: Context): Boolean = update(ctx, true)
 
-    /** Gives the status bar back (Aura is no longer the home screen); the user's choice itself is kept. */
+    /** Gives the status bar back (Aura is no longer the home screen). */
     fun release(ctx: Context): Boolean = update(ctx, false)
 
     private fun update(ctx: Context, hide: Boolean): Boolean {

@@ -14,16 +14,10 @@ import com.abdllh.aura.util.Prefs
 class SettingsActivity : Entry(Screens.SETTINGS) {
     companion object {
         const val EXTRA_PAGE = "page"
-        /** The seven pages of section 6.6, in the side list's order. The older names go on meaning where that thing is now. */
-        const val PAGE_DISPLAY = 0
-        const val PAGE_GENERAL = PAGE_DISPLAY
+        /** The pages asked for from outside, by their place in the side list: display 0, maps 1, music 2, Amri 3, phone 4, car and system 5. */
         const val PAGE_MAPS = 1
-        const val PAGE_NAVIGATION = PAGE_MAPS
-        const val PAGE_MUSIC = 2
         const val PAGE_VOICE = 3
-        const val PAGE_PHONE = 4
         const val PAGE_VEHICLE = 5
-        const val PAGE_ABOUT = 6
         /** Sub-pages, by name: the one that opens from the page it lies under. */
         const val PAGE_UPDATE = 100
         const val PAGE_PACK = 101

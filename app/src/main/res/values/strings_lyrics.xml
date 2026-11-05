@@ -9,14 +9,10 @@
 
     <!-- Settings › Display & sound › Music: the lyrics server card -->
     <string name="lyr_srv_title">Lyrics server</string>
-    <string name="lyr_srv_off">Not set: the lyrics come from LRCLIB only</string>
-    <string name="lyr_srv_set">Set. Tap Test to check it answers</string>
     <string name="lyr_srv_address">Address</string>
     <string name="lyr_srv_address_hint">https://lyrics.example.com</string>
     <string name="lyr_srv_key">Key</string>
     <string name="lyr_srv_key_hint">The key the server shows when it starts</string>
-    <string name="lyr_srv_none">Not set</string>
-    <string name="lyr_srv_test">Test</string>
     <string name="lyr_srv_testing">Testing…</string>
     <string name="lyr_srv_ok">The server answers (%1$s)</string>
     <string name="lyr_srv_wrong_key">The server answers, but the key is wrong</string>

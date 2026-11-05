@@ -279,11 +279,13 @@ private val KNOWN = listOf(
     KnownTile(listOf("com.android.gallery3d", "com.google.android.apps.photos"), R.drawable.apptile_violet, R.drawable.ic_gallery, R.string.apps_gallery),
     KnownTile(listOf(Known.CAM360), R.drawable.apptile_ink, R.drawable.ic_cam360, R.string.apps_cam360),
     KnownTile(listOf(Known.MYCAR), R.drawable.apptile_blue, R.drawable.ic_car, R.string.apps_mycar),
-    KnownTile(listOf(Known.PHONE), R.drawable.apptile_green, R.drawable.ic_phone, R.string.apps_phone)
+    KnownTile(listOf(Known.PHONE), R.drawable.apptile_green, R.drawable.ic_phone, R.string.apps_phone),
+    // (Settings has no row for it any more: Wi-Fi's and Bluetooth's other pages, and whatever else of Android's, from here)
+    KnownTile(listOf(Known.ANDROID_SETTINGS), R.drawable.apptile_grey, R.drawable.ic_gear, R.string.v_android_settings)
 )
 
-/** Android's own settings are in Settings › Car and system, so one settings AppEntry stays on the grid; AMRI's own screens are in the dock; the stock launcher's are by name. */
-private val NOT_HERE = setOf(Known.ANDROID_SETTINGS, Known.STOCK_LAUNCHER)
+/** AMRI's own screens are in the dock; the stock launcher's are by name. */
+private val NOT_HERE = setOf(Known.STOCK_LAUNCHER)
 
 private fun order(c: Context, apps: List<AppInfo>): List<AppEntry> {
     val byPkg = apps.associateBy { it.pkg }

@@ -267,7 +267,7 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
 
     /** The kept panels ahead of time, so nothing is built in a tap (once they are there these are two looks in a map). */
     private fun prepareAhead() {
-        if (Prefs.builtInMaps) shell.panels.prepareWhenQuiet(Screens.MAPS, MAPS_PANEL_AFTER_MS)
+        shell.panels.prepareWhenQuiet(Screens.MAPS, MAPS_PANEL_AFTER_MS)
         shell.panels.prepareWhenQuiet(Screens.MUSIC, MUSIC_PANEL_AFTER_MS)
     }
 

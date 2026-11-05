@@ -19,14 +19,16 @@ import com.abdllh.aura.ui.WRAP
 import com.abdllh.aura.ui.iconView
 import com.abdllh.aura.ui.label
 import com.abdllh.aura.ui.lp
-import com.abdllh.aura.update.GitHub
 import com.abdllh.aura.update.Release
 import com.abdllh.aura.update.UpdateManager
 import com.abdllh.aura.util.Fmt
 import com.abdllh.aura.util.Prefs
 
-/** Software update, a sub-page of Car and system: check GitHub, show release notes, download, verify, install. The logic is [UpdateManager]'s, as it was; only the look is new. */
-class UpdatePage(private val act: SettingsPanel) : Page(R.string.st_update) {
+/**
+ * Software update, a sub-page of Car and system: asks GitHub by itself at each visit, shows what came, downloads, verifies, installs. There is no button to ask again, and no option: it asks on its own every few hours,
+ * and betas come while one runs or if they were chosen in a version that had that switch ([Prefs.updateBeta]). The logic is [UpdateManager]'s, as it was.
+ */
+class UpdatePage : Page(R.string.st_update) {
     private lateinit var holder: LinearLayout
     private lateinit var ctx: Context
     private var observer: ((UpdateManager.State) -> Unit)? = null
@@ -41,8 +43,7 @@ class UpdatePage(private val act: SettingsPanel) : Page(R.string.st_update) {
         val col = ctx.pageColumn()
 
         // this version
-        col.addView(ctx.settingRow(null, "${ctx.getString(R.string.app_name)} ⁦${BuildConfig.VERSION_NAME}⁩",
-            ctx.getString(R.string.upd_build_line, BuildConfig.VERSION_CODE.toString(), ctx.getString(if (Prefs.updateBeta) R.string.upd_channel_beta else R.string.upd_channel_stable))))
+        col.addView(ctx.settingRow(null, "${ctx.getString(R.string.app_name)} ⁦${BuildConfig.VERSION_NAME}⁩"))
 
         // what is going on now
         holder = LinearLayout(ctx).apply {
@@ -50,31 +51,14 @@ class UpdatePage(private val act: SettingsPanel) : Page(R.string.st_update) {
             setPaddingRelative(PAD, Space.S, PAD, Space.L)
         }
         col.addView(holder, lp(MATCH, WRAP))
-
-        // options
-        col.addPart(ctx.getString(R.string.upd_options))
-        col.addView(ctx.rows(
-            ctx.switchRow(null, ctx.getString(R.string.upd_auto), ctx.getString(R.string.upd_auto_sub), Prefs.updateAuto) { Prefs.updateAuto = it },
-            ctx.switchRow(null, ctx.getString(R.string.upd_beta), ctx.getString(R.string.upd_beta_sub), Prefs.updateBeta) {
-                Prefs.updateBeta = it
-                UpdateManager.forget() // a release found on the other channel must not stay on offer
-                act.rebuild()
-            },
-            ctx.settingRow(null, ctx.getString(R.string.upd_source), Prefs.updateRepo, ctx.iconView(R.drawable.ic_edit, 22) { Palette.ink3 }) {
-                ctx.parked {
-                    InputDialog.show(ctx, ctx.getString(R.string.upd_source), "owner/repo", Prefs.updateRepo) { v ->
-                        if (GitHub.isValidRepo(v)) { Prefs.updateRepo = v.trim(); UpdateManager.forget(); act.rebuild() }
-                        else com.abdllh.aura.ui.Snack.show(ctx, R.string.upd_err_repo, long = true)
-                    }
-                }
-            }
-        ))
-        col.addNote(ctx.getString(R.string.upd_footer))
         return col
     }
 
     override fun onShow() {
         if (observer != null) return
+        // (nothing on offer, nothing going on: he came to see whether there is something; first, so the answer is what the page opens on)
+        val s = UpdateManager.state
+        if (s is UpdateManager.State.Idle || s is UpdateManager.State.UpToDate || (s is UpdateManager.State.Failed && s.release == null)) UpdateManager.check()
         val o: (UpdateManager.State) -> Unit = { render(it) }
         observer = o
         UpdateManager.observe(o)
@@ -104,7 +88,7 @@ class UpdatePage(private val act: SettingsPanel) : Page(R.string.st_update) {
         dlText = null
         holder.removeAllViews()
         when (s) {
-            is UpdateManager.State.Idle -> idle()
+            is UpdateManager.State.Idle -> Unit
             is UpdateManager.State.Checking -> busy(ctx.getString(R.string.upd_checking), null)
             is UpdateManager.State.UpToDate -> upToDate(s.checkedAt, s.noReleases)
             is UpdateManager.State.Available -> available(s.release)
@@ -116,12 +100,6 @@ class UpdatePage(private val act: SettingsPanel) : Page(R.string.st_update) {
         lastKind = kind
     }
 
-    private fun idle() {
-        title(ctx.getString(R.string.upd_ready))
-        subtitle(if (Prefs.lastUpdateCheck > 0) ctx.getString(R.string.upd_last_checked, Fmt.dateTime(Prefs.lastUpdateCheck)) else ctx.getString(R.string.upd_never_checked))
-        checkButton()
-    }
-
     private fun upToDate(at: Long, noReleases: Boolean) {
         val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         row.addView(ctx.iconView(R.drawable.ic_check_round, 28) { Palette.green }, lp(28, 28).apply { marginEnd = Space.M })
@@ -129,7 +107,6 @@ class UpdatePage(private val act: SettingsPanel) : Page(R.string.st_update) {
         holder.addView(row, lp(MATCH, WRAP))
         subtitle(ctx.getString(R.string.upd_last_checked, Fmt.dateTime(at)))
         if (noReleases) subtitle(ctx.getString(R.string.upd_no_releases, Prefs.updateRepo))
-        checkButton()
     }
 
     private fun available(r: Release) {
@@ -164,10 +141,7 @@ class UpdatePage(private val act: SettingsPanel) : Page(R.string.st_update) {
                 }
             })
         }
-        val actions = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
-        actions.addView(ABtn(ctx).apply { kind = ABtn.Kind.PRIMARY; setText(R.string.upd_download); setOnClickListener { UpdateManager.downloadAndInstall() } }, lp(WRAP, WRAP))
-        actions.addView(ABtn(ctx).apply { kind = ABtn.Kind.TONAL; setText(R.string.upd_check_again); setOnClickListener { UpdateManager.check() } }, lp(WRAP, WRAP).apply { marginStart = Space.M })
-        holder.addView(actions, lp(MATCH, WRAP).apply { topMargin = Space.L })
+        holder.addView(ABtn(ctx).apply { kind = ABtn.Kind.PRIMARY; setText(R.string.upd_download); setOnClickListener { UpdateManager.downloadAndInstall() } }, lp(WRAP, WRAP).apply { topMargin = Space.L })
     }
 
     private fun fraction(s: UpdateManager.State.Downloading) = if (s.total > 0) s.done.toFloat() / s.total else 0f
@@ -218,14 +192,6 @@ class UpdatePage(private val act: SettingsPanel) : Page(R.string.st_update) {
 
     private fun subtitle(text: String) {
         holder.addView(ctx.label(Type.rowHint, { Palette.ink2 }, lines = 0).apply { this.text = text }, lp(MATCH, WRAP).apply { topMargin = Space.XS })
-    }
-
-    private fun checkButton() {
-        holder.addView(ABtn(ctx).apply {
-            kind = ABtn.Kind.PRIMARY
-            setText(R.string.upd_check)
-            setOnClickListener { UpdateManager.check() }
-        }, lp(WRAP, WRAP).apply { topMargin = Space.L })
     }
 
     private fun cleanNotes(raw: String): String = raw

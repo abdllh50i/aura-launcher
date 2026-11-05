@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="about_nav">الملاحة: آخر اللي صار</string>
     <string name="trip_resume_caption">آخر رحلة</string>
     <string name="trip_resume_q">تكمل الطريق إلى %1$s؟</string>
     <string name="trip_resume_yes">كمل</string>

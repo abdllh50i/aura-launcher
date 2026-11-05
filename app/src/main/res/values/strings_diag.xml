@@ -219,6 +219,7 @@
     <string name="diag_hwui_textures">HWUI textures</string>
     <string name="diag_bt_on">Bluetooth</string>
     <string name="diag_sec_settings">Settings on this unit</string>
+    <string name="diag_sec_notes">What the unit noted</string>
     <string name="diag_system_language">System language</string>
     <string name="diag_s_route">The new map engine</string>
     <string name="diag_route">New map engine</string>

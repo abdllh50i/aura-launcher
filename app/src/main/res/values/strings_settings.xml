@@ -2,11 +2,9 @@
 <resources>
     <!-- Settings › Update: under the first lines of a release's notes -->
     <string name="upd_notes_more">Show all</string>
-    <!-- Settings › Voice assistant: a command's words as the driver says them (each language its own quotes) -->
-    <string name="voice_cmd_quoted">“%1$s”</string>
 
-    <!-- 2.0: the seven pages (SPEC.md section 6.6) -->
-    <string name="st_display">Display &amp; sound</string>
+    <!-- 2.0: the six pages -->
+    <string name="st_display">Display</string>
     <string name="st_maps">Maps</string>
     <string name="st_music">Music</string>
     <string name="st_phone">Phone</string>
@@ -17,20 +15,9 @@
     <string name="st_theme_auto">Auto</string>
     <string name="st_theme_day">Day</string>
     <string name="st_theme_night">Night</string>
-    <string name="st_map_view">Map view</string>
-    <string name="st_view_tilted">Tilted</string>
-    <string name="st_view_above">From above</string>
-    <string name="st_view_north">North up</string>
 
-    <string name="st_offline_sub">All of Saudi Arabia</string>
-    <string name="st_saher">Saher alert</string>
-    <string name="st_saher_sub">One sound before a camera</string>
-    <string name="st_places">My places</string>
-    <string name="st_places_sub">Opens the map</string>
-    <string name="st_places_none">None saved</string>
     <string name="st_place_home">Home</string>
     <string name="st_place_work">Work</string>
-    <string name="st_nav_amri_sub">Search, routes and written guidance, with no internet</string>
 
     <string name="st_pack_none">Not on this unit</string>
     <string name="st_pack_offer">Ready to download</string>
@@ -44,7 +31,6 @@
     <string name="st_pack_here">Takes %1$s · built %2$s</string>
     <string name="st_pack_free">%1$s free on this unit</string>
     <string name="st_pack_check_first">See what is available</string>
-    <string name="st_pack_check">Check for newer</string>
     <string name="st_pack_usb">From USB stick</string>
     <string name="st_pack_usb_go">Copy from the stick</string>
     <string name="st_pack_download">Download</string>
@@ -60,17 +46,12 @@
     <string name="st_pack_old">The old map</string>
     <string name="st_pack_old_sub">It takes %1$s and is not needed any more</string>
     <string name="st_pack_old_btn">Remove it</string>
-    <string name="st_pack_last">Last map install</string>
 
     <string name="st_lyrics_listen_sub">Sends car microphone audio to your server</string>
-    <string name="st_lyrics_key">Lyrics server key</string>
-    <string name="st_words_sub">Only when its time is real</string>
     <string name="st_saved">Saved</string>
     <string name="st_not_set">Not set</string>
 
     <string name="st_wake">Wake word</string>
-    <string name="st_wake_sub">Listens with no touch</string>
-    <string name="st_speak">Speak answers</string>
     <string name="st_six_times">6 times</string>
     <string name="st_enrolled">Recorded</string>
 
@@ -83,21 +64,14 @@
     <string name="st_msg_text">Show a message\'s text while parked</string>
     <string name="st_ring">Amri\'s ringtone</string>
 
-    <string name="st_tick">Press sound</string>
-    <string name="st_tick_sub">A soft tick when you press a row or a dock cell</string>
     <string name="st_full_off">Full off with the car</string>
     <string name="st_update">Update</string>
     <string name="st_up_to_date">Up to date</string>
     <string name="st_update_new">Version %1$s</string>
     <string name="st_update_going">Updating…</string>
     <string name="st_lang">Language</string>
-    <string name="st_workshop">Workshop</string>
-    <string name="st_workshop_sub">The way back to stock is here</string>
 
-    <string name="st_version">Version</string>
     <string name="st_licences">Licences</string>
-    <string name="st_report">Device report</string>
-    <string name="st_report_sub">Frame times and memory</string>
     <string name="st_lic_app">AMRI OS</string>
     <string name="st_lic_font">The font: IBM Plex Sans Arabic</string>
     <string name="st_lic_pack">The map\'s data</string>

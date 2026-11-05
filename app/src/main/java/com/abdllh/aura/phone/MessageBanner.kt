@@ -84,13 +84,6 @@ object MessageBanner {
         if (v.window.add()) v.enter() else view = null
     }
 
-    /** Settings' "show me how it looks": a made-up message from AMRI itself. */
-    fun preview(ctx: Context) {
-        val c = LocaleHelper.wrap(ctx.applicationContext)
-        show(c, AuraNotificationListener.Message(c.packageName, c.getString(R.string.app_name), null,
-            c.getString(R.string.notices_preview_sender), null, c.getString(R.string.notices_preview_text), null))
-    }
-
     /** Debug builds: a message as if it had come, through the same door. */
     internal fun debugShow(ctx: Context, appName: String, from: String, text: String) {
         show(ctx, AuraNotificationListener.Message(ctx.packageName, appName, null, from, null, text, null))
