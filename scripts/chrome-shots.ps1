@@ -30,9 +30,9 @@ $all = [ordered]@{
     moving = @{ page = "r-chrome-wall"; panel = "home"; gear = "D" }
     trip = @{ page = "r-chrome-wall"; panel = "home"; gear = "D"; speed = "112,120" }
     "voice-home" = @{ page = "r-chrome-wall"; panel = "home"; gear = "P"; listen = $true }
-    "volume-home" = @{ page = "r-chrome-wall"; panel = "home"; gear = "P"; vol = "--ei vol 14 --ef bar 0.466" }
+    "volume-home" = @{ page = "r-chrome-wall"; panel = "home"; gear = "P"; vol = "--ei vol 14" }
     drive = @{ page = "r-chrome-drive"; panel = "maps"; gear = "D"; timeN = "7:20 م"; timeD = "10:05 ص" }
-    volume = @{ page = "r-chrome-drive"; panel = "maps"; gear = "D"; timeN = "7:20 م"; timeD = "10:05 ص"; vol = "--ei vol 14 --ef bar 0.466" }
+    volume = @{ page = "r-chrome-drive"; panel = "maps"; gear = "D"; timeN = "7:20 م"; timeD = "10:05 ص"; vol = "--ei vol 14" }
     muted = @{ page = "r-chrome-drive"; panel = "maps"; gear = "D"; timeN = "7:20 م"; timeD = "10:05 ص"; vol = "--ei vol 14 --ez mute true" }
     voice = @{ page = "r-chrome-drive"; panel = "maps"; gear = "D"; timeN = "7:20 م"; timeD = "10:05 ص"; listen = $true }
     apps = @{ page = "r-chrome-room"; panel = "apps"; gear = "P"; song = "سهر الطريق" }
