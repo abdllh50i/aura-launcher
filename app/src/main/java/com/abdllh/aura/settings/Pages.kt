@@ -361,12 +361,14 @@ class LanguagePage(private val act: SettingsPanel) : Page(R.string.st_lang) {
 // ---------------------------------------------------------------------------------------------- عن النظام
 class AboutPage(private val act: SettingsPanel) : Page(R.string.st_about, R.drawable.ic_info) {
     override val scrolls: Boolean get() = false
+    override val keep: Boolean get() = false // (whose map it is follows the pack)
 
     override fun build(ctx: Context): View {
-        val credit = ctx.valueText("© OpenStreetMap · OpenFreeMap")
-        val rows = ctx.rows(
+        // the credit whole, as the map's data asks, for the data that draws: the pack's is too long for a row's far end. On its own line, reading left to right in Arabic as well.
+        val credit = "⁦${com.abdllh.aura.nav.MapStyle.attribution(null)}⁩"
+        return ctx.rows(
             ctx.settingRow(null, ctx.getString(R.string.st_version), null, ctx.valueText("AMRI OS ${BuildConfig.VERSION_NAME}")),
-            ctx.settingRow(null, ctx.getString(R.string.st_maps), null, credit),
+            ctx.settingRow(null, ctx.getString(R.string.st_maps), credit),
             ctx.settingRow(null, ctx.getString(R.string.st_licences), null, ctx.valueChevron("")) { act.open(LicencesPage(act)) },
             // the first real numbers from this unit: a page of its own, nothing runs until its button is pressed
             ctx.settingRow(null, ctx.getString(R.string.st_report), ctx.getString(R.string.st_report_sub), ctx.valueChevron("")) {
@@ -374,8 +376,6 @@ class AboutPage(private val act: SettingsPanel) : Page(R.string.st_about, R.draw
             },
             fill = act.fillH
         )
-        credit.maxWidth = 460 // (the credit whole: the map's data asks for it)
-        return rows
     }
 }
 

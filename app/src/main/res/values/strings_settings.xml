@@ -44,8 +44,8 @@
     <string name="st_pack_here">Takes %1$s · built %2$s</string>
     <string name="st_pack_free">%1$s free on this unit</string>
     <string name="st_pack_check_first">See what is available</string>
-    <string name="st_pack_check">Check for a newer map</string>
-    <string name="st_pack_usb">From a USB stick</string>
+    <string name="st_pack_check">Check for newer</string>
+    <string name="st_pack_usb">From USB stick</string>
     <string name="st_pack_usb_go">Copy from the stick</string>
     <string name="st_pack_download">Download</string>
     <string name="st_pack_update">Update</string>
