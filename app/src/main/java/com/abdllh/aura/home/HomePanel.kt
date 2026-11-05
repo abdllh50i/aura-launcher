@@ -114,6 +114,8 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
     private val driveListener: () -> Unit = { syncFace(canMove()) }
     /** The step whose turn has been handed over to Maps. */
     private var handedStep = -1
+    /** [handedStep] when the trip was ended, for End's undo. */
+    private var handedBefore = -1
     private var tripNow = false
 
     override val root: View get() = room
@@ -148,7 +150,8 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
     }
 
     private fun buildUi() {
-        card.onUndo = { tripNow = true }
+        // (the same trip and the same turn: if he had chosen Home for this turn, he still has)
+        card.onUndo = { tripNow = true; handedStep = handedBefore }
         room.addView(backdrop, at(CARD_X, CARD_Y, CARD_W, CARD_H))
         room.addView(wall, at(0, 0, 1024, 600))
         room.addView(stage, at(CarGlView.RECT_X.toInt(), CarGlView.RECT_Y.toInt(), CarGlView.RECT_W.toInt(), CarGlView.RECT_H.toInt()))
@@ -316,7 +319,10 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
 
     /** Under 1 km to the turn, moving: Home hands over to Maps by itself, the same surface and a camera blend. It does not come back by itself; pressed again, it stays for this turn. */
     private fun handOver() {
-        if (NavSession.state != NavSession.State.NAVIGATING) handedStep = -1
+        if (NavSession.state != NavSession.State.NAVIGATING) {
+            if (handedStep != -1) handedBefore = handedStep
+            handedStep = -1
+        }
         if (!isTop || NavSession.state != NavSession.State.NAVIGATING || !DriveState.moving) return
         val p = NavSession.progress ?: return
         if (p.toNext < HAND_OVER_M && p.next != handedStep) {

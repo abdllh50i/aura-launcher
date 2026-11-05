@@ -9,7 +9,7 @@
     <string name="drive_off_gps">No position yet</string>
     <string name="drive_working_time">Working it out</string>
     <string name="drive_last_value">Last value</string>
-    <string name="drive_arrived">You have arrived</string>
+    <string name="drive_arrived">Arrived</string>
     <string name="drive_save_place">Save place</string>
     <string name="drive_trip_ended">Trip ended</string>
     <string name="drive_route_kept">Route kept</string>

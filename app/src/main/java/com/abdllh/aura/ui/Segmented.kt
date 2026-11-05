@@ -40,7 +40,9 @@ class Segmented(
             on.typeface = Fonts.get(500)
             on.alpha = 0f
             isClickable = true
-            setPadding(10, 0, 10, 0)
+            // (a choice of a row of equal ones is centred in its share: a word that nearly fills it, on a card beside the column, keeps its ends)
+            val side = if (equal) 2 else 10
+            setPadding(side, 0, side, 0)
             addView(off, flp(MATCH, MATCH))
             addView(on, flp(MATCH, MATCH))
             setOnClickListener { if (i != selected) { select(i); onSelect(i) } }
