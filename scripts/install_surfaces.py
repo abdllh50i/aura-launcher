@@ -1,6 +1,8 @@
 """Puts the design's baked surfaces where the app reads them (SPEC.md section 4, "Where the files go").
 
-    python -I scripts/install_surfaces.py <final2 folder>
+    python -I scripts/install_surfaces.py <the design's folder, simple now>
+
+What the design no longer has is not taken away here: delete it by hand (cap-chip-*, for one).
 
 Nothing is drawn here: gen_surfaces.py (in the design folder) bakes them. res/drawable-nodpi: every 9-patch as generated, and the
 small plain bitmaps with "-" as "_"; aapt2 keeps the guides. assets/surfaces: what a software Canvas reads (the wash's masks and
