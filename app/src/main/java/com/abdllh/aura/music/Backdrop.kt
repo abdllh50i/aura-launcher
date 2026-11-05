@@ -328,7 +328,8 @@ internal object Backdrop {
     }
 
     /**
-     * A cover rounded once, at its displayed size, so no cover uses clipToOutline: `DST_IN` with the plate drawn at that size. Only on a worker.
+     * A cover rounded once, at its displayed size, so no cover uses clipToOutline: `DST_IN` with the plate drawn at that size. Big 204 r
+     * 20, widget 84 r 16, moving widget 72 r 14, mini 52 r 12, glance 44 r 12, row 56 r 12, album 120 r 16. Only on a worker.
      */
     fun round(ctx: Context, cover: Bitmap, size: Int, radius: Int): Bitmap {
         var b = if (Build.VERSION.SDK_INT >= 26 && cover.config == Bitmap.Config.HARDWARE) cover.copy(Bitmap.Config.ARGB_8888, false) else cover

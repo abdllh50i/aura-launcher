@@ -6,6 +6,4 @@
     <string name="chrome_asr">Asr</string>
     <string name="chrome_maghrib">Maghrib</string>
     <string name="chrome_isha">Isha</string>
-    <string name="chrome_left_minutes">%1$s min</string>
-    <string name="chrome_left_hours">%1$s h</string>
 </resources>

@@ -134,9 +134,9 @@ internal object GuidePill {
         }
     }
 
-    /** The card: x 12..376, y 44..140 on the screen, which is this window's own coordinates. */
-    private const val X = 12
-    private const val Y = 44
+    /** The card: x 16..380, y 48..144 on the screen, which is this window's own coordinates. */
+    private const val X = 16
+    private const val Y = 48
     private const val W = 364
     private const val H = 96
     private const val TILE = 64

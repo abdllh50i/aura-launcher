@@ -99,36 +99,3 @@ class SeekView(ctx: Context) : View(ctx), Recolours {
         const val GAP = 10f
     }
 }
-
-/**
- * How far the song is, as a thin line 4 high (nothing at all while that is unknown). Left to right, like [SeekView]. One update a
- * second: a redraw of this view only.
- */
-class ThinProgress(ctx: Context) : View(ctx), Recolours {
-    /** 0..1, or negative when unknown. */
-    var progress = -1f
-        set(v) { val n = if (v < 0f) -1f else v.coerceAtMost(1f); if (n != field) { field = n; invalidate() } }
-    var color: (() -> Int) = { Palette.ink }
-        set(v) { field = v; invalidate() }
-    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val r = RectF()
-
-    init { layoutDirection = LAYOUT_DIRECTION_LTR }
-
-    override fun onLook() = invalidate()
-
-    override fun hasOverlappingRendering() = false
-
-    override fun onDraw(c: Canvas) {
-        if (progress < 0f) return
-        val h = height.toFloat()
-        r.set(0f, 0f, width.toFloat(), h)
-        p.color = Palette.track
-        c.drawRoundRect(r, h / 2, h / 2, p)
-        if (progress > 0f) {
-            r.set(0f, 0f, (width * progress).coerceAtLeast(h), h)
-            p.color = color()
-            c.drawRoundRect(r, h / 2, h / 2, p)
-        }
-    }
-}

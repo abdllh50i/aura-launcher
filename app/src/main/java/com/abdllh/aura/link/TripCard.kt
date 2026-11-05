@@ -34,7 +34,7 @@ import com.abdllh.aura.util.Prefs
 
 /**
  * The one card about a place that came from outside ([PlaceInbox]), over any app: the banner of SPEC.md's `from-phone-on-trip`, in the call's and the message's place. Who sent it, the place, and the answers
- * a driver can hit without looking twice: the main one at x 397, and "no" as the close at x 543; alone and quiet, a cancel is a plain button at x 397. No countdown: it waits for one touch. With nothing to
+ * a driver can hit without looking twice: the main one at x 405, and "no" as the close at x 551; alone and quiet, a cancel is a plain button at x 405. No countdown: it waits for one touch. With nothing to
  * press, what happened gets the card's whole width. [show] false: this unit may not draw over other apps. Main thread only.
  */
 internal object TripCard {
@@ -78,7 +78,7 @@ internal object TripCard {
     @SuppressLint("ViewConstructor")
     private class Card(c: Context) {
         val lang = Prefs.lang
-        val window = OverlayWindow(c, "AuraTrip", WINDOW_X, 0, 1024 - WINDOW_X, WINDOW_H)
+        val window = OverlayWindow(c, "AuraTrip", WINDOW_X, WINDOW_Y, 1024 - WINDOW_X, WINDOW_H)
         private val stage = FrameLayout(c)
         private val plate = ImageView(c)
         private val from: AText = c.label(Type.msgFrom, { Palette.ink2Move }, gravity = Gravity.RIGHT or Gravity.CENTER_VERTICAL)
@@ -103,7 +103,7 @@ internal object TripCard {
             plate.setPadding(13, 13, 13, 13)
             plate.look { t.recolour() }
             plate.glyph { Palette.ink }
-            stage.addView(plate, at(ROOM + 558, ROOM + 21, 56, 56))
+            stage.addView(plate, at(ROOM + 546, ROOM + 21, 56, 56))
             stage.addView(from, Type.msgFrom.box(ROOM + TEXT_END - TEXT_W, ROOM + 14, TEXT_W))
             stage.addView(name, Type.msgTitle.box(ROOM + TEXT_END - TEXT_W, ROOM + 50, TEXT_W))
             stage.addView(whole, at(ROOM + TEXT_END - WHOLE_W, ROOM + 15 + Type.msgTitle.viewTop, WHOLE_W, Type.msgTitle.viewH + Type.msgTitle.line))
@@ -183,16 +183,17 @@ internal object TripCard {
 
     /** The visible rect from the window's left and top: the overlay's outset. */
     private const val ROOM = 44
-    private const val WINDOW_X = 340
+    private const val WINDOW_X = 348
+    private const val WINDOW_Y = 4
     private const val WINDOW_H = 186
-    private const val CARD_W = 628
+    private const val CARD_W = 616
     private const val CARD_H = 98
     private const val BUTTON_W = 138
     private const val BUTTON_H = 72
     private const val BUTTON_Y = 13
     private const val BUTTON_SIDE = 6
-    private const val TEXT_END = 544
-    private const val TEXT_W = 300
-    private const val WHOLE_W = 520
+    private const val TEXT_END = 532
+    private const val TEXT_W = 288
+    private const val WHOLE_W = 508
     private const val ENTER_DY = 24f
 }

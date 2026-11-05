@@ -33,7 +33,6 @@ import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.at
 import com.abdllh.aura.ui.box
 import com.abdllh.aura.ui.fadeTo
-import com.abdllh.aura.ui.ink
 import com.abdllh.aura.ui.label
 import com.abdllh.aura.ui.look
 import com.abdllh.aura.ui.plateView

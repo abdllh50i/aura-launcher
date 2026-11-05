@@ -51,7 +51,7 @@ internal class VolumeCluster(ctx: Context) : FrameLayout(ctx), Recolours {
         addView(minus, at(0, 0, 86, 84))
         addView(plus, at(134, 0, 70, 84))
         addView(number, at(78, 0, VolumeNumber.W, 84))
-        addView(bar, at(24, 64, VolumeBar.W, 4))
+        addView(bar, at(28, 64, VolumeBar.W, 4))
         // (the row's own surfaces lie under this: blank parts of the cluster are not targets of their own, its three hits fill it)
     }
 
@@ -234,7 +234,7 @@ internal class VolumeNumber(ctx: Context, private val onHold: () -> Unit) : View
 }
 
 /**
- * The 4 px bar inside the pill, x 24..188, y 580..584: `track` with an `ink` fill. Only transforms: the fill is the whole bar's width and slides under the rounded clip, its way on spring
+ * The 4 px bar inside the pill, x 28..188, y 580..584: `track` with an `ink` fill. Only transforms: the fill is the whole bar's width and slides under the rounded clip, its way on spring
  * 520/1, its alpha in 120 and out 140 after 2200 ms. Left to right always.
  */
 internal class VolumeBar(ctx: Context) : FrameLayout(ctx) {
@@ -296,7 +296,7 @@ internal class VolumeBar(ctx: Context) : FrameLayout(ctx) {
     }
 
     companion object {
-        const val W = 164
+        const val W = 160
         private const val H = 4
     }
 }

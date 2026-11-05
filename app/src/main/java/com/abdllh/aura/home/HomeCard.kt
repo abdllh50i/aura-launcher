@@ -138,7 +138,7 @@ internal class HomeCard(private val shell: HomeActivity, private val host: HomeH
         turnPill.setOnClickListener { openMaps(false) }
         pressable(turnPill, PressGesture.SURFACE)
         etaPill.addView(end, at(3, 3, 100, 58))
-        etaPill.addView(etaText, Type.chipPrayer.box(111, 16, 229))
+        etaPill.addView(etaText, Type.chipPrayer.box(111, 16, 226))
         // End: the 100 x 58 plate has a hit of 122 x 80, which runs past the pill's edges
         val endGesture = PressGesture(end, PressGesture.CONTROL)
         tripFace.addView(View(shell).apply {
@@ -154,7 +154,7 @@ internal class HomeCard(private val shell: HomeActivity, private val host: HomeH
         endedPill.addView(shell.label(Type.chipPrayer, { Palette.ink }, moving = true).apply {
             textDirection = TEXT_DIRECTION_LOCALE
             setText(R.string.home_trip_ended)
-        }, Type.chipPrayer.box(111, 16, 229))
+        }, Type.chipPrayer.box(111, 16, 226))
         endedFace.addView(endedPill, Surface.PILL.at(PILL_X, ETA_Y, PILL_W, 64))
         val undoGesture = PressGesture(undo, PressGesture.CONTROL)
         endedFace.addView(View(shell).apply {

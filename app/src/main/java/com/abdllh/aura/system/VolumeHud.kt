@@ -219,7 +219,6 @@ object VolumeHud {
         if (auraOff() || !Settings.canDrawOverlays(c)) return
         // (the row is on screen and shows it itself, with no overlay over what he is handling: SPEC.md, "Volume")
         if (kind == Kind.MEDIA && com.abdllh.aura.chrome.Chrome.rowOnScreen()) return
-        if (com.abdllh.aura.phone.OverlayOrder.volumeWaits()) return
         var v = hud
         if (v == null || v.lang != Prefs.lang) {
             v?.window?.remove() // (the language changed: built again)
@@ -236,12 +235,12 @@ object VolumeHud {
     private val hide = Runnable { val v = hud; v?.leave { if (hud === v) v?.window?.remove() } }
 
     /**
-     * Over another app, where there is no row: 364 x 80 at (12, 426), the speaker, a level bar and the car's own step number (the one its buttons and the dock show), left to right in every
+     * Over another app, where there is no row: 364 x 80 at (16, 424), the speaker, a level bar and the car's own step number (the one its buttons and the dock show), left to right in every
      * language, not touchable (SPEC.md section 5). A window of its own with room for the shadow, cut at the screen's left edge.
      */
     private class HudView(c: android.content.Context) {
         val lang = Prefs.lang
-        val window = OverlayWindow(c, "AuraVolume", 0, 382, 420, 168, touchable = false)
+        val window = OverlayWindow(c, "AuraVolume", 0, 380, 424, 168, touchable = false)
         private val card = FrameLayout(c)
         private val icon = ImageView(c).apply { scaleType = ImageView.ScaleType.FIT_CENTER }
         private val bar = Bar(c)
@@ -307,8 +306,8 @@ object VolumeHud {
         }
 
         companion object {
-            /** Where the visible card begins in this window: x 12, y 426 on the screen. */
-            const val CARD_X = 12
+            /** Where the visible card begins in this window: x 16, y 424 on the screen. */
+            const val CARD_X = 16
             const val CARD_Y = 44
             const val ENTER_DY = 12f
         }

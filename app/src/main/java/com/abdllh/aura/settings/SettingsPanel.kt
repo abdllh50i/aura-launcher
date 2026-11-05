@@ -40,7 +40,7 @@ import kotlin.math.abs
 
 /**
  * Settings (SPEC.md section 6.6): the room, a side list of seven pages on the reading side, one card 666 x 414 that holds the page, or a sub-page with back at its reading edge. On a
- * trip a card beside the column, x 384..1012, one page at a time; back goes to the list of pages. The panel stays built, each page with it, and a theme comes by [Look]: no picture, nothing
+ * trip a card beside the column, x 392..1008, one page at a time; back goes to the list of pages. The panel stays built, each page with it, and a theme comes by [Look]: no picture, nothing
  * is built again. A trip beginning or ending builds the frame anew, since what lies in the card has other widths (a page is rare there, and a trip's start rarer).
  * (A class name is left for whoever starts it from outside: [SettingsActivity], which also has the page numbers.)
  */
@@ -208,15 +208,15 @@ class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
         }
         root.addView(surfaceImage("room"), at(0, 0, 1024, 516))
         val side = label(Type.pageTitle, { Palette.ink }).apply { setText(R.string.set_title) }
-        root.addView(side, Type.pageTitle.box(if (rtl) 704 else 24, 44, if (rtl) 296 else 296))
+        root.addView(side, Type.pageTitle.box(if (rtl) 704 else 24, 46, 296))
         val title = label(Type.pageTitle, { Palette.ink })
         pageTitle = title
-        root.addView(title, Type.pageTitle.box(if (rtl) 14 else 354, 44, if (rtl) 644 else 644))
+        root.addView(title, Type.pageTitle.box(if (rtl) 26 else 354, 46, 644))
         card = SurfaceCard(this, Surface.CARD)
-        root.addView(card, Surface.CARD.at(if (rtl) 14 else 344, CARD_Y, CARD_W, CARD_H))
+        root.addView(card, Surface.CARD.at(if (rtl) 16 else 332, CARD_Y, CARD_W, CARD_H))
 
         val nav = FrameLayout(this)
-        root.addView(nav, at(if (rtl) 704 else 14, CARD_Y, NAV_W, 7 * NAV_PITCH))
+        root.addView(nav, at(if (rtl) 704 else 16, CARD_Y, NAV_W, 7 * NAV_PITCH))
         val plate = object : View(this) {
             override fun hasOverlappingRendering() = false
         }.apply { background = context.getDrawable(R.drawable.nav_on_58) }
@@ -473,16 +473,16 @@ class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
     internal fun pagesForList(): List<Page> = pages
 
     private companion object {
-        const val CARD_Y = 92
-        const val CARD_W = 666
-        const val CARD_H = 414
-        const val NAV_W = 306
+        const val CARD_Y = 96
+        const val CARD_W = 676
+        const val CARD_H = 408
+        const val NAV_W = 304
         const val NAV_H = 58
         const val NAV_PITCH = 60
-        const val TRIP_X = 384
-        const val TRIP_Y = 44
-        const val TRIP_W = 628
-        const val TRIP_H = 462
+        const val TRIP_X = 392
+        const val TRIP_Y = 48
+        const val TRIP_W = 616
+        const val TRIP_H = 456
         const val HEAD = 64
         const val TRIP_FILL = TRIP_H - HEAD
         const val FADE = 28

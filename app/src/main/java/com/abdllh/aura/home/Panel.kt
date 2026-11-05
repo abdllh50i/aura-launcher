@@ -50,7 +50,7 @@ abstract class Panel(val shell: HomeActivity, val name: String) : ContextWrapper
     open val navBar: Int get() = Palette.bg
 
     /**
-     * On a trip it is a card beside the driving column, x 384..1012, y 44..506 (SPEC.md section 6.0): Maps stays drawn under it, its column
+     * On a trip it is a card beside the driving column, x 392..1008, y 48..504 (SPEC.md section 6.0): Maps stays drawn under it, its column
      * and the map going on ([PanelStack]), with no [onShow] of its own. Such a panel says [opaque] by the trip too (`NavSession.state ==
      * IDLE`): its room with no trip, and [solid] the same. Apps, Settings, Phone.
      */

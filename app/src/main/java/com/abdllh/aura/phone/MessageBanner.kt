@@ -47,8 +47,8 @@ import com.abdllh.aura.util.Prefs
 import com.abdllh.aura.voice.Amri
 
 /**
- * A message from the phone on screen, over any app (SPEC.md sections 5 and 6.5): a banner in the call's place, 628 x 98, gone by itself. The app and who wrote; under it `رسالة جديدة` while the car
- * moves, the message itself only when it is parked and the switch allows, so there is nothing to read while driving ([Asked.MESSAGE_TEXT_MOVING] is the owner's answer). `اسمعها` at x 397: Amri reads
+ * A message from the phone on screen, over any app (SPEC.md sections 5 and 6.5): a banner in the call's place, 616 x 98, gone by itself. The app and who wrote; under it `رسالة جديدة` while the car
+ * moves, the message itself only when it is parked and the switch allows, so there is nothing to read while driving ([Asked.MESSAGE_TEXT_MOVING] is the owner's answer). `اسمعها` at x 405: Amri reads
  * it. A flick upwards or the close button puts it away; parked, a tap on the card opens the conversation in its app. A newer message replaces the one showing, in place. [OverlayOrder] holds a message
  * back: it waits, and comes when that is over if it is still recent.
  */
@@ -135,7 +135,7 @@ object MessageBanner {
     @SuppressLint("ClickableViewAccessibility")
     private class Card(c: Context) {
         val lang = Prefs.lang
-        val window = OverlayWindow(c, "AuraMessage", WINDOW_X, 0, 1024 - WINDOW_X, WINDOW_H)
+        val window = OverlayWindow(c, "AuraMessage", WINDOW_X, WINDOW_Y, 1024 - WINDOW_X, WINDOW_H)
         private val stage = FrameLayout(c)
         private val card = SurfaceCard(c, Surface.OVERLAY)
         private val from: AText = c.label(Type.msgFrom, { Palette.ink2Move }, gravity = Gravity.RIGHT or Gravity.CENTER_VERTICAL)
@@ -157,7 +157,7 @@ object MessageBanner {
                 look { t.recolour() }
                 glyph { Palette.ink }
             }
-            stage.addView(plate, at(ROOM + 558, ROOM + 21, 56, 56))
+            stage.addView(plate, at(ROOM + 546, ROOM + 21, 56, 56))
             stage.addView(from, Type.msgFrom.box(ROOM + TEXT_END - TEXT_W, ROOM + 14, TEXT_W))
             stage.addView(what, Type.msgTitle.box(ROOM + TEXT_END - TEXT_W, ROOM + 50, TEXT_W))
             val button = ABtn(c).apply {
@@ -290,16 +290,17 @@ object MessageBanner {
 
     /** The visible rect from the window's left and top: the overlay's outset. */
     private const val ROOM = 44
-    private const val WINDOW_X = 340
+    private const val WINDOW_X = 348
+    private const val WINDOW_Y = 4
     private const val WINDOW_H = 186
-    private const val CARD_W = 628
+    private const val CARD_W = 616
     private const val CARD_H = 98
     private const val BUTTON_W = 138
     private const val BUTTON_H = 72
     private const val BUTTON_Y = 13
     private const val BUTTON_SIDE = 6
-    private const val TEXT_END = 544
-    private const val TEXT_W = 300
+    private const val TEXT_END = 532
+    private const val TEXT_W = 288
     private const val ENTER_DY = 24f
     private const val FLICK_PX = 36
     /** Parked, on screen this long plus a little per letter to read it, and no longer than the most; moving, a fixed 6 s: there is nothing to read (ms). */

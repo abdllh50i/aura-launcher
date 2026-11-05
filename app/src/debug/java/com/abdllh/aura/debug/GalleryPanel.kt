@@ -66,7 +66,6 @@ import com.abdllh.aura.ui.Surfaces
 import com.abdllh.aura.ui.TextField
 import com.abdllh.aura.ui.Theme
 import com.abdllh.aura.ui.ThemeSwap
-import com.abdllh.aura.ui.ThinProgress
 import com.abdllh.aura.ui.afterNextDraw
 import com.abdllh.aura.ui.Tint
 import com.abdllh.aura.ui.Tokens2
@@ -506,10 +505,6 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
         s.addView(SeekView(ctx).apply { setTimes("0:00", "3:42"); progress = 0f }, at(24, 80, 340, 30))
         s.addView(SeekView(ctx).apply { setTimes("3:42", "3:42"); progress = 1f }, at(24, 120, 340, 30))
         s.addView(SeekView(ctx).apply { setTimes("1:02:33", "1:40:00"); progress = 0.6f; enabledSeek = false }, at(24, 160, 340, 30))
-        s.head("ThinProgress 4 high: 35 %, 0, 100 %, unknown", 400, 4)
-        for ((i, p) in listOf(.35f, 0f, 1f, -1f).withIndex()) {
-            s.addView(ThinProgress(ctx).apply { progress = p }, at(420, 50 + 30 * i, 328, 4))
-        }
         s.head("PlayPauseView: play, pause, disc 96, glyph 36", 12, 204)
         s.addView(PlayPauseView(ctx).apply { setPlaying(false, false) }, at(12, 240, 44, 44))
         s.addView(PlayPauseView(ctx).apply { setPlaying(true, false) }, at(66, 240, 44, 44))

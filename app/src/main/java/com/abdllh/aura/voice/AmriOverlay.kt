@@ -31,7 +31,7 @@ import com.abdllh.aura.util.LocaleHelper
 import com.abdllh.aura.util.Prefs
 
 /**
- * The assistant on screen, over any app (SPEC.md sections 5 and 6.5): one card, 628 x 80 at (12, 426), the only thing that may cover pause and next, for the seconds he is talking to it. Its states are
+ * The assistant on screen, over any app (SPEC.md sections 5 and 6.5): one card, 616 x 80 at (392, 424), beside the column on every screen, Home too; it covers the map's car for the seconds he is talking to it. Its states are
  * one line that changes in place: listening, what it hears, which keeps its start and ends in an ellipsis until he stops, so nothing slides; what it looks for; the answer. A place adds Go, a question
  * yes and no, a fault a chip to Settings ([Action]). A long answer grows the card upward to 132 in place. Cancel at the far end. The card has no second mic: the listening ring is on the row's voice
  * button ([com.abdllh.aura.chrome.VoiceButton]), which hears the level through [level]. Hidden in reverse. The window ends at y 516, the shadow cut there, so the row stays live.
@@ -138,10 +138,10 @@ internal object AmriOverlay {
         card = null
     }
 
-    /** The card in its window: x 0..684, y 330..516, tall enough for the grown card at all times, its touches only on what shows. */
+    /** The card in its window: x 348..1024, y 330..516, tall enough for the grown card at all times, its touches only on what shows. */
     private class Card(val c: Context) {
         val lang = Prefs.lang
-        val window = OverlayWindow(c, "AuraVoice", 0, WINDOW_Y, WINDOW_W, WINDOW_H)
+        val window = OverlayWindow(c, "AuraVoice", WINDOW_X, WINDOW_Y, WINDOW_W, WINDOW_H)
         private val stage = FrameLayout(c)
         private val tallPlate = SurfaceCard(c, Surface.OVERLAY)
         private val plate = SurfaceCard(c, Surface.OVERLAY)
@@ -261,19 +261,20 @@ internal object AmriOverlay {
         }
     }
 
-    /** The window: y 330..516 on the screen, x 0..684. */
+    /** The window: y 330..516 on the screen, x 348..1024. */
+    private const val WINDOW_X = 348
     private const val WINDOW_Y = 330
-    private const val WINDOW_W = 684
+    private const val WINDOW_W = 1024 - WINDOW_X
     private const val WINDOW_H = 186
-    /** In the window: the card is x 12..640 and y 426..506 on the screen, and y 374..506 grown. */
-    private const val CARD_X = 12
-    private const val CARD_Y = 96
-    private const val CARD_W = 628
+    /** In the window: the card is x 392..1008 and y 424..504 on the screen, and y 372..504 grown. */
+    private const val CARD_X = 44
+    private const val CARD_Y = 94
+    private const val CARD_W = 616
     private const val CARD_H = 80
-    private const val TALL_Y = 44
+    private const val TALL_Y = 42
     private const val TALL_H = 132
     /** The line's box, ending 20 from the card's right edge. */
-    private const val TEXT_X = 80
-    private const val TEXT_W = 540
+    private const val TEXT_X = CARD_X + 68
+    private const val TEXT_W = CARD_W - 88
     private const val ENTER_DY = 12f
 }

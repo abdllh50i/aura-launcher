@@ -164,11 +164,7 @@ class CarStage(context: Context) : FrameLayout(context) {
     /** With no GL at all the car is its rest frame and no floor: its alpha is K, so the wall shows round it. */
     private fun showFallback() {
         val t = table ?: return
-        val f = fallback ?: ImageView(context).also {
-            fallback = it
-            it.scaleType = ImageView.ScaleType.FIT_XY
-            addView(it, at((t.x + t.scale * t.box[0] - CarGlView.RECT_X).toInt(), (t.y + t.scale * t.box[1] - CarGlView.RECT_Y).toInt(), (t.scale * t.width).toInt(), (t.scale * t.height).toInt()))
-        }
+        val f = fallback ?: ImageView(context).also { fallback = it; addView(it, at(t.restBox[0] - CarGlView.RECT_X.toInt(), t.restBox[1] - CarGlView.RECT_Y.toInt(), t.restW, t.restH)) }
         under.visibility = VISIBLE
         try {
             f.setImageBitmap(context.assets.open("car/rest-${if (Palette.dark) "night" else "day"}.webp").use { BitmapFactory.decodeStream(it) })

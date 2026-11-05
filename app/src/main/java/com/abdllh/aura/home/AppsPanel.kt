@@ -109,7 +109,7 @@ class AppsPanel(shell: HomeActivity) : Panel(shell, Screens.APPS) {
             turnAway = null
             root.addView(surfaceImage("room"), at(0, 0, 1024, 516))
             val title = label(Type.pageTitle, { Palette.ink }).apply { setText(R.string.dock_apps) }
-            root.addView(title, Type.pageTitle.box(24, 44, 976))
+            root.addView(title, Type.pageTitle.box(24, 46, 976))
         }
         val g = FrameLayout(this)
         val s = SnapScroll(this)
@@ -118,7 +118,7 @@ class AppsPanel(shell: HomeActivity) : Panel(shell, Screens.APPS) {
         else host.addView(s, at(GRID_X, GRID_Y, GRID_W, 2 * ROW + WINDOW_MORE))
         val d = PageDots(this)
         if (onTrip) host.addView(d, at(CARD_W - 8, GRID_TRIP_Y - CARD_Y, 8, 3 * ROW_TRIP))
-        else host.addView(d, at(1014, GRID_Y, 8, 2 * ROW))
+        else host.addView(d, at(GRID_X + GRID_W + 2, GRID_Y, 8, 2 * ROW))
         s.onMoved = { y -> d.at(y, s.most) }
         scroll = s
         grid = g
@@ -233,22 +233,22 @@ class AppsPanel(shell: HomeActivity) : Panel(shell, Screens.APPS) {
     }
 
     private companion object {
-        const val GRID_X = 12
+        const val GRID_X = 16
         const val GRID_Y = 96
-        const val GRID_W = 1000
+        const val GRID_W = 992
         const val CELL_H = 196
         const val ROW = 204
         const val WINDOW_MORE = 2
         const val TILE = 104
         const val GLYPH = 56
         const val ICON = 72
-        const val CARD_X = 384
-        const val CARD_Y = 44
-        const val CARD_W = 628
-        const val CARD_H = 462
-        const val GRID_TRIP_X = 392
-        const val GRID_TRIP_Y = 104
-        const val GRID_TRIP_W = 612
+        const val CARD_X = 392
+        const val CARD_Y = 48
+        const val CARD_W = 616
+        const val CARD_H = 456
+        const val GRID_TRIP_X = 400
+        const val GRID_TRIP_Y = 108
+        const val GRID_TRIP_W = 600
         const val ROW_TRIP = 132
         const val TILE_TRIP = 84
         const val GLYPH_TRIP = 46

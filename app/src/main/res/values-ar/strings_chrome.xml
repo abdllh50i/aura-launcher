@@ -6,6 +6,4 @@
     <string name="chrome_asr">العصر</string>
     <string name="chrome_maghrib">المغرب</string>
     <string name="chrome_isha">العشاء</string>
-    <string name="chrome_left_minutes">بعد %1$s د</string>
-    <string name="chrome_left_hours">بعد %1$s س</string>
 </resources>

@@ -35,7 +35,8 @@ import java.util.zip.CRC32
 /**
  * The frames (SPEC.md section 10): `assets/car/car-stage.json` is what each of the 180 stands on in the frame's own px, its lower hull (4 points, x ascending), which the shader's floor, shadow and mirror
  * stand on. It goes into the bake's name ([CarEtc]), so it stays as it was baked. Where they stand on the screen is `car-place.json`, read at draw time (CHANGES.md section 3): the car has more room at one
- * smaller scale, and each frame's small [dx] keeps a broadside car inside the free area. Screen px = ([x] + [dx], [y]) + [scale] * frame px; frame 108, the showroom angle, has dx 0.
+ * smaller scale, and each frame's small [dx] keeps a broadside car inside the free area. Screen px = ([x] + [dx], [y]) + [scale] * frame px; frame 108, the showroom angle, has dx 0. The crisp copy of a car
+ * at rest is made at that scale, in [restBox], 1:1 on the screen: a frame sampled between its pixels takes in the key's colour at its edges, which shows round a car standing by day.
  */
 class CarTable private constructor(j: JSONObject, place: JSONObject) {
     val width = j.getJSONArray("textureSize").getInt(0)
@@ -50,6 +51,10 @@ class CarTable private constructor(j: JSONObject, place: JSONObject) {
     /** The one height on screen and in the frame that is the same: the shader's dolly turns round it. */
     val pivotY = y / (1f - scale)
     val dx: FloatArray
+    /** x0, y0, x1, y1 on the screen. */
+    val restBox = place.getJSONArray("restBox").let { a -> IntArray(4) { a.getInt(it) } }
+    val restW = restBox[2] - restBox[0]
+    val restH = restBox[3] - restBox[1]
     val hullX: Array<FloatArray>
     val hullY: Array<FloatArray>
     /** Its two lowest points, lowest first: x, y, x, y. */
@@ -320,12 +325,25 @@ object CarEtc {
         }
     }
 
-    /** The crisp copy for a resting car: frame 108 from the retouched `rest-<theme>.webp`, another angle from its frame. RGB888, top row first. */
+    /**
+     * The crisp copy for a resting car, in the size of [CarTable.restBox]: frame 108 from the retouched `rest-<theme>.webp`, another angle from its frame, drawn where it stands on the screen (premultiplied, so the
+     * key does not bleed into its edges). RGB888, top row first.
+     */
     fun restRgb(ctx: Context, t: CarTable, dark: Boolean, i: Int): ByteArray? = try {
         val name = if (i == t.defaultFrame) "car/rest-${if (dark) "night" else "day"}.webp" else asset(dark, i)
-        val bmp = ctx.assets.open(name).use { BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }) }!!
-        val px = IntArray(t.width * t.height)
-        bmp.getPixels(px, 0, t.width, 0, 0, t.width, t.height)
+        var bmp = ctx.assets.open(name).use { BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }) }!!
+        if (i != t.defaultFrame) {
+            val placed = Bitmap.createBitmap(t.restW, t.restH, Bitmap.Config.ARGB_8888)
+            android.graphics.Canvas(placed).apply {
+                translate(t.x + t.dx[i] - t.restBox[0], t.y - t.restBox[1])
+                scale(t.scale, t.scale)
+                drawBitmap(bmp, t.box[0], t.box[1], android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG))
+            }
+            bmp.recycle()
+            bmp = placed
+        }
+        val px = IntArray(t.restW * t.restH)
+        bmp.getPixels(px, 0, t.restW, 0, 0, t.restW, t.restH)
         bmp.recycle()
         ByteArray(px.size * 3).also { keyed(px, CarLook(dark).k, it) }
     } catch (e: Throwable) {
@@ -644,6 +662,9 @@ class CarGlView(context: Context, dark: Boolean) : TextureView(context), Texture
         val hx = u("u_hx")
         val hy = u("u_hy")
         val spot = u("u_spot")
+        val boxA = u("u_ba")
+        val boxB = u("u_bb")
+        val boxM = u("u_bm")
     }
 
     init {
@@ -916,7 +937,7 @@ class CarGlView(context: Context, dark: Boolean) : TextureView(context), Texture
         thin?.let { statics(it) }
         CarEtc.wallRgb(app, dark)?.let { (w, rgb) -> upload(wallTex, GLES20.GL_NEAREST, w, rgb.size / 3 / w, rgb) }
         CarEtc.restRgb(app, t, dark, t.defaultFrame)?.let { rgb ->
-            upload(restTex, GLES20.GL_LINEAR, t.width, t.height, rgb)
+            upload(restTex, GLES20.GL_LINEAR, t.restW, t.restH, rgb)
             restFrame = t.defaultFrame
             main.post { onRestReady?.invoke(t.defaultFrame) }
         }
@@ -1052,7 +1073,7 @@ class CarGlView(context: Context, dark: Boolean) : TextureView(context), Texture
         val t = table ?: return
         if (!loaded || dark != isDark) { main.post { if (restWanted == i) restWanted = -1 }; return }
         try {
-            upload(restTex, GLES20.GL_LINEAR, t.width, t.height, rgb)
+            upload(restTex, GLES20.GL_LINEAR, t.restW, t.restH, rgb)
             restFrame = i
             main.post { if (restWanted == i) restWanted = -1; onRestReady?.invoke(i) }
         } catch (e: Throwable) {
@@ -1102,7 +1123,16 @@ class CarGlView(context: Context, dark: Boolean) : TextureView(context), Texture
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, wallTex)
             GLES20.glUniform1f(p.t, mix)
             GLES20.glUniform1f(p.shown, s.shown)
-            GLES20.glUniform4f(p.dolly, table.scale, 0f, table.pivotY, table.x + table.dx[na] + (table.dx[nb] - table.dx[na]) * mix)
+            val at = table.x + table.dx[na] + (table.dx[nb] - table.dx[na]) * mix
+            GLES20.glUniform4f(p.dolly, table.scale, 0f, table.pivotY, at)
+            // (each texture's rect in the frame's own px: the crisp copy stands still on the screen, whatever the numbers of the moment)
+            fun box(u: Int, texture: Int) {
+                if (texture == restTex) GLES20.glUniform4f(u, (table.restBox[0] - at) / table.scale, (table.restBox[1] - table.y) / table.scale, table.restW / table.scale, table.restH / table.scale)
+                else GLES20.glUniform4f(u, table.box[0], table.box[1], table.box[2] - table.box[0], table.box[3] - table.box[1])
+            }
+            box(p.boxA, texA)
+            box(p.boxB, texB)
+            box(p.boxM, texM)
             val hx = table.hullX[near]
             val hy = table.hullY[near]
             val sp = table.spot[near]
@@ -1220,7 +1250,7 @@ void main() {
     gl_Position = vec4((a_pos.x - u_vr.x) / u_vr.z * 2.0 - 1.0, 1.0 - (a_pos.y - u_vr.y) / u_vr.w * 2.0, 0.0, 1.0);
 }"""
 
-        // tools/car_stage.frag of the design, as proven by its shader_proof.mjs; with "#define CHEAP_MIRROR" in front, the second program
+        // tools/car_stage.frag of the design, as proven by its shader_proof.mjs, but for each texture's own rect (u_ba, u_bb, u_bm); with "#define CHEAP_MIRROR" in front, the second program
         private const val FRAGMENT = """
 #ifdef GL_FRAGMENT_PRECISION_HIGH
 precision highp float;
@@ -1232,6 +1262,7 @@ uniform sampler2D u_m;
 uniform sampler2D u_wall;
 uniform float u_t, u_shown;
 uniform vec4 u_box;
+uniform vec4 u_ba, u_bb, u_bm;
 uniform vec4 u_rect;
 uniform vec4 u_dolly;
 uniform vec4 u_hx, u_hy;
@@ -1243,7 +1274,7 @@ uniform vec4 u_refl;
 varying vec2 v_px;
 
 float maxabs(vec3 a) { a = abs(a); return max(a.r, max(a.g, a.b)); }
-vec2 uvOf(vec2 p) { return (p - u_box.xy) / (u_box.zw - u_box.xy); }
+vec2 uvIn(vec4 b, vec2 p) { return (p - b.xy) / b.zw; }
 float ground(float x) {
   if (x < u_hx.y) return mix(u_hy.x, u_hy.y, clamp((x - u_hx.x) / (u_hx.y - u_hx.x), 0., 1.));
   if (x < u_hx.z) return mix(u_hy.y, u_hy.z, (x - u_hx.y) / (u_hx.z - u_hx.y));
@@ -1254,8 +1285,7 @@ float keyM(vec3 m) { return smoothstep(.00784, .0549, maxabs(m - u_k)); }
 
 void main() {
   vec2 p = (v_px - vec2(u_dolly.y + u_dolly.w, u_dolly.z)) / u_dolly.x + u_dolly.yz;
-  vec2 uv = uvOf(p);
-  vec3 f = mix(texture2D(u_a, uv).rgb, texture2D(u_b, uv).rgb, u_t);
+  vec3 f = mix(texture2D(u_a, uvIn(u_ba, p)).rgb, texture2D(u_b, uvIn(u_bb, p)).rgb, u_t);
   float a = smoothstep(u_key.x, u_key.y, maxabs(f - u_k) - u_keyC * smoothstep(.04, .063, f.b - f.r));
   a *= step(u_box.x, p.x) * step(p.x, u_box.z) * step(u_box.y, p.y) * step(p.y, u_box.w);
   if (a * u_shown > .999) { gl_FragColor = vec4(f, 1.); return; }
@@ -1274,13 +1304,13 @@ void main() {
       if (F > .004) {
         vec2 q = vec2(p.x, 2. * gy - p.y);
 #ifdef CHEAP_MIRROR
-        vec3 m1 = texture2D(u_m, uvOf(q)).rgb;
+        vec3 m1 = texture2D(u_m, uvIn(u_bm, q)).rgb;
         float k1 = keyM(m1);
         if (k1 > .001) c = gmix(c, m1 * u_tint, F * k1);
 #else
         float r = u_refl.z + u_refl.w * d;
-        vec3 m1 = texture2D(u_m, uvOf(q + vec2(-.75, -.25) * r)).rgb, m2 = texture2D(u_m, uvOf(q + vec2(.25, -.75) * r)).rgb;
-        vec3 m3 = texture2D(u_m, uvOf(q + vec2(.75, .25) * r)).rgb, m4 = texture2D(u_m, uvOf(q + vec2(-.25, .75) * r)).rgb;
+        vec3 m1 = texture2D(u_m, uvIn(u_bm, q + vec2(-.75, -.25) * r)).rgb, m2 = texture2D(u_m, uvIn(u_bm, q + vec2(.25, -.75) * r)).rgb;
+        vec3 m3 = texture2D(u_m, uvIn(u_bm, q + vec2(.75, .25) * r)).rgb, m4 = texture2D(u_m, uvIn(u_bm, q + vec2(-.25, .75) * r)).rgb;
         float k1 = keyM(m1), k2 = keyM(m2), k3 = keyM(m3), k4 = keyM(m4), ka = k1 + k2 + k3 + k4;
         if (ka > .001) c = gmix(c, (m1 * k1 + m2 * k2 + m3 * k3 + m4 * k4) / ka * u_tint, F * ka * .25);
 #endif

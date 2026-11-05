@@ -8,10 +8,7 @@
     <string name="greet_evening">مساء الخير</string>
     <string name="greet_night">ليلتك سعيدة</string>
     <string name="home_where_to">إلى أين؟</string>
-    <string name="home_home">المنزل</string>
-    <string name="home_work">العمل</string>
     <string name="home_tap_to_set">اضغط للتحديد</string>
-    <string name="home_set_address_hint">حدّد عنوان %1$s أولًا</string>
     <string name="err_no_nav">لا يوجد تطبيق ملاحة</string>
     <string name="err_app_missing">هذا التطبيق غير مثبّت</string>
     <string name="err_write_settings">اسمح لنظام عمري بتعديل إعدادات النظام</string>

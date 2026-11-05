@@ -34,9 +34,9 @@ import com.abdllh.aura.util.LocaleHelper
 import com.abdllh.aura.util.Prefs
 
 /**
- * A phone call on screen, over everything (SPEC.md sections 5 and 6.5): a banner at x 384..1012, y 44, beside the driver's column. While it rings, Answer at x 397 and Decline at x 543; in a call
- * Mute at x 397 and `قفل` at x 543, in the same places, so the red stays where it was and a double press on Answer can only reach Mute, which is not taken for 600 ms after the answer. 3 s after
- * answering the name goes and the banner shrinks to x 384..694, short of the car's line. No timer: a number that ticks every second is moving text. It shows what [Calls] knows and tells it what was
+ * A phone call on screen, over everything (SPEC.md sections 5 and 6.5): a banner at x 392..1008, y 48, beside the driver's column. While it rings, Answer at x 405 and Decline at x 551; in a call
+ * Mute at x 405 and `قفل` at x 551, in the same places, so the red stays where it was and a double press on Answer can only reach Mute, which is not taken for 600 ms after the answer. 3 s after
+ * answering the name goes and the banner shrinks to x 392..702, short of the car's line. No timer: a number that ticks every second is moving text. It shows what [Calls] knows and tells it what was
  * pressed; nothing else.
  */
 internal object CallBanner {
@@ -82,7 +82,7 @@ internal object CallBanner {
     /** The banner, wide over small: the small one is covered until the wide one fades off it, and no pixel of the part they share ever lets the map through. */
     private class Card(c: Context) {
         val lang = Prefs.lang
-        val window = OverlayWindow(c, "AuraCall", WINDOW_X, 0, 1024 - WINDOW_X, WINDOW_H, keepScreenOn = true)
+        val window = OverlayWindow(c, "AuraCall", WINDOW_X, WINDOW_Y, 1024 - WINDOW_X, WINDOW_H, keepScreenOn = true)
         private val stage = FrameLayout(c)
         private val narrow = SurfaceCard(c, Surface.OVERLAY)
         private val wide = SurfaceCard(c, Surface.OVERLAY)
@@ -109,7 +109,7 @@ internal object CallBanner {
         init {
             stage.addView(narrow, Surface.OVERLAY.at(ROOM, ROOM, NARROW_W, CARD_H))
             stage.addView(wide, Surface.OVERLAY.at(ROOM, ROOM, WIDE_W, CARD_H))
-            stage.addView(avatar, at(ROOM + 546, ROOM + 15, Avatar.SIZE, Avatar.SIZE))
+            stage.addView(avatar, at(ROOM + 534, ROOM + 15, Avatar.SIZE, Avatar.SIZE))
             stage.addView(name, Type.callName.box(ROOM + TEXT_END - TEXT_W, ROOM + 10, TEXT_W))
             stage.addView(sub, Type.callSub.box(ROOM + TEXT_END - TEXT_W, ROOM + 52, TEXT_W))
             leftSlot.addView(answer, at(0, BUTTON_Y, BUTTON_W, BUTTON_H))
@@ -289,21 +289,22 @@ internal object CallBanner {
 
     /** The visible rect from the window's left and top: the overlay's outset. */
     private const val ROOM = 44
-    /** The window: x 340..1024 ringing, x 340..738 small; y 0..186, the shadow's room. */
-    private const val WINDOW_X = 340
+    /** The window: x 348..1024 ringing, x 348..746 small; y 4..190, the shadow's room. */
+    private const val WINDOW_X = 348
+    private const val WINDOW_Y = 4
     private const val WINDOW_H = 186
-    private const val WIDE_W = 628
+    private const val WIDE_W = 616
     private const val NARROW_W = 310
     private const val CARD_H = 98
     private const val BUTTON_W = 138
     private const val BUTTON_H = 72
     private const val BUTTON_Y = 13
     private const val BUTTON_SIDE = 6
-    /** In the visible rect: x 397 and x 543 on the screen. */
+    /** In the visible rect: x 405 and x 551 on the screen. */
     private const val LEFT_X = 13
     private const val RIGHT_X = 159
     /** The name's right edge beside the avatar, in both languages, and its width: longer goes to an ellipsis. */
-    private const val TEXT_END = 534
+    private const val TEXT_END = 522
     private const val TEXT_W = 220
     private const val ENTER_DY = 24f
 }

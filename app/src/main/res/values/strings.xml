@@ -8,10 +8,7 @@
     <string name="greet_evening">Good evening</string>
     <string name="greet_night">Good night</string>
     <string name="home_where_to">Where to?</string>
-    <string name="home_home">Home</string>
-    <string name="home_work">Work</string>
     <string name="home_tap_to_set">Tap to set</string>
-    <string name="home_set_address_hint">Set your %1$s address first</string>
     <string name="err_no_nav">No navigation app found</string>
     <string name="err_app_missing">This app is not installed</string>
     <string name="err_write_settings">Allow “Modify system settings” for AMRI OS</string>

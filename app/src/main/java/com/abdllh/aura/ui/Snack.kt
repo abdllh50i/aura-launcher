@@ -105,7 +105,7 @@ class SnackHost(a: Context) : FrameLayout(a), Recolours {
         super.onDetachedFromWindow()
     }
 
-    // (centred in the free area x 384..1012, whatever its width: fixed here, so a new message lays out only the pill)
+    // (centred in the free area x 392..1008, whatever its width: fixed here, so a new message lays out only the pill)
     override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
         super.onLayout(changed, l, t, r, b)
         val w = pill.measuredWidth
