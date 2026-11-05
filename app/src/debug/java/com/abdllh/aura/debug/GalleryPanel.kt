@@ -171,7 +171,7 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
             "r-chrome-bg" -> Unit
             "r-settings-display" -> rSettingsDisplay(s)
             "r-settings-maps" -> rSettingsMaps(s)
-            "r-controls" -> rControls(s, false)
+            "r-controls" -> rControls(s)
             else -> buttons(s)
         }
         Log.i("AuraGallery", "page $page, 9-patches kept: ${ctx.getDrawable(R.drawable.card_night)!!.isNinePatch()}")
@@ -765,11 +765,11 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
         return c
     }
 
-    private fun rControls(s: FrameLayout, trip: Boolean) {
+    private fun rControls(s: FrameLayout) {
         s.mapPlate("browse")
         s.scrims()
         s.strip()
-        val x = if (trip) 384 else 12
+        val x = 12
         val c = FrameLayout(ctx)
         s.overlaySheet(x, 44, 440, 376)
         s.addView(c, at(x, 44, 440, 376))

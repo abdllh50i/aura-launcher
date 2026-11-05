@@ -147,8 +147,10 @@ internal class MapTools(panel: MapsPanel) : MapsPart(panel) {
     override fun listen(on: Boolean) {
         if (on == listening) return
         listening = on
-        if (on) DriveState.addListener(onDrive)
-        else {
+        if (on) {
+            DriveState.addListener(onDrive)
+            armReturn() // (back from a panel with the camera where he left it: it comes back by itself all the same)
+        } else {
             DriveState.removeListener(onDrive)
             root.removeCallbacks(autoRecenter)
             root.removeCallbacks(hideTools)

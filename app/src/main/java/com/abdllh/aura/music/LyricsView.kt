@@ -42,7 +42,7 @@ import java.util.concurrent.Executors
 import kotlin.math.roundToInt
 
 /**
- * The song's lyrics on the Music panel (SPEC.md section 5, "Lyrics"; parked only). Three lines in the column at the reading edge: the line sung `lyricPast`, the line being sung
+ * The song's lyrics on the Music panel (SPEC.md section 5, "Lyrics"). Three lines in the column at the reading edge: the line sung `lyricPast`, the line being sung
  * `lyricLit` in the larger role, keeping its slot in the middle, and the line coming `lyricDim`, while the list goes by on spring 110/1. A tapped line is where
  * the song goes ([onLineTap]), a line held is [onLineHold]. [needSync]: the song's position is unknown, nothing is lit and five lines are text to tap. Untimed: the same five. [big]: the full lyrics,
  * five lines, the third lit, with their own rects; the panel keeps one of each, fed alike, and the one out of sight follows the song without moving anything, so it is in place the moment it is shown.
