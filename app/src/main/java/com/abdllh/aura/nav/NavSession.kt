@@ -294,6 +294,12 @@ object NavSession {
         return com.abdllh.aura.nav.guide.Speech.text(g.keepOn(i, metres), ttsArabic).ifBlank { null }
     }
 
+    /** Debug builds, the emulator's way to the rerouting card (`NavDebug --ez reroute`): a real one is over in a moment here. */
+    internal fun debugRerouting(on: Boolean) {
+        rerouting = on
+        changed()
+    }
+
     private fun reroute(here: LatLon, l: Location) {
         val dest = destination ?: return
         rerouting = true

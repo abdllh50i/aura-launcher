@@ -73,8 +73,9 @@ object MapStyle {
 
     /** The big roads while the camera drives, never the one the car is on ([current]); with no route ([trip] false, `drive-free`) the primary and secondary too. */
     fun driveMajorFilter(trip: Boolean, arabic: Boolean, current: String): String {
-        val classes = if (trip) """"motorway","trunk"""" else """"motorway","trunk","primary","secondary""""
-        val big = """["match",["get","class"],[$classes],true,false]"""
+        // (not a `match`: Expression.raw takes the list of a match's labels for an expression, and the layer then shows nothing)
+        val classes = (if (trip) listOf("motorway", "trunk") else listOf("motorway", "trunk", "primary", "secondary")).joinToString(",") { """["==",["get","class"],"$it"]""" }
+        val big = """["any",$classes]"""
         return if (current.isBlank()) big else """["all",$big,["!=",${roadNameOf(arabic)},${org.json.JSONObject.quote(current)}]]"""
     }
 

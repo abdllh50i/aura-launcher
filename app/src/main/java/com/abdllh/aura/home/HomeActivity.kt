@@ -63,6 +63,7 @@ class HomeActivity : Activity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        java.util.Locale.setDefault(resources.configuration.locales[0])
         super.onCreate(savedInstanceState)
         if (CrashGuard.bailedOut) { // (AuraApp has done it: nothing else of AMRI started in this process)
             finish()

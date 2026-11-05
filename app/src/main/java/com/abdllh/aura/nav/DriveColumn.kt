@@ -5,6 +5,7 @@ import android.os.SystemClock
 import android.view.View
 import com.abdllh.aura.BuildConfig
 import com.abdllh.aura.R
+import com.abdllh.aura.chrome.Chrome
 import com.abdllh.aura.home.Screens
 import com.abdllh.aura.media.MediaMonitor
 import com.abdllh.aura.media.NowPlaying
@@ -98,6 +99,8 @@ internal class DriveColumn(panel: MapsPanel) : MapsPart(panel) {
         if (on) {
             turn.forget()
             lastHint = ""
+            lastEta = ""
+            actions.save.isEnabled = true
             clearUndo()
         }
     }
@@ -349,7 +352,9 @@ internal class DriveColumn(panel: MapsPanel) : MapsPart(panel) {
         actions = ArrivedActions(this, { savePlace() }, { doneTrip() })
         layer.addView(actions, Surface.CARD.at(12, 242, 364, 92))
         val m = Backdrop.CARD_MARGIN
-        mini = MiniCard(this, { Screens.music(this) }, { Screens.music(this) })
+        // (the dock's own way to Music, whatever a trip makes of it. The cover's source sheet is Music's to give: until then the same)
+        val music = { Chrome.of(panel.shell)?.open(Screens.MUSIC) ?: Unit }
+        mini = MiniCard(this, music, music)
         layer.addView(mini, at(12 - m, 426 - m, 364 + 2 * m, 80 + 2 * m))
         chip = LyricChip(this)
         layer.addView(chip, Surface.PILL.at(384, 456, 628, 50))
@@ -358,6 +363,7 @@ internal class DriveColumn(panel: MapsPanel) : MapsPart(panel) {
         song?.let { mini.bind(it) }
         if (chipOn) chip.visibility = View.VISIBLE
         kept = null
+        syncRoad()
     }
 
     companion object {

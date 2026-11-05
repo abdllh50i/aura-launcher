@@ -744,10 +744,10 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         pushTurn()
     }
 
-    /** How much longer the arrow is drawn than at street zoom: twice per zoom level out, up to three times. */
+    /** How much longer the arrow is drawn than at street zoom: twice per zoom level out, up to three times; and shorter when the camera comes closer, as it does at a roundabout (a head in metres would fill the frame). */
     private fun turnK(): Double {
         val z = applied?.zoom ?: map?.cameraPosition?.zoom ?: TURN_ZOOM
-        return 2.0.pow(TURN_ZOOM - z).coerceIn(1.0, 3.0)
+        return 2.0.pow(TURN_ZOOM - z).coerceIn(0.55, 3.0)
     }
 
     /** Again when the zoom has changed the arrow's scale by more than 15 %. */
@@ -1050,7 +1050,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         val tall = (maxY - minY).coerceAtLeast(20.0) * RING_FORESHORTEN
         // MapLibre's world is 512 units wide at zoom 0, a unit being a dp ([far])
         val world = 40075016.686 * cosLat / (512 * density)
-        val zoom = (ln(min(RING_W * RING_FILL / wide, RING_H * RING_FILL / tall) * world) / ln(2.0)).coerceIn(12.0, 18.5)
+        val zoom = (ln(min(RING_W * RING_FILL / wide, RING_H * RING_FILL / tall) * world) / ln(2.0)).coerceIn(12.0, RING_MAX_ZOOM)
         val s = 2.0.pow(zoom) / world
         val carX = RING_X + (RING_W - wide * s) / 2 - minX * s
         val carY = RING_Y + (RING_H - tall * s) / 2 + maxY * RING_FORESHORTEN * s
@@ -1333,6 +1333,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         private const val RING_W = 632.0
         private const val RING_H = 462.0
         private const val RING_FILL = 0.9
+        private const val RING_MAX_ZOOM = 18.0
         private const val RING_EXIT_M = 100.0
         private const val RING_STEP_M = 10.0
         private const val RING_FORESHORTEN = 0.85 // (cos 32 degrees)

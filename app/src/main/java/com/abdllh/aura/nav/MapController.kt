@@ -374,6 +374,7 @@ class MapController(private val shell: HomeActivity) {
                 m.setDestination(previewDest, previewName)
                 m.setCamera(AuraMap.Camera.FOLLOW)
                 m.setAhead(false, Double.NaN, false)
+                m.setRoads("", "")
             } else if (!onMaps && m.camera != AuraMap.Camera.FOLLOW) m.setCamera(AuraMap.Camera.FOLLOW)
             return
         }
