@@ -414,6 +414,8 @@ Numbers, emulator, interleaved with the build before, on a PC the other agents w
 104.4 / 99.6, Music open 108.1 / 100.7, back 109.8 / 99.5, after 20 opens and closes 158.7 / 106.3 (native 113.0 / 62.7, Java heap allocated 3.8 / 3.8); with 210 songs and 43 covers 102.1 / 95.9, 107.0 / 98.0, 104.7 / 98.3, 163.2 / 104.6 (native 117.2 / 60.9). Over 40 rounds through the tabs
 the old screen grew about 2 MB a round without end (105, 122, 133, 155, 172); the panel 111, 138, 138, 138, 138, Java heap flat at 4.0. About 20 MB of that step is Home's map coming back and appears with Settings alone (103, 124, 124, 124). Views at Home 228 / 409 (Music's, not drawn), window roots with Music open 2 / 1.
 With a song playing at Home, 1.1 / 1.0 window frames a second. GPU memory is not in any of this. Not tried on the unit: all of it. About's "Last screen opened" now tells the first open and the build ahead too, for the owner's photo.
+The figures above are from the build just before the pictures were let go later. The last build, another hour: Home 100.7, Music 102.3, back 100.8, after 20 opens and closes 108.1 (native 66.1, Java heap 3.8);
+40 rounds through the tabs with the 210 songs 96, 106, 103, 106, 105 (native 63, Java heap 3.9); Settings alone 110, 118, 114, 118. So the level moves by tens of MB from one sitting to the next on this emulator (the 138 above is not there this time, and the reason was not chased), and what holds in every sitting is that it stays flat.
 
 ### Memory and start-up cuts (the foundations of 2.0: nothing looks different)
 Home was the heavy screen, and almost none of its weight was code: the car's CPU path, its leftovers, the map's sprites and
