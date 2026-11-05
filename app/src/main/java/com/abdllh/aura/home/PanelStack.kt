@@ -340,6 +340,7 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
         }
         if (want == null) return
         val f = want.frame
+        com.abdllh.aura.ui.Look.catchUp(f) // (a theme changed while it was hidden: this way back is not [arrive]'s)
         f.visibility = View.VISIBLE
         f.live = true
         val layer = root.panelLayer

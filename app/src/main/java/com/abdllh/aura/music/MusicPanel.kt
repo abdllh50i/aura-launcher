@@ -109,6 +109,8 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
     private lateinit var washOld: ImageView
     private lateinit var room: View
     private lateinit var coverGroup: FrameLayout
+    /** Under a song's cover only: the empty panel's grey plate lies flat, and in the day theme this would show through it. */
+    private lateinit var coverShadow: ImageView
     private lateinit var art: ImageView
     /** The cover before, leaving under the new one (see [swapCover]). */
     private lateinit var artOld: ImageView
@@ -1341,13 +1343,16 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
             room.fadeTo(if (e) 1f else 0f, Tokens2.MS_cover, Motion.MOVE) { room.visibility = if (emptyShown == true) View.VISIBLE else View.INVISIBLE }
             songTools.visibility = View.VISIBLE
             songTools.fadeTo(if (e) 0f else 1f, Tokens2.MS_swap, Motion.MOVE) { songTools.visibility = if (emptyShown == true) View.INVISIBLE else View.VISIBLE }
+            coverShadow.fadeTo(if (e) 0f else 1f, Tokens2.MS_swap, Motion.MOVE)
         } else {
             room.animate().cancel()
             songTools.animate().cancel()
+            coverShadow.animate().cancel()
             room.alpha = if (e) 1f else 0f
             room.visibility = if (e) View.VISIBLE else View.INVISIBLE
             songTools.alpha = if (e) 0f else 1f
             songTools.visibility = if (e) View.INVISIBLE else View.VISIBLE
+            coverShadow.alpha = if (e) 0f else 1f
         }
     }
 
@@ -1666,7 +1671,8 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
 
         // ---- the cover, with its baked shadow; the group breathes
         coverGroup = FrameLayout(this)
-        coverGroup.addView(lateImage("cover-shadow"), flp(MATCH, MATCH))
+        coverShadow = lateImage("cover-shadow")
+        coverGroup.addView(coverShadow, flp(MATCH, MATCH))
         artOld = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_XY; visibility = View.INVISIBLE }
         art = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_XY }
         art.setImageDrawable(Backdrop.noArt(this, COVER, Tokens2.R_coverBig))
