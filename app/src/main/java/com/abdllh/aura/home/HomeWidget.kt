@@ -155,15 +155,15 @@ internal class HomeWidget(ctx: Context, private val host: HomeHost) : FrameLayou
 
         // nothing playing: the plate, two lines, three sources that start when tapped (section 12)
         val plateX = if (ar) 304 else 28
-        empty.addView(ctx.plateView(Tokens2.R_inner) { Palette.fill }, at(plateX, 338, 56, 56))
-        empty.addView(ctx.iconView(R.drawable.ic_music, 30) { Palette.ink2 }, at(plateX + 13, 351, 30, 30))
+        empty.addView(ctx.plateView(Tokens2.R_inner) { Palette.fill }, at(plateX, 341, 56, 56))
+        empty.addView(ctx.iconView(R.drawable.ic_music, 30) { Palette.ink2 }, at(plateX + 13, 354, 30, 30))
         val lineX = if (ar) 28 else 96
-        empty.addView(ctx.label(Type.widgetTitle, { Palette.ink }).apply { setText(R.string.media_nothing) }, Type.widgetTitle.box(lineX, 335, 264))
-        empty.addView(ctx.label(Type.widgetSub, { Palette.ink2 }).apply { setText(R.string.home_choose_source) }, Type.widgetSub.box(lineX, 369, 264))
+        empty.addView(ctx.label(Type.widgetTitle, { Palette.ink }).apply { setText(R.string.media_nothing) }, Type.widgetTitle.box(lineX, 338, 264))
+        empty.addView(ctx.label(Type.widgetSub, { Palette.ink2 }).apply { setText(R.string.home_choose_source) }, Type.widgetSub.box(lineX, 372, 264))
         val w = 110
         val xs = if (ar) intArrayOf(256, 139, 22) else intArrayOf(22, 139, 256)
         empty.addView(sourceButton(ctx, R.drawable.ic_iphone, R.string.home_src_naghm_short) { startSource(true) }, at(xs[0], 432, w, 64))
-        empty.addView(sourceButton(ctx, R.drawable.ic_bluetooth, R.string.src_bt) { startSource(true) }, at(xs[1], 432, w, 64))
+        empty.addView(sourceButton(ctx, R.drawable.ic_bluetooth, R.string.home_src_bt_short) { startSource(true) }, at(xs[1], 432, w, 64))
         empty.addView(sourceButton(ctx, R.drawable.ic_usb, R.string.home_src_usb) { startSource(false) }, at(xs[2], 432, w, 64))
 
         progress84.color = { Palette.ink }

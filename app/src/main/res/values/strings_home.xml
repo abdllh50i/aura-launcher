@@ -9,5 +9,6 @@
     <string name="home_choose_source">Choose a source</string>
     <string name="home_src_naghm">Naghm</string>
     <string name="home_src_naghm_short">Naghm</string>
+    <string name="home_src_bt_short">BT</string>
     <string name="home_src_usb" translatable="false">USB</string>
 </resources>

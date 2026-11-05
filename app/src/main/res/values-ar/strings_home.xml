@@ -9,5 +9,6 @@
     <string name="home_choose_source">اختر من وين تسمع</string>
     <string name="home_src_naghm">من نغم</string>
     <string name="home_src_naghm_short">نغم</string>
+    <string name="home_src_bt_short">بلوتوث</string>
     <string name="home_src_usb">USB</string>
 </resources>
