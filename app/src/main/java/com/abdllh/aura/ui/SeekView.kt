@@ -25,6 +25,8 @@ class SeekView(ctx: Context) : View(ctx), Recolours {
         set(v) { if (v != field) { field = v; invalidate() } }
     var dragging = false
         private set
+    /** The track's height at rest: 5, on the big layout of Music 6. */
+    var trackH = 5f
     private var now = ""
     private var total = ""
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -55,7 +57,7 @@ class SeekView(ctx: Context) : View(ctx), Recolours {
 
     override fun onDraw(c: Canvas) {
         val y = height / 2f
-        val h = TRACK_H + 3f * grab
+        val h = trackH + 3f * grab
         val a = left()
         val b = right()
         val base = y + 0.335f * tp.textSize
@@ -94,7 +96,6 @@ class SeekView(ctx: Context) : View(ctx), Recolours {
     }
 
     private companion object {
-        const val TRACK_H = 5f
         const val KNOB_HALF = 8.5f
         const val GAP = 10f
     }

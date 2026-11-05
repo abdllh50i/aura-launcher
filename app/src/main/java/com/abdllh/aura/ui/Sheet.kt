@@ -98,12 +98,18 @@ open class Sheet(ctx: Context, fullHeight: Boolean = false, private val side: Bo
         }
     }
 
-    /** A side sheet at x 384, beside the column, while a trip runs; at x 12 with none. */
-    fun placeOnTrip(onTrip: Boolean) {
+    /** It stands at its full height whatever is in it ([placeOnTrip]). */
+    protected var tall = false
+        private set
+
+    /** A side sheet at x 392, beside the column, while a trip runs; at x 16 with none. [high]: at its full height, so that nothing of a panel shows under it. */
+    fun placeOnTrip(onTrip: Boolean, high: Boolean = false) {
         if (!side) return
+        tall = high
         val lp = panel.layoutParams as LayoutParams
         val want = (if (onTrip) X_ON_TRIP else X_NO_TRIP) - Surface.OVERLAY.outset
-        if (lp.leftMargin != want) { lp.leftMargin = want; panel.layoutParams = lp }
+        val h = if (high) SIDE_MAX_H + 2 * Surface.OVERLAY.outset else WRAP
+        if (lp.leftMargin != want || lp.height != h) { lp.leftMargin = want; lp.height = h; panel.layoutParams = lp }
     }
 
     /**

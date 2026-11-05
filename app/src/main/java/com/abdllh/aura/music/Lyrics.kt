@@ -221,6 +221,19 @@ object Lyrics {
         }
     }
 
+    /**
+     * The owner's "no lyrics for this song" (the More sheet), kept by the song's key as its timing correction is. In a file of its own: a new record of the song, or an emptied cache, must not bring
+     * them back, and the four old preference files take no new keys ([com.abdllh.aura.system.PrefTypes]).
+     */
+    fun isOff(c: Context, title: String, artist: String, durationSec: Int) = offFile(c).contains(key(title, artist, durationSec))
+
+    fun setOff(c: Context, title: String, artist: String, durationSec: Int, off: Boolean) {
+        val k = key(title, artist, durationSec)
+        offFile(c).edit().apply { if (off) putBoolean(k, true) else remove(k) }.apply()
+    }
+
+    private fun offFile(c: Context) = c.applicationContext.getSharedPreferences("aura_lyrics_off", Context.MODE_PRIVATE)
+
     /** The server's answer in the shape of an LRCLIB record (the one way lyrics are kept here). */
     private fun serverJson(s: LyricsServer.Found): JSONObject = JSONObject().apply {
         if (s.synced != null) put("syncedLyrics", s.synced)

@@ -164,11 +164,9 @@
     <string name="lyrics_loading">أدوّر على كلمات الأغنية…</string>
     <string name="lyrics_none">ما لقيت كلمات هالأغنية</string>
     <string name="lyrics_failed">ما قدرت أجيب الكلمات (الإنترنت؟). بحاول مرة ثانية</string>
-    <string name="lyrics_instrumental">موسيقى بدون كلمات</string>
     <string name="lyrics_nothing">شغّل أغنية وتطلع كلماتها هنا</string>
     <string name="lyrics_tap_sync">اضغط السطر اللي ينغنى للمزامنة</string>
     <string name="lyrics_synced">تمت المزامنة ✓</string>
-    <string name="lyrics_bigger">الكلمات على الشاشة كاملة</string>
     <string name="lyrics_smaller">رجوع للأغنية</string>
     <string name="maps_dropped_pin">الموقع المحدد</string>
     <string name="maps_pick_home_short">اضغط مطوّل على مكان البيت</string>
