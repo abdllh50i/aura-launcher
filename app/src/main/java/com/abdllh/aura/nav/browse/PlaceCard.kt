@@ -157,15 +157,22 @@ internal class PlaceCard(ctx: Context) : SurfaceCard(ctx, Surface.CARD) {
 
     /**
      * A warning of the chosen route (section 5: in a short line). With one route there is room under the arrival for all of it; with two it takes the arrival's line, because what it
-     * says matters more than the time, which the choice already has.
+     * says matters more than the time, which the choice already has, and only what comes before its comma fits there: "وجهتك داخل حدود الحرم".
      */
     fun warn(text: String?) {
         val on = !text.isNullOrEmpty()
-        warnGlyph.visibility = if (on && !two) VISIBLE else INVISIBLE
-        warnText.visibility = if (on && !two) VISIBLE else INVISIBLE
-        warnText.text = text.orEmpty()
-        arrive.visibility = if (choices[0].visibility != VISIBLE) INVISIBLE else VISIBLE
-        if (on && two) arrive.text = text
+        val top = if (two) ARRIVE_TOP_TWO else ARRIVE_TOP_ONE + 36
+        (warnGlyph.layoutParams as LayoutParams).topMargin = top + 3
+        (warnText.layoutParams as LayoutParams).apply {
+            topMargin = top + Type.routeSub.viewTop
+            height = if (two) Type.routeSub.viewH else 60
+        }
+        warnText.maxLines = if (two) 1 else 2
+        warnText.text = if (two) text.orEmpty().substringBefore('،').substringBefore(':') else text.orEmpty()
+        warnGlyph.visibility = if (on) VISIBLE else INVISIBLE
+        warnText.visibility = if (on) VISIBLE else INVISIBLE
+        arrive.visibility = if (choices[0].visibility != VISIBLE || (on && two)) INVISIBLE else VISIBLE
+        warnText.requestLayout()
     }
 
     /** `place-no-route`: why, and try again in Go's place on a shorter card. */
