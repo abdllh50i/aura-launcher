@@ -19,7 +19,8 @@ internal object TurnWords {
 
     class Lines(@JvmField val road: String, @JvmField val hint: String)
 
-    fun isLeft(s: Step): Boolean = when (Instructions.turn(s)) {
+    /** The next step takes the route to the left, so the camera moves the car right (map-*.json `leftTurnShift`). Not the arrival: a place on the left side of the road is no turn, and its camera has the car at x 701. */
+    fun isLeft(s: Step): Boolean = s.type != "arrive" && when (Instructions.turn(s)) {
         Turn.LEFT, Turn.SLIGHT_LEFT, Turn.SHARP_LEFT, Turn.UTURN -> true
         Turn.ROUNDABOUT -> Instructions.exitAngle(s) < -30f
         else -> false

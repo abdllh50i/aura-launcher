@@ -83,7 +83,8 @@ object MapStyle {
     fun driveNextFilter(arabic: Boolean, next: String, current: String): String =
         if (next.isBlank() || next == current) NO_FEATURE else """["==",${roadNameOf(arabic)},${org.json.JSONObject.quote(next)}]"""
 
-    private const val NO_FEATURE = """["==",1,0]"""
+    // (`["==",1,0]` reads as an old-style filter, "filter property must be a string", and the style then has no such layer at all)
+    private const val NO_FEATURE = """["==",["get","class"],""]"""
 
     // (a motorway often has only its number)
     private fun roadNameOf(arabic: Boolean) = if (arabic) """["coalesce",["get","name:ar"],["get","name"],["get","ref"]]"""

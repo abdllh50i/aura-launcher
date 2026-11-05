@@ -1498,12 +1498,7 @@ private class CarMarker(ctx: Context) : View(ctx) {
         val cx = width / 2f
         val cy = height / 2f
         val fade = 1f - 0.4f * staleK
-        // browsing: a soft halo in the route's colour under the car (navigating, the route itself leads to it)
-        val halo = 1f - navK
-        if (halo > 0.01f) {
-            p.colorFilter = null
-            c.drawCircle(cx, cy, 30f.dp, paint(Palette.withAlpha(Palette.mix(color, Palette.text3, staleK), 0.18f), halo))
-        }
+        // (no halo under the car on any camera: none of the mockups has one, and in `drive-free` it was a blue disc on the road)
         if (greyAt != staleK) {
             greyAt = staleK
             grey.setSaturation(1f - staleK)
