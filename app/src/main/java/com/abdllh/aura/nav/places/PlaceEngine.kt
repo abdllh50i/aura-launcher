@@ -284,6 +284,12 @@ internal class PlaceEngine(val db: PlacesDb) {
     private fun hit(r: Row, a: Area?, km: Double?, score: Double) =
         PlaceHit(r.id, r.kind, r.name, r.alt, db.cats[r.cat], r.lat / 1e6, r.lon / 1e6, r.rank, km, score, r.src and SRC_COARSE != 0, a)
 
+    /** One row by its id, with its area. */
+    fun row(id: Int, cs: CancellationSignal? = null): PlaceHit? {
+        val r = db.rows("SELECT ${PlacesDb.COLUMNS} FROM p WHERE p.id=$id", null, cs).firstOrNull() ?: return null
+        return hit(r, if (r.area != 0) db.areas(hashSetOf(r.area), cs)[r.area] else null, null, 0.0)
+    }
+
     /**
      * What is at a point: the nearest POI within 60 m, else a named road within 600 m (its points are about 1 km apart), else the district and town of the nearest row
      * of any kind, else a district. A pile of rows on a geocoder's default point is not what is at that point.

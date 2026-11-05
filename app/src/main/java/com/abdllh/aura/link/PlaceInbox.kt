@@ -8,8 +8,8 @@ import android.util.Log
 import com.abdllh.aura.R
 import com.abdllh.aura.home.Actions
 import com.abdllh.aura.home.AppRepo
+import com.abdllh.aura.home.HomeActivity
 import com.abdllh.aura.home.Screens
-import com.abdllh.aura.nav.CarLocation
 import com.abdllh.aura.nav.Geo
 import com.abdllh.aura.nav.LatLon
 import com.abdllh.aura.nav.NavSession
@@ -26,10 +26,12 @@ import java.util.Locale
 
 /**
  * What the unit does with a place that comes from outside the Maps screen (companion.md 5.5). Idle, from a paired phone:
- * Maps comes forward, the route starts, and for [CANCEL_MS] the card offers to cancel. Unpaired, or a place that is only
- * a guess: the card asks first. On a trip: the card asks, and if nobody answers in [REPLACE_MS] the trip goes on; a
- * route never changes silently. In a call or in reverse: it waits, then the card asks. No route: the place stays on the
- * map with its retry and Go. Without a fix: the route's start waits for the first one.
+ * Maps comes forward with its card, and once the route is there the trip starts after [COUNTDOWN_MS] unless he cancels (SPEC.md
+ * section 6.3: the card is [com.abdllh.aura.nav.BrowseCards]'s, the count [Trips]'). Unpaired, a place that is only a guess, or another
+ * app in front: the banner asks first. On a trip: the banner asks, and if nobody answers in [REPLACE_MS] the trip goes on; a
+ * route never changes silently. In a call or in reverse: it waits, then the banner asks. No route: the place stays on the
+ * map with its retry and Go. Without a fix: the route's start waits for the first one. The voice's place starts at once, with the
+ * banner's Cancel for [CANCEL_MS] after it.
  *
  * The phone hears each step as it really happens ([tell], the "nav" events), "started" only once [NavSession] runs. Only
  * one place at a time: a newer one replaces one still waiting. The voice's "ودني ..." comes through here too. Main
@@ -38,7 +40,9 @@ import java.util.Locale
 internal object PlaceInbox {
     private const val TAG = "AuraPlaceInbox"
     private const val CANCEL_MS = 5_000L
-    private const val REPLACE_MS = 20_000L
+    /** "يبدأ بعد 5 ثوان". */
+    private const val COUNTDOWN_MS = 5_000L
+    private const val REPLACE_MS = 30_000L
     private const val ASK_MS = 30_000L
     private const val FAILED_MS = 6_000L
     /** A place held for a call or for reverse is old news after this. */
@@ -140,8 +144,10 @@ internal object PlaceInbox {
         when {
             busy != null -> hold(x, busy)
             NavSession.state == NavSession.State.NAVIGATING -> replaceCard(c, x)
-            afterHold || !x.paired || x.ask -> askCard(c, x)
-            else -> begin(c, x)
+            // (another app in front: a banner over it, and a touch brings AMRI to Maps: section 6.0's table)
+            afterHold || !x.paired || x.ask || (!x.voice && HomeActivity.current?.resumedNow != true) -> askCard(c, x)
+            // (nobody has said yes yet: the card counts down. The voice's own words were the yes)
+            else -> begin(c, x, if (x.voice) 0L else COUNTDOWN_MS)
         }
     }
 
@@ -185,20 +191,11 @@ internal object PlaceInbox {
     }
 
     // ------------------------------------------------------------------------------------------ the cards
-    private fun caption(c: Context, x: Incoming) = words(c).getString(if (x.voice) R.string.link_from_voice else R.string.link_from_phone)
-
-    /** The place's detail and how far it is from the car, whatever is known of them. */
-    private fun where(x: Incoming): String {
-        val arabic = Locale.getDefault().language == "ar"
-        val far = CarLocation.lastKnown()?.let { Units.distance(Geo.distance(it, x.place.pos), arabic) }
-        // (each part whole: an Arabic address beside "12 km" must not take the number into its own direction)
-        val bidi = android.text.BidiFormatter.getInstance(arabic)
-        return listOfNotNull(x.place.detail.ifBlank { null }, far).joinToString(" · ") { bidi.unicodeWrap(it) }
-    }
+    private fun caption(c: Context, x: Incoming) = words(c).getString(if (x.voice) R.string.link_from_voice else R.string.browse_from_iphone)
 
     private fun askCard(c: Context, x: Incoming) {
         val w = words(c)
-        val shown = TripCard.show(c, caption(c, x), w.getString(R.string.link_ask, x.place.name), where(x), listOf(
+        val shown = TripCard.show(c, caption(c, x), x.place.name, listOf(
             TripCard.Action(w.getString(R.string.link_start), true) { if (current === x) begin(c, x) },
             TripCard.Action(w.getString(R.string.link_no), false) { if (current === x) { tell(x, "ignored", null); note(x, "ignored"); finishWith(x) } }
         ), ASK_MS) {
@@ -213,9 +210,8 @@ internal object PlaceInbox {
 
     private fun replaceCard(c: Context, x: Incoming) {
         val w = words(c)
-        val now = NavSession.destination?.name.orEmpty()
-        val shown = TripCard.show(c, caption(c, x), x.place.name, w.getString(R.string.link_replace_q, now), listOf(
-            TripCard.Action(w.getString(R.string.link_replace), true) { if (current === x) begin(c, x) },
+        val shown = TripCard.show(c, caption(c, x), x.place.name, listOf(
+            TripCard.Action(w.getString(R.string.browse_switch_route), true) { if (current === x) begin(c, x) },
             TripCard.Action(w.getString(R.string.link_keep), false) { if (current === x) { tell(x, "ignored", JSONObject().put("kept", true)); note(x, "ignored"); finishWith(x) } }
         ), REPLACE_MS) {
             // nobody answered: the trip goes on
@@ -245,23 +241,28 @@ internal object PlaceInbox {
         Screens.mapsPlace(c, x.place.pos.lat, x.place.pos.lon, x.place.name, x.place.detail, mayKeep(x))
     }
 
+    /**
+     * The route of a place he has said yes to is being found. With no trip Maps shows that on its own card, which has the Cancel ([com.abdllh.aura.nav.BrowseCards.syncAttempt]);
+     * only a trip being replaced has no card, its column stays: the banner says it here.
+     */
     private fun progressCard(c: Context, x: Incoming, phase: Trips.Phase) {
+        if (NavSession.state != NavSession.State.NAVIGATING) { TripCard.hide(); return }
         if (blocker() != null) { cardAway = true; return }
         val w = words(c)
-        TripCard.show(c, caption(c, x), x.place.name,
-            w.getString(if (phase == Trips.Phase.WAITING_FIX) R.string.maps_waiting_gps else R.string.maps_routing),
+        TripCard.show(c, w.getString(if (phase == Trips.Phase.WAITING_FIX) R.string.browse_waiting_gps else R.string.browse_computing), x.place.name,
             listOf(TripCard.Action(w.getString(R.string.link_cancel), false) { if (current === x) cancelled(x, "card") }), 0L, null)
     }
 
     // ------------------------------------------------------------------------------------------ going
-    private fun begin(c: Context, x: Incoming) {
+    /** [holdMs]: nobody has said yes to it: once its route is there it counts down that long on its card ([Trips.Phase.READY]). */
+    private fun begin(c: Context, x: Incoming, holdMs: Long = 0L) {
         if (handedOver(c, x)) return
         stage = Stage.TRIP
         cardAway = false
         main.removeCallbacks(tick)
         main.postDelayed(tick, 1000L)
         shownPhase = null // ([tripsListener] tells each phase, the first one too, and shows the card)
-        Trips.goTo(c, x.place, x.from, if (x.voice) Trips.VOICE else Trips.PHONE, waitForFix = true, remember = mayKeep(x)) { outcome, why ->
+        Trips.goTo(c, x.place, x.from, if (x.voice) Trips.VOICE else Trips.PHONE, waitForFix = true, remember = mayKeep(x), holdMs = holdMs) { outcome, why ->
             if (current === x) when (outcome) {
                 Trips.Outcome.STARTED -> started(c, x)
                 Trips.Outcome.FAILED, Trips.Outcome.NO_FIX -> failed(c, x, if (outcome == Trips.Outcome.NO_FIX) "no_fix" else if (why == "timeout") "timeout" else "no_route")
@@ -275,8 +276,10 @@ internal object PlaceInbox {
     /** Apple's terms keep its place data off the unit's lists (companion.md 2.6). */
     private fun mayKeep(x: Incoming) = !x.src.contains("apple", ignoreCase = true)
 
-    private fun tellPhase(x: Incoming, phase: Trips.Phase) =
-        tell(x, if (phase == Trips.Phase.WAITING_FIX) "waiting_fix" else "routing", JSONObject().put("place", x.place.toJson()))
+    private fun tellPhase(x: Incoming, phase: Trips.Phase) {
+        if (phase == Trips.Phase.READY) tell(x, "card", JSONObject().put("kind", "countdown").put("ms", COUNTDOWN_MS))
+        else tell(x, if (phase == Trips.Phase.WAITING_FIX) "waiting_fix" else "routing", JSONObject().put("place", x.place.toJson()))
+    }
 
     /** The navigation app chosen in Settings, when it is not AMRI Maps. It says nothing back: told "handed", not "started". */
     private fun handedOver(c: Context, x: Incoming): Boolean {
@@ -306,11 +309,15 @@ internal object PlaceInbox {
         if (!x.voice) {
             note(x, "started")
             NavSession.announce(line)
+            // (its card counted down, or he said yes on the banner: there is nothing to take back but the trip, and End is there)
+            current = null
+            TripCard.hide()
+            return
         }
         stage = Stage.CANCEL_WINDOW
         // (nothing over the camera or a call's card: then the trip just runs, with its End button on the Maps screen)
         val busy = blocker()
-        val shown = busy == null && TripCard.show(c, caption(c, x), line, where(x),
+        val shown = busy == null && TripCard.show(c, caption(c, x), line,
             listOf(TripCard.Action(w.getString(R.string.link_cancel), false) { if (current === x) cancelled(x, "card") }), CANCEL_MS) {
             if (current === x) current = null
         }
@@ -344,12 +351,12 @@ internal object PlaceInbox {
         // (a call or reverse meanwhile: not over them; the phone has been told)
         if (blocker() != null) return
         if (onTrip) {
-            TripCard.show(c, caption(c, x), w.getString(R.string.link_failed_kept, x.place.name), null, emptyList(), FAILED_MS, null)
+            TripCard.show(c, caption(c, x), w.getString(R.string.link_failed_kept, x.place.name), emptyList(), FAILED_MS, null)
             return
         }
+        // (the place's own card says it: no route, and try again)
         openOnMap(c, x)
         onMap = x
-        TripCard.show(c, caption(c, x), w.getString(R.string.link_failed, x.place.name), null, emptyList(), FAILED_MS, null)
     }
 
     // ------------------------------------------------------------------------------------------ stopping

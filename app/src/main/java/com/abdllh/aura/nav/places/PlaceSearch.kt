@@ -234,6 +234,9 @@ object PlaceSearch {
     /** What is at a point: a dropped pin, "where am I". Null: nothing, or no file. */
     fun reverse(lat: Double, lon: Double, done: (ReverseHit?) -> Unit) = later(null, done) { it.reverse(lat, lon) }
 
+    /** A row of table p by its id: a place tapped on the map ([com.abdllh.aura.nav.AuraMap.onPlaceRow]), for its card. Null: not there, or no file. */
+    fun row(id: Int, done: (PlaceHit?) -> Unit) = later(null, done) { it.row(id) }
+
     /** The cameras, junctions with signals and bumps a route goes by, in order. Once for a route. */
     fun spotsAlong(line: Polyline, done: (RouteSpots?) -> Unit) = later(null, done) { it.spotsAlong(line) }
 
@@ -306,7 +309,8 @@ object PlaceSearch {
         val d = h.detail(arabic)
         if (!h.approx) return Place(h.shown(arabic), d, LatLon(h.lat, h.lon))
         val label = approxLabel(arabic)
-        return Place(h.shown(arabic), if (d.isEmpty()) label else d + (if (arabic) "، " else ", ") + label, LatLon(h.lat, h.lon))
+        // (first: a one-line detail cuts its end, and this is the part that must be read)
+        return Place(h.shown(arabic), if (d.isEmpty()) label else label + (if (arabic) "، " else ", ") + d, LatLon(h.lat, h.lon))
     }
 
     private val approxLabels = arrayOfNulls<String>(2)

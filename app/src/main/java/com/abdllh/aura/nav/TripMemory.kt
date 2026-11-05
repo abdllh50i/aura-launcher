@@ -179,7 +179,7 @@ internal object TripMemory {
     private fun ask(c: Context, k: Kept) {
         val w = LocaleHelper.wrap(c)
         asking = true
-        val shown = TripCard.show(c, w.getString(R.string.trip_resume_caption), w.getString(R.string.trip_resume_q, k.dest.name), null, listOf(
+        val shown = TripCard.show(c, w.getString(R.string.trip_resume_caption), w.getString(R.string.trip_resume_q, k.dest.name), listOf(
             TripCard.Action(w.getString(R.string.trip_resume_yes), true) {
                 if (asking) {
                     asking = false

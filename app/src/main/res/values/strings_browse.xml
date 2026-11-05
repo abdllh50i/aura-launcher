@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="browse_home">Home</string>
+    <string name="browse_work">Work</string>
+    <string name="browse_computing">Finding a route…</string>
+    <string name="browse_waiting_gps">Waiting for a location signal…</string>
+    <string name="browse_no_route">No route to this place</string>
+    <string name="browse_retry">Try again</string>
+    <string name="browse_no_internet">No internet</string>
+    <string name="browse_nothing">Nothing found by that name</string>
+    <string name="browse_set_place">Not saved yet, tap to choose it</string>
+    <string name="browse_pick_home">Long press where Home is on the map, or search for it, then tap the star</string>
+    <string name="browse_pick_work">Long press where Work is on the map, or search for it, then tap the star</string>
+    <string name="browse_from_iphone">Sent from iPhone</string>
+    <string name="browse_start_now">Start now</string>
+    <string name="browse_starts_in_1">Starts in 1 s</string>
+    <string name="browse_starts_in_2">Starts in 2 s</string>
+    <string name="browse_starts_in_n">Starts in %1$d s</string>
+    <string name="browse_switch_route">Switch</string>
+    <string name="browse_haram_inside">The trip starts or ends inside the Haram boundary</string>
+</resources>

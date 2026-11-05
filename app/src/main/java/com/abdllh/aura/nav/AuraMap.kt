@@ -88,6 +88,12 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
     var onPlaceRow: ((id: Long) -> Unit)? = null
     /** The map has come to rest after a finger or a flight, not while the frame loop drives it: the place at its middle. */
     var onCameraIdle: ((LatLon) -> Unit)? = null
+    /** A tap on a search row's pin: which row, from 0 ([setResults]). */
+    var onResultTap: ((Int) -> Unit)? = null
+    /** A tap on the second route ([setRouteAlt]). */
+    var onRouteAltTap: (() -> Unit)? = null
+    /** A tap on nothing of the above and no place: the map itself. */
+    var onMapTap: (() -> Unit)? = null
     /**
      * Fraction of the view height kept free above the car while navigating (puts the car low on the screen); a little
      * more at motorway speed, where what is far ahead matters more.
@@ -144,6 +150,9 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
 
     // ---- the route, the turn, the destination
     private var routePts: List<LatLon>? = null
+    private var altPts: List<LatLon>? = null
+    private var resultPts: List<LatLon> = emptyList()
+    private var destName: String? = null
     // driving: the route the car is on; only what is ahead of the car as it is drawn shows ([setRouteAhead])
     private var routeLine: Polyline? = null
     private var farFrom = -1.0   // where along it the long part (SRC_ROUTE) starts; before that, the short part
@@ -302,12 +311,14 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         val m = map ?: return
         val arabic = Locale.getDefault().language == "ar"
         Log.i(TAG, "style load #${++styleLoads}")
-        m.setStyle(Style.Builder().fromJson(MapStyle.json(arabic)).withImage(MapStyle.POI_DOT, MapStyle.poiDot(), true)) { s ->
+        m.setStyle(Style.Builder().fromJson(MapStyle.json(arabic)).withImage(MapStyle.POI_DOT, MapStyle.poiDot(), true).withImage(MapStyle.DEST_PIN, MapStyle.destPin(), true)) { s ->
             style = s
             MapStyle.afterLoad(s)
             extrasVersion = -1
             routeFaded = false
             pushRoute()
+            pushLine(MapStyle.SRC_ROUTE_ALT, altPts)
+            pushResults()
             pushTurn()
             pushDest()
             pushExtras()
@@ -351,14 +362,18 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
 
     /** A tap: the place of the map nearest to the finger, if one of the drawn ones is under it. */
     private fun tapPlace(m: MapboxMap, ll: LatLng): Boolean {
-        val l = onPoiTap ?: return false
         val at = m.projection.toScreenLocation(ll)
         val r = 26f.dp // (a finger on a car screen, not a pixel)
-        val hits = try {
-            m.queryRenderedFeatures(RectF(at.x - r, at.y - r, at.x + r, at.y + r), *MapStyle.POI_LAYERS)
-        } catch (_: Throwable) {
-            emptyList()
+        val box = RectF(at.x - r, at.y - r, at.x + r, at.y + r)
+        fun under(layers: Array<String>) = try { m.queryRenderedFeatures(box, *layers) } catch (_: Throwable) { emptyList<Feature>() }
+        // (what a card put on the map first: the row's pin, the second route. A pin's own number says which)
+        if (resultPts.isNotEmpty()) onResultTap?.let { tap ->
+            under(MapStyle.RESULT_LAYERS).firstOrNull()?.getStringProperty("n")?.toIntOrNull()?.let { n -> tap(n - 1); return true }
         }
+        if (altPts != null) onRouteAltTap?.let { tap -> if (under(MapStyle.ROUTE_ALT_LAYERS).isNotEmpty()) { tap(); return true } }
+        val l = onPoiTap
+        if (l == null) { onMapTap?.invoke(); return false }
+        val hits = under(MapStyle.POI_LAYERS)
         val arabic = Locale.getDefault().language == "ar"
         fun text(f: Feature, key: String): String? =
             if (f.hasNonNullValueForProperty(key)) f.getStringProperty(key)?.takeIf { it.isNotBlank() } else null
@@ -374,7 +389,8 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
             val d = Math.hypot((sp.x - at.x).toDouble(), (sp.y - at.y).toDouble())
             if (d < bestD) { bestD = d; best = f; bestPos = pos }
         }
-        val f = best ?: return false
+        val f = best
+        if (f == null) { onMapTap?.invoke(); return false }
         val name = (if (arabic) text(f, "name:ar") else text(f, "name:en") ?: text(f, "name:latin")) ?: text(f, "name") ?: text(f, "name:en") ?: return false
         // (a place of the pack says what it is by number, and which row it is)
         fun number(key: String) = if (f.hasNonNullValueForProperty(key)) f.getNumberProperty(key) else null
@@ -691,17 +707,62 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         if (turnLine === line && along > turnFrom + TURN_CUT_STEP_M && along < turnEnd) pushTurn()
     }
 
-    fun setDestination(p: LatLon?) {
-        if (p == dest) return
+    /** The place's pin, and its [name] above it. */
+    fun setDestination(p: LatLon?, name: String? = null) {
+        if (p == dest && name == destName) return
         dest = p
+        destName = name
         pushDest()
     }
 
     private fun pushDest() {
         val s = style ?: return
         val d = dest
-        val json = if (d == null) EMPTY else """{"type":"Feature","properties":{},"geometry":{"type":"Point","coordinates":[${d.lon},${d.lat}]}}"""
+        val json = if (d == null) EMPTY else org.json.JSONObject().put("type", "Feature")
+            .put("properties", org.json.JSONObject().put("name", destName.orEmpty()))
+            .put("geometry", org.json.JSONObject().put("type", "Point").put("coordinates", org.json.JSONArray().put(d.lon).put(d.lat))).toString()
         try { s.getSourceAs<GeoJsonSource>(MapStyle.SRC_DEST)?.setGeoJson(json) } catch (_: Throwable) { }
+    }
+
+    /** The second route a card offers, under the chosen one; null: none. */
+    fun setRouteAlt(points: List<LatLon>?) {
+        if (points == null && altPts == null) return
+        altPts = points
+        pushLine(MapStyle.SRC_ROUTE_ALT, points)
+    }
+
+    /** The search's rows on the map, each with its number. */
+    fun setResults(points: List<LatLon>) {
+        if (points == resultPts) return
+        resultPts = points
+        pushResults()
+    }
+
+    private fun pushResults() {
+        val s = style ?: return
+        val json = buildString {
+            append("""{"type":"FeatureCollection","features":[""")
+            // (the first row last: it lies on top where two pins meet)
+            for (i in resultPts.indices.reversed()) {
+                val p = resultPts[i]
+                if (i != resultPts.lastIndex) append(',')
+                append("""{"type":"Feature","properties":{"n":"${i + 1}"},"geometry":{"type":"Point","coordinates":[${p.lon},${p.lat}]}}""")
+            }
+            append("]}")
+        }
+        try { s.getSourceAs<GeoJsonSource>(MapStyle.SRC_RESULTS)?.setGeoJson(json) } catch (_: Throwable) { }
+    }
+
+    /** Where the camera is now, for [cameraBack]: a card that flew the map remembers what it had. */
+    fun cameraNow(): CameraPosition? = map?.cameraPosition
+
+    /** Back to what [cameraNow] said (the map's own flight), when the camera was the driver's; following the car it just follows it again. */
+    fun cameraBack(was: CameraPosition?, wasMode: Camera) {
+        if (wasMode == Camera.FOLLOW || wasMode == Camera.NAVIGATE || was == null) { setCamera(wasMode); return }
+        blendFrom = null
+        flightUntil = 0L
+        setMode(wasMode)
+        map?.animateCamera(CameraUpdateFactory.newCameraPosition(was), OVERVIEW_MS, landed)
     }
 
     /**
@@ -981,25 +1042,36 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         return 1 - (1 + x) * exp(-x)
     }
 
-    /** Shows the whole route (or the car and a place) with room for the panels. */
-    fun overview(points: List<LatLon>, padStart: Int, padTop: Int, padEnd: Int, padBottom: Int) {
+    /**
+     * Shows the whole route (or the car and a place) with room for the panels, which do not swap sides with the language: [padLeft] is the
+     * left. North up, tilt 0, no closer than [maxZoom] (map-*.json's `overview` and `search`).
+     */
+    fun overview(points: List<LatLon>, padLeft: Int, padTop: Int, padRight: Int, padBottom: Int, maxZoom: Double = 16.0) {
         val m = map ?: return
         if (points.isEmpty()) return
         blendFrom = null
         flightUntil = 0L
         setMode(Camera.OVERVIEW)
-        val l = if (rtl) padEnd else padStart
-        val r = if (rtl) padStart else padEnd
+        val l = padLeft
+        val r = padRight
         if (points.size == 1) {
             m.animateCamera(CameraUpdateFactory.newCameraPosition(CameraPosition.Builder()
-                .target(LatLng(points[0].lat, points[0].lon)).zoom(15.5).bearing(0.0).tilt(0.0)
+                .target(LatLng(points[0].lat, points[0].lon)).zoom(minOf(15.5, maxZoom)).bearing(0.0).tilt(0.0)
                 .padding(l.toDouble(), padTop.toDouble(), r.toDouble(), padBottom.toDouble()).build()), OVERVIEW_MS, landed)
             return
         }
         val b = LatLngBounds.Builder()
         points.forEach { b.include(LatLng(it.lat, it.lon)) }
         try {
-            m.animateCamera(CameraUpdateFactory.newLatLngBounds(b.build(), 0.0, 0.0, l, padTop, r, padBottom), OVERVIEW_MS, landed)
+            val bounds = b.build()
+            val fits = m.getCameraForLatLngBounds(bounds, intArrayOf(l, padTop, r, padBottom), 0.0, 0.0)
+            // (a place round the corner: not so close that the map loses where it is)
+            if (fits != null && fits.zoom > maxZoom) {
+                m.animateCamera(CameraUpdateFactory.newCameraPosition(CameraPosition.Builder().target(bounds.center).zoom(maxZoom).bearing(0.0).tilt(0.0)
+                    .padding(l.toDouble(), padTop.toDouble(), r.toDouble(), padBottom.toDouble()).build()), OVERVIEW_MS, landed)
+            } else {
+                m.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, 0.0, 0.0, l, padTop, r, padBottom), OVERVIEW_MS, landed)
+            }
         } catch (_: Throwable) {
         }
     }
@@ -1175,7 +1247,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         /** A new room: 95 % at 365 ms, settled by here (the design's section 9). */
         private const val ROOM_MS = 520L
         private const val ROOM_SPRING = 13.0
-        private const val FOLLOW_ZOOM = 15.0
+        private const val FOLLOW_ZOOM = 14.6 // (Home's and browse's, so Home to Maps is a pure pan: map-*.json's camera)
         private const val FLIGHT_MS = 900L
         private const val OVERVIEW_MS = 750
         private const val NAV_TILT = 50.0

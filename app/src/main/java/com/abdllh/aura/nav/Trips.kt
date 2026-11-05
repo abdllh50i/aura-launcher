@@ -32,7 +32,8 @@ object Trips {
     /** A fix older than this is where the car was: the asker's own fresh position is the better origin. */
     private const val FIX_FRESH_MS = 120_000L
 
-    enum class Phase { WAITING_FIX, ROUTING }
+    /** [READY]: the route is here and the trip starts by itself at [Attempt.startsAt], unless cancelled: a place from the phone, on its card. */
+    enum class Phase { WAITING_FIX, ROUTING, READY }
 
     /**
      * How an attempt ended: [STARTED] the trip is on [NavSession]; [FAILED] no route; [NO_FIX] no position to route
@@ -46,9 +47,16 @@ object Trips {
         internal val origin: LatLon?,
         internal val remember: Boolean,
         internal val wanted: () -> Boolean,
-        internal val done: ((Outcome, String?) -> Unit)?
+        internal val done: ((Outcome, String?) -> Unit)?,
+        internal val holdMs: Long
     ) {
         var phase = Phase.ROUTING
+            internal set
+        /** In [Phase.READY]: its route. */
+        var route: Route? = null
+            internal set
+        /** In [Phase.READY]: when it starts (elapsedRealtime). */
+        var startsAt = 0L
             internal set
     }
 
@@ -64,6 +72,8 @@ object Trips {
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
     private var fixWait: ((Location) -> Unit)? = null
     private val tooLong = Runnable { attempt?.let { finish(it, if (it.phase == Phase.WAITING_FIX) Outcome.NO_FIX else Outcome.FAILED, "timeout") } }
+    private var appContext: Context? = null
+    private val holdOver = Runnable { startNow() }
 
     fun addListener(l: () -> Unit) { listeners.add(l) }
     fun removeListener(l: () -> Unit) { listeners.remove(l) }
@@ -76,7 +86,8 @@ object Trips {
      * Route to [place] and start. [origin]: where the asker says it is, used only when the unit has no fresh fix of
      * its own. [waitForFix]: with no position at all, wait for the first fix (else [Outcome.NO_FIX] at once).
      * [remember]: the place may go to the recent places. [wanted] is asked once the route is there (a screen the driver
-     * has left wants no trip started that he can no longer see). [done]: how it ended.
+     * has left wants no trip started that he can no longer see). [done]: how it ended. [holdMs]: with its route found it waits this long
+     * in [Phase.READY] before it starts, for a card to count down ([startNow], [cancel]).
      */
     fun goTo(
         ctx: Context,
@@ -86,11 +97,13 @@ object Trips {
         waitForFix: Boolean = false,
         remember: Boolean = true,
         wanted: () -> Boolean = { true },
+        holdMs: Long = 0L,
         done: ((Outcome, String?) -> Unit)? = null
     ) {
         val c = ctx.applicationContext
+        appContext = c
         attempt?.let { finish(it, Outcome.DROPPED, "replaced") }
-        val a = Attempt(place, source, origin, remember, wanted, done)
+        val a = Attempt(place, source, origin, remember, wanted, done, holdMs)
         attempt = a
         val car = CarLocation.last
         when {
@@ -115,6 +128,28 @@ object Trips {
         attempt?.let { finish(it, Outcome.DROPPED, why) }
     }
 
+    /** The attempt in [Phase.READY] starts now: "ابدأ الآن", or its time is up. */
+    fun startNow() {
+        val a = attempt ?: return
+        val c = appContext ?: return
+        val r = a.route ?: return
+        if (a.phase != Phase.READY) return
+        main.removeCallbacks(holdOver)
+        if (!a.wanted()) finish(a, Outcome.DROPPED, "not wanted") else begin(c, a, r)
+    }
+
+    private fun begin(c: Context, a: Attempt, r: Route) {
+        try {
+            start(c, a.place, r, a.source, a.remember)
+            finish(a, Outcome.STARTED, null)
+        } catch (t: Throwable) {
+            // (what could not start did not start, and its asker hears that; the home screen stays up)
+            Log.w(TAG, "start: $t")
+            try { NavSession.stop() } catch (_: Throwable) { }
+            finish(a, Outcome.FAILED, "start")
+        }
+    }
+
     private fun route(c: Context, a: Attempt, from: LatLon, heading: Double?) {
         a.phase = Phase.ROUTING
         main.removeCallbacks(tooLong)
@@ -131,15 +166,15 @@ object Trips {
                 // (another asker took the engine: no answer yet, and [tooLong] still stands over it)
                 err == Router.NO_ANSWER_YET -> Router.afterOthers { if (attempt === a) ask(c, a, from, heading) }
                 r == null -> finish(a, Outcome.FAILED, err ?: "no_route")
-                else -> try {
-                    start(c, a.place, r, a.source, a.remember)
-                    finish(a, Outcome.STARTED, null)
-                } catch (t: Throwable) {
-                    // (what could not start did not start, and its asker hears that; the home screen stays up)
-                    Log.w(TAG, "start: $t")
-                    try { NavSession.stop() } catch (_: Throwable) { }
-                    finish(a, Outcome.FAILED, "start")
+                a.holdMs > 0L -> {
+                    a.route = r
+                    a.phase = Phase.READY
+                    a.startsAt = SystemClock.elapsedRealtime() + a.holdMs
+                    main.removeCallbacks(tooLong)
+                    main.postDelayed(holdOver, a.holdMs)
+                    changed()
                 }
+                else -> begin(c, a, r)
             }
         }
     }
@@ -172,6 +207,7 @@ object Trips {
         if (attempt !== a) return
         attempt = null
         main.removeCallbacks(tooLong)
+        main.removeCallbacks(holdOver)
         stopWaiting()
         Log.i(TAG, "${a.source}: $outcome ${why.orEmpty()}")
         try { a.done?.invoke(outcome, why) } catch (t: Throwable) { Log.w(TAG, "done: $t") }
