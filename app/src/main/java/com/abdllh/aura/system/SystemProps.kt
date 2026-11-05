@@ -48,12 +48,6 @@ object Device {
     fun isPrivileged(ctx: Context): Boolean =
         ctx.checkSelfPermission("android.permission.INSTALL_PACKAGES") == PackageManager.PERMISSION_GRANTED
 
-    fun isSystemApp(ctx: Context): Boolean = try {
-        (ctx.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
-    } catch (_: Throwable) {
-        false
-    }
-
     /** Is Aura the active home app right now? */
     fun isDefaultHome(ctx: Context): Boolean {
         val i = android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_HOME)

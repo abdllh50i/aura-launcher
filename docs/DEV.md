@@ -2528,6 +2528,38 @@ The owner asked for two things: none of Android's notifications on the screen, a
   debug.aura.msgpkg com.android.shell` so a debug build takes the shell's notifications as messages. Android 10's
   `-S messaging` style fails to post from the shell.
 
+## Far fewer settings (2.0.0-beta.3)
+
+The owner: "too many, confusing, the Workshop especially, remove what is not needed, like re-checking". Six pages of at most six rows, one card each, no explanation line but the listening's (it sends car sound) and the way back's. Older sections of this file that say "Settings → About", "Settings → Display & sound" or "the workshop" mean what stands here now.
+
+| Page | Rows |
+|---|---|
+| الشاشة | brightness, theme, language (a control now: no sub-page), 24-hour clock |
+| الخرائط | offline map (`PackPage`), home, work (rows that open the map's pick: no sub-page), the "Saher here" button; a row to delete the cameras marked, only while there are some |
+| الموسيقى | listening (`lyricsListen`; there is no global lyrics switch, only the per-song one in More), word by word, the lyrics server (`LyricsServerPage`: address, key, and whether it answers, asked by itself at each visit and after each change) |
+| عمري | on, teach your voice, try it, sensitivity |
+| الجوال | the Amri app (`LinkPage`), Naghm's state, messages, message text, ring |
+| السيارة والنظام | update (`UpdatePage`), Wi-Fi with the car, full off, the way back (`WaybackPage`: previous version, stock launcher), Screen check, about (version and model; it opens `LicencesPage`, with the map's credit whole) |
+
+**Gone from the screen, and what holds instead.** A pref's key and type stay in `aura.xml`, written by nothing (1.19 reads them; `PrefTypes`). "Holds" below means the code no longer reads the key: a stored `false` cannot leave something off with no way back.
+
+| What went | What holds |
+|---|---|
+| Music keys `musicKeysAura`, call card `callCard`, Android's notices hidden `hideAndroidNotices`, cover lookup `btCoverOnline`, status bar `hideStatusBar`, screen animations `screenAnimations`, Wi-Fi keeper `wifiKeeper`, ZLink `zlinkGuard`, automatic update check `updateAuto`, Saher tone `saherTone` | On, whatever is stored (while AMRI is the home screen where it took something from the firmware). `Prefs.screenAnimations` is a constant `true` only because its readers are in Chrome, MusicPanel, PanelStack and HomePanel |
+| Map view `mapView` | Tilted |
+| Navigation app `builtInMaps`, `navPackage` | AMRI Maps; Google Maps and the others are apps in Apps. `Actions.driveWithApp`, `AppRepo.navPackage` and the hand-overs in Amri and `PlaceInbox` went with it |
+| Volume bar `volumeHud` | `VolumeHud` as it was: true on his unit and by default, nothing writes it |
+| Amri's spoken answers `amriSpeak`, microphone `amriMic`, press tick `pressTick`, BT delay's slider (`btDelayMs`: the hold on a line stays), stock music replaced `replaceStockMusic` | Read as they were left: on his unit no spoken answers, input 4 (an id that is gone means the system's choice), and the stock music app replaced |
+| Betas `updateBeta` | As stored, or on while a beta runs: nothing else could bring the next one |
+| Taught requests, learned sounds | Used as they are; no more can be taught, and teaching the voice clears the learned sounds |
+| Update source, floating circle (off once, as before; the car settings have its own option), screen saver, restart, off now, equalizer, ring preview, sample message, Android display and Wi-Fi rows, map additions' card (it fetches by itself once a day) | Nothing to hold. Android's settings are a tile in Apps now, Wi-Fi, Bluetooth and the hotspot tiles in Controls |
+
+**The kill switch is the way back of what has no switch any more.** `StockMusic.apply` and `ZLinkGuard.apply` look at `persist.aura.disabled` themselves and `CrashGuard.setAuraEnabled` calls both, either way; `rollback.sh`'s `give_back` undoes the source list for a dead AMRI too.
+
+**No button to ask again** ("اعادت الفحص"): `UpdatePage` checks at each visit unless something is on offer or going on, `PackPage` the same (with a map on the unit only with the internet on, so no word of a missing internet on a page whose map works). A failed check keeps its retry.
+
+**What the workshop only showed is in the Screen check's report,** with no song's, place's or network's name (`Collect`'s rule), and on the page in its own card (`ReportText.notes`, on any run, of what was noted at any time): `k_settings.notes` (`homeGuard`, `musicKey`, `homeStart`, `panelOpen`, `panelFailed`, `windowLost`, `cover`, `youtube`, `place`, `phoneServer`, `nav`, `mapLib`, `mapState`, `idleGc`, `compile`, `packLast`, `mapExtras`, `lyricsHeard`), `k_settings.wayback`, `k_settings.guardLog`, `h_network.keeper`, `h_network.keeperLog`, `g_voice.amriEnrolled`, `amriLearned`, `amriTaught`, `amriMic`, `inputs`, `j_car.canBox`, `canAppKnowsGear`, `canGearPossible`. Already there before: identity and role, gear, handbrake, CAN manager and version, last crash, the car's start.
+
 ## Screen check and the trip recorder (`diag/`, 1.19.1)
 Until now no number had come from the unit: no RAM, no GPU memory, no frame time; the plans for 2.0 rest on guesses.
 Settings › About › Screen check (`settings/ScreenCheckActivity.kt`, a page of its own: seven fill the sidebar) has one

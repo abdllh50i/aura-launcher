@@ -11,7 +11,7 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * files/guard-log.txt: what the guard saw and did or, in the 1.x versions, would have done. Settings → About shows its
+ * files/guard-log.txt: what the guard saw and did or, in the 1.x versions, would have done. the Screen check's report shows its
  * end: the owner's photo of that page is how anything that happens on the unit gets back to the bench. The clock in a
  * line is for reading only (it may be wrong early after a boot, hence the seconds since the boot beside it); nothing is
  * ever decided from it.

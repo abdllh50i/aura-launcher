@@ -498,7 +498,7 @@ class MapController(private val shell: HomeActivity) {
         /** Nothing to do for this far: a minute and a half at 120 km/h, for a few seconds of a style being rebuilt. */
         private const val QUIET_AHEAD_M = 3000.0
 
-        /** What the map did at this window's start (for Settings → About): why it is not there, or when it drew. */
+        /** What the map did at this window's start (for the Screen check's report): why it is not there, or when it drew. */
         @Volatile var note = ""
             private set
     }

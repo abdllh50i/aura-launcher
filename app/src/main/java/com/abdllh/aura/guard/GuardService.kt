@@ -37,7 +37,7 @@ class GuardReceiver : BroadcastReceiver() {
  *
  * What it knows comes from [GuardMarks]: starts that died before they had gone on working for minutes, counted across
  * process deaths, and a heartbeat that stopped. What it does about them is staged by one constant, [ACTS_FROM_CODE]: in
- * the 1.x versions it only writes down what it would have done (files/guard-log.txt, shown in Settings → About); from 2.0
+ * the 1.x versions it only writes down what it would have done (files/guard-log.txt, shown in the Screen check's report); from 2.0
  * on, while a version is on trial, it may go back to the saved version or, with none, to the stock launcher; after the
  * trial it only offers (AMRI Rescue), and never in a call or in reverse. It also runs the Wi-Fi step the main process runs
  * at a cold boot when the main process did not get there, so the rescue paths (a phone, a PC) have a network, and sees that

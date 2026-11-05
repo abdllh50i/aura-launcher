@@ -1,9 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="set_notices_messages">Phone messages on screen</string>
-    <string name="set_notices_messages_sub">WhatsApp and other messaging apps show as an AMRI card</string>
-    <string name="set_notices_text">Show the message text</string>
-    <string name="set_notices_text_sub">Off: only who sent it</string>
     <string name="notices_close">Close</string>
     <string name="notices_new_message">New message</string>
 </resources>

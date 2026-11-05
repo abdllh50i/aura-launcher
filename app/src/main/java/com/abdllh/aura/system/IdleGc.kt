@@ -15,7 +15,7 @@ import com.abdllh.aura.home.IconLoader
  * this quiet can go for hours without one, so the app list's start left 15.7 MB (PSS, emulator) mapped for nothing, and
  * a few MB of dead Java objects and bitmaps with it. It runs off the main thread (the collector is concurrent: the main
  * thread stops for a few ms at most), only after the lists and icons asked for have come in, and at most once a minute.
- * What it freed goes to the log and Settings → About.
+ * What it freed goes to the log and the Screen check's report.
  */
 object IdleGc {
     private const val TAG = "AuraGc"
@@ -28,7 +28,7 @@ object IdleGc {
     private var waiting: Runnable? = null
     private var lastAt = -MIN_APART_MS
 
-    /** What the last one did (for Settings → About). */
+    /** What the last one did (for the Screen check's report). */
     @Volatile var note = ""
         private set
 

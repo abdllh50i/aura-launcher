@@ -19,7 +19,7 @@ import kotlin.math.floor
 /**
  * What the owner adds to the map with the map editor (tools/map-editor, a page on his PC): the speed limit of a
  * street, speed cameras ("ساهر"), traffic signals and speed bumps. The editor publishes them as one JSON file,
- * `additions.json` on the repository's `mapdata` branch; Settings → Navigation fetches it (and the app by itself once
+ * `additions.json` on the repository's `mapdata` branch; Settings → Maps fetches it (and the app by itself once
  * a day, when there is internet) and keeps it on the unit, so everything here works without internet afterwards.
  *
  *     {"version":1,"updated":<ms>,
@@ -55,7 +55,7 @@ object MapExtras {
     /** Counts every change of [spots] or [speeds]: a map draws a set again only when it has not drawn this one. */
     @Volatile var version = 0; private set
     @Volatile private var published: List<Spot> = emptyList()
-    /** The cameras marked on this unit (Settings → Navigation lists and clears them). */
+    /** The cameras marked on this unit (Settings → Maps lists and clears them). */
     @Volatile var mine: List<Spot> = emptyList(); private set
     @Volatile var speeds: List<Speed> = emptyList(); private set
     /** When the owner last published what is here (0: nothing fetched yet). */

@@ -1797,7 +1797,7 @@ object MapGuard {
     /** How many times the process went down with the map up, in this boot. */
     private fun liveFails(c: Context): Int = spLive(c).let { if (it.getString(KEY_LIVE_BOOT, "") == bootId()) it.getInt(KEY_LIVE_FAILS, 0) else 0 }
 
-    /** Why the home screen has no live map (for Settings → About); empty when it may have one. */
+    /** Why the home screen has no live map (for the Screen check's report); empty when it may have one. */
     fun whyNot(c: Context): String = try {
         val live = liveFails(c)
         when {

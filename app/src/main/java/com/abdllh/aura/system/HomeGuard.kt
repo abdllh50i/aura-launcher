@@ -53,7 +53,7 @@ object HomeGuard {
     private var launchedPkg = ""
     private var launchedAt = -1_000_000L
 
-    /** What was covered last, for Settings → About ("" when nothing ever was). */
+    /** What was covered last, for the Screen check's report ("" when nothing ever was). */
     val note: String get() = Prefs.raw.getString(KEY_NOTE, "").orEmpty()
 
     /** The unit came on a moment ago: what comes to the front now was put there by the firmware, not by the owner. */

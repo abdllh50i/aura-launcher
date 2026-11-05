@@ -20,7 +20,7 @@ import com.abdllh.aura.util.Prefs
  *  - It runs as a child of installd and swaps its files in as it ends: the running process keeps the code it has, and the
  *    new code is used from the next process start. A failure leaves things as they were.
  *  - A few attempts per build (one per process), then it waits for the next build. What happened goes to the log and to
- *    Settings → About.
+ *    the Screen check's report.
  */
 object DexCompile {
     private const val TAG = "AuraCompile"
@@ -37,7 +37,7 @@ object DexCompile {
     private val main = Handler(Looper.getMainLooper())
     @Volatile private var started = false
 
-    /** What the last attempt came to, or that one is waiting (for Settings → About). */
+    /** What the last attempt came to, or that one is waiting (for the Screen check's report). */
     val note: String get() = Prefs.raw.getString(KEY_NOTE, "").orEmpty().ifEmpty { if (started) "waiting for the car to stand parked" else "" }
 
     /** At start: asks for the compile once, at a quiet moment. */

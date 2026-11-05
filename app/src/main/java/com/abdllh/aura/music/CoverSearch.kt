@@ -81,7 +81,7 @@ object CoverSearch {
     private var failure = ""    // io thread: why YouTube Music could not be asked, for the note
     @Volatile private var lastFailed = false
 
-    /** The last lookup and how it went, for Settings → About ("" when there was none yet). */
+    /** The last lookup and how it went, for the Screen check's report ("" when there was none yet). */
     val note: String get() = Prefs.raw.getString("coverNote", "").orEmpty()
 
     private fun note(what: String) {

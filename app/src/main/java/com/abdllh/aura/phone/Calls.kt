@@ -23,7 +23,7 @@ import java.util.concurrent.Executors
 
 /**
  * The phone call going on, if any (the phone's, over Bluetooth): who, and whether it rings, is being dialled or is
- * being talked on; and what to do about it. [CallBanner] shows it (Settings → Display & sound → Calls; on by default)
+ * being talked on; and what to do about it. [CallBanner] shows it (the only call window while AMRI is the home screen)
  * in place of the stock window.
  *
  * Calls are the Bluetooth service's (com.bt.bc03, the same one as the phone's music: [BtMusic]); it tells everybody

@@ -21,7 +21,7 @@ import java.util.Locale
  *
  * So whoever expects a frame says so ([expect]: a panel change, the minute's tick, a finger coming down), and if none was
  * drawn [LIMIT_MS] later the window is made to relayout, which is free when nothing was wrong. If that does not bring it back
- * the whole window is built again, once for this process, and Settings → About tells ([note]). Nothing here can loop.
+ * the whole window is built again, once for this process, and the Screen check's report tells ([note]). Nothing here can loop.
  */
 internal class DrawWatch(private val shell: HomeActivity) {
     private val main = Handler(Looper.getMainLooper())
@@ -90,7 +90,7 @@ internal class DrawWatch(private val shell: HomeActivity) {
             }
         }
 
-        /** The last time the window stopped drawing, kept across starts (for Settings → About): a healthy unit has no such line. */
+        /** The last time the window stopped drawing, kept across starts (for the Screen check's report): a healthy unit has no such line. */
         fun note(c: Context): String =
             try { c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, "").orEmpty() } catch (_: Throwable) { "" }
     }

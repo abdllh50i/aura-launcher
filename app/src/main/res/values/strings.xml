@@ -75,9 +75,6 @@
     <string name="maps_arrived">You have arrived</string>
     <string name="maps_done">Done</string>
     <string name="maps_voice_missing">Voice guidance needs a speech engine: install “Speech Services by Google” from Play Store</string>
-    <string name="set_full_off">Power off completely when the car is switched off</string>
-    <string name="set_full_off_sub">Instead of sleep mode. The screen then starts from scratch each time, which takes longer</string>
-    <string name="set_power_hint">Both go through the unit\'s own power controller (the same option as in the factory settings).</string>
     <string name="vol_muted">Muted</string>
     <string name="set_wifi_on_start">Wi-Fi on with the car</string>
     <string name="zlink_failed">ZLink did not start — try again in a moment</string>
@@ -126,8 +123,6 @@
     <string name="music_unknown_artist">Unknown artist</string>
     <string name="music_tracks_count">%1$d songs</string>
     <string name="music_play_all">Play all</string>
-    <string name="set_maps_builtin">AMRI Maps (built-in)</string>
-    <string name="set_maps_builtin_sub">Search, routes and turn-by-turn guidance</string>
     <string name="set_failed">Couldn\'t apply this on this unit</string>
     <string name="media_prev">Previous</string>
     <string name="media_play">Play or pause</string>
@@ -136,37 +131,16 @@
 
     <!-- settings -->
     <string name="set_title">Settings</string>
-    <string name="set_general">General</string>
-    <string name="set_update">Software update</string>
-    <string name="set_display_sound">Display &amp; sound</string>
-    <string name="set_navigation">Navigation</string>
-    <string name="set_vehicle">Vehicle &amp; system</string>
     <string name="set_about">About</string>
-    <string name="set_appearance">Appearance</string>
-    <string name="set_accent">Accent colour</string>
     <string name="set_theme">Theme</string>
-    <string name="set_theme_sub">Auto is light during the day and dark at night</string>
     <string name="set_clock24">24-hour clock</string>
-    <string name="set_dock_labels">Show dock labels</string>
-    <string name="set_language">Language</string>
-    <string name="set_shortcuts">Shortcuts</string>
-    <string name="set_nav_auto">Automatic</string>
-    <string name="set_nav_auto_sub">First installed navigation app</string>
-    <string name="set_places">Saved places</string>
-    <string name="v_car_settings">Car settings</string>
-    <string name="v_mycar">My car</string>
-    <string name="v_wheel">Steering wheel</string>
-    <string name="v_toolbox">Tool box</string>
     <string name="v_android_settings">Android settings</string>
-    <string name="v_files">Files</string>
-    <string name="v_phone_link">Phone link</string>
-    <string name="v_hint">Shortcuts to the built-in tools of the head unit.</string>
 
     <!-- the voice assistant -->
     <string name="amri_name">Amri</string>
     <string name="amri_notification">Say “Amri” and ask</string>
     <string name="amri_listening">Listening…</string>
-    <string name="amri_no_permission">Amri needs the microphone: Settings → Voice assistant</string>
+    <string name="amri_no_permission">Amri needs the microphone: Settings → Amri</string>
     <string name="amri_no_recognizer">To understand requests: install the “Google” app from the Play Store</string>
     <string name="amri_recognizer_no_mic">The Google app (which understands speech) has no microphone permission</string>
     <string name="amri_no_network">No internet for speech recognition</string>
@@ -194,7 +168,7 @@
     <string name="amri_enroll_different">That sounded different: say “Amri” again</string>
     <string name="amri_enroll_redo">One of the earlier ones sounded different: say it once more</string>
     <string name="amri_enroll_save_failed">Your voice could not be saved (storage?). Try again</string>
-    <string name="amri_offline_none">No internet. Teach Amri your requests in Settings → Voice assistant and it understands them without</string>
+    <string name="amri_offline_none">No internet: Amri needs it to understand you</string>
     <string name="amri_offline_again">No internet: say it once more</string>
     <string name="cmd_next">Next song</string>
     <string name="cmd_previous">Previous song</string>
@@ -213,21 +187,12 @@
     <string name="amri_enroll_good">Good!</string>
     <string name="amri_enroll_done">Done: Amri knows your voice</string>
     <string name="set_voice">Voice assistant</string>
-    <string name="voice_intro">Say “Amri”, wait for the chime, then ask: change the song, stop the song, volume 20, mute, volume all the way up, play music, open the map, take me home, what time is it.</string>
-    <string name="voice_wake">Listen for “Amri”</string>
-    <string name="voice_wake_sub">It listens for its name all the time, without internet: your voice, on this unit only</string>
     <string name="voice_enroll">Teach Amri your voice</string>
-    <string name="voice_enroll_sub_none">Say “Amri” 6 times so it knows your voice (best in the car, engine running)</string>
-    <string name="voice_enroll_sub_done">Done. Do it again if it misses your call</string>
     <string name="voice_sens">Sensitivity</string>
-    <string name="voice_sens_sub">Relaxed hears you from farther away, but may wake by mistake</string>
     <string name="voice_sens_strict">Strict</string>
     <string name="voice_sens_normal">Normal</string>
     <string name="voice_sens_relaxed">Relaxed</string>
-    <string name="voice_speak">Spoken answers</string>
     <string name="voice_try">Try it now</string>
-    <string name="voice_get_google_sub">Amri hears its name without it, but understanding requests needs it (opens the Play Store)</string>
-    <string name="voice_get_tts_sub">Without it the answers are only shown (opens the Play Store)</string>
     <string name="beta_cleared_restart">The beta\'s Bluetooth experiment was removed. Switch the unit off and on once to finish.</string>
     <string name="about_home_app">Home screen</string>
     <string name="about_use_stock">Use stock launcher</string>
@@ -279,22 +244,6 @@
 
     <!-- offline map (Settings › Navigation) -->
     <string name="off_section">Offline map</string>
-    <string name="off_title">Jubail · Dammam · Khobar</string>
-    <string name="off_none">Not on the unit yet · about 35 MB</string>
-    <string name="off_downloading">Downloading… %1$s%% · %2$s MB</string>
-    <string name="off_waiting">Waiting for the internet…</string>
-    <string name="off_indexing">Preparing search… %1$s%%</string>
-    <string name="off_ready">Ready · %1$s MB · downloaded %2$s</string>
-    <string name="off_paused">Paused · %1$s MB so far</string>
-    <string name="off_failed_net">Stopped: no internet. Resume once it is back</string>
-    <string name="off_failed_space">Stopped: not enough free space</string>
-    <string name="off_download">Download</string>
-    <string name="off_pause">Pause</string>
-    <string name="off_resume">Resume</string>
-    <string name="off_delete">Delete</string>
-    <string name="off_delete_title">Delete the offline map?</string>
-    <string name="off_delete_text">The map, routes and search will need the internet again.</string>
-    <string name="off_hint">The map, routes and search keep working without internet in Jubail, Dammam, Dhahran and Khobar, with all their streets and shops, and on the roads between them. One download of about 35 MB. With internet, a route still comes from the internet first (it has the road names).</string>
 
     <!-- YouTube Music inside AMRI Music -->
     <string name="music_youtube">YouTube</string>
@@ -328,7 +277,4 @@
     <string name="call_answer">Answer</string>
     <string name="call_decline">Decline</string>
     <string name="call_hangup">End call</string>
-    <string name="set_calls">Calls</string>
-    <string name="set_call_ring">AMRI\'s ringtone</string>
-    <string name="set_call_ring_sub">A calm ring in place of the stock one. Its volume is the phone-call volume</string>
 </resources>

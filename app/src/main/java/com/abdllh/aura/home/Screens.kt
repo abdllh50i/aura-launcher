@@ -103,7 +103,7 @@ object Screens {
     /**
      * A home activity is built, with [others] alive already. Nothing in the app can make that happen any more: what
      * still could (a start by name with the home category from outside, or AMRI made the home app while an ordinary
-     * home activity runs) stops a debug build at once, and on the unit shows in Settings → About.
+     * home activity runs) stops a debug build at once, and on the unit shows in the Screen check's report.
      */
     fun homeBuilt(i: Intent?, others: Int) {
         val from = try {
@@ -122,7 +122,7 @@ object Screens {
         }
     }
 
-    /** The last start of the home screen that was not the usual one, for Settings → About ("" when there never was one). */
+    /** The last start of the home screen that was not the usual one, for the Screen check's report ("" when there never was one). */
     val note: String get() = Prefs.raw.getString(KEY_NOTE, "").orEmpty()
 
     private fun note(what: String) {

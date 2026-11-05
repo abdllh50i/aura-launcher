@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The voice assistant "Amri" (1.13): learned sounds, new requests. Arabic in values-ar/strings_amri.xml. -->
 <resources>
-    <!-- Settings -> Voice assistant: more of what it understands (under the intro) -->
-    <string name="voice_more">Also: “what\'s playing?”, “how much longer?”, “nearest petrol station”, “brighter”, “open YouTube”, “play Abadi Al Johar”.</string>
 
     <!-- requests and answers -->
     <string name="amri_now_playing">This is “%1$s” by %2$s</string>

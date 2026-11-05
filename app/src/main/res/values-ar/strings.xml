@@ -75,9 +75,6 @@
     <string name="maps_arrived">وصلت إلى وجهتك</string>
     <string name="maps_done">تم</string>
     <string name="maps_voice_missing">للإرشاد الصوتي ثبّت «خدمات النطق من \u2068Google\u2069» من متجر \u2068Play\u2069</string>
-    <string name="set_full_off">انطفاء كامل لما تطفّي السيارة</string>
-    <string name="set_full_off_sub">بدل وضع السكون. الشاشة بعدها تشتغل من الصفر كل مرة، وتاخذ وقت أطول</string>
-    <string name="set_power_hint">الاثنين يمرّون عبر وحدة التحكم بالطاقة في الشاشة نفسها (نفس الخيار اللي في إعدادات المصنع).</string>
     <string name="vol_muted">مكتوم</string>
     <string name="set_wifi_on_start">الواي فاي يشتغل مع السيارة</string>
     <string name="zlink_failed">ما اشتغل ZLink، جرّب بعد شوي</string>
@@ -126,8 +123,6 @@
     <string name="music_unknown_artist">فنان غير معروف</string>
     <string name="music_tracks_count">%1$d أغنية</string>
     <string name="music_play_all">تشغيل الكل</string>
-    <string name="set_maps_builtin">خرائط عمري (مدمجة)</string>
-    <string name="set_maps_builtin_sub">بحث ومسارات وإرشاد صوتي خطوة بخطوة</string>
     <string name="set_failed">تعذّر تطبيق هذا على الشاشة</string>
     <string name="media_prev">السابق</string>
     <string name="media_play">تشغيل أو إيقاف</string>
@@ -136,37 +131,16 @@
 
     <!-- الإعدادات -->
     <string name="set_title">الإعدادات</string>
-    <string name="set_general">عام</string>
-    <string name="set_update">تحديث النظام</string>
-    <string name="set_display_sound">الشاشة والصوت</string>
-    <string name="set_navigation">الملاحة</string>
-    <string name="set_vehicle">السيارة والنظام</string>
     <string name="set_about">حول</string>
-    <string name="set_appearance">المظهر</string>
-    <string name="set_accent">لون التمييز</string>
     <string name="set_theme">الوضع</string>
-    <string name="set_theme_sub">التلقائي فاتح في النهار وداكن في الليل</string>
     <string name="set_clock24">نظام 24 ساعة</string>
-    <string name="set_dock_labels">إظهار أسماء الأيقونات</string>
-    <string name="set_language">اللغة</string>
-    <string name="set_shortcuts">اختصارات</string>
-    <string name="set_nav_auto">تلقائي</string>
-    <string name="set_nav_auto_sub">أول تطبيق ملاحة مثبّت</string>
-    <string name="set_places">الأماكن المحفوظة</string>
-    <string name="v_car_settings">إعدادات السيارة</string>
-    <string name="v_mycar">سيارتي</string>
-    <string name="v_wheel">مفاتيح المقود</string>
-    <string name="v_toolbox">صندوق الأدوات</string>
     <string name="v_android_settings">إعدادات أندرويد</string>
-    <string name="v_files">الملفات</string>
-    <string name="v_phone_link">ربط الجوال</string>
-    <string name="v_hint">اختصارات لأدوات الشاشة المدمجة.</string>
 
     <!-- المساعد الصوتي -->
     <string name="amri_name">عمري</string>
     <string name="amri_notification">قل «عمري» واطلب اللي تبي</string>
     <string name="amri_listening">أسمعك…</string>
-    <string name="amri_no_permission">عمري يحتاج إذن الميكروفون: الإعدادات ← المساعد الصوتي</string>
+    <string name="amri_no_permission">عمري يحتاج إذن الميكروفون: الإعدادات ← عمري</string>
     <string name="amri_no_recognizer">عشان أفهم طلبك: نزّل تطبيق «Google» من متجر Play</string>
     <string name="amri_recognizer_no_mic">تطبيق Google (اللي يفهم الكلام) ما عنده إذن الميكروفون</string>
     <string name="amri_no_network">ما فيه إنترنت عشان أفهم الكلام</string>
@@ -194,7 +168,7 @@
     <string name="amri_enroll_different">هذي غير، قل «عمري» مرة ثانية</string>
     <string name="amri_enroll_redo">وحدة من اللي قبل طلعت غير، قلها مرة زيادة</string>
     <string name="amri_enroll_save_failed">ما قدرت أحفظ صوتك (الذاكرة؟). جرّب مرة ثانية</string>
-    <string name="amri_offline_none">ما فيه إنترنت. علّم عمري طلباتك في الإعدادات ← المساعد الصوتي ويفهمها بدونه</string>
+    <string name="amri_offline_none">ما فيه إنترنت، وعمري يحتاجه عشان يفهم طلبك</string>
     <string name="amri_offline_again">ما فيه إنترنت، قلها مرة ثانية</string>
     <string name="cmd_next">غيّر الأغنية</string>
     <string name="cmd_previous">الأغنية اللي قبل</string>
@@ -213,21 +187,12 @@
     <string name="amri_enroll_good">زين!</string>
     <string name="amri_enroll_done">تمام، عمري عرف صوتك</string>
     <string name="set_voice">المساعد الصوتي</string>
-    <string name="voice_intro">قل «عمري» وانتظر النغمة، بعدها اطلب: غير الأغنية، طف الأغنية، الصوت ٢٠، اكتم الصوت، ارفع الصوت للأخير، شغل الموسيقى، شغل الملاحة، ودني البيت، كم الساعة.</string>
-    <string name="voice_wake">يسمع «عمري»</string>
-    <string name="voice_wake_sub">يسمع اسمه طول الوقت بدون إنترنت: صوتك أنت، وفي هالشاشة بس</string>
     <string name="voice_enroll">علّم عمري صوتك</string>
-    <string name="voice_enroll_sub_none">قل «عمري» ٦ مرات عشان يعرف صوتك (الأفضل وانت في السيارة والمكينة شغالة)</string>
-    <string name="voice_enroll_sub_done">مسجّل. أعدها لو صار ما يسمعك زين</string>
     <string name="voice_sens">الحساسية</string>
-    <string name="voice_sens_sub">«سهل» يسمعك من أبعد، بس ممكن يصحى بالغلط</string>
     <string name="voice_sens_strict">دقيق</string>
     <string name="voice_sens_normal">عادي</string>
     <string name="voice_sens_relaxed">سهل</string>
-    <string name="voice_speak">يرد بصوت</string>
     <string name="voice_try">جرّبه الحين</string>
-    <string name="voice_get_google_sub">عمري يسمع اسمه بدونه، بس فهم الطلبات يحتاجه (يفتح متجر \u2068Play\u2069)</string>
-    <string name="voice_get_tts_sub">بدونه الرد يطلع مكتوب بس (يفتح متجر \u2068Play\u2069)</string>
     <string name="beta_cleared_restart">انشالت تجربة البلوتوث حقت النسخة التجريبية. طفّ الشاشة وشغّلها مرة وحدة عشان تكتمل.</string>
     <string name="about_home_app">الشاشة الرئيسية</string>
     <string name="about_use_stock">استخدام اللانشر الأصلي</string>
@@ -279,22 +244,6 @@
 
     <!-- الخريطة بدون إنترنت (الإعدادات ← الملاحة) -->
     <string name="off_section">الخريطة بدون إنترنت</string>
-    <string name="off_title">الجبيل · الدمام · الخبر</string>
-    <string name="off_none">مو محمّلة · حوالي 35 ميجا</string>
-    <string name="off_downloading">يحمّل… %1$s%% · %2$s ميجا</string>
-    <string name="off_waiting">ينتظر الإنترنت…</string>
-    <string name="off_indexing">يجهّز البحث… %1$s%%</string>
-    <string name="off_ready">جاهزة · %1$s ميجا · حُمّلت %2$s</string>
-    <string name="off_paused">متوقفة مؤقتًا · %1$s ميجا لين الحين</string>
-    <string name="off_failed_net">توقفت: ما فيه إنترنت. كمّل لما يرجع</string>
-    <string name="off_failed_space">توقفت: المساحة ما تكفي</string>
-    <string name="off_download">تحميل</string>
-    <string name="off_pause">إيقاف مؤقت</string>
-    <string name="off_resume">كمّل</string>
-    <string name="off_delete">حذف</string>
-    <string name="off_delete_title">تحذف الخريطة؟</string>
-    <string name="off_delete_text">الخريطة والمسارات والبحث بيحتاجون الإنترنت من جديد.</string>
-    <string name="off_hint">الخريطة والمسارات والبحث تشتغل بدون إنترنت في الجبيل والدمام والظهران والخبر بكل شوارعها ومحلاتها، والطرق اللي بينها. تحميل مرة وحدة حوالي 35 ميجا. ومع الإنترنت المسار يجي من الإنترنت أول (فيه أسماء الشوارع).</string>
 
     <!-- YouTube Music inside AMRI Music -->
     <string name="music_youtube">يوتيوب</string>
@@ -328,7 +277,4 @@
     <string name="call_answer">رد</string>
     <string name="call_decline">رفض</string>
     <string name="call_hangup">إنهاء المكالمة</string>
-    <string name="set_calls">الاتصالات</string>
-    <string name="set_call_ring">نغمة عمري</string>
-    <string name="set_call_ring_sub">نغمة اتصال هادئة بدل نغمة النظام الأصلي. صوتها من صوت المكالمات</string>
 </resources>

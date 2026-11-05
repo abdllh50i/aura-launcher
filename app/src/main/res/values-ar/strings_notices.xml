@@ -1,9 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="set_notices_messages">رسائل الجوال على الشاشة</string>
-    <string name="set_notices_messages_sub">رسائل واتساب والتطبيقات المشابهة تطلع كبطاقة من عمري</string>
-    <string name="set_notices_text">عرض نص الرسالة</string>
-    <string name="set_notices_text_sub">لو طفيته يطلع اسم المرسل بس</string>
     <string name="notices_close">إغلاق</string>
     <string name="notices_new_message">رسالة جديدة</string>
 </resources>

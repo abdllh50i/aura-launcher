@@ -28,7 +28,7 @@ import java.io.File
  * a saved copy that works: a bad beta updated to the next beta must not take the way back with it.
  *
  * Everything here runs off the main thread and never throws at its caller; what happened goes into a small file in
- * files/ (rollback-state), which Settings → About reads without a root shell.
+ * files/ (rollback-state), which the Screen check's report reads without a root shell.
  */
 object Rollback {
     private const val TAG = "AuraRollback"
@@ -61,7 +61,7 @@ object Rollback {
     /** The saved copy, as its JSON describes it (its hash was checked when it was read). */
     class Payload(val version: String, val code: Long, val sha256: String, val size: Long, val source: String)
 
-    /** Why there is no saved copy (the keys of the strings in Settings → About). */
+    /** Why there is no saved copy (the keys of the strings in the Screen check's report). */
     object Why {
         const val LOOKING = "looking"
         const val NO_ROOT = "no-root"

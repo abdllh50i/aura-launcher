@@ -33,7 +33,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 
 /**
- * The screen check, in the main process: one press of the button in Settings › About runs it, parked, for about two
+ * The screen check, in the main process: one press of the button in Settings › Car and system runs it, parked, for about two
  * minutes; at its end there is a report the owner can read and photograph, and his server has it. Until then no number
  * had ever come from the unit (no RAM, no GPU memory, no frame time), and the plans for 2.0 rested on guesses.
  *

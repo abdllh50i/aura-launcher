@@ -17,7 +17,7 @@ import java.io.File
  *
  * Not with AMRI switched off, not while [MapGuard] has anything against the map, and not after a load that never came back
  * (a mark on disk, as a native crash ends the process with no chance to write anything): those starts leave it to the map
- * itself, as before. What happened goes to the log and Settings → About.
+ * itself, as before. What happened goes to the log and the Screen check's report.
  */
 object MapLib {
     private const val TAG = "AuraMap"
@@ -25,7 +25,7 @@ object MapLib {
 
     private var asked = false
 
-    /** What the load at this start did (for Settings → About). */
+    /** What the load at this start did (for the Screen check's report). */
     @Volatile var note = ""
         private set
 
