@@ -1,6 +1,6 @@
 # Builds the debug APK, installs it on the emulator workshop and brings the home screen up.
-#   dev-install.ps1 [-Version 2.0.0-beta.1] [-NoBuild] [-Serial emulator-5570]
-param([string]$Version = "2.0.0-beta.1", [switch]$NoBuild, [string]$Serial = "emulator-5570")
+#   dev-install.ps1 [-Version 2.0.0-beta.2] [-NoBuild] [-Serial emulator-5570]
+param([string]$Version = "2.0.0-beta.2", [switch]$NoBuild, [string]$Serial = "emulator-5570")
 $ErrorActionPreference = "Continue"
 $adb = "E:\Android\Sdk\platform-tools\adb.exe"
 $root = Split-Path $PSScriptRoot -Parent
