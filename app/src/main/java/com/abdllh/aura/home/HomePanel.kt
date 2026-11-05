@@ -148,6 +148,7 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
     }
 
     private fun buildUi() {
+        card.onUndo = { tripNow = true }
         room.addView(backdrop, at(CARD_X, CARD_Y, CARD_W, CARD_H))
         room.addView(wall, at(0, 0, 1024, 600))
         room.addView(stage, at(CarGlView.RECT_X.toInt(), CarGlView.RECT_Y.toInt(), CarGlView.RECT_W.toInt(), CarGlView.RECT_H.toInt()))

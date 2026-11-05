@@ -9,7 +9,10 @@ function Home([string]$a) { Sh "am broadcast -n com.abdllh.aura/.debug.HomeProbe
 function Chrome([string]$a) { Sh "am broadcast -n com.abdllh.aura/.debug.ChromeProbe $a" }
 function Q([string]$s) { "'" + $s + "'" }
 $en = $Lang -eq "en"
-$song = if ($en) { "--es song 'Midnight Drive' --es artist 'The Coastline' --es src Naghm" } else { "--es song 'سهر الطريق' --es artist 'فرقة الساحل' --es src 'من نغم'" }
+# (the window again in that language, which stays: --es lang back by hand)
+Home "--es lang $Lang"
+Start-Sleep -Seconds 4
+$song =if ($en) { "--es song 'Midnight Drive' --es artist 'The Coastline' --es src Naghm" } else { "--es song 'سهر الطريق' --es artist 'فرقة الساحل' --es src 'من نغم'" }
 $songBt = if ($en) { "--es song 'Midnight Drive' --es artist 'The Coastline' --es src Bluetooth --ef at -1" } else { "--es song 'سهر الطريق' --es artist 'فرقة الساحل' --es src 'بلوتوث' --ef at -1" }
 $third = if ($en) { "Jubail Mall" } else { "الجبيل مول" }
 $dateW = if ($en) { "Tue, 3 Nov · 23 Jumada I" } else { "الثلاثاء، 3 نوفمبر · 23 جمادى الأولى" }

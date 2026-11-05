@@ -20,6 +20,7 @@ import com.abdllh.aura.nav.NavSession
 import com.abdllh.aura.nav.Place
 import com.abdllh.aura.nav.Places
 import com.abdllh.aura.nav.RoadWatch
+import com.abdllh.aura.nav.Route
 import com.abdllh.aura.nav.Turn
 import com.abdllh.aura.nav.Units
 import com.abdllh.aura.settings.SettingsActivity
@@ -83,10 +84,24 @@ internal class HomeCard(private val shell: HomeActivity, private val host: HomeH
         setPadding(0, 0, 0, 4)
         setText(R.string.home_end)
     }
+    /** After End, in the chips' slot and the ETA pill's own rect: the trip has ended, and `رجّعها` where End was, for 5 s. */
+    private val endedFace = group()
+    private val undo = ABtn(shell).apply {
+        kind = ABtn.Kind.PRIMARY
+        setHeightOverride(58)
+        setPadding(0, 0, 0, 2)
+        setText(R.string.home_undo)
+    }
     private val faces = HomeFaces(listOf(searchFace, speedFace, tripFace), searchFace)
-    private val chipFaces = HomeFaces(listOf(chipsParked, chipsMoving), chipsParked)
+    private val chipFaces = HomeFaces(listOf(chipsParked, chipsMoving, endedFace), chipsParked)
     private var chipsShown = ""
     private var face = Face.PARKED
+    private class Kept(val place: Place, val route: Route)
+    private var kept: Kept? = null
+    private val undoGone = Runnable { clearUndo(true) }
+
+    /** The trip End took off comes back: it is not a trip starting, so Home stays. */
+    var onUndo: (() -> Unit)? = null
 
     private var kmh: Int? = null
     private var listening = false
@@ -148,6 +163,22 @@ internal class HomeCard(private val shell: HomeActivity, private val host: HomeH
             setOnTouchListener { _, e -> endGesture.onTouch(e); false }
             setOnClickListener { endTrip() }
         }, at(12, 232, 122, 80))
+        // what End leaves: the same rect, the same hit
+        addView(endedFace, MATCH_WINDOW())
+        val endedPill = SurfaceCard(shell, Surface.PILL)
+        endedPill.addView(undo, at(3, 3, 100, 58))
+        endedPill.addView(shell.label(Type.chipPrayer, { Palette.ink }, moving = true).apply {
+            textDirection = TEXT_DIRECTION_LOCALE
+            setText(R.string.home_trip_ended)
+        }, Type.chipPrayer.box(111, 16, 229))
+        endedFace.addView(endedPill, Surface.PILL.at(20, 240, 348, 64))
+        val undoGesture = PressGesture(undo, PressGesture.CONTROL)
+        endedFace.addView(View(shell).apply {
+            isClickable = true
+            contentDescription = shell.getString(R.string.home_undo)
+            setOnTouchListener { _, e -> undoGesture.onTouch(e); false }
+            setOnClickListener { undoEnd() }
+        }, at(12, 232, 122, 80))
         look {
             turnGlyph.setColorFilter(Palette.onAccent)
             // (what is in spans has its colour in the text)
@@ -175,11 +206,18 @@ internal class HomeCard(private val shell: HomeActivity, private val host: HomeH
         val was = face
         face = f
         faces.show(when (f) { Face.PARKED -> searchFace; Face.MOVING -> speedFace; Face.TRIP -> tripFace }, animate)
-        chipFaces.show(when (f) { Face.PARKED -> chipsParked; Face.MOVING -> chipsMoving; Face.TRIP -> null }, animate)
+        chipFaces.show(chipsNow(), animate)
         if (was != f) {
             syncSpeed()
             syncTrip()
         }
+    }
+
+    private fun chipsNow(): View? = when {
+        face == Face.TRIP -> null
+        kept != null -> endedFace
+        face == Face.PARKED -> chipsParked
+        else -> chipsMoving
     }
 
     /** Home is on top: fixes, the road and the trip. Off when it is not: a hidden view asks for no frame. */
@@ -197,6 +235,7 @@ internal class HomeCard(private val shell: HomeActivity, private val host: HomeH
             CarLocation.removeListener(onFix)
             RoadWatch.removeListener(onRoad)
             removeCallbacks(fixGone)
+            if (kept != null) clearUndo(false)
         }
     }
 
@@ -294,10 +333,32 @@ internal class HomeCard(private val shell: HomeActivity, private val host: HomeH
         if (color != null) s.setSpan(ForegroundColorSpan(color), from, s.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
     }
 
+    /** One touch, no confirm (section 1): the trip ends, and the same rect offers it back for 5 s. */
     private fun endTrip() {
+        val place = NavSession.destination
+        val route = NavSession.route
+        kept = if (place != null && route != null) Kept(place, route) else null
         NavSession.stop()
         shell.map.setRoute(null)
         shell.map.setDestination(null)
+        if (kept != null) {
+            removeCallbacks(undoGone)
+            postDelayed(undoGone, Tokens2.MS_undoEnd)
+        }
+    }
+
+    private fun clearUndo(animate: Boolean) {
+        removeCallbacks(undoGone)
+        kept = null
+        chipFaces.show(chipsNow(), animate)
+    }
+
+    private fun undoEnd() {
+        val k = kept ?: return
+        removeCallbacks(undoGone)
+        kept = null // (no chips on the way: this slot goes straight back to the trip's)
+        onUndo?.invoke()
+        NavSession.start(shell, k.place, k.route, remember = false)
     }
 
     // ------------------------------------------------------------------------------------------ the chips

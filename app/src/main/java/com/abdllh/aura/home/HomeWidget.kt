@@ -101,7 +101,9 @@ internal class HomeWidget(ctx: Context, private val host: HomeHost) : FrameLayou
     private var prepared: Backdrop.Wash? = null
     private var preparedFor: Bitmap? = null
     private val sources = HashMap<String, String>()
-    private val listener: (NowPlaying?) -> Unit = { n -> if (!debugHeld) bind(n) }
+    private val listener: (NowPlaying?) -> Unit = { n -> if (!debugHeld) take(n) }
+    /** Bluetooth went in the middle of a song: it stays, paused, and says so (section 12). */
+    private var btLost = false
 
     private val tick = object : Runnable {
         override fun run() {
@@ -255,14 +257,35 @@ internal class HomeWidget(ctx: Context, private val host: HomeHost) : FrameLayou
     }
 
     // ------------------------------------------------------------------------------------------ what plays
+    /** What [MediaMonitor] says, but a Bluetooth song whose link has gone does not leave the card: it clears itself when the link is back or something else plays, not for a paused song of another source. */
+    private fun take(n: NowPlaying?) {
+        val was = np
+        if (n?.playing != true && was != null && was.sourcePkg == MediaMonitor.SOURCE_BT && !BtMusic.connected) {
+            if (!btLost) {
+                btLost = true
+                bind(was.copy(playing = false))
+                val lost = context.getString(R.string.home_bt_lost)
+                sub84.text = lost
+                source.text = lost
+            }
+            return
+        }
+        if (btLost) {
+            btLost = false
+            bound = false // (the same song again: its own words)
+        }
+        bind(n)
+    }
+
     private fun skip(dir: Int, key: MediaMonitor.Key) {
+        if (btLost) { openSource(); return }
         lastDir = dir
         lastDirAt = SystemClock.uptimeMillis()
         MediaMonitor.send(context, key)
     }
 
     private fun togglePlay() {
-        if (np == null) { openSource(); return }
+        if (np == null || btLost) { openSource(); return }
         MediaMonitor.send(context, MediaMonitor.Key.PLAY_PAUSE)
     }
 

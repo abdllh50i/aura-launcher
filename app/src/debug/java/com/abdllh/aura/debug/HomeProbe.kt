@@ -20,11 +20,17 @@ import com.abdllh.aura.nav.Turn
  *      --es third "الجبيل مول"                the third chip
  *      --es time 4:18 --es date "..."         the clock
  *      --es theme night|day|auto              through the real ThemeSwap, 700 ms
+ *      --es lang ar|en                        the window again in that language; nothing else in this call
  *      --ez turn true                         where the turntable is, in the log
  */
 class HomeProbe : BroadcastReceiver() {
     override fun onReceive(c: Context, i: Intent) {
         val p = HomePanel.current ?: return
+        i.getStringExtra("lang")?.let { l ->
+            com.abdllh.aura.util.Prefs.lang = l
+            p.shell.languageChanged()
+            return
+        }
         i.getStringExtra("theme")?.let { t ->
             com.abdllh.aura.util.Prefs.theme = if (t == "night") "dark" else if (t == "day") "light" else "auto"
             com.abdllh.aura.ui.ThemeSwap.run(p.shell)
