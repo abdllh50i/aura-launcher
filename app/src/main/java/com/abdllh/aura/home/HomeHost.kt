@@ -1,4 +1,4 @@
-﻿package com.abdllh.aura.home
+package com.abdllh.aura.home
 
 /** What the home panels need from their hosting activity. */
 interface HomeHost {

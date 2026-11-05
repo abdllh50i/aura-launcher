@@ -31,10 +31,8 @@ import com.abdllh.aura.util.Dp
 import com.abdllh.aura.util.Prefs
 
 class AuraApp : Application() {
-    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
-        super.onConfigurationChanged(newConfig)
-        com.abdllh.aura.util.LocaleHelper.reassert()
-    }
+    /** AMRI's language, for Android too: it sets the process's default locale from these at every configuration change ([com.abdllh.aura.util.LocaleHelper.appResources]). */
+    override fun getResources(): android.content.res.Resources = com.abdllh.aura.util.LocaleHelper.appResources(baseContext)
 
     override fun onCreate() {
         // Valhalla's process (nav/route/RouteProcess.kt): its crash is not the home screen's, and it has no use for any of this

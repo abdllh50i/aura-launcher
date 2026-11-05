@@ -330,10 +330,9 @@ class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
     }
 
     private fun pop() {
-        val off = subs.removeAt(subs.lastIndex)
+        subs.removeAt(subs.lastIndex)
         val page = subs.lastOrNull() ?: if (onList) listPage else pages[current]
         present(page, -1, shell.resumedNow, sub = subs.isNotEmpty())
-        holders.remove(off)
     }
 
     /** On a trip: the seven pages as a list. */
@@ -365,11 +364,12 @@ class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
         if (page.scrolls) {
             val s = SnapScroll(this)
             s.addView(content, FrameLayout.LayoutParams(MATCH, FrameLayout.LayoutParams.WRAP_CONTENT))
-            hold.addView(s, at(0, top, w, h - top))
-            val up = scrollFade(surface, true)
+            // (the bottom fade stands clear of the card's round corners, and what scrolls ends where it ends)
+            hold.addView(s, at(0, top, w, h - top - FADE_INSET))
+            val up = if (head) fadeUnderHead(surface) else scrollFade(surface, true)
             val down = scrollFade(surface, false)
-            hold.addView(up, at(8, top, w - 16, FADE))
-            hold.addView(down, at(8, h - FADE - 8, w - 16, FADE))
+            hold.addView(up, at(FADE_INSET, top, w - 2 * FADE_INSET, FADE))
+            hold.addView(down, at(FADE_INSET, h - FADE - FADE_INSET, w - 2 * FADE_INSET, FADE))
             s.onMoved = {
                 up.visibility = if (s.roomAbove) View.VISIBLE else View.INVISIBLE
                 down.visibility = if (s.roomBelow) View.VISIBLE else View.INVISIBLE
@@ -382,6 +382,16 @@ class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
         return hold
     }
 
+    /**
+     * The top end of a page under a head. The baked fades are made for a card's own ends, and its top is lighter than where a head ends, which showed as a band: this one starts from the
+     * card's own colour there, the middle of its 9-patch.
+     */
+    private fun fadeUnderHead(surface: Surface): View = View(this).look {
+        val b = com.abdllh.aura.ui.Surfaces.res(context, surface.res)
+        val c = b?.getPixel(b.width / 2, b.height / 2) ?: Palette.cardFlat
+        background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(c, c and 0x00FFFFFF))
+    }
+
     private fun backTapped() {
         if (subs.isNotEmpty()) pop()
         else if (onTripNow && !onList) showList()
@@ -391,14 +401,20 @@ class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
     private fun present(page: Page, dir: Int, animate: Boolean, sub: Boolean) {
         goQuiet()
         val old = shownView
+        val oldPage = shownPage
         val v = holderFor(page, sub)
         shownPage = page
         shownView = v
         if (old !== v && old != null) {
-            if (animate) old.exit(dur = Tokens2.MS_pageSwap) { if (shownView !== old) card.removeView(old) }
-            else { old.animate().cancel(); old.setTag(R.id.aura_exiting, null); card.removeView(old) }
+            // A page that comes back stays in the card, hidden. Added to a parent again a view forgets its direction until its next measure, and a kept page is not measured again: a switch
+            // showed its thumb at the wrong end and a theme missed it, not being in the tree.
+            val stays = oldPage != null && oldPage.keep && (oldPage === listPage || oldPage in pages || oldPage in subs)
+            if (!stays && oldPage != null) holders.remove(oldPage)
+            val off = { if (shownView !== old) { if (stays) old.visibility = View.INVISIBLE else card.removeView(old) } }
+            if (animate) old.exit(dur = Tokens2.MS_pageSwap) { off() }
+            else { old.animate().cancel(); old.setTag(R.id.aura_exiting, null); off() }
         }
-        if (v.parent == null) card.addView(v, flp(MATCH, MATCH))
+        if (v.parent == null) card.addView(v, flp(MATCH, MATCH)) else card.bringChildToFront(v)
         if (animate) v.enter(dx = reading(dir * STEP), dur = Tokens2.MS_pageSwap)
         else {
             v.animate().cancel()
@@ -470,6 +486,7 @@ class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
         const val HEAD = 64
         const val TRIP_FILL = TRIP_H - HEAD
         const val FADE = 28
+        const val FADE_INSET = 8
         const val STEP = 12f
         const val THEME_AFTER_MS = 200L
     }

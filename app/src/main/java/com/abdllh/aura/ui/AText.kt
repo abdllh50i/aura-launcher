@@ -82,6 +82,15 @@ open class AText @JvmOverloads constructor(
         letterSpacing = px / textSize
     }
 
+    /**
+     * A TextView clips its text to its frame, and with no font padding the frame ends at the font's descent: the dots of a final ي reach below that (Plex Arabic: -447 against -415, its lowest
+     * marks -601), and "عمري" read "عمرى". So the frame goes on a little lower than the parent gave. The parent's layout does not change, and the text's place comes from the measured height,
+     * which does not either. Not with a background of its own, which would grow with it.
+     */
+    override fun layout(l: Int, t: Int, r: Int, b: Int) {
+        super.layout(l, t, r, if (background == null) b + kotlin.math.ceil(textSize * BELOW_DESCENT).toInt() else b)
+    }
+
     override fun setGravity(gravity: Int) {
         super.setGravity(gravity)
         applyAlign()
@@ -92,5 +101,10 @@ open class AText @JvmOverloads constructor(
         if (!alignStart) return
         val h = gravity and Gravity.RELATIVE_HORIZONTAL_GRAVITY_MASK
         textAlignment = if (h == 0 || h == Gravity.START) TEXT_ALIGNMENT_VIEW_START else TEXT_ALIGNMENT_GRAVITY
+    }
+
+    private companion object {
+        /** The font's lowest marks below its descent, in em. */
+        const val BELOW_DESCENT = 0.19f
     }
 }

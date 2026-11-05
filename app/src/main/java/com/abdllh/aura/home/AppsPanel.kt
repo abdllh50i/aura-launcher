@@ -115,7 +115,7 @@ class AppsPanel(shell: HomeActivity) : Panel(shell, Screens.APPS) {
         val s = SnapScroll(this)
         s.addView(g, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
         if (onTrip) host.addView(s, at(GRID_TRIP_X - CARD_X, GRID_TRIP_Y - CARD_Y, GRID_TRIP_W, 3 * ROW_TRIP))
-        else host.addView(s, at(GRID_X, GRID_Y, GRID_W, 2 * ROW + 2))
+        else host.addView(s, at(GRID_X, GRID_Y, GRID_W, 2 * ROW + WINDOW_MORE))
         val d = PageDots(this)
         if (onTrip) host.addView(d, at(CARD_W - 8, GRID_TRIP_Y - CARD_Y, 8, 3 * ROW_TRIP))
         else host.addView(d, at(1014, GRID_Y, 8, 2 * ROW))
@@ -134,6 +134,8 @@ class AppsPanel(shell: HomeActivity) : Panel(shell, Screens.APPS) {
         val onTrip = builtOnTrip == true
         val hadNone = entries.isEmpty()
         entries = order(this, fresh)
+        // (an emulator has ten apps and a unit more than a page: setprop debug.aura.appsmany 3 shows each that many times)
+        if (com.abdllh.aura.BuildConfig.DEBUG) com.abdllh.aura.system.SystemProps.get("debug.aura.appsmany").toIntOrNull()?.let { n -> entries = (1..n).flatMap { entries } }
         val cols = if (onTrip) 4 else 6
         val cellW = (if (onTrip) GRID_TRIP_W else GRID_W) / cols.toFloat()
         val rowH = if (onTrip) ROW_TRIP else ROW
@@ -146,7 +148,8 @@ class AppsPanel(shell: HomeActivity) : Panel(shell, Screens.APPS) {
             g.addView(AppCell(this, e, onTrip), at(left, (i / cols) * rowH, right - left, cellH))
         }
         val rows = ceil(entries.size / cols.toDouble()).toInt()
-        g.minimumHeight = (rows - 1).coerceAtLeast(0) * rowH + cellH
+        // (as tall as the window on its rows, so the last stop is a row's as well: the first page and the last stand on the same line)
+        g.minimumHeight = rows * rowH + if (onTrip) 0 else WINDOW_MORE
         val s = scroll ?: return
         s.pitch = rowH
         dots?.set(ceil(rows / (if (onTrip) 3.0 else 2.0)).toInt())
@@ -235,6 +238,7 @@ class AppsPanel(shell: HomeActivity) : Panel(shell, Screens.APPS) {
         const val GRID_W = 1000
         const val CELL_H = 196
         const val ROW = 204
+        const val WINDOW_MORE = 2
         const val TILE = 104
         const val GLYPH = 56
         const val ICON = 72

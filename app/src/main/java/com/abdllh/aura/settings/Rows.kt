@@ -40,10 +40,16 @@ private const val INSET = 22
 private const val ICON = 26
 private const val ICON_GAP = 18
 private const val ROW_MIN = 83
+private const val ROW_PAD = 8
 private const val GAP = 18
 
-/** One row of a [group]. [textStart] (dp): where its title starts. */
-class SettingRow(ctx: Context, val textStart: Int) : LinearLayout(ctx)
+/**
+ * One row of a [group]. [textStart] (dp): where its title starts. It does not clip what is in it: the column of its words is the line boxes tall, its labels 1.5 em ([titles]), and the column's
+ * bounds cut the dots of a final ي off the last line ("حقيقي" read "حقيقى").
+ */
+class SettingRow(ctx: Context, val textStart: Int) : LinearLayout(ctx) {
+    init { clipChildren = false }
+}
 
 /** A section's title (its own class: [addRow] puts a card closer under a title than under another card). */
 private class SectionTitle(ctx: Context) : AText(ctx)
@@ -138,7 +144,8 @@ fun Context.settingRow(
     orientation = LinearLayout.HORIZONTAL
     gravity = Gravity.CENTER_VERTICAL
     minimumHeight = ROW_MIN
-    setPaddingRelative(INSET, 0, INSET, 0)
+    // (a row of four lines keeps off the hairlines; the rows of the design are not that tall, and their heights are their own)
+    setPaddingRelative(INSET, ROW_PAD, INSET, ROW_PAD)
     if (icon != null) addView((if (iconTint != 0) iconView(icon, ICON, iconTint) else iconView(icon, ICON) { Palette.ink2 }), lp(ICON, ICON).apply { marginEnd = ICON_GAP })
     addView(titles(title, subtitle), lp(0, WRAP, 1f))
     if (trailing != null) {
@@ -174,7 +181,7 @@ fun Context.block(icon: Int?, title: CharSequence?, subtitle: CharSequence?, bod
         orientation = LinearLayout.VERTICAL
         setPaddingRelative(INSET, Space.L, INSET, Space.L)
         if (title != null) {
-            val head = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            val head = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; clipChildren = false }
             if (icon != null) head.addView(iconView(icon, ICON) { Palette.ink2 }, lp(ICON, ICON).apply { marginEnd = ICON_GAP })
             head.addView(titles(title, subtitle, live), lp(0, WRAP, 1f))
             addView(head, lp(MATCH, WRAP))

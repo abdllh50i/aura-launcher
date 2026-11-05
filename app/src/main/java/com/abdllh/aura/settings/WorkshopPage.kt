@@ -135,7 +135,7 @@ class WorkshopPage(private val act: SettingsPanel) : Page(R.string.st_workshop) 
         // (1.18) how late the phone's sound comes out of the speakers: the lyrics of Bluetooth songs follow what is heard
         val bt = com.abdllh.aura.music.BtMusic
         val step = bt.DELAY_STEP_MS
-        val dv = ctx.valueText("").apply { gravity = Gravity.CENTER; layoutParams = lp(DELAY_W, Type.rowValue.viewH) }
+        val dv = ctx.valueText("").apply { ellipsize = null; gravity = Gravity.CENTER; layoutParams = lp(DELAY_W, Type.rowValue.viewH) }
         val ds = AuraSlider(ctx).apply {
             max = (bt.DELAY_MAX_MS / step).toInt()
             onChange = { v, user ->
@@ -410,7 +410,7 @@ class WorkshopPage(private val act: SettingsPanel) : Page(R.string.st_workshop) 
     }
 
     private companion object {
-        const val DELAY_W = 74
+        const val DELAY_W = 92
         /** Here the words before a control are longer than the seven pages'. */
         const val NARROWER = 100
     }
