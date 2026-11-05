@@ -13,7 +13,6 @@ class AppsPanel(shell: HomeActivity) : Panel(shell, Screens.APPS) {
     override val root = FrameLayout(this).look { setBackgroundColor(Palette.bg) }
     override val opaque: Boolean get() = true
     override val keep: Boolean get() = true
-    override val recolours: Boolean get() = true
 
     override fun onShow(args: Bundle?) {
         val sheets = shell.root.sheets
