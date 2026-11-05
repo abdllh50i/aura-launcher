@@ -54,7 +54,9 @@ internal class LyricChip(ctx: Context) : SurfaceCard(ctx, Surface.PILL) {
         it.oneLine(Type.lyricChip)
         it.alignStart = true
         it.alpha = 0f
-        addView(it, Type.lyricChip.box(SIDE, 0, TEXT_W))
+        // (room for the word's pill at the line's ends: the text keeps its 592)
+        it.setPadding(PILL_ROOM, 0, PILL_ROOM, 0)
+        addView(it, Type.lyricChip.box(SIDE - PILL_ROOM, 0, TEXT_W + 2 * PILL_ROOM))
     }
 
     init {
@@ -248,9 +250,8 @@ internal class LyricChip(ctx: Context) : SurfaceCard(ctx, Surface.PILL) {
             if (r[1] > text.length) return false
             l.getSelectionPath(r[0], r[1], PATH)
             PATH.computeBounds(BOX, true)
-            paint.getFontMetrics(FM)
             val base = l.getLineBaseline(0) + totalPaddingTop
-            to.set(totalPaddingLeft + BOX.left - PILL_SIDE, (base + FM.ascent - PILL_ABOVE), totalPaddingLeft + BOX.right + PILL_SIDE, (base + FM.descent + PILL_BELOW))
+            to.set(totalPaddingLeft + BOX.left - PILL_SIDE, base - textSize * PILL_UP, totalPaddingLeft + BOX.right + PILL_SIDE, base + textSize * PILL_DOWN)
             return true
         }
 
@@ -280,17 +281,18 @@ internal class LyricChip(ctx: Context) : SurfaceCard(ctx, Surface.PILL) {
 
         private companion object {
             const val PILL_SIDE = 10f
-            const val PILL_ABOVE = 0f
-            const val PILL_BELOW = 0f
+            /** Its height round the letters, in ems of the text: the chip is only a little taller than a line. */
+            const val PILL_UP = 0.92f
+            const val PILL_DOWN = 0.32f
             val PATH = android.graphics.Path()
             val BOX = RectF()
-            val FM = Paint.FontMetrics()
         }
     }
 
     companion object {
         private const val SIDE = 18
         private const val TEXT_W = 592
+        private const val PILL_ROOM = 10
         private const val ELLIPSIS = "…"
         /** The last line has no next one to say how long it lasts. */
         private const val NO_NEXT_MS = 6000L

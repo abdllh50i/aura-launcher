@@ -68,7 +68,6 @@ import com.abdllh.aura.ui.plateView
 import com.abdllh.aura.ui.pressScale
 import com.abdllh.aura.ui.riseIn
 import com.abdllh.aura.ui.scrollFade
-import com.abdllh.aura.ui.surfaceImage
 import com.abdllh.aura.util.Prefs
 import kotlin.math.abs
 
@@ -439,7 +438,11 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         c.onTap = chipTapped
         val on = showing && collapsed && (chipOffFor == null || chipOffFor != lyricsKey)
         c.want(on)
-        if (on) c.at(chipRows(), positionNow() + lyricsShift)
+        if (on) {
+            var at = positionNow() + lyricsShift
+            if (SystemClock.uptimeMillis() < tapLitUntil) at = maxOf(at, tapLitMs)
+            c.at(chipRows(), at)
+        }
     }
 
     /** Parked, on a red light with gear P known or with no trip: the full panel. Otherwise: off for this song. */
@@ -533,7 +536,7 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
             val unknown = positionUnknown
             lyrics { it.needSync = unknown; it.at(lyricAt, playing) }
             val chip = if (collapsed) LyricChip.current else null
-            chip?.at(chipRows(), lyricAt)
+            if (chip != null) syncChip()
             when (src) {
                 // YouTube's app tells its song's length and where it is (the real position)
                 Src.YT -> {
@@ -1002,11 +1005,14 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
             BtMusic.phone.isBlank() -> getString(R.string.music_bt_phone_connected)
             else -> getString(R.string.music_bt_connected, BtMusic.phone)
         }
-        SourceRow.USB -> if (Library.tracks.isEmpty()) getString(R.string.music_no_drive) else getString(R.string.music_tracks_count, Library.tracks.size)
+        SourceRow.USB -> if (Library.tracks.isEmpty()) getString(R.string.music_no_drive) else songCount(Library.tracks.size)
         SourceRow.YT -> getString(if (YtMusic.player(this) != null) R.string.music_yt_opens else R.string.music_yt_missing)
     }
 
     internal fun rowChosen(r: SourceRow): Boolean = r == rowNow()
+
+    /** Western digits in both languages (SPEC.md section 3): a `%d` would follow the locale's. */
+    private fun songCount(n: Int) = String.format(java.util.Locale.ROOT, getString(R.string.music_tracks_count), n)
 
     /** A row tapped, in the sheet or on the empty panel. */
     internal fun chooseRow(r: SourceRow) {
@@ -1566,7 +1572,7 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         override fun getView(i: Int, convert: View?, parent: ViewGroup): View {
             val row = (convert as? SongRowView) ?: SongRowView(this@MusicPanel)
             val g = items[i]
-            row.bindGroup(icon, g.title, getString(R.string.music_tracks_count, g.tracks.size))
+            row.bindGroup(icon, g.title, songCount(g.tracks.size))
             row.setOnClickListener { openGroup(g) }
             return row
         }
@@ -1634,14 +1640,14 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         wash = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_XY }.look { if (washNow == null) setBackgroundColor(Palette.bg) }
         root.addView(washOld, at(0, 0, 1024, 600))
         root.addView(wash, at(0, 0, 1024, 600))
-        room = surfaceImage("room").apply { visibility = View.INVISIBLE; alpha = 0f }
+        room = lateImage("room").apply { visibility = View.INVISIBLE; alpha = 0f }
         root.addView(room, at(0, 0, 1024, 516))
         content = FrameLayout(this)
         root.addView(content, at(0, 0, 1024, 600))
 
         // ---- the cover, with its baked shadow; the group breathes
         coverGroup = FrameLayout(this)
-        coverGroup.addView(surfaceImage("cover-shadow"), flp(MATCH, MATCH))
+        coverGroup.addView(lateImage("cover-shadow"), flp(MATCH, MATCH))
         artOld = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_XY; visibility = View.INVISIBLE }
         art = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_XY }
         art.setImageDrawable(Backdrop.noArt(this, COVER, Tokens2.R_coverBig))
@@ -1727,6 +1733,19 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         root.look { takeTheme() }
     }
 
+    /** A big bitmap of the theme, decoded off the main thread: a hardware bitmap there holds the build, or the swap, for what can be a second on a loaded GPU. */
+    private fun lateImage(stem: String): ImageView = ImageView(this).apply {
+        scaleType = ImageView.ScaleType.FIT_XY
+        look {
+            val night = Palette.dark
+            val c = applicationContext
+            Thread({
+                val b = com.abdllh.aura.ui.Surfaces.themed(c, stem, night)
+                post { if (night == Palette.dark) setImageBitmap(b) }
+            }, "music-art").start()
+        }
+    }
+
     private fun sideTool(icon: Int, px: Int, desc: Int, onClick: () -> Unit) =
         IconButton(this, icon, px, 76, 76, IconButton.Kind.TONAL, plateW = 76, plateH = 76, plateRadius = Tokens2.R_inner, plateToken = { Palette.fill }, token = { Palette.ink }).apply {
             contentDescription = getString(desc)
@@ -1736,11 +1755,13 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
     private fun buildLibrary() {
         library = SurfaceCard(this, Surface.CARD).apply { visibility = View.INVISIBLE }
         tabs = Segmented(this, listOf(getString(R.string.music_songs), getString(R.string.music_albums),
-            getString(R.string.music_tab_artists), getString(R.string.music_folders)), equal = true) { i ->
+            getString(R.string.music_tab_artists), getString(R.string.music_folders)), equal = false) { i ->
             tab = Tab.values()[i]
             group = null
             showList(Nav.TAB)
         }
+        // (each as wide as its word, and what is left shared out: as drawn, and no word cut)
+        for (i in 0 until tabs.childCount) (tabs.getChildAt(i).layoutParams as LinearLayout.LayoutParams).weight = 1f
         // (at the reading edge)
         library.addView(tabs, at(if (rtl) 180 else 8, 8, 440, 60))
         // the open album, artist or folder: the way back, its name, and Play all

@@ -229,11 +229,11 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
         status.text = text
         retry.visibility = if (onRetry != null) View.VISIBLE else View.GONE
         retry.setOnClickListener { onRetry?.invoke() }
-        if (statusBox.visibility != View.VISIBLE || statusBox.alpha < 1f) {
-            if (statusBox.visibility != View.VISIBLE) statusBox.alpha = 0f
-            statusBox.visibility = View.VISIBLE
-            if (isShown) statusBox.fadeTo(1f, Motion.SHORT) else { statusBox.animate().cancel(); statusBox.alpha = 1f }
-        }
+        // (a step back may be on its way, [dim]: it is turned round from where it is)
+        statusBox.animate().cancel()
+        if (statusBox.visibility != View.VISIBLE) statusBox.alpha = 0f
+        statusBox.visibility = View.VISIBLE
+        if (isShown) statusBox.fadeTo(1f, Motion.SHORT) else statusBox.alpha = 1f
         scroll.visibility = View.GONE
     }
 
@@ -600,6 +600,8 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
                 removeCallbacks(tick)
                 shownWord = -1
                 sungWords = -1
+                pillWord = -1
+                fromWord = -1
                 pillA.snapTo(0f)
                 pillG.snapTo(1f)
                 if (v) wordStep() else invalidate()
@@ -614,11 +616,11 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
         private var boxesOf: android.text.Layout? = null
         private var boxesH = -1
 
-        /** The word on the pill (-1: none, a pause), how many are sung, and the pill on its way: from the rect it was at to this word's. */
+        /** The word being sung (-1: none, a pause), how many are sung, the word the pill is on or was last on, and the one it is gliding from (-1: none). */
         private var shownWord = -1
         private var sungWords = -1
-        private val pillFrom = RectF()
-        private val pillTo = RectF()
+        private var pillWord = -1
+        private var fromWord = -1
         private val pillNow = RectF()
         private val pillA = Spring(0f, Tokens2.SPRING_wordPill[0], 1f, 0.01f) { invalidate() }
         private val pillG = Spring(1f, Tokens2.SPRING_wordPill[0], Tokens2.SPRING_wordPill[1], 0.003f) { invalidate() }
@@ -681,21 +683,21 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
         }
 
         private fun wordChanged(word: Int) {
-            val from = shownWord
             shownWord = word
             if (word < 0) { pillA.animateTo(0f); return }
             if (boxesOf == null || boxesBad) return
-            pillRect(word, pillTo)
-            val glides = from >= 0 && row[from] == row[word] && pillA.value > 0.5f
-            if (glides) {
-                pillFrom.set(pillNow)
+            val from = pillWord
+            pillWord = word
+            if (from in 0 until word && row[from] == row[word] && pillA.value > 0.5f) {
+                fromWord = from
                 pillG.snapTo(0f)
                 pillG.animateTo(1f)
             } else {
-                pillFrom.set(pillTo)
+                // (after a pause, on a new row, a jump: it comes in where it is, no flying across the line)
+                fromWord = -1
                 pillG.snapTo(1f)
-                // (after a pause or on a new row: it comes in where it is, no flying across the line)
-                if (pillA.value < 0.01f && !isShown) pillA.snapTo(1f) else pillA.animateTo(1f)
+                if (from >= 0 && row[from] != row[word]) pillA.snapTo(0f)
+                if (isShown) pillA.animateTo(1f) else pillA.snapTo(1f)
             }
         }
 
@@ -763,57 +765,111 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
             val t = times
             val l = layout
             if (!karaoke || t == null || l == null || n == 0) { super.onDraw(c); return }
-            if (l !== boxesOf || height != boxesH) { measureWords(l); if (shownWord >= 0 && !boxesBad) { pillRect(shownWord, pillTo); pillFrom.set(pillTo) } }
+            if (l !== boxesOf || height != boxesH) measureWords(l)
             if (boxesBad || sungWords < 0) { super.onDraw(c); return }
-            val p = paint
             val lit = currentTextColor
-            // 1. the pill (one rect), moving from the word before while it glides
+            val dim = Palette.lyricDim
             val a = pillA.value.coerceIn(0f, 1f)
-            val onPill = a > 0.01f && (shownWord >= 0 || pillA.isRunning)
-            if (onPill) {
-                val g = pillG.value
-                pillNow.set(pillFrom.left + (pillTo.left - pillFrom.left) * g, pillTo.top, pillFrom.right + (pillTo.right - pillFrom.right) * g, pillTo.bottom)
-                fill.color = Palette.withAlpha(owner.wordFill, a)
-                val r = (if (owner.big) Tokens2.R_wordFull else Tokens2.R_word).toFloat()
-                c.drawRoundRect(pillNow, r, r, fill)
-            }
-            // 2. the text: what is sung lit, what is to come dim, what lies on the pill in its own ink. Each part is one rect clip.
+            val w = pillWord
+            if (a < 0.01f || w < 0) drawPlain(c, l, lit, dim) else drawOnPill(c, l, w, a, lit, dim)
+            paint.color = lit
+        }
+
+        /** No pill (before the first word, a pause): what is sung lit, what is to come dim, one rect clip for each. */
+        private fun drawPlain(c: Canvas, l: android.text.Layout, lit: Int, dim: Int) {
             val sung = sungWords.coerceIn(0, n)
-            val w = if (sung < n) sung else n - 1
-            val rowW = row[w]
-            val rowTop = box[4 * w + 1]
-            val rowBottom = box[4 * w + 3]
-            val split = if (sung >= n) (if (rtl[w]) 0f else width.toFloat()) else if (rtl[w]) box[4 * w + 2] else box[4 * w]
-            // (the rows above the word's are all sung, those below all to come)
-            val rightSung = rtl[w]
-            var save = c.save()
-            if (onPill) c.clipOutRect(pillNow)
-            if (rowW > 0) c.clipOutRect(0f, 0f, width.toFloat(), rowTop)
-            if (rightSung) c.clipOutRect(split, rowTop, width.toFloat(), rowBottom) else c.clipOutRect(0f, rowTop, split, rowBottom)
-            p.color = Palette.lyricDim
+            if (sung >= n) { part(c, l, 0f, 0f, 0f, width.toFloat(), height.toFloat(), lit); return }
+            val top = box[4 * sung + 1]
+            val bottom = box[4 * sung + 3]
+            if (row[sung] > 0) part(c, l, 0f, 0f, 0f, width.toFloat(), top, lit)
+            if (bottom < height) part(c, l, 0f, 0f, bottom, width.toFloat(), height.toFloat(), dim)
+            if (rtl[sung]) {
+                part(c, l, 0f, box[4 * sung + 2], top, width.toFloat(), bottom, lit)
+                part(c, l, 0f, 0f, top, box[4 * sung + 2], bottom, dim)
+            } else {
+                part(c, l, 0f, 0f, top, box[4 * sung], bottom, lit)
+                part(c, l, 0f, box[4 * sung], top, width.toFloat(), bottom, dim)
+            }
+        }
+
+        /**
+         * The word [w] on its pill. The pill needs room the line's plain space does not have, and a layout may not change while the song plays: so the words on its row part by
+         * translation, as the mockup's inline pill pushes them, what comes after the word [gap] further along than the word itself, and all of it from one laid-out text with rect clips. A row
+         * that fills the column has less room to part in, and the pill keeps to what there is. While it glides from the word before, the two words and what follows move with it, and their
+         * colours cross, so no text is ever lit on the pill or dark off it. No layout, no size change, and nothing but this view redraws.
+         */
+        private fun drawOnPill(c: Canvas, l: android.text.Layout, w: Int, a: Float, lit: Int, dim: Int) {
+            val big = owner.big
+            val full = if (big) PILL_GAP_BIG else PILL_GAP
+            val rw = row[w]
+            val room = ((l.width - l.getLineWidth(rw)) / 2f).coerceAtLeast(0f)
+            val gap = minOf(full, room)
+            val dir = if (rtl[w]) -1f else 1f
+            val top = box[4 * w + 1]
+            val bottom = box[4 * w + 3]
+            val rowsBelow = bottom < height
+            // (the rows above are all sung, those below all to come)
+            if (rw > 0) part(c, l, 0f, 0f, 0f, width.toFloat(), top, lit)
+            if (rowsBelow) part(c, l, 0f, 0f, bottom, width.toFloat(), height.toFloat(), dim)
+            val p = fromWord
+            val gliding = p >= 0 && p < w && pillG.isRunning
+            val g = if (gliding) pillG.value else 1f
+            val k = g.coerceIn(0f, 1f)
+            val pausing = shownWord < 0
+            val w0 = wordEdge(w, start = true)
+            val w1 = wordEdge(w, start = false)
+            val startEdge = if (dir < 0f) width.toFloat() else 0f
+            val endEdge = if (dir < 0f) 0f else width.toFloat()
+            // the pill, under the text
+            val side = (if (big) PILL_SIDE_BIG else PILL_SIDE) * (if (full > 0f) (gap / full).coerceAtLeast(MIN_SIDE) else 1f)
+            wordRect(w, dir * gap * a, side, pillNow)
+            if (gliding) {
+                wordRect(p, dir * gap * a, side, TMP_RECT)
+                pillNow.left = TMP_RECT.left + (pillNow.left - TMP_RECT.left) * g
+                pillNow.right = TMP_RECT.right + (pillNow.right - TMP_RECT.right) * g
+            }
+            fill.color = Palette.withAlpha(owner.wordFill, a)
+            val r = (if (big) Tokens2.R_wordFull else Tokens2.R_word).toFloat()
+            c.drawRoundRect(pillNow, r, r, fill)
+            // the row, part by part, reading on: each part with where it is along the way and its colour
+            val wordInk = if (pausing) Palette.mix(lit, owner.wordInk, a) else Palette.mix(dim, owner.wordInk, a * k)
+            if (gliding) {
+                val p0 = wordEdge(p, start = true)
+                span(c, l, startEdge, p0, 0f, top, bottom, lit)
+                span(c, l, p0, w0, dir * gap * a * (1f - g), top, bottom, Palette.mix(owner.wordInk, lit, k))
+                span(c, l, w0, w1, dir * gap * a * (2f - g), top, bottom, wordInk)
+            } else {
+                span(c, l, startEdge, w0, 0f, top, bottom, lit)
+                span(c, l, w0, w1, dir * gap * a, top, bottom, wordInk)
+            }
+            span(c, l, w1, endEdge, dir * gap * a * 2f, top, bottom, dim)
+        }
+
+        /**
+         * Where word [j]'s part of its row begins or ends, in its reading: half way through the space to its neighbour, so that a letter reaching past its own box goes with its word, and the
+         * row's end where it has none on that side.
+         */
+        private fun wordEdge(j: Int, start: Boolean): Float {
+            val own = if (rtl[j] == start) box[4 * j + 2] else box[4 * j]
+            val k = if (start) j - 1 else j + 1
+            if (k !in 0 until n || row[k] != row[j]) return if (rtl[j] == start) width.toFloat() else 0f
+            val other = if (rtl[k] == !start) box[4 * k + 2] else box[4 * k]
+            return (own + other) / 2f
+        }
+
+        /** A part of a row between two x, in either order, moved along by [dx]. */
+        private fun span(c: Canvas, l: android.text.Layout, x0: Float, x1: Float, dx: Float, top: Float, bottom: Float, colour: Int) =
+            part(c, l, dx, minOf(x0, x1), top, maxOf(x0, x1), bottom, colour)
+
+        /** One rect of the text in one colour, moved by [dx]. */
+        private fun part(c: Canvas, l: android.text.Layout, dx: Float, left: Float, top: Float, right: Float, bottom: Float, colour: Int) {
+            if (right <= left || bottom <= top) return
+            val save = c.save()
+            c.translate(dx, 0f)
+            c.clipRect(left, top, right, bottom)
+            paint.color = colour
             drawText(c, l)
             c.restoreToCount(save)
-            p.color = lit
-            save = c.save()
-            if (onPill) c.clipOutRect(pillNow)
-            if (rightSung) c.clipRect(split, rowTop, width.toFloat(), rowBottom) else c.clipRect(0f, rowTop, split, rowBottom)
-            drawText(c, l)
-            c.restoreToCount(save)
-            if (rowW > 0) {
-                save = c.save()
-                if (onPill) c.clipOutRect(pillNow)
-                c.clipRect(0f, 0f, width.toFloat(), rowTop)
-                drawText(c, l)
-                c.restoreToCount(save)
-            }
-            if (onPill) {
-                save = c.save()
-                c.clipRect(pillNow)
-                p.color = Palette.mix(lit, owner.wordInk, a)
-                drawText(c, l)
-                c.restoreToCount(save)
-            }
-            p.color = lit
         }
 
         private fun drawNote(c: Canvas) {
@@ -825,15 +881,14 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
             t.drawable.draw(c)
         }
 
-        /** The pill at word [j]: the word's box, 13 px wider each side, 3 px above and 5 below the text's own box. */
-        private fun pillRect(j: Int, out: RectF) {
+        /** The pill at word [j], moved along by [dx]: the word's box, [side] wider each side, 3 px above and 5 below the text's own box. */
+        private fun wordRect(j: Int, dx: Float, side: Float, out: RectF) {
             val l = layout ?: return
             paint.getFontMetrics(TMP_FM)
             val base = l.getLineBaseline(row[j]) + totalPaddingTop
-            val side = if (owner.big) PILL_SIDE_BIG else PILL_SIDE
             val above = if (owner.big) PILL_ABOVE_BIG else PILL_ABOVE
             val below = if (owner.big) PILL_BELOW_BIG else PILL_BELOW
-            out.set(box[4 * j] - side, base + TMP_FM.ascent - above, box[4 * j + 2] + side, base + TMP_FM.descent + below)
+            out.set(box[4 * j] + dx - side, base + TMP_FM.ascent - above, box[4 * j + 2] + dx + side, base + TMP_FM.descent + below)
         }
 
         override fun onDetachedFromWindow() {
@@ -959,6 +1014,11 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
         private const val PILL_SIDE_BIG = 16f
         private const val PILL_ABOVE_BIG = 2f
         private const val PILL_BELOW_BIG = 6f
+        /** How far the word on its pill moves along its row, and what follows it twice that: the pill's padding and the mockup's margin of 3. */
+        private const val PILL_GAP = 16f
+        private const val PILL_GAP_BIG = 19f
+        /** With no room to part in, the pill keeps this share of its padding. */
+        private const val MIN_SIDE = 0.35f
         private const val STATUS_DY = 8
         private const val NOTE_BOTTOM = 16
         private const val BLANK = " "
