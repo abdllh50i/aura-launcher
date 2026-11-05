@@ -25,10 +25,10 @@ import com.abdllh.aura.ui.anim
 import com.abdllh.aura.ui.at
 import com.abdllh.aura.ui.box
 import com.abdllh.aura.ui.glyph
-import com.abdllh.aura.ui.ink
+import com.abdllh.aura.ui.iconView
 import com.abdllh.aura.ui.label
-import com.abdllh.aura.ui.look
 import com.abdllh.aura.ui.lp
+import com.abdllh.aura.ui.plateView
 import com.abdllh.aura.ui.pressScale
 import kotlin.math.ceil
 
@@ -91,6 +91,26 @@ internal class Disc(ctx: Context, private val size: Int, private val fill: () ->
 /** The surface of a search pill and a chip: small, and its alpha goes straight into what it draws (no layer for 140 ms of fade). */
 private open class Pill(ctx: Context) : SurfaceCard(ctx, Surface.PILL) {
     override fun hasOverlappingRendering() = false
+}
+
+/** No fix for a while on browse (SPEC.md section 12, `empty-no-gps`): under the chips, 364 x 92. It clears itself. */
+internal class NoGpsCard(ctx: Context) : SurfaceCard(ctx, Surface.CARD) {
+    private val line: AText = ctx.label(Type.resultSub, { Palette.ink2 })
+
+    init {
+        val arabic = Fonts.arabicUi
+        addView(ctx.plateView(18) { Palette.fill2 }, at(if (arabic) W - 16 - 52 else 16, 20, 52, 52))
+        addView(ctx.iconView(R.drawable.ic_gps_off, 28) { Palette.ink }, at(if (arabic) W - 28 - 28 else 28, 32, 28, 28))
+        val x = if (arabic) 16 else 80
+        addView(ctx.label(Type.resultTitle, { Palette.ink }).apply { setText(R.string.browse_no_gps) }, Type.resultTitle.box(x, 12, W - 96))
+        addView(line, Type.resultSub.box(x, 48, W - 96))
+    }
+
+    fun sub(text: String) { if (line.text != text) line.text = text }
+
+    private companion object {
+        const val W = 364
+    }
 }
 
 /** One place chip's words. */

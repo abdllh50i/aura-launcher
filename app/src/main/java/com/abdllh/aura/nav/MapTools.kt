@@ -1,9 +1,11 @@
 package com.abdllh.aura.nav
 
+import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
 import com.abdllh.aura.R
+import com.abdllh.aura.ui.AText
 import com.abdllh.aura.ui.IconButton
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Motion
@@ -12,9 +14,12 @@ import com.abdllh.aura.ui.PressGesture
 import com.abdllh.aura.ui.Surface
 import com.abdllh.aura.ui.SurfaceCard
 import com.abdllh.aura.ui.Tokens2
+import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.anim
 import com.abdllh.aura.ui.at
+import com.abdllh.aura.ui.box
 import com.abdllh.aura.ui.glyph
+import com.abdllh.aura.ui.label
 import com.abdllh.aura.ui.look
 import com.abdllh.aura.ui.pressScale
 import kotlin.math.abs
@@ -33,6 +38,7 @@ internal class MapTools(panel: MapsPanel) : MapsPart(panel) {
     private lateinit var locate: IconButton
     private lateinit var compass: SurfaceCard
     private lateinit var compassGlyph: ImageView
+    private lateinit var attribution: AText
 
     private var bearingWatched = false
     private var compassAt = Float.NaN
@@ -46,6 +52,14 @@ internal class MapTools(panel: MapsPanel) : MapsPart(panel) {
             override fun hasOverlappingRendering() = false
         }
         panel.toolsLayer.addView(group, MATCH, MATCH)
+
+        attribution = label(Type.attribution, { Palette.ink3 }, gravity = Gravity.RIGHT).apply {
+            textDirection = View.TEXT_DIRECTION_LTR
+            text = MapStyle.attribution(CarLocation.lastKnown())
+        }
+        panel.toolsLayer.addView(attribution, Type.attribution.box(512, 492, 500))
+        // (the credit follows what is drawn: the pack inside the Kingdom, OpenFreeMap's tiles outside it)
+        map.onCameraIdle = { at -> MapStyle.attribution(at).let { if (attribution.text != it) attribution.text = it } }
 
         compass = pillCard()
         compassGlyph = ImageView(this).apply { setImageResource(R.drawable.ic_compass); scaleType = ImageView.ScaleType.FIT_CENTER }.glyph { Palette.icon }
@@ -108,6 +122,7 @@ internal class MapTools(panel: MapsPanel) : MapsPart(panel) {
     fun forSearch(open: Boolean) {
         if (open == searchOpen) return
         searchOpen = open
+        syncTools()
         // (the old speed cluster goes with them: it would lie over the card)
         controls.visibility = if (open) View.INVISIBLE else View.VISIBLE
         if (!open) {
@@ -169,6 +184,7 @@ internal class MapTools(panel: MapsPanel) : MapsPart(panel) {
         val v = if (show) View.VISIBLE else View.INVISIBLE
         if (zoom.visibility != v) { zoom.visibility = v; locate.visibility = v }
         locate.setGlyphToken(if (free) ({ Palette.accentInk }) else ({ Palette.icon }))
+        attribution.visibility = if (NavSession.state == NavSession.State.IDLE && !searchOpen && panel.face == MapsPanel.Face.BROWSE) View.VISIBLE else View.INVISIBLE
     }
 
     /** The compass shows where north is on the turned map (a transform, set only when it moved a degree or more), and only when it is turned. */

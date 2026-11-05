@@ -5,6 +5,8 @@
     <string name="browse_computing">Finding a route…</string>
     <string name="browse_waiting_gps">Waiting for a location signal…</string>
     <string name="browse_no_route">No route to this place</string>
+    <string name="browse_no_gps">No GPS signal</string>
+    <string name="browse_last_fix">Last place %1$s ago</string>
     <string name="browse_arrive">Arrive</string>
     <string name="browse_retry">Try again</string>
     <string name="browse_no_internet">No internet</string>

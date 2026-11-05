@@ -16,6 +16,7 @@ import com.abdllh.aura.home.Screens
 import com.abdllh.aura.nav.browse.BrowseGroup
 import com.abdllh.aura.nav.browse.ChipInfo
 import com.abdllh.aura.nav.browse.FromPhoneCard
+import com.abdllh.aura.nav.browse.NoGpsCard
 import com.abdllh.aura.nav.browse.PlaceCard
 import com.abdllh.aura.nav.browse.ResultLine
 import com.abdllh.aura.nav.browse.RouteChoices
@@ -53,6 +54,7 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
     private lateinit var search: SearchPanel
     private lateinit var placeCard: PlaceCard
     private lateinit var phoneCard: FromPhoneCard
+    private lateinit var noGps: NoGpsCard
     private lateinit var credit: AText
     private val input get() = search.input
 
@@ -85,14 +87,16 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
     /** The old cards' lift for the old locate button: none of these is a bottom card any more. */
     val bottomCard: View? get() = null
 
-    init {
-        // a new size of the screen (the keyboard came or went): as many rows as lie above it
-        root.addOnLayoutChangeListener { _, _, t, _, b, _, ot, _, ob -> if (b - t != ob - ot) root.post { fitSearch() } }
-    }
+    /**
+     * On the unit the window does not resize for the keyboard, only its visible frame shrinks (DEV.md, "Soft input"), and so that is what the list and the camera read: the list keeps above
+     * the keyboard's top, and what is in it can be scrolled to. A layout pass tells; while the search is up only, because the frame is a call to the window manager.
+     */
+    private val keyboardWatch = android.view.ViewTreeObserver.OnGlobalLayoutListener { if (search.isOn) fitSearch() }
+    private val frame = android.graphics.Rect()
 
     private fun fitSearch() {
-        if (!::search.isInitialized) return
-        search.setRoom((root.height - SEARCH_TOP - 8) / SEARCH_ROW)
+        root.getWindowVisibleDisplayFrame(frame)
+        search.setRoom(frame.bottom - SEARCH_LIST_TOP - SEARCH_LIST_FOOT)
     }
 
     private fun syncOver() {
@@ -102,14 +106,38 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
         syncGroup()
     }
 
-    /** The pill and the chips: on browse with nothing over them. The credit: on browse and search (section 11). */
+    /** The pill and the chips: with no trip and nothing over them, `drive-free` too (section 6.2). The credit here is search's; browse's is the map tools' (section 11: on both). */
     private fun syncGroup() {
         val trip = NavSession.state != NavSession.State.IDLE
-        val free = panel.face == MapsPanel.Face.BROWSE
         val cardOn = search.isOn || placeCard.isOn || phoneCard.isOn
-        group.setMoving(DriveState.moving)
-        group.show(!trip && free && !cardOn)
-        credit.visibility = if (!trip && free && !placeCard.isOn && !phoneCard.isOn) View.VISIBLE else View.INVISIBLE
+        val moving = DriveState.moving
+        group.setMoving(moving)
+        group.show(!trip && !cardOn)
+        credit.visibility = if (!trip && search.isOn) View.VISIBLE else View.INVISIBLE
+        // (moving, a touch on the field is voice's and brings no keyboard: section 6.3)
+        input.showSoftInputOnFocus = !moving
+        syncGps()
+    }
+
+    // ---- no GPS for a while on browse: a card under the chips, and how old the last fix is (section 12). A gap of a fix or two is the strip's icon alone
+    private var quietSince = 0L
+    private val gpsCheck = Runnable { syncGps() }
+
+    private fun syncGps() {
+        root.removeCallbacks(gpsCheck)
+        val now = SystemClock.elapsedRealtime()
+        if (quietSince == 0L) quietSince = now
+        val fix = CarLocation.last
+        val age = if (fix != null) (SystemClock.elapsedRealtimeNanos() - fix.elapsedRealtimeNanos) / 1_000_000L else now - quietSince
+        val cardOn = search.isOn || placeCard.isOn || phoneCard.isOn
+        val wanted = panel.shown && NavSession.state == NavSession.State.IDLE && panel.face == MapsPanel.Face.BROWSE && !cardOn
+        val on = wanted && age >= NO_GPS_MS
+        if (on) {
+            noGps.sub(if (fix != null) getString(R.string.browse_last_fix, Units.duration(age / 1000.0, arabic)) else getString(R.string.browse_waiting_gps))
+            noGps.showCard()
+        } else noGps.hideCard()
+        // (it says minutes; a fix clears it at once: [onFix])
+        if (wanted) root.postDelayed(gpsCheck, if (on) GPS_LINE_MS else NO_GPS_MS - age)
     }
 
     override fun onFace(face: MapsPanel.Face) = syncGroup()
@@ -167,17 +195,21 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
         root.removeCallbacks(firstOverview)
         root.removeCallbacks(searchFit)
         root.removeCallbacks(countdown)
+        root.removeCallbacks(gpsCheck)
         Places.cancelSearch()
         selected = null
         preview = null
         options = emptyList()
         routing = false
         following = null
+        followingRoute = null
         pickFor = null
         finishAfterPick = false
         notKept = null
         simulate = false
         cameraWas = null
+        lastResults = emptyList()
+        tappedRow = 0L
         resetRouteRetry()
         map.setRoute(null)
         map.setRouteAlt(null)
@@ -193,6 +225,7 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
         search.hideNow()
         placeCard.hideNow()
         phoneCard.hideNow()
+        noGps.hideNow()
         syncOver()
     }
 
@@ -200,6 +233,8 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
         root.removeCallbacks(firstOverview)
         root.removeCallbacks(searchFit)
         root.removeCallbacks(countdown)
+        root.removeCallbacks(gpsCheck)
+        root.viewTreeObserver.removeOnGlobalLayoutListener(keyboardWatch)
         Places.cancelSearch()
     }
 
@@ -230,10 +265,9 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
             map.onResultTap = { i -> resultTapped(i) }
             map.onRouteAltTap = { if (options.size > 1) choose(1 - chosen) }
             map.onMapTap = { if (search.isOn) closeSearch() }
-            // (the credit follows what is drawn: the pack inside the Kingdom, OpenFreeMap's tiles outside it)
-            map.onCameraIdle = { at -> MapStyle.attribution(at).let { if (credit.text != it) credit.text = it } }
             GuideLink.landed = guideLanded
             DriveState.addListener(driveListener)
+            root.viewTreeObserver.addOnGlobalLayoutListener(keyboardWatch)
             refreshChips()
             syncGroup()
         } else {
@@ -241,10 +275,11 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
             map.onResultTap = null
             map.onRouteAltTap = null
             map.onMapTap = null
-            map.onCameraIdle = null
             GuideLink.landed = null
             DriveState.removeListener(driveListener)
+            root.viewTreeObserver.removeOnGlobalLayoutListener(keyboardWatch)
             root.removeCallbacks(countdown)
+            root.removeCallbacks(gpsCheck)
         }
     }
 
@@ -291,6 +326,7 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
 
     /** The preview route once a fix is there; a failed one is retried with growing pauses, not on every fix. */
     fun onFix() {
+        if (noGps.visibility == View.VISIBLE) syncGps()
         // (not for a place whose trip is being started from elsewhere: [Trips] is finding its route)
         if (selected != null && preview == null && !routing && following == null && NavSession.state == NavSession.State.IDLE &&
             SystemClock.elapsedRealtime() >= routeRetryAt) requestRoute()
@@ -454,6 +490,7 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
             searchFlew = false
         }
         fitSearch()
+        credit.text = MapStyle.attribution(map.target ?: CarLocation.lastKnown())
         search.showCard()
         placeCard.hideCard()
         phoneCard.hideCard()
@@ -740,8 +777,9 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
         if (pts.isEmpty()) return@Runnable
         searchFlew = true
         // (a keyboard over the map: what lies above it)
-        val under = panel.shell.root.restHeight - root.height
-        map.overview(pts, 410, 64, 60, maxOf(110, under + 20), 14.5)
+        root.getWindowVisibleDisplayFrame(frame)
+        map.overview(pts, 410, 64, 60, maxOf(110, panel.shell.root.restHeight - frame.bottom + 20), 14.5)
+        credit.text = MapStyle.attribution(pts.first())
     }
 
     /** With an empty query: Home, Work and recent destinations; [note] above them. */
@@ -774,6 +812,9 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
         group.hint(getString(R.string.home_where_to))
         group.onPill = { pillTapped() }
         refreshChips()
+
+        noGps = NoGpsCard(this).apply { visibility = View.GONE }
+        layer.addView(noGps, Surface.CARD.at(12, 160, 364, 92))
 
         search = SearchPanel(this).apply { visibility = View.GONE }
         layer.addView(search, Surface.CARD.at(12, 44, 364, 68))
@@ -842,10 +883,15 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
     private fun cardMs(ms: Long) = if (DriveState.moving) (ms * 0.7f).toLong() else ms
 
     private companion object {
-        const val SEARCH_TOP = 44 + 68
-        const val SEARCH_ROW = 76
+        /** Where the search's list starts on the screen, and what the card and a margin take under it above a keyboard. */
+        const val SEARCH_LIST_TOP = 44 + 68
+        const val SEARCH_LIST_FOOT = 16
         /** A place within this of a saved one is that one. */
         const val SAME_PLACE_M = 60.0
+        /** The GPS gives a fix every 2 s on the unit. This long with none, and browse says so; */
+        const val NO_GPS_MS = 30_000L
+        /** its line is in minutes. */
+        const val GPS_LINE_MS = 30_000L
         const val FIRST_OVERVIEW_MS = 700L
         const val SEARCH_FIT_MS = 700L
         const val PINS = 10

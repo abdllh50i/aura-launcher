@@ -50,6 +50,8 @@ class MapsPanel(shell: HomeActivity) : Panel(shell, Screens.MAPS) {
         }
     }
     override val keep: Boolean get() = true
+    // (a theme change recolours what shows in place: section 8. Every part reads its tokens at [com.abdllh.aura.ui.Look.apply])
+    override val recolours: Boolean get() = true
     // (the map's slot does not follow the keyboard, and the field is at the top, above it: this window never pans. See DEV.md, "One window")
     override val softInput: Int get() = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN
 

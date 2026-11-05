@@ -33,8 +33,8 @@ import com.abdllh.aura.ui.scrollFade
 internal class ResultLine(val title: String, val sub: String, val distance: String?, val number: Int, val icon: Int, val onTap: () -> Unit)
 
 /**
- * The search panel (SPEC.md section 6.3, `search`): a card at (12, 44), 364 wide, as high as what it holds. The field 348 x 52, three rows of 76, or as many as lie
- * above the keyboard: the panel's own keyboard is not in this version, the system's comes up and only shortens the list. More rows scroll under a baked fade, no saveLayer. The rows
+ * The search panel (SPEC.md section 6.3, `search`): a card at (12, 44), 364 wide, as high as what it holds. The field 348 x 52, three rows of 76, or what lies above the
+ * keyboard: the panel's own keyboard is not in this version, the system's comes up and only shortens the list. More rows scroll under a baked fade, no saveLayer. The rows
  * are made once and filled again, so a letter typed costs no views, and a list changes in one layout.
  */
 internal class SearchPanel(private val ctx: Context) : SurfaceCard(ctx, Surface.CARD) {
@@ -62,7 +62,8 @@ internal class SearchPanel(private val ctx: Context) : SurfaceCard(ctx, Surface.
     private val rows = ArrayList<Row>()
     private var shownRows = 0
     private var noteOn = false
-    private var maxRows = ROWS
+    /** The list's most, in px: three rows, or what lies above the keyboard. */
+    private var room = ROWS * ROW_H
     private var heightNow = 0
 
     var onClose: (() -> Unit)? = null
@@ -88,11 +89,11 @@ internal class SearchPanel(private val ctx: Context) : SurfaceCard(ctx, Surface.
         close.visibility = if (input.text.isEmpty()) View.VISIBLE else View.GONE
     }
 
-    /** What fits above the keyboard. */
-    fun setRoom(rowsThatFit: Int) {
-        val n = rowsThatFit.coerceIn(1, ROWS)
-        if (n == maxRows) return
-        maxRows = n
+    /** What lies above the keyboard, in px of list. Part of a row is fine: it says there is more, under the fade. */
+    fun setRoom(px: Int) {
+        val r = px.coerceIn(ROW_H, ROWS * ROW_H)
+        if (r == room) return
+        room = r
         syncHeight()
     }
 
@@ -116,7 +117,7 @@ internal class SearchPanel(private val ctx: Context) : SurfaceCard(ctx, Surface.
 
     private fun syncHeight() {
         val content = shownRows * ROW_H + if (noteOn) NOTE_H else 0
-        val listH = minOf(content, maxRows * ROW_H)
+        val listH = minOf(content, room)
         val h = LIST_TOP + listH + if (listH > 0) BOTTOM else 0
         (scroll.layoutParams as FrameLayout.LayoutParams).height = listH
         scroll.visibility = if (listH > 0) View.VISIBLE else View.GONE
