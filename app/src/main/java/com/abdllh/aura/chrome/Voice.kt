@@ -13,7 +13,6 @@ import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.PressGesture
 import com.abdllh.aura.ui.Recolours
-import com.abdllh.aura.ui.Surfaces
 import com.abdllh.aura.ui.Tokens2
 import com.abdllh.aura.ui.at
 import com.abdllh.aura.ui.fadeTo
@@ -21,47 +20,23 @@ import com.abdllh.aura.ui.glyph
 import com.abdllh.aura.ui.plateView
 
 /**
- * The voice button, centred on (240, 556), hit 76 x 84 at x 204..280, the same place on every screen (SPEC.md sections 1 and 5). Two faces in alpha, [face]: a quiet plate with an ink mic on Home,
- * the blue disc with a white one elsewhere. The disc's glow is wider than the hit: the view's bounds are the bitmap's, and a touch outside the hit goes to the volume's plus beside it.
- * Listening: one 3 px ring round it, scaled by the voice's level at up to 15 fps and only while listening.
+ * The voice button, centred on (240, 556), hit 76 x 84 at x 204..280, the same place and the same quiet plate with an ink mic on every screen. The view's bounds are wider than the hit, for the ring: a touch
+ * outside the hit goes to the volume's plus beside it. Listening: one 3 px ring round it, scaled by the voice's level at up to 15 fps and only while listening.
  */
 internal class VoiceButton(ctx: Context, onTap: () -> Unit) : FrameLayout(ctx) {
     private val ring = Ring(ctx)
-    private val plate = ctx.plateView(Tokens2.R_inner) { Palette.fill }
-    private val mic = ImageView(ctx).apply { setImageResource(R.drawable.ic_mic) }.glyph { Palette.ink }
-    private val disc = ImageView(ctx).apply { setImageBitmap(Surfaces.res(ctx, R.drawable.voice_disc)) }
-    private val micOn = ImageView(ctx).apply { setImageResource(R.drawable.ic_mic) }.glyph { Palette.onAccent }
     private val gesture = PressGesture(this, PressGesture.ICON)
     private var levelAt = 0L
-
-    /** 0: the plate. 1: the disc. */
-    var face = 0f
-        set(v) {
-            field = v
-            show(plate, 1f - v)
-            show(mic, 1f - v)
-            show(disc, v)
-            show(micOn, v)
-        }
 
     init {
         isClickable = true
         contentDescription = ctx.getString(R.string.set_voice)
         setOnClickListener { onTap() }
-        addView(disc, at(0, 0, SIZE, SIZE))
-        addView(plate, at(22, 24, 64, 60))
-        addView(mic, at(39, 39, 30, 30))
-        addView(micOn, at(38, 38, 32, 32))
+        addView(ctx.plateView(Tokens2.R_inner) { Palette.fill }, at(22, 24, 64, 60))
+        addView(ImageView(ctx).apply { setImageResource(R.drawable.ic_mic) }.glyph { Palette.ink }, at(39, 39, 30, 30))
         ring.visibility = INVISIBLE
         ring.alpha = 0f
         addView(ring, at(15, 15, Ring.SIZE, Ring.SIZE))
-        face = 0f
-    }
-
-    private fun show(v: View, a: Float) {
-        v.alpha = a
-        val want = if (a > 0f) VISIBLE else INVISIBLE
-        if (v.visibility != want) v.visibility = want
     }
 
     override fun hasOverlappingRendering() = false
@@ -118,7 +93,7 @@ internal class VoiceButton(ctx: Context, onTap: () -> Unit) : FrameLayout(ctx) {
     }
 
     companion object {
-        /** The disc's bitmap: x 186..294, y 502..610, and the screen ends at 600. */
+        /** x 186..294, y 502..610, and the screen ends at 600. */
         const val SIZE = 108
         private const val HIT_L = 18
         private const val HIT_W = 76

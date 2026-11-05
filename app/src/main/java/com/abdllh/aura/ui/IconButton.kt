@@ -3,7 +3,6 @@ package com.abdllh.aura.ui
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.drawable.Drawable
-import android.graphics.drawable.StateListDrawable
 import android.view.MotionEvent
 import android.view.View
 import com.abdllh.aura.R
@@ -11,12 +10,12 @@ import com.abdllh.aura.R
 /**
  * The one icon button (SPEC.md section 5), one view with no children: a glyph of [glyphPx] centred in a hit area of [hitW] x
  * [hitH]. Mirrors by the icon's own autoMirrored, a call site never flips it.
- *  - [Kind.BARE]: the glyph alone. [pressPlate]: a dock cell, which shows `fillPress` at once when pressed, so a press reads in sun.
+ *  - [Kind.BARE]: the glyph alone.
  *  - [Kind.TONAL]: on a plate, `fill2` unless [plateToken] says otherwise (the mini's 56 plate is `fill`).
  *  - [Kind.PILL]: on the `pill` 9-patch; the view is the hit grown by the outset, and the hit is the visible rect ([Surface.at]).
  *  - [Kind.ACTIVE]: on the solid `selected` plate with its 1 px edge, glyph `selectedInk`.
  * A plate is [plateW] x [plateH] with visual radius [plateRadius], centred in the hit; [centerDx] and [centerDy] move glyph and plate off
- * the hit's middle (a dock cell's hit runs to the screen's edge, its glyph sits on the row's centre). [active] turns any of them
+ * the hit's middle (the volume's hits run to the screen's edge, their glyphs sit on the row's centre). [active] turns any of them
  * ACTIVE and back. [token] is the glyph's colour when not active: `icon` by default. Disabled: alpha 0.4, no press.
  */
 class IconButton @JvmOverloads constructor(
@@ -32,7 +31,6 @@ class IconButton @JvmOverloads constructor(
     plateRadius: Int = Tokens2.R_inner,
     plateToken: () -> Int = { if (kind == Kind.TONAL) Palette.fill2 else Palette.fill },
     private val centerDy: Int = 0,
-    pressPlate: Boolean = false,
     private val centerDx: Int = 0,
     private var token: () -> Int = { Palette.icon }
 ) : View(ctx), Recolours {
@@ -44,8 +42,6 @@ class IconButton @JvmOverloads constructor(
     private val plate: Tint? = if (kind == Kind.TONAL) Tint(ctx, Plates.res(plateRadius), plateToken) else null
     private var selected: Tint? = null
     private var edge: Tint? = null
-    private val pressTint: Tint? = if (pressPlate) Tint(ctx, R.drawable.plate_18) { Palette.fillPress } else null
-    private val pressed: StateListDrawable? = pressTint?.let { PressGesture.plate(it.drawable).also { d -> d.callback = this } }
 
     /** Shows it selected: the solid plate, the white glyph. */
     var active = kind == Kind.ACTIVE
@@ -53,15 +49,6 @@ class IconButton @JvmOverloads constructor(
             if (v == field) return
             field = v
             needSelected()
-            tintGlyph()
-            invalidate()
-        }
-
-    /** How much of the plate sliding along the dock lies over it, 0 to 1: the glyph goes from its own colour to `selectedInk` by as much, a redraw of this one view. */
-    var coverage = 0f
-        set(v) {
-            if (v == field) return
-            field = v
             tintGlyph()
             invalidate()
         }
@@ -98,13 +85,12 @@ class IconButton @JvmOverloads constructor(
         invalidate()
     }
 
-    private fun tintGlyph() = glyph.setTint(if (active) Palette.selectedInk else if (coverage > 0f) Palette.mix(token(), Palette.selectedInk, coverage) else token())
+    private fun tintGlyph() = glyph.setTint(if (active) Palette.selectedInk else token())
 
     override fun onLook() {
         plate?.recolour()
         selected?.recolour()
         edge?.recolour()
-        pressTint?.recolour()
         (background as? SurfaceBackground)?.recolour()
         tintGlyph()
         invalidate()
@@ -124,17 +110,7 @@ class IconButton @JvmOverloads constructor(
         invalidate()
     }
 
-    override fun verifyDrawable(who: Drawable): Boolean = who === glyph || who === pressed || super.verifyDrawable(who)
-
-    override fun drawableStateChanged() {
-        super.drawableStateChanged()
-        pressed?.state = drawableState
-    }
-
-    override fun jumpDrawablesToCurrentState() {
-        super.jumpDrawablesToCurrentState()
-        pressed?.jumpToCurrentState()
-    }
+    override fun verifyDrawable(who: Drawable): Boolean = who === glyph || super.verifyDrawable(who)
 
     override fun onDraw(c: Canvas) {
         val cx = width / 2 + centerDx
@@ -151,11 +127,6 @@ class IconButton @JvmOverloads constructor(
             e.bounds = s.bounds
             s.draw(c)
             e.draw(c)
-        }
-        // (not over the sliding plate: that is what a press on the selected cell would lighten)
-        if (coverage < 0.5f) pressed?.let {
-            it.setBounds(cx - SELECTED_W / 2, cy - SELECTED_H / 2, cx + SELECTED_W / 2, cy + SELECTED_H / 2)
-            it.draw(c)
         }
         val half = glyphPx / 2
         glyph.setBounds(cx - half, cy - half, cx - half + glyphPx, cy - half + glyphPx)
@@ -177,7 +148,7 @@ class IconButton @JvmOverloads constructor(
     }
 
     private companion object {
-        /** The selected plate, and a dock cell's press plate: section 1. */
+        /** The selected plate: section 1. */
         const val SELECTED_W = 64
         const val SELECTED_H = 60
     }

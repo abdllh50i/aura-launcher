@@ -28,12 +28,12 @@ import com.abdllh.aura.ui.look
 /**
  * The status strip, 1024 x 40 (CHANGES.md section 1): what is linked at the left, then the speed when no speed card shows; the time at the right, on every panel but Home, whose clock is its own. A car that
  * really reports its gear ([Gear.canReports]; his does not) has a badge after the icons, and the speed moves over. All in their places from the start and never laid out again; a label's text changes
- * inside a fixed box. [timeShown] is the time's alpha, which [Chrome] moves.
+ * inside a fixed box. [Chrome] fades [time] and [speed].
  */
 internal class Strip(ctx: Context, onControls: () -> Unit, onNight: () -> Unit) : FrameLayout(ctx) {
     private val status = StatusIcons(ctx, onControls, onNight)
     private val badge = GearBadge(ctx)
-    private val time: AText = ctx.label(Type.stripTime, { Palette.ink }).apply {
+    val time: AText = ctx.label(Type.stripTime, { Palette.ink }).apply {
         gravity = Gravity.RIGHT or Gravity.TOP
         textAlignment = TEXT_ALIGNMENT_GRAVITY
     }
@@ -45,14 +45,6 @@ internal class Strip(ctx: Context, onControls: () -> Unit, onNight: () -> Unit) 
         addView(speed, at(AFTER_ICONS, 2, 320, 36))
         addView(time, Type.stripTime.box(TIME_RIGHT - TIME_W, 0, TIME_W))
     }
-
-    var timeShown = 0f
-        set(v) {
-            field = v
-            time.alpha = v
-            val want = if (v > 0f) VISIBLE else INVISIBLE
-            if (time.visibility != want) time.visibility = want
-        }
 
     fun setStatus(gps: Boolean, wifi: Boolean, phone: Boolean) = status.set(gps, wifi, phone)
 

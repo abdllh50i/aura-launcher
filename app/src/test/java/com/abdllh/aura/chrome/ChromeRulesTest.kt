@@ -7,17 +7,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ChromeRulesTest {
-    @Test fun theMiniOnEveryScreenWithASong() {
-        for (p in listOf(Screens.HOME, Screens.MAPS, Screens.PHONE, Screens.APPS, Screens.SETTINGS)) {
-            assertTrue(p, ChromeRules.mini(p, song = true, musicLies = false))
-            assertFalse("$p, no song", ChromeRules.mini(p, song = false, musicLies = false))
-        }
+    @Test fun sixTilesEvenlyInTheCapsule() {
+        val x = (0 until 6).map { ChromeRules.tileX(it) }
+        assertEquals(listOf(352, 471, 590, 710, 829, 948), x)
+        for (i in 1 until x.size) assertTrue("pitch ${x[i] - x[i - 1]}", x[i] - x[i - 1] in 119..120)
+        assertEquals("centred in x 292..1008", 650 * 2, x.first() + x.last())
     }
 
-    @Test fun onTheMusicPanelOnlyWhenItLiesCollapsed() {
-        assertFalse("in full: the song is the whole screen", ChromeRules.mini(Screens.MUSIC, song = true, musicLies = false))
-        assertTrue("lying over the map", ChromeRules.mini(Screens.MUSIC, song = true, musicLies = true))
-        assertFalse("no song", ChromeRules.mini(Screens.MUSIC, song = false, musicLies = true))
+    @Test fun theSongCardOnMapsOnly() {
+        assertTrue(ChromeRules.songCard(Screens.MAPS, true))
+        assertFalse("no song", ChromeRules.songCard(Screens.MAPS, false))
+        for (p in listOf(Screens.HOME, Screens.MUSIC, Screens.PHONE, Screens.APPS, Screens.SETTINGS)) assertFalse(p, ChromeRules.songCard(p, true))
     }
 
     @Test fun stripSpeedByTheTable() {
@@ -34,13 +34,5 @@ class ChromeRulesTest {
             assertTrue(p, ChromeRules.stripSpeed(p, true, false, false))
             assertFalse("$p beside the column", ChromeRules.stripSpeed(p, true, true, false))
         }
-    }
-
-    @Test fun coverageOfAGlyphByThePlate() {
-        assertEquals(1f, ChromeRules.coverage(408f, 408f), 0f)
-        assertEquals(1f, ChromeRules.coverage(408f, 421f), 0f) // (the glyph is still inside the plate)
-        assertEquals(0f, ChromeRules.coverage(408f, 488f), 0f) // (the next cell)
-        assertEquals(0f, ChromeRules.coverage(408f, 328f), 0f)
-        assertEquals(0.5f, ChromeRules.coverage(408f, 440f), 0f)
     }
 }

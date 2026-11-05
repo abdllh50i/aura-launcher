@@ -43,11 +43,12 @@ import java.util.concurrent.Executors
 /**
  * Aura's own volume display, in place of the stock floating bar (com.android.launcher/com.launcher.FloatBar).
  *
- * The stock bar pops up for every volume report of the firmware's setting service, Aura's own screen changes
- * included. Aura's shows only for changes Aura did not make: the steering-wheel, panel and CAN buttons (the firmware
- * announces each of those first with com.nwd.action.ACTION_KEY_VALUE 14 up / 15 down / 2 mute), a knob, another
- * app; a change from Aura's own screen ([CarAudio.changedByAura]) shows nothing. Navigation (15) and phone-call (16)
- * levels show while a button was just pressed.
+ * It shows for every change of the volume, on every screen and over any app, whoever made it: the steering-wheel, panel and
+ * CAN buttons (the firmware announces each of those first with com.nwd.action.ACTION_KEY_VALUE 14 up / 15 down / 2 mute),
+ * a knob, voice, another app, the row's own + and -. All of it arrives through [CarAudio]'s listeners (the firmware's
+ * notifyAudioParam and its mcu_system_volume setting). A mute shows when somebody asked for it (a key, Aura itself): the
+ * firmware's mcu_mute_state may also move by itself, and the row's number says it anyway. Navigation (15) and phone-call
+ * (16) levels show while a button was just pressed.
  *
  * The stock bar is turned off by disabling its service component through the unit's root shell (once; it stays off
  * across restarts) — only when Aura may draw over other apps, which the same shell allows; otherwise the stock bar
@@ -134,9 +135,8 @@ object VolumeHud {
         val m = CarAudio.muted()
         if (v != lastVolume || m != lastMute) {
             val now = SystemClock.elapsedRealtime()
-            val byKey = now - keyAt < KEY_WINDOW_MS
-            val fromScreen = CarAudio.changedByAura()
-            if (enabled && (byKey || (!fromScreen && now - startedAt > QUIET_AFTER_START_MS))) show(Kind.MEDIA, v, m)
+            val asked = now - keyAt < KEY_WINDOW_MS || CarAudio.changedByAura()
+            if (enabled && (asked || (v != lastVolume && now - startedAt > QUIET_AFTER_START_MS))) show(Kind.MEDIA, v, m)
             lastVolume = v
             lastMute = m
         }
@@ -217,8 +217,6 @@ object VolumeHud {
     private fun show(kind: Kind, value: Int, muted: Boolean) {
         val c = app ?: return
         if (auraOff() || !Settings.canDrawOverlays(c)) return
-        // (the row is on screen and shows it itself, with no overlay over what he is handling: SPEC.md, "Volume")
-        if (kind == Kind.MEDIA && com.abdllh.aura.chrome.Chrome.rowOnScreen()) return
         var v = hud
         if (v == null || v.lang != Prefs.lang) {
             v?.window?.remove() // (the language changed: built again)
@@ -235,12 +233,12 @@ object VolumeHud {
     private val hide = Runnable { val v = hud; v?.leave { if (hud === v) v?.window?.remove() } }
 
     /**
-     * Over another app, where there is no row: 364 x 80 at (16, 424), the speaker, a level bar and the car's own step number (the one its buttons and the dock show), left to right in every
-     * language, not touchable (SPEC.md section 5). A window of its own with room for the shadow, cut at the screen's left edge.
+     * A floating pill 264 x 64, centred on the screen above the row, x 380..644, y 440..504, so it hides neither the driver's column nor the row: the speaker, a level bar and the car's own step number (the one
+     * its buttons and the row show), left to right in every language, not touchable. While the voice card lies there it stands above it, y 352..416. A window of its own with room for the shadow.
      */
     private class HudView(c: android.content.Context) {
         val lang = Prefs.lang
-        val window = OverlayWindow(c, "AuraVolume", 0, 380, 424, 168, touchable = false)
+        val window = OverlayWindow(c, "AuraVolume", WINDOW_X, WINDOW_Y, CARD_W + 2 * Surface.OVERLAY.outset, WINDOW_H, touchable = false)
         private val card = FrameLayout(c)
         private val icon = ImageView(c).apply { scaleType = ImageView.ScaleType.FIT_CENTER }
         private val bar = Bar(c)
@@ -250,18 +248,19 @@ object VolumeHud {
         private var leaving = false
 
         init {
-            card.addView(SurfaceCard(c, Surface.OVERLAY), Surface.OVERLAY.at(CARD_X, CARD_Y, 364, 80))
-            card.addView(icon, at(CARD_X + 18, CARD_Y + 25, 30, 30))
-            card.addView(bar, at(CARD_X + 62, CARD_Y + 37, Bar.W, Bar.H))
+            card.addView(SurfaceCard(c, Surface.OVERLAY), Surface.OVERLAY.at(CARD_X, CARD_Y, CARD_W, CARD_H))
+            card.addView(icon, at(CARD_X + 16, CARD_Y + 17, 30, 30))
+            card.addView(bar, at(CARD_X + 58, CARD_Y + 28, Bar.W, Bar.H))
             value.textDirection = View.TEXT_DIRECTION_LTR
-            card.addView(value, Type.hudNum.box(CARD_X + 296, CARD_Y + 18, 56))
-            card.addView(word, Type.button.box(CARD_X + 296, CARD_Y + 24, 56))
-            window.root.addView(card, FrameLayout.LayoutParams(420, 168))
+            card.addView(value, Type.hudNum.box(CARD_X + 206, CARD_Y + 10, 50))
+            card.addView(word, Type.button.box(CARD_X + 200, CARD_Y + 16, 60))
+            window.root.addView(card, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
             icon.look { setColorFilter(if (iconMuted) Palette.ink3 else Palette.ink) }
         }
 
         fun bind(kind: Kind, level: Int, max: Int, muted: Boolean) {
             window.syncLook()
+            window.root.translationY = if (com.abdllh.aura.voice.AmriOverlay.showing) ABOVE_VOICE else 0f
             val m = max.coerceAtLeast(1)
             val f = level.coerceIn(0, m).toFloat() / m
             icon.setImageResource(when {
@@ -306,15 +305,22 @@ object VolumeHud {
         }
 
         companion object {
-            /** Where the visible card begins in this window: x 16, y 424 on the screen. */
-            const val CARD_X = 16
-            const val CARD_Y = 44
+            const val CARD_W = 264
+            const val CARD_H = 64
+            private const val SHADOW = 44 // (Surface.OVERLAY.outset)
+            /** Where the visible card begins in this window: x 380, y 440 on the screen, with room above it for its place over the voice card. */
+            const val WINDOW_X = 380 - SHADOW
+            const val CARD_X = SHADOW
+            const val WINDOW_Y = 352 - SHADOW
+            const val CARD_Y = 440 - WINDOW_Y
+            const val WINDOW_H = CARD_Y + CARD_H + SHADOW
+            const val ABOVE_VOICE = -88f
             const val ENTER_DY = 12f
         }
     }
 
     /**
-     * The level, 226 x 6, always filled from the left, gliding between steps on a spring that keeps its speed through the repeats of a held button.
+     * The level, 140 x 8, always filled from the left, gliding between steps on a spring that keeps its speed through the repeats of a held button.
      */
     private class Bar(c: android.content.Context) : View(c), Recolours {
         var dim = false
@@ -352,8 +358,8 @@ object VolumeHud {
         }
 
         companion object {
-            const val W = 226
-            const val H = 6
+            const val W = 140
+            const val H = 8
         }
     }
 }
