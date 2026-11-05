@@ -534,7 +534,7 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
             val app = c.applicationContext
             Thread({
                 try {
-                    for (stem in arrayOf("cap-left", "cap-dock", "cap-chip", "dock")) Surfaces.themed(app, stem)
+                    for (stem in arrayOf("cap-left", "cap-dock", "cap-chip", "dock", "wall-hole", "wall-gl", "wall")) Surfaces.themed(app, stem)
                     Logo.prepare(app)
                     Prayer.next()
                 } catch (t: Throwable) {

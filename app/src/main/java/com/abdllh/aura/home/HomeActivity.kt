@@ -178,7 +178,11 @@ class HomeActivity : Activity() {
         if (!::panels.isInitialized) return
         // (the Home key's intent names no panel: Home. Not setIntent: the one a recreate reads stays the first)
         val name = Screens.panelIn(intent)
-        panels.show(name ?: Screens.HOME, if (name == null) null else intent.extras)
+        val args = if (name == null) null else intent.extras
+        // Android 10 hands a resumed activity its new intent inside a pause of 10 ms: a panel changed right here has no move, a cut. After that same message the window is resumed again, and if it is
+        // not (something else is on top) the stack does what it did here
+        if (startedNow && !resumedNow) root.post { if (!isDestroyed) panels.show(name ?: Screens.HOME, args) }
+        else panels.show(name ?: Screens.HOME, args)
     }
 
     @Deprecated("launcher: back does nothing on the home screen")

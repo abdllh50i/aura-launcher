@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_chip_home">البيت</string>
+    <string name="home_chip_work">الدوام</string>
+    <string name="home_end">إنهاء</string>
+    <string name="home_undo">رجّعها</string>
+    <string name="home_trip_ended">انتهت الرحلة</string>
+    <string name="home_bt_lost">انقطع البلوتوث</string>
+    <string name="home_choose_source">اختر من وين تسمع</string>
+    <string name="home_src_naghm">من نغم</string>
+    <string name="home_src_naghm_short">نغم</string>
+    <string name="home_src_bt_short">بلوتوث</string>
+    <string name="home_src_usb">USB</string>
+</resources>

@@ -56,6 +56,13 @@ abstract class Panel(val shell: HomeActivity, val name: String) : ContextWrapper
      */
     open val besideColumn: Boolean get() = false
 
+    /**
+     * Its cover, where Home's cover flies to and from it (SPEC.md section 9): one bitmap on one layer, this view hidden until it lands, and at the same rect in the end. It is rounded by [flightRadius]. Null: no flight, the panel simply fades.
+     */
+    open val flightCover: View? get() = null
+
+    open val flightRadius: Int get() = com.abdllh.aura.ui.Tokens2.R_coverBig
+
     /** A trip began or ended while this panel is on top ([besideColumn]: from its room to its card, and back). */
     open fun onTrip(on: Boolean) {}
 
@@ -103,6 +110,9 @@ abstract class Panel(val shell: HomeActivity, val name: String) : ContextWrapper
     open fun onLook() {}
 
     open fun onTrimMemory(level: Int) {}
+
+    /** The stack has come to rest, from wherever a move stopped: what the panel moved itself goes to where it is at rest. [top]: it is what shows. */
+    open fun onSettle(top: Boolean) {}
 
     /** Off the stack and not kept, or the window is ending: everything it holds goes. */
     open fun onDestroy() {}

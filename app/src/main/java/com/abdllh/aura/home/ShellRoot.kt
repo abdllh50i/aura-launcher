@@ -134,7 +134,7 @@ class MapHost(ctx: Context, private val shell: ShellRoot) : FrameLayout(ctx) {
  * keep their transforms to themselves. Only the top panel takes touches: one that is leaving hands the screen back at
  * once, as [Sheet] does, and a touch that began on it hears it end. A solid panel lets nothing through to what is under it.
  */
-internal class PanelFrame(ctx: Context, private val shell: ShellRoot, private val panel: Panel) : FrameLayout(ctx) {
+internal class PanelFrame(ctx: Context, private val shell: ShellRoot, val panel: Panel) : FrameLayout(ctx) {
     private var touching = false
 
     var live = true
