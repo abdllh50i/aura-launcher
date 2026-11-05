@@ -361,7 +361,7 @@ internal object Backdrop {
 
     /** A song with no cover, at any size: a `fill2` plate at the cover's rect with the `music` glyph in `ink2`, at 45 % of its size unless told [glyphPx] (at 400, 150). */
     fun noArt(ctx: Context, size: Int, radius: Int, glyphPx: Int = size * 45 / 100): Drawable {
-        val plate = Tint(ctx, Plates.res(radius)) { Palette.fill2 }
+        val plate = Tint(ctx, Plates.res(radius)) { Palette.card3 }
         val glyph = Tint(ctx, R.drawable.ic_music) { Palette.ink2 }
         val inset = (size - glyphPx) / 2
         return LayerDrawable(arrayOf(plate.drawable, InsetDrawable(glyph.drawable, inset)))

@@ -1919,7 +1919,7 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         listHolder.addView(gridView, flp(MATCH, MATCH))
         listFade = scrollFade(Surface.CARD, top = false)
         listHolder.addView(listFade, flp(MATCH, 28, Gravity.BOTTOM))
-        library.addView(listHolder, at(8, 72, 568, 384))
+        library.addView(listHolder, at(8, 72, 568, 376)) // (the bottom fade stands clear of the card's round corners)
 
         empty = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; visibility = View.GONE }
         emptyText = label(Type.stateTitle, { Palette.ink }, lines = 3, gravity = Gravity.CENTER)
