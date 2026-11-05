@@ -304,6 +304,7 @@ class MapsPanel(shell: HomeActivity) : Panel(shell, Screens.MAPS) {
         builtDark = Palette.dark
         builtAccent = Prefs.accent
         root.addView(columnLayer, MATCH, MATCH)
+        root.addView(com.abdllh.aura.music.LyricChip(this), com.abdllh.aura.music.LyricChip.place())
         root.addView(browseLayer, MATCH, MATCH)
         root.addView(toolsLayer, MATCH, MATCH)
         for (p in parts) p.build()

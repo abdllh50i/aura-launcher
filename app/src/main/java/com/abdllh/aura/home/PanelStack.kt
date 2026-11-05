@@ -350,7 +350,7 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
 
     // ------------------------------------------------------------------------------------------ beside the column, on a trip
     private fun besideFor(t: Panel): Panel? =
-        if (tripOn && t.besideColumn && t.name != Screens.MAPS) built[Screens.MAPS] ?: make(Screens.MAPS) else null
+        if ((t.overMaps || tripOn && t.besideColumn) && t.name != Screens.MAPS) built[Screens.MAPS] ?: make(Screens.MAPS) else null
 
     /** Maps under the panels from now on, drawn and taking the touches they leave (End, pause, next; the map under it), or not. Only alpha and order: no layout of its own. */
     private fun setBeside(want: Panel?) {
@@ -364,11 +364,19 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
         }
         if (want == null) return
         val f = want.frame
+        com.abdllh.aura.ui.Look.catchUp(f) // (a theme changed while it was hidden: this way back is not [arrive]'s)
         f.visibility = View.VISIBLE
         f.live = true
         val layer = root.panelLayer
         if (layer.getChildAt(0) !== f) for (c in List(layer.childCount) { layer.getChildAt(it) }) if (c !== f) c.bringToFront()
         call(want, "onBeside") { want.onBeside(true) }
+    }
+
+    /** The top panel [p] says it is another thing now ([Panel.opaque], [Panel.overMaps]): the map and what lies under it follow, at once. */
+    fun panelChanged(p: Panel) {
+        if (p !== top || leaving != null) return
+        setBeside(besideFor(p))
+        root.mapHost.covered = p.opaque
     }
 
     private fun tripChanged() {

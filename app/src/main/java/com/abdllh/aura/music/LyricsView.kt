@@ -4,6 +4,7 @@ import android.animation.TimeInterpolator
 import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.os.Build
@@ -12,22 +13,23 @@ import android.text.PrecomputedText
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.TextView
 import com.abdllh.aura.R
 import com.abdllh.aura.ui.ABtn
 import com.abdllh.aura.ui.AText
-import com.abdllh.aura.ui.Elev
 import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
-import com.abdllh.aura.ui.Radius
-import com.abdllh.aura.ui.Shapes
-import com.abdllh.aura.ui.Space
+import com.abdllh.aura.ui.Recolours
 import com.abdllh.aura.ui.Spring
+import com.abdllh.aura.ui.Tint
+import com.abdllh.aura.ui.Tokens2
 import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.WRAP
 import com.abdllh.aura.ui.enter
@@ -36,60 +38,64 @@ import com.abdllh.aura.ui.fadeTo
 import com.abdllh.aura.ui.flp
 import com.abdllh.aura.ui.iconView
 import com.abdllh.aura.ui.label
-import com.abdllh.aura.ui.lift
 import com.abdllh.aura.ui.lp
-import com.abdllh.aura.util.dp
 import java.util.concurrent.Executors
 import kotlin.math.roundToInt
 
 /**
- * The song's lyrics on the music screen. Timed lyrics: the line being sung is lit and glides to the middle, the others
- * dimmed and a little smaller (a few seconds after the owner scrolls by hand, it follows the song again); a tapped
- * line is where the song goes ([onLineTap]: the unit's own songs jump there, Bluetooth ones set their clock — the
- * phone does not say where a song is, see [BtMusic]). [needSync]: the song's position is unknown, so nothing is lit
- * and a hint asks for that tap. Untimed: just the text.
+ * The song's lyrics on the Music panel (SPEC.md section 5, "Lyrics"; parked only). Five lines in the column at the reading edge: past ones `lyricPast`, coming
+ * ones `lyricDim`, the line being sung `lyricLit` in the larger role, keeping its slot, the third, while the list goes by on spring 110/1. A tapped line is where
+ * the song goes ([onLineTap]), a line held is [onLineHold]. [needSync]: the song's position is unknown, nothing is lit and the lines are text to tap. Untimed: just
+ * the text. [big]: the full lyrics, the same with their own roles and rects; the panel keeps one of each, fed alike, and the one out of sight follows the song
+ * without moving anything, so it is in place the moment it is shown.
  *
- * [big]: the lyrics alone on the whole screen, in large type. The music screen keeps one of each, fed alike; the one
- * out of sight follows the song without moving anything (no animation runs where nobody looks), so it is in place
- * the moment it is shown.
+ * Every line is laid out once, at the larger role, and shown at the smaller by a transform: nothing is measured when a line lights, its rows do not break anew under
+ * the eye, and a line that wraps in the column wraps the same when it is sung. Only alpha and transforms move, on a layer for those whose scale changes. Lines outside the
+ * five have alpha 0, so they come and go by their own colour and nothing is cut at an edge (the fading edge of 1.x went); a hand on the list brings them all back until
+ * the list follows again, 4 s later.
  *
- * New lyrics become lines without stopping the screen (1.12): their text is measured on a worker thread
- * ([PrecomputedText]: the Arabic shaping was most of the cost), the lines are made a dozen a frame, and the copy out
- * of sight makes its own only when the screen is idle (or the moment it is shown). Before, both copies made 60–90
- * lines each, with three drawables apiece, in one message on the main thread, right in the middle of the new cover's
- * animation. A tapped line's tint is drawn by the list behind it, not a background per line.
+ * New lyrics become lines without stopping the screen: their text is measured on a worker ([PrecomputedText]), the lines are made a dozen a frame, and the copy out of
+ * sight makes its own only when the screen is idle or the moment it is shown.
  *
- * Word by word (1.15, [wordsOn]): on the line being sung the words already sung are lit, the one being sung stands on
- * a pill of the cover's colour and fills with that colour in its own reading direction, the ones to come stay clearly
- * dimmer ([Line.onDraw]). Only lines whose words' times are real (1.16: a word-timed source or heard by the owner's
- * server, [Words]) are drawn so; the others are lit whole. The song's clock is the one that lights the line ([at]),
- * carried on from its last report between the music screen's ticks.
+ * The word ([wordsOn], only with real word times, [Words]): the word being sung stands on a pill, Canvas round rect of [Tokens2.R_word], in the song's colour, with the
+ * words before it lit and those after it `lyricDim`. No fill runs through the word: a frame only when the word changes, and while the pill's rect goes to the next one
+ * on spring 700/0.85, about 120 ms. Only the line's own view redraws ([Line.onDraw]).
  */
-internal class LyricsView(c: Context, private val big: Boolean = false) : FrameLayout(c) {
+internal class LyricsView(c: Context, private val big: Boolean = false) : FrameLayout(c), Recolours {
+    private val lineRole = if (big) Type.lyricFull else Type.lyric
+    private val nowRole = if (big) Type.lyricFullNow else Type.lyricNow
+    private val gap = if (big) GAP_BIG else GAP
+    /** Where the first line's box lies in this view, and where the line being sung stands below it. */
+    private val firstTop = if (big) FIRST_TOP_BIG else FIRST_TOP
+    private val slot = if (big) SLOT_BIG else SLOT
+    private val lastBottom = if (big) LAST_BOTTOM_BIG else LAST_BOTTOM
+    private val rtlUi = Fonts.arabicUi
+    /** A line at the smaller role is the larger one at this scale. */
+    private val small = lineRole.px.toFloat() / nowRole.px
+    private val rowPitch = nowRole.line + ROW_EXTRA
+    private val ascent = nowRole.px * 1.085f
+    private val smallDy = lineRole.baseline - ascent * small
+
     private val scroll = ScrollView(c).apply {
         isVerticalScrollBarEnabled = false
         overScrollMode = View.OVER_SCROLL_NEVER
-        isVerticalFadingEdgeEnabled = true // the lines fade at the edges instead of being cut
-        // (alone on the screen the fade is short: it would otherwise take a line at each end of the few that fit)
-        setFadingEdgeLength((if (big) 40 else 70).dp)
+        isVerticalFadingEdgeEnabled = false
     }
     private val list = LineList(c)
     private val statusBox: LinearLayout
-    private val status = c.label(if (big) Type.TITLE else Type.BODY, Palette.text2, lines = 3, gravity = Gravity.CENTER)
+    private val status = c.label(if (big) Type.stateTitle else Type.stateBody, { Palette.ink2 }, lines = 2)
     private val retry = ABtn(c).apply { kind = ABtn.Kind.TONAL; setText(R.string.lyrics_retry) }
-    private val hint: LinearLayout
-    private val hintIcon: ImageView
-    /** While the song is listened to for its timing (1.13): a quiet note where the sync hint would be. */
+    /** While the song is listened to for its timing: a quiet note at the column's foot. */
     private val note: LinearLayout
     private val noteIcon: ImageView
     private val noteText: AText
-    private val done: AText
-    private val doneBg = Shapes.pill(Palette.accent)
     private var lines: List<Lyrics.Line> = emptyList()
     private var views: List<Line> = emptyList()
     private var synced = false
     private var current = -1
     private var touchedAt = 0L
+    /** The five lines only: off while a hand is on the list, and until it follows again. */
+    private var windowOn = true
     var onLineTap: ((Lyrics.Line) -> Unit)? = null
     /**
      * A timed line held down (1.15: the music screen offers to forget a saved timing; 1.18: on Naghm's song it measures
@@ -98,7 +104,7 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
     var onLineHold: ((Lyrics.Line) -> Boolean)? = null
 
     // ---- the song's clock for the words (1.15)
-    /** Word by word: the owner's setting (Settings → Display & sound → Music). Off: whole lines, as before 1.15. */
+    /** Word by word: the owner's setting (Settings → Music). Off: whole lines. */
     var wordsOn = true
         set(v) {
             if (v == field) return
@@ -114,30 +120,28 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
     /** Where the song is now, for the words: the last report carried on, never a small step back. */
     fun songNow(): Long {
         var p = if (songPlaying) clockMs + (SystemClock.uptimeMillis() - clockAt) else clockMs
-        // (a tick's report a few ms behind the clock carried on would move the fill's edge back and forth)
+        // (a tick's report a few ms behind the clock carried on would move the word back and forth)
         if (p < drawnMs && p > drawnMs - 250L) p = drawnMs
         drawnMs = p
         return p
     }
 
-    private val dim = if (big) 0.30f else 0.34f   // lines around the one being sung
-    private val small = if (big) 0.92f else 0.95f
-
-    /**
-     * Brings the lit line to the middle. A spring, not an animator restarted at each line: retargeted half way (lines a
-     * few hundred ms apart: a chorus, rap) it keeps its speed instead of stopping and starting again, and it leaves at
-     * once rather than trailing the highlight. About 95 % there in 450 ms, no overshoot.
-     */
+    /** The list goes by on this: retargeted half way it keeps its speed, and it leaves at once rather than trailing the line. */
     private val follow = Spring(0f, 110f, 1f, 0.5f) { scroll.scrollTo(0, it.roundToInt()) }
 
-    /** Unknown position: no line lit, the hint shown (Bluetooth: until a line is tapped or the next song starts). */
+    /** Unknown position: no line lit, all of them there to be read and tapped (Bluetooth: until a line is tapped or the next song starts). */
     var needSync = false
         set(v) {
             if (v == field) return
             field = v
-            showHint()
-            pad()
-            if (v) { for (t in views) { t.karaoke = false; fade(t, IDLE, 1f, 0L, Motion.STANDARD) }; current = -1 }
+            // (the five again, from the top or round the line just tapped: a hand may have let them all out)
+            windowOn = true
+            if (v) {
+                views.getOrNull(current)?.karaoke = false
+                current = -1
+                paint(animate = true)
+                glideTop()
+            }
         }
 
     init {
@@ -147,85 +151,61 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
             touchedAt = SystemClock.elapsedRealtime()
             follow.cancel()
             removeCallbacks(followAgain)
+            if (windowOn && e.actionMasked == MotionEvent.ACTION_MOVE) { windowOn = false; paint(animate = true) }
             // (after a hand scroll the lit line comes back by itself, even through a long stretch without a new line)
             if (e.actionMasked == MotionEvent.ACTION_UP || e.actionMasked == MotionEvent.ACTION_CANCEL) postDelayed(followAgain, FOLLOW_AFTER_TOUCH_MS)
             false
         }
 
-        statusBox = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; visibility = View.GONE }
-        statusBox.addView(c.iconView(R.drawable.ic_lyrics, 40, Palette.text3), lp(40.dp, 40.dp))
-        statusBox.addView(status, lp(MATCH, WRAP).apply { topMargin = Space.M.dp })
-        statusBox.addView(retry, lp(WRAP, WRAP).apply { topMargin = Space.L.dp })
-        addView(statusBox, flp(MATCH, WRAP, Gravity.CENTER).apply { setMargins(28.dp, 0, 28.dp, 0) })
+        statusBox = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.START; visibility = View.GONE }
+        status.alignStart = true
+        statusBox.addView(status, lp(MATCH, WRAP))
+        statusBox.addView(retry, lp(WRAP, ABtn.Size.M.height).apply { topMargin = 12 })
+        addView(statusBox, flp(MATCH, WRAP, Gravity.TOP).apply { setMargins(SIDE, firstTop + STATUS_DY, SIDE, 0) })
 
-        hintIcon = c.iconView(R.drawable.ic_lyrics, 22, Palette.accentFg)
-        hint = LinearLayout(c).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPaddingRelative(Space.L.dp, Space.S.dp, Space.L.dp, Space.S.dp)
-            minimumHeight = 44.dp
-            background = Shapes.pill(Palette.withAlpha(Palette.card, if (Palette.dark) 0.9f else 0.95f), if (Palette.dark) Palette.stroke else 0)
-            lift(Elev.FLOAT)
-            visibility = View.GONE
-            addView(hintIcon, lp(22.dp, 22.dp))
-            addView(c.label(Type.BUTTON, Palette.text, lines = 2).apply { setText(R.string.lyrics_tap_sync) },
-                lp(WRAP, WRAP).apply { marginStart = Space.S.dp })
-        }
-        // (clear of the corner buttons the music screen puts over the lyrics)
-        addView(hint, flp(WRAP, WRAP, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { setMargins(72.dp, Space.M.dp, 72.dp, 0) })
-        // the first lines start below the hint once it is measured (out of the layout pass that measured it)
-        hint.addOnLayoutChangeListener { _, _, t, _, b, _, ot, _, ob -> if (b - t != ob - ot) post { pad() } }
-        noteIcon = c.iconView(R.drawable.ic_mic, 18, Palette.accentFg)
-        noteText = c.label(Type.FOOTNOTE, Palette.text2, lines = 1)
+        noteIcon = c.iconView(R.drawable.ic_mic, 24) { Palette.ink3 }
+        noteText = c.label(Type.rowHint, { Palette.ink3 })
         note = LinearLayout(c).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPaddingRelative(Space.M.dp, Space.XS.dp, Space.M.dp, Space.XS.dp)
-            minimumHeight = 32.dp
-            background = Shapes.pill(Palette.withAlpha(Palette.card, if (Palette.dark) 0.85f else 0.92f), if (Palette.dark) Palette.stroke else 0)
             visibility = View.GONE
-            addView(noteIcon, lp(18.dp, 18.dp))
-            addView(noteText, lp(WRAP, WRAP).apply { marginStart = Space.XS.dp })
+            addView(noteIcon, lp(24, 24))
+            addView(noteText, lp(WRAP, Type.rowHint.viewH).apply { marginStart = 8 })
         }
-        // (where the sync hint is: listening needs a known position, so the two never show together)
-        addView(note, flp(WRAP, WRAP, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { setMargins(72.dp, Space.M.dp, 72.dp, 0) })
-        done = c.label(Type.BUTTON, Palette.onColor(Palette.accent), gravity = Gravity.CENTER).apply {
-            setText(R.string.lyrics_synced)
-            background = doneBg
-            setPadding(Space.L.dp, Space.S.dp, Space.L.dp, Space.S.dp)
-            alpha = 0f
-        }
-        addView(done, flp(WRAP, WRAP, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = Space.L.dp })
+        addView(note, flp(WRAP, WRAP, Gravity.BOTTOM or Gravity.START).apply { setMargins(SIDE, 0, SIDE, NOTE_BOTTOM) })
     }
 
-    /** The cover's colour, as the rest of the screen has it: the hint's icon and the "synced" note. */
-    fun accent(fill: Int, text: Int) {
-        hintIcon.setColorFilter(text)
-        noteIcon.setColorFilter(text)
-        doneBg.setColor(fill)
-        done.setTextColor(Palette.onColor(fill))
-        // (1.16: the word being sung is drawn in the cover's colour, on a pill of it)
-        wordFill = fill
-        wordText = text
+    /** The song's colours for the word on its pill. */
+    fun wordColours(pill: Int, ink: Int) {
+        wordFill = pill
+        wordInk = ink
         views.getOrNull(current)?.let { if (it.karaoke) it.invalidate() }
     }
 
-    /** The cover's colours for the word being sung ([accent]): the pill behind it, and its lit part. */
-    private var wordFill = Palette.accent
-    private var wordText = Palette.accent
+    private var wordFill = Palette.wordPill
+    private var wordInk = Palette.wordPillInk
+
+    /** Being sung, its word moving on the pill: the seek's tick waits (SPEC.md section 4: a tick on the left and a pill on the right would redraw the whole panel). */
+    val pillMoving: Boolean get() = views.getOrNull(current)?.moving == true
 
     private var noteShown = false
 
     /**
      * The timing by listening at work ([text]: what it does, with how much is timed; [icon]: the microphone while it
-     * listens), or nothing (null). It comes and goes like the hint; a new text replaces the old in place.
+     * listens), or nothing (null). It comes and goes; a new text replaces the old in place.
      */
     fun note(text: CharSequence?, icon: Int = R.drawable.ic_mic) {
         val want = text != null
         if (want) { noteText.text = text; noteIcon.setImageResource(icon) }
         if (want == noteShown) return
         noteShown = want
-        if (want) note.enter(dy = -8f) else note.exit(dy = -6f) { if (!noteShown) note.visibility = View.GONE }
+        if (want) note.enter(dy = 6f) else note.exit(dy = 4f) { if (!noteShown) note.visibility = View.GONE }
+    }
+
+    override fun onLook() {
+        for (v in views) v.setTextColor(Palette.lyricLit)
+        for (v in views) v.colourNote()
+        paint(animate = false)
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -233,28 +213,17 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
         pad()
     }
 
-    /**
-     * Room above the first line and below the last, so that either can stand in the middle. Lines to be read, not
-     * followed (untimed ones, or timed ones waiting for the owner's tap), start near the top instead: the whole screen
-     * of lyrics showed two and a half lines under 40 % of nothing exactly when one had to be found and tapped.
-     */
+    /** Room above the first line and below the last, so that the last can stand in the slot. */
     private fun pad() {
         val h = height
         if (h == 0) return
-        val side = (if (big) 56 else 24).dp
-        val top = when {
-            synced && !needSync -> (h * (if (big) 0.30f else 0.38f)).toInt()
-            // (below the hint, which takes two lines in Arabic: before it is measured, room for one)
-            needSync -> maxOf((h * 0.08f).toInt(), if (hint.height > 0) hint.bottom + Space.S.dp else 64.dp)
-            else -> (h * 0.08f).toInt()
-        }
-        val bottom = (h * 0.5f).toInt()
-        if (list.paddingTop == top && list.paddingBottom == bottom && list.paddingLeft == side) return
-        list.setPadding(side, top, side, bottom)
-        centerOnLayout = true // (the lit line stays where it was, in the middle)
+        val bottom = (h - firstTop - slot).coerceAtLeast(0)
+        if (list.paddingTop == firstTop && list.paddingBottom == bottom) return
+        list.setPadding(0, firstTop, 0, bottom)
+        centerOnLayout = true
     }
 
-    /** A message instead of lyrics (looking, none, no internet...); [onRetry]: a button that asks again. */
+    /** A message instead of lyrics (looking, none, no internet...), at the top line's place; [onRetry]: a button that asks again. */
     fun showStatus(text: String, onRetry: (() -> Unit)? = null) {
         drop()
         lines = emptyList(); views = emptyList(); current = -1
@@ -262,17 +231,16 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
         status.text = text
         retry.visibility = if (onRetry != null) View.VISIBLE else View.GONE
         retry.setOnClickListener { onRetry?.invoke() }
-        if (statusBox.visibility != View.VISIBLE || statusBox.alpha < 1f) {
-            if (statusBox.visibility != View.VISIBLE) statusBox.alpha = 0f
-            statusBox.visibility = View.VISIBLE
-            if (isShown) statusBox.fadeTo(1f, Motion.MEDIUM) else { statusBox.animate().cancel(); statusBox.alpha = 1f }
-        }
+        // (a step back may be on its way, [dim]: it is turned round from where it is)
+        statusBox.animate().cancel()
+        if (statusBox.visibility != View.VISIBLE) statusBox.alpha = 0f
+        statusBox.visibility = View.VISIBLE
+        if (isShown) statusBox.fadeTo(1f, Motion.SHORT) else statusBox.alpha = 1f
         scroll.visibility = View.GONE
-        showHint()
     }
 
     /**
-     * Another song is being looked up: what shows steps back, still there, until the answer replaces it — instead of a
+     * Another song is being looked up: what shows steps back, still there, until the answer replaces it, instead of a
      * "looking" line flashing between two songs that both have lyrics (the cached answer comes a moment later). Its
      * lines no longer follow the song or take taps (they are the song before's).
      */
@@ -294,12 +262,11 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
     private var made = ArrayList<Line>()
     /** Counts the lyrics shown: a measuring that comes back for lyrics already replaced is dropped. */
     private var gen = 0
-    /** The lit line goes to the middle at the next layout (the lines were just added, or the room around them changed). */
+    /** The lit line goes to its slot at the next layout (the lines were just added, or the room around them changed). */
     private var centerOnLayout = false
 
     private fun drop() {
         gen++
-        shiftOnLayout = 0
         pending = null; texts = null; times = null; made = ArrayList()
         removeCallbacks(buildStep); removeCallbacks(idleBuild)
         follow.cancel()
@@ -311,11 +278,12 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
         lines = r.lines
         synced = r.synced
         current = -1
+        windowOn = true
         views = emptyList() // (what shows stays until the new lines are made: see attach)
         pending = r
         pad()
-        val plain = r.lines.map { it.text.ifBlank { "♪" } }
-        val params = if (Build.VERSION.SDK_INT >= 28) template(r.synced).textMetricsParams else null
+        val plain = r.lines.map { it.text.ifBlank { BLANK } }
+        val params = if (Build.VERSION.SDK_INT >= 28) template().textMetricsParams else null
         worker.execute {
             val out: List<CharSequence> = if (params == null || Build.VERSION.SDK_INT < 28) plain
                 else plain.map { t -> try { PrecomputedText.create(t, params) } catch (_: Throwable) { t } }
@@ -346,7 +314,7 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
     private fun finishNow() {
         val r = pending ?: return
         removeCallbacks(buildStep); removeCallbacks(idleBuild)
-        val t = texts ?: r.lines.map { it.text.ifBlank { "♪" } }
+        val t = texts ?: r.lines.map { it.text.ifBlank { BLANK } }
         val wt = times ?: if (r.synced) r.lines.indices.map { Words.times(r.lines, it) } else null
         for (k in made.size until r.lines.size) made.add(line(r.lines[k], t[k], wt?.getOrNull(k)))
         attach()
@@ -358,56 +326,49 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
         if (isVisible && pending != null && texts != null) { removeCallbacks(idleBuild); removeCallbacks(buildStep); post(buildStep) }
     }
 
-    /** The new lines take the old ones' place, each as [at] has left it, the lit one in the middle. */
+    /** The new lines take the old ones' place, each as [at] has left it, the lit one in its slot. */
     private fun attach() {
         pending = null
         list.removeAllViews()
         views = made
         made = ArrayList()
-        for ((k, v) in views.withIndex()) {
-            list.addView(v, lp(MATCH, WRAP).apply { topMargin = Space.XXS.dp })
-            val lit = k == current
-            v.alpha = if (!synced) 0.92f else if (current < 0) IDLE else if (lit) 1f else dim
-            val s = if (!synced || current < 0 || lit) 1f else small
-            v.scaleX = s; v.scaleY = s
-            // (lyrics that came while a line was being sung: that line goes word by word at once, not from the next)
-            if (lit && synced) v.karaoke = wordsOn && v.times != null
-        }
+        for (v in views) list.addView(v)
         statusBox.animate().cancel()
         statusBox.visibility = View.GONE
         scroll.visibility = View.VISIBLE
         centerOnLayout = true
-        if (isShown) { scroll.animate().cancel(); scroll.alpha = 0f; scroll.fadeTo(1f, Motion.MEDIUM) }
+        if (isShown) { scroll.animate().cancel(); scroll.alpha = 0f; scroll.fadeTo(1f, Motion.SHORT) }
         else { scroll.animate().cancel(); scroll.alpha = 1f }
-        showHint()
     }
 
-    private fun style(v: Line, timed: Boolean) {
-        v.textSize = if (big) (if (timed) BIG_TIMED_SP else BIG_PLAIN_SP) else (if (timed) Type.HEADLINE.sp else Type.TITLE.sp)
-        v.setTextColor(Palette.text)
-        v.weight = Fonts.MEDIUM
-        v.gravity = Gravity.CENTER
+    private fun style(v: Line) {
+        v.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, nowRole.sp)
+        v.typeface = Fonts.of(nowRole)
+        v.setTextColor(Palette.lyricLit)
+        v.alignStart = true
         // (a fixed direction rule, the same detached as on the screen: a measured text must match its line exactly)
         v.textDirection = View.TEXT_DIRECTION_FIRST_STRONG_LTR
-        v.setLineSpacing(0f, 1.1f)
+        v.setLineSpacing(rowPitch - nowRole.viewH.toFloat(), 1f)
         // (1.15: whole words per row: a word hyphenated across two rows cannot be lit as one)
         v.hyphenationFrequency = android.text.Layout.HYPHENATION_FREQUENCY_NONE
-        val pad = (if (big) Space.M else Space.S).dp
-        v.setPadding(pad, pad, pad, pad)
+        if (Build.VERSION.SDK_INT >= 28) v.isFallbackLineSpacing = false
+        v.setPadding(SIDE, PILL_ROOM_TOP, SIDE, PILL_ROOM_BOTTOM)
     }
 
-    private var templates = arrayOfNulls<Line>(2)
+    private var templateLine: Line? = null
 
     /** A line as the lyrics' lines are styled, for the measuring done off the main thread. */
-    private fun template(timed: Boolean): Line =
-        templates[if (timed) 1 else 0] ?: Line(context, this).also { style(it, timed); templates[if (timed) 1 else 0] = it }
+    private fun template(): Line = templateLine ?: Line(context, this).also { style(it); templateLine = it }
 
     private fun line(l: Lyrics.Line, text: CharSequence, wordTimes: LongArray?): Line = Line(context, this).apply {
-        style(this, synced)
+        style(this)
         // (measured with settings this line does not have after all: as plain text, measured here)
         try { setText(text) } catch (_: IllegalArgumentException) { setText(text.toString()) }
+        note = l.text.isBlank()
         words(wordTimes, l.ends)
         if (synced) takeTaps(this)
+        // (as it is before [paint] knows better: no line shows at the wrong size for a frame)
+        wantAlpha = -1f
     }
 
     private fun takeTaps(v: Line) {
@@ -417,17 +378,13 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
     }
 
     /** A tapped line: its time as the lyrics have it now (a timing by listening can be refined while it shows). */
-    private val tapLine = View.OnClickListener { v -> lines.getOrNull(views.indexOf(v))?.let { onLineTap?.invoke(it) } }
+    private val tapLine = View.OnClickListener { v -> if (v.alpha > 0.05f) lines.getOrNull(views.indexOf(v))?.let { onLineTap?.invoke(it) } }
     private val holdLine = View.OnLongClickListener { v -> lines.getOrNull(views.indexOf(v))?.let { onLineHold?.invoke(it) } ?: false }
-
-    /** Pixels the lines are moved down by at the next layout (new room above them that must not move what shows). */
-    private var shiftOnLayout = 0
 
     /**
      * Times for the lines shown (1.13: the owner's server timed them, by listening or from another source). When they
      * are the very lines on the screen, untimed until now, nothing is made again and nothing jumps: the lines stay
-     * where they are (the room above them grows as timed lyrics have it, and the scroll moves with it in the same
-     * frame), take taps from now on, and the line being sung lights and glides to the middle as with any timed lyrics.
+     * where they are, take taps from now on, and the line being sung lights and goes to its slot as with any timed lyrics.
      * Lines already timed take the new times as they are. Anything else is shown anew ([show]).
      */
     fun timeLines(r: Lyrics.Result) {
@@ -445,39 +402,15 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
         views.getOrNull(current)?.karaoke = false
         current = -1
         for (v in views) takeTaps(v)
-        val before = list.paddingTop
-        pad()
-        centerOnLayout = false // (no jump to the lit line: it glides there when it is lit)
-        shiftOnLayout += list.paddingTop - before
-        showHint()
-    }
-
-    // ---- the hint and the "synced" note
-    /** Whether the hint is (or is becoming) shown: its visibility stays VISIBLE while it fades out. */
-    private var hintShown = false
-
-    private fun showHint() {
-        val want = needSync && synced && lines.isNotEmpty()
-        if (want == hintShown) return
-        hintShown = want
-        if (want) hint.enter(dy = -10f) else hint.exit(dy = -6f) { if (!hintShown) hint.visibility = View.GONE }
-    }
-
-    private val doneOut = Runnable { done.exit(dy = 6f, dur = Motion.MEDIUM) }
-
-    /** The owner set where the song is: a short "synced" note. */
-    fun flashSynced() {
-        removeCallbacks(doneOut)
-        done.enter(dy = 8f) { postDelayed(doneOut, 1100L) }
     }
 
     // ---- following the song
     /**
-     * The song is at [ms]: the line being sung, lit and brought to the middle (unless the owner is scrolling).
+     * The song is at [ms]: the line being sung, lit and brought to its slot (unless the owner is scrolling).
      * [playing]: whether the song plays (the words' clock runs on from [ms] meanwhile); unchanged when not said.
      */
     fun at(ms: Long, playing: Boolean = songPlaying) {
-        // the words' clock: re-based on every report; a jump (a seek, a tap) or a pause redraws the line being sung
+        // the words' clock: re-based on every report; a jump (a seek, a tap) or a pause moves the word at once
         val now = SystemClock.uptimeMillis()
         val carried = if (songPlaying) clockMs + (now - clockAt) else clockMs
         val moved = playing != songPlaying || kotlin.math.abs(carried - ms) > 250L
@@ -486,37 +419,19 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
         songPlaying = playing
         if (moved) {
             drawnMs = Long.MIN_VALUE
-            views.getOrNull(current)?.let { if (it.karaoke) it.invalidate() }
+            views.getOrNull(current)?.wordStep()
         }
         if (!synced || lines.isEmpty() || needSync) return
-        // the last line that has started, a moment early (before the first one: none lit). A line lit as its first
-        // word is heard already reads as late: the eye needs the light a little before the ear hears the word.
-        val t = ms + LEAD_MS
-        var lo = 0
-        var hi = lines.size - 1
-        var i = -1
-        while (lo <= hi) {
-            val mid = (lo + hi) / 2
-            if (lines[mid].ms <= t) { i = mid; lo = mid + 1 } else hi = mid - 1
-        }
+        val i = lineAt(lines, ms)
         if (i == current) return
-        // out of sight (the other size is on the screen): the same end state, nothing animated
-        val live = isShown
-        if (current == -1) {
-            // the first line lit: the others step back too; only those in sight fade, the rest just take their state
-            val top = scroll.scrollY
-            val bottom = top + scroll.height
-            for ((k, v) in views.withIndex()) if (k != i) {
-                val seen = live && v.bottom > top && v.top < bottom
-                fade(v, dim, small, if (seen) Motion.SHORT else 0L, Motion.STANDARD)
-            }
-        } else views.getOrNull(current)?.let { it.karaoke = false; fade(it, dim, small, if (live) Motion.SHORT else 0L, Motion.EXIT) }
+        views.getOrNull(current)?.karaoke = false
         current = i
-        val v = views.getOrNull(i) ?: return
-        v.karaoke = wordsOn && v.times != null
-        fade(v, 1f, 1f, if (live) Motion.MEDIUM else 0L, Motion.EMPHASIZED)
-        if (!live) scrollNow(v)
-        else if (SystemClock.elapsedRealtime() - touchedAt > FOLLOW_AFTER_TOUCH_MS) glideTo(v)
+        val v = views.getOrNull(i)
+        v?.karaoke = wordsOn && v?.times != null
+        val live = isShown
+        paint(animate = live)
+        if (!live) settleScroll()
+        else if (SystemClock.elapsedRealtime() - touchedAt > FOLLOW_AFTER_TOUCH_MS) glide()
     }
 
     /**
@@ -529,69 +444,132 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
         return next.ms - LEAD_MS - ms
     }
 
-    /** Brought into sight: the lines are made if they were not yet, and the line being sung stands in the middle at once. */
+    /** Brought into sight: the lines are made if they were not yet, and the line being sung stands in its slot at once. */
     fun settle() {
         finishNow()
         follow.cancel()
-        views.getOrNull(current)?.let { scrollNow(it) }
+        windowOn = true
+        paint(animate = false)
+        settleScroll()
+    }
+
+    /** The extra height of the line being sung over its smaller self: all that follow lie that much lower. */
+    private fun extraOf(k: Int): Float {
+        val r = list.rowsOf(k)
+        return (litHeight(r) - plainHeight(r)).toFloat()
+    }
+
+    private fun plainHeight(rows: Int) = lineRole.line + ((rows - 1) * rowPitch * small).toInt()
+
+    private fun litHeight(rows: Int) = if (rows <= 1) nowRole.line else rows * rowPitch
+
+    /** Each line to where it is with [current] where it is now: [animate] for those that are in sight. Only what changed. */
+    private fun paint(animate: Boolean) {
+        val vs = views
+        if (vs.isEmpty()) return
+        val dimA = Color.alpha(Palette.lyricDim) / 255f
+        val pastA = Color.alpha(Palette.lyricPast) / 255f
+        // (with no line lit, untimed or the place unknown, it is the first five until a hand brings out the rest: no sixth line cut by the dock)
+        val top = if (synced && !needSync && windowOn) targetOf(current) else 0
+        val extra = if (current in vs.indices && list.laidFor(vs.size)) extraOf(current) else 0f
+        val laid = list.laidFor(vs.size)
+        for ((k, v) in vs.withIndex()) {
+            val lit = k == current
+            val s = if (lit) 1f else small
+            val after = current in 0 until k
+            val y = if (lit) 0f else smallDy + if (after) extra else 0f
+            val a = when {
+                lit -> 1f
+                windowOn && laid && !inWindow(k, top, after, extra) -> 0f
+                !synced || needSync || current < 0 -> dimA
+                k < current -> pastA
+                else -> dimA
+            }
+            if (v.wantAlpha == a && v.wantScale == s && v.wantY == y) continue
+            val was = v.wantAlpha
+            v.wantAlpha = a; v.wantScale = s; v.wantY = y
+            if (!animate || was < 0f || (was == 0f && a == 0f)) {
+                v.animate().cancel()
+                v.alpha = a; v.scaleX = s; v.scaleY = s; v.translationY = y
+            } else if (lit) move(v, a, s, y, Motion.MEDIUM, Motion.ENTER)
+            else if (v.scaleX != s) move(v, a, s, y, Motion.SHORT, Motion.EXIT)
+            else move(v, a, s, y, Motion.SHORT, Motion.MOVE)
+        }
+    }
+
+    /** With the list at [top], whether line [k] lies in the column's five. */
+    private fun inWindow(k: Int, top: Int, after: Boolean, extra: Float): Boolean {
+        val t = list.baseOf(k) + (if (after) extra else 0f) - top
+        val b = t + plainHeight(list.rowsOf(k))
+        return t >= firstTop - 1 && b <= lastBottom
     }
 
     /**
-     * A line to [alpha] and [scale]. While it moves it is drawn from a picture of itself (a layer): text redrawn at a
+     * A line to [alpha], [scale] and its place. While its size changes it is drawn from a picture of itself (a layer): text redrawn at a
      * new size on every frame costs this GPU a new set of letters each time.
      */
-    private fun fade(v: View, alpha: Float, scale: Float, ms: Long, interp: TimeInterpolator) {
+    private fun move(v: View, alpha: Float, scale: Float, y: Float, ms: Long, interp: TimeInterpolator) {
         v.animate().cancel()
-        if (ms <= 0L) { v.alpha = alpha; v.scaleX = scale; v.scaleY = scale; return }
-        v.animate().alpha(alpha).scaleX(scale).scaleY(scale).setStartDelay(0).setDuration(ms).setInterpolator(interp).withLayer().start()
+        val a = v.animate().alpha(alpha).scaleX(scale).scaleY(scale).translationY(y).setStartDelay(0).setDuration(ms).setInterpolator(interp)
+        if (v.scaleX != scale) a.withLayer()
+        a.start()
     }
 
-    private fun target(v: View): Int =
-        (v.top + v.height / 2 - (scroll.height * 0.42f).toInt()).coerceIn(0, (list.height - scroll.height).coerceAtLeast(0))
+    private fun targetOf(k: Int): Int {
+        if (k < 0 || !list.laidFor(views.size)) return 0
+        return (list.baseOf(k) - firstTop - slot).coerceIn(0, (list.height - scroll.height).coerceAtLeast(0))
+    }
 
-    private fun scrollNow(v: View) {
+    private fun settleScroll() {
         follow.cancel()
-        if (v.height == 0 || scroll.height == 0) { centerOnLayout = true; return } // (laid out first)
-        scroll.scrollTo(0, target(v))
+        if (list.height == 0 || scroll.height == 0) { centerOnLayout = true; return } // (laid out first)
+        scroll.scrollTo(0, targetOf(current))
     }
 
-    private fun glideTo(v: View) {
+    private fun glide() {
         // (lines not laid out yet, just added: they are put in place by the layout instead of from the top)
-        if (v.height == 0 || !v.isLaidOut || scroll.height == 0) { centerOnLayout = true; return }
+        if (!list.laidFor(views.size) || scroll.height == 0) { centerOnLayout = true; return }
         if (!follow.isRunning) follow.snapTo(scroll.scrollY.toFloat())
-        follow.animateTo(target(v).toFloat())
+        follow.animateTo(targetOf(current).toFloat())
     }
 
-    private val followAgain = Runnable { if (isShown) views.getOrNull(current)?.let { glideTo(it) } }
+    private fun glideTop() {
+        if (scroll.height == 0) return
+        if (!follow.isRunning) follow.snapTo(scroll.scrollY.toFloat())
+        follow.animateTo(0f)
+    }
+
+    private val followAgain = Runnable {
+        // (nothing to follow: the lines stay where his hand left them, all of them, to be read and tapped)
+        if (!isShown || !synced || needSync) return@Runnable
+        windowOn = true
+        paint(animate = true)
+        glide()
+    }
 
     override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
         super.onLayout(changed, l, t, r, b)
-        // the lines just timed in place: what showed stays where it was (see timeLines)
-        if (shiftOnLayout != 0) {
-            follow.cancel()
-            scroll.scrollTo(0, scroll.scrollY + shiftOnLayout)
-            shiftOnLayout = 0
-        }
-        // New lines, or new room around them: the lit line is put in the middle before the first frame shows them.
+        // New lines, or new room around them: every line in its place and the lit one in its slot before the first frame shows them.
         // (Lyrics that arrived while the song played left it below the screen, then whipped there at the next line.)
-        if (centerOnLayout && views.isNotEmpty() && SystemClock.elapsedRealtime() - touchedAt > FOLLOW_AFTER_TOUCH_MS) {
+        if (centerOnLayout && views.isNotEmpty() && list.laidFor(views.size)) {
             centerOnLayout = false
-            follow.cancel()
-            val v = views.getOrNull(current)
-            scroll.scrollTo(0, if (v != null) target(v) else 0)
+            paint(animate = false)
+            if (SystemClock.elapsedRealtime() - touchedAt > FOLLOW_AFTER_TOUCH_MS) {
+                follow.cancel()
+                scroll.scrollTo(0, if (synced && !needSync) targetOf(current) else 0)
+            }
         }
     }
 
     override fun onDetachedFromWindow() {
         follow.cancel()
-        removeCallbacks(followAgain); removeCallbacks(buildStep); removeCallbacks(idleBuild); removeCallbacks(doneOut)
+        removeCallbacks(followAgain); removeCallbacks(buildStep); removeCallbacks(idleBuild)
         super.onDetachedFromWindow()
     }
 
     /**
-     * One line. Its dimming is applied to what it draws, not through an off-screen copy of the whole line on every
-     * frame (what a view with a background gets by default): a screen of dimmed lines scrolling was a dozen of those
-     * a frame. Its pressed tint is drawn by the list ([LineList]).
+     * One line. Its dimming is applied to what it draws, not through an off-screen copy of the whole line: a screen of dimmed lines going by was a dozen of those a frame.
+     * Its pressed tint is drawn by the list ([LineList]). Room is kept round the text for the pill, top, bottom and both sides.
      */
     private class Line(c: Context, private val owner: LyricsView) : AText(c) {
         override fun hasOverlappingRendering() = false
@@ -600,15 +578,37 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
             (parent as? LineList)?.pressed(this, pressed)
         }
 
-        // ---- word by word (1.15; 1.16: real times only, pauses, the word being sung on a pill)
+        /** Where [paint] last sent it. */
+        var wantAlpha = -1f
+        var wantScale = -1f
+        var wantY = Float.NaN
+
+        /** A line with nothing to sing: the `music` glyph, since the font has no note mark (SPEC.md section 3). */
+        var note = false
+        private var noteTint: Tint? = null
+
+        fun colourNote() { noteTint?.recolour() }
+
+        // ---- the word (1.15; 1.16: real times only; 2.0: on its pill, no fill)
         /** When each word starts, and where the last ends (song ms); null: a line without words or untimed lyrics. */
         var times: LongArray? = null
             private set
         /** Where a word's singing ends before a pause (song ms, -1: it runs on to the next word); null: none known. */
         private var pauses: LongArray? = null
-        /** The line being sung, with the words effect on: drawn word by word. Otherwise as any line. */
+        /** The line being sung, with the words on and real times: drawn word by word. Otherwise as any line. */
         var karaoke = false
-            set(v) { if (v != field) { field = v; invalidate() } }
+            set(v) {
+                if (v == field) return
+                field = v
+                removeCallbacks(tick)
+                shownWord = -1
+                sungWords = -1
+                pillWord = -1
+                fromWord = -1
+                pillA.snapTo(0f)
+                pillG.snapTo(1f)
+                if (v) wordStep() else invalidate()
+            }
         private var n = 0
         private var starts = NO_INTS
         private var ends = NO_INTS
@@ -616,12 +616,20 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
         private var box = NO_FLOATS
         private var row = NO_INTS
         private var rtl = NO_BOOLS
-        /** The lit parts of a frame (left, top, right, bottom each), made in place. */
-        private var lit = NO_FLOATS
         private var boxesOf: android.text.Layout? = null
         private var boxesH = -1
-        /** Half the gap kept around a word's box (so a word's ink at its edge takes its own colour). */
-        private var padX = 0f
+
+        /** The word being sung (-1: none, a pause), how many are sung, the word the pill is on or was last on, and the one it is gliding from (-1: none). */
+        private var shownWord = -1
+        private var sungWords = -1
+        private var pillWord = -1
+        private var fromWord = -1
+        private val pillNow = RectF()
+        private val pillA = Spring(0f, Tokens2.SPRING_wordPill[0], 1f, 0.01f) { invalidate() }
+        private val pillG = Spring(1f, Tokens2.SPRING_wordPill[0], Tokens2.SPRING_wordPill[1], 0.003f) { invalidate() }
+        private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
+
+        val moving: Boolean get() = pillG.isRunning || pillA.isRunning
 
         /**
          * The words' times for the text this line shows (null, or a count that does not match: no words), and where
@@ -633,14 +641,14 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
             if (t == null || cnt == 0 || t.size != cnt + 1) { times = null; pauses = null; n = 0; invalidate(); return }
             if (starts.size < cnt) {
                 starts = IntArray(cnt); ends = IntArray(cnt); row = IntArray(cnt); rtl = BooleanArray(cnt)
-                box = FloatArray(4 * cnt); lit = FloatArray(4 * cnt)
+                box = FloatArray(4 * cnt)
             }
             Words.bounds(text, starts, ends)
             n = cnt
             times = t
             pauses = p?.takeIf { it.size == cnt }
             boxesOf = null
-            if (karaoke) invalidate()
+            if (karaoke) wordStep()
         }
 
         /** Where word [j]'s singing ends: its own end before a pause, else the next word's start (the last: the line's end). */
@@ -648,6 +656,52 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
             val p = pauses?.getOrNull(j) ?: -1L
             val next = if (j + 1 < n) t[j + 1] else t[n]
             return minOf(if (p > t[j] && p < next) p else next, t[j] + MAX_WORD_MS)
+        }
+
+        private val tick = Runnable { wordStep() }
+
+        /** The word at the song's time, on the pill; the next look when the next word is due. Nothing per frame but the pill's own move. */
+        fun wordStep() {
+            removeCallbacks(tick)
+            val t = times
+            if (!karaoke || t == null || n == 0) return
+            val now = owner.songNow() + WORD_LEAD_MS
+            var cur = -1
+            while (cur + 1 < n && t[cur + 1] <= now) cur++
+            val curEnd = if (cur >= 0) endOf(t, cur) else 0L
+            val singing = cur >= 0 && now < curEnd
+            val sung = if (cur < 0) 0 else if (singing) cur else cur + 1
+            val word = if (singing) cur else -1
+            if (word != shownWord || sung != sungWords) {
+                val l = layout
+                if (l != null && (l !== boxesOf || height != boxesH)) measureWords(l)
+                wordChanged(word)
+                sungWords = sung
+                invalidate()
+            }
+            if (owner.songPlaying) {
+                val next = if (singing) minOf(curEnd, t.getOrElse(cur + 1) { curEnd }) else t.getOrNull(cur + 1) ?: return
+                postDelayed(tick, (next - now).coerceIn(16L, 3000L))
+            }
+        }
+
+        private fun wordChanged(word: Int) {
+            shownWord = word
+            if (word < 0) { pillA.animateTo(0f); return }
+            if (boxesOf == null || boxesBad) return
+            val from = pillWord
+            pillWord = word
+            if (from in 0 until word && row[from] == row[word] && pillA.value > 0.5f) {
+                fromWord = from
+                pillG.snapTo(0f)
+                pillG.animateTo(1f)
+            } else {
+                // (after a pause, on a new row, a jump: it comes in where it is, no flying across the line)
+                fromWord = -1
+                pillG.snapTo(1f)
+                if (from >= 0 && row[from] != row[word]) pillA.snapTo(0f)
+                if (isShown) pillA.animateTo(1f) else pillA.snapTo(1f)
+            }
         }
 
         /** The words' boxes could not be matched to what shows: the line is lit whole. */
@@ -681,7 +735,6 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
             val px = totalPaddingLeft.toFloat()
             val py = totalPaddingTop.toFloat()
             val last = l.lineCount - 1
-            padX = textSize * 0.08f
             for (j in 0 until n) {
                 // (the selection's own shape: right for either direction and for a Latin word in an Arabic line)
                 m.getSelectionPath(starts[j], ends[j], TMP_PATH)
@@ -695,10 +748,10 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
                     val a = m.getPrimaryHorizontal(starts[j]); val b = m.getPrimaryHorizontal(ends[j])
                     left = minOf(a, b); right = maxOf(a, b)
                 }
-                box[4 * j] = px + left - padX
+                box[4 * j] = px + left
                 // (the first and last rows reach the view's edges: Arabic marks stand above the line's own top)
                 box[4 * j + 1] = if (r == 0) 0f else py + l.getLineTop(r)
-                box[4 * j + 2] = px + right + padX
+                box[4 * j + 2] = px + right
                 box[4 * j + 3] = if (r >= last) height.toFloat() else py + l.getLineBottom(r)
             }
         }
@@ -710,190 +763,196 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
             c.restoreToCount(save)
         }
 
-        /**
-         * The line being sung (1.16). The words sung are at full strength, those still to come clearly dimmer, and the
-         * word being sung stands on a soft pill of the cover's colour while it fills with that colour in its own
-         * reading direction (a soft edge, drawn in a few steps). The pill glides from one word to the next when they
-         * follow each other, comes in with a short fade after a pause, and goes when a pause begins: the light waits
-         * with the singer. The text is drawn a few times, each time clipped to a part of it; nothing is laid out
-         * again, nothing allocated, and nothing is drawn at another size (a scaled word costs this GPU a new set of
-         * letters every frame). The next frame is asked for only while something moves.
-         */
         override fun onDraw(c: Canvas) {
+            if (note) { drawNote(c); return }
             val t = times
             val l = layout
             if (!karaoke || t == null || l == null || n == 0) { super.onDraw(c); return }
             if (l !== boxesOf || height != boxesH) measureWords(l)
-            if (boxesBad) { super.onDraw(c); return }
-            val now = owner.songNow() + WORD_LEAD_MS
-            // the word being sung: the last one started, while its singing lasts (to the next word, or to its own
-            // end when a pause follows it)
-            var cur = -1
-            while (cur + 1 < n && t[cur + 1] <= now) cur++
-            val curEnd = if (cur >= 0) endOf(t, cur) else 0L
-            val singing = cur >= 0 && now < curEnd
-            val sung = if (cur < 0) 0 else if (singing) cur else cur + 1     // words fully sung
-            // after its end a word lets go of the pill and of its colour over a moment
-            val since = if (cur >= 0 && !singing) now - curEnd else Long.MAX_VALUE
-            val leaving = since < LET_GO_MS
-            if (sung >= n && !leaving) { super.onDraw(c); return } // (all of it sung: the whole line lit)
+            if (boxesBad || sungWords < 0) { super.onDraw(c); return }
+            val lit = currentTextColor
+            val dim = Palette.lyricDim
+            val a = pillA.value.coerceIn(0f, 1f)
+            val w = pillWord
+            if (a < 0.01f || w < 0) drawPlain(c, l, lit, dim) else drawOnPill(c, l, w, a, lit, dim)
+            paint.color = lit
+        }
 
-            val paint = paint
-            val color = currentTextColor
-            val upcoming = Palette.withAlpha(color, UPCOMING)
-            val accent = owner.wordText
-
-            // 1. the pill behind the word being sung (or the one letting go of it)
-            if (singing || leaving) {
-                val age = if (singing) now - t[cur] else 0L
-                var a = 1f
-                var j0 = cur
-                var g = 1f // how far the pill has glided from the word before (1: there)
-                if (singing) {
-                    // (from the word before when it ran right up to this one on the same row: a glide, else a fade in)
-                    val prev = cur - 1
-                    if (prev >= 0 && row[prev] == row[cur] && t[cur] - endOf(t, prev) < GLIDE_GAP_MS && age < GLIDE_MS) {
-                        j0 = prev
-                        g = Motion.STANDARD.getInterpolation(age.toFloat() / GLIDE_MS)
-                    } else if (age < PILL_IN_MS) a = Motion.STANDARD.getInterpolation(age.toFloat() / PILL_IN_MS)
-                } else a = 1f - (since.toFloat() / LET_GO_MS)
-                pillRect(j0, cur, g)
-                val fill = owner.wordFill
-                paint.color = Palette.withAlpha(fill, (if (Palette.dark) PILL_DARK else PILL_LIGHT) * a)
-                val r = PILL_R.height() / 2f
-                c.drawRoundRect(PILL_R, r, r, paint)
-            }
-
-            // the lit parts: the words sung, row by row (one span per row when no word still to come lies in it)
-            var nLit = 0
-            var j = 0
-            while (j < sung) {
-                var k = j
-                var minL = box[4 * j]
-                var maxR = box[4 * j + 2]
-                while (k + 1 < sung && row[k + 1] == row[j]) { k++; minL = minOf(minL, box[4 * k]); maxR = maxOf(maxR, box[4 * k + 2]) }
-                var clean = true
-                var q = sung
-                while (q < n && row[q] == row[j]) {
-                    if (box[4 * q] + padX < maxR - padX && box[4 * q + 2] - padX > minL + padX) { clean = false; break }
-                    q++
-                }
-                if (clean) {
-                    lit[4 * nLit] = minL; lit[4 * nLit + 1] = box[4 * j + 1]; lit[4 * nLit + 2] = maxR; lit[4 * nLit + 3] = box[4 * j + 3]
-                    nLit++
-                } else for (m in j..k) {
-                    System.arraycopy(box, 4 * m, lit, 4 * nLit, 4)
-                    nLit++
-                }
-                j = k + 1
-            }
-
-            // 2. everything not sung (the word being sung is drawn by itself, 4.)
-            var save = c.save()
-            for (m in 0 until nLit) c.clipOutRect(lit[4 * m], lit[4 * m + 1], lit[4 * m + 2], lit[4 * m + 3])
-            if (singing) c.clipOutRect(box[4 * cur], box[4 * cur + 1], box[4 * cur + 2], box[4 * cur + 3])
-            paint.color = upcoming
-            drawText(c, l)
-            c.restoreToCount(save)
-            // 3. the words sung (the one just let go of passing from the cover's colour to the text's)
-            paint.color = color
-            for (m in 0 until nLit) {
-                save = c.save()
-                c.clipRect(lit[4 * m], lit[4 * m + 1], lit[4 * m + 2], lit[4 * m + 3])
-                drawText(c, l)
-                c.restoreToCount(save)
-            }
-            if (leaving && cur in 0 until n) {
-                paint.color = Palette.mix(accent, color, since.toFloat() / LET_GO_MS)
-                save = c.save()
-                c.clipRect(box[4 * cur], box[4 * cur + 1], box[4 * cur + 2], box[4 * cur + 3])
-                drawText(c, l)
-                c.restoreToCount(save)
-            }
-            // 4. the word being sung: its lit part in the cover's colour, then its edge in steps down to the rest
-            if (singing) {
-                val bl = box[4 * cur]
-                val bt = box[4 * cur + 1]
-                val br = box[4 * cur + 2]
-                val bb = box[4 * cur + 3]
-                val p = ((now - t[cur]).toFloat() / (curEnd - t[cur]).coerceAtLeast(1L)).coerceIn(0f, 1f)
-                val e = textSize * EDGE_EM
-                val w = br - bl
-                val right = rtl[cur]
-                // (the edge's middle travels from just before the word to just after it)
-                val mid = if (right) br + e / 2f - p * (w + e) else bl - e / 2f + p * (w + e)
-                val litEnd = if (right) mid + e / 2f else mid - e / 2f   // lit before this (in reading order)
-                val restFrom = if (right) mid - e / 2f else mid + e / 2f // still to come after this
-                val litL = if (right) maxOf(bl, litEnd) else bl
-                val litR = if (right) br else minOf(br, litEnd)
-                if (litR > litL) {
-                    paint.color = accent
-                    save = c.save()
-                    c.clipRect(litL, bt, litR, bb)
-                    drawText(c, l)
-                    c.restoreToCount(save)
-                }
-                val step = e / EDGE_STEPS
-                for (s in 0 until EDGE_STEPS) {
-                    val a = if (right) litEnd - (s + 1) * step else litEnd + s * step
-                    val sl = maxOf(bl, a)
-                    val sr = minOf(br, a + step)
-                    if (sr <= sl) continue
-                    paint.color = Palette.mix(accent, upcoming, (s + 0.5f) / EDGE_STEPS)
-                    save = c.save()
-                    c.clipRect(sl, bt, sr, bb)
-                    drawText(c, l)
-                    c.restoreToCount(save)
-                }
-                val rl = if (right) bl else maxOf(bl, restFrom)
-                val rr = if (right) minOf(br, restFrom) else br
-                if (rr > rl) {
-                    paint.color = upcoming
-                    save = c.save()
-                    c.clipRect(rl, bt, rr, bb)
-                    drawText(c, l)
-                    c.restoreToCount(save)
-                }
-            }
-            paint.color = color
-            // the next frame: every frame while a word fills or the pill moves; else when the next word starts
-            if (owner.songPlaying) {
-                if (singing || leaving) postInvalidateOnAnimation()
-                else {
-                    val next = t.getOrNull(sung) ?: return
-                    if (sung < n) postInvalidateDelayed((next - now).coerceIn(16L, 2000L))
-                }
+        /** No pill (before the first word, a pause): what is sung lit, what is to come dim, one rect clip for each. */
+        private fun drawPlain(c: Canvas, l: android.text.Layout, lit: Int, dim: Int) {
+            val sung = sungWords.coerceIn(0, n)
+            if (sung >= n) { part(c, l, 0f, 0f, 0f, width.toFloat(), height.toFloat(), lit); return }
+            val top = box[4 * sung + 1]
+            val bottom = box[4 * sung + 3]
+            if (row[sung] > 0) part(c, l, 0f, 0f, 0f, width.toFloat(), top, lit)
+            if (bottom < height) part(c, l, 0f, 0f, bottom, width.toFloat(), height.toFloat(), dim)
+            if (rtl[sung]) {
+                part(c, l, 0f, box[4 * sung + 2], top, width.toFloat(), bottom, lit)
+                part(c, l, 0f, 0f, top, box[4 * sung + 2], bottom, dim)
+            } else {
+                part(c, l, 0f, 0f, top, box[4 * sung], bottom, lit)
+                part(c, l, 0f, box[4 * sung], top, width.toFloat(), bottom, dim)
             }
         }
 
-        /** The pill at word [to], or on its way there from word [from] ([g]: 0 there, 1 arrived), into [PILL_R]. */
-        private fun pillRect(from: Int, to: Int, g: Float) {
-            val ex = textSize * PILL_PAD_EM
-            fun lerp(a: Float, b: Float) = a + (b - a) * g
-            val l = lerp(box[4 * from], box[4 * to]) + padX - ex
-            val r = lerp(box[4 * from + 2], box[4 * to + 2]) - padX + ex
-            // (around the letters' own middle on the row: a row's box holds the spacing below it, and a word's box
-            // reaches the view's edges on the first and last rows)
+        /**
+         * The word [w] on its pill. The pill needs room the line's plain space does not have, and a layout may not change while the song plays: so the words on its row part by
+         * translation, as the mockup's inline pill pushes them, what comes after the word [gap] further along than the word itself, and all of it from one laid-out text with rect clips. A row
+         * that fills the column has less room to part in, and the pill keeps to what there is. While it glides from the word before, the two words and what follows move with it, and their
+         * colours cross, so no text is ever lit on the pill or dark off it. No layout, no size change, and nothing but this view redraws.
+         */
+        private fun drawOnPill(c: Canvas, l: android.text.Layout, w: Int, a: Float, lit: Int, dim: Int) {
+            val big = owner.big
+            val full = if (big) PILL_GAP_BIG else PILL_GAP
+            val rw = row[w]
+            val room = ((l.width - l.getLineWidth(rw)) / 2f).coerceAtLeast(0f)
+            val gap = minOf(full, room)
+            val dir = if (rtl[w]) -1f else 1f
+            val top = box[4 * w + 1]
+            val bottom = box[4 * w + 3]
+            val rowsBelow = bottom < height
+            // (the rows above are all sung, those below all to come)
+            if (rw > 0) part(c, l, 0f, 0f, 0f, width.toFloat(), top, lit)
+            if (rowsBelow) part(c, l, 0f, 0f, bottom, width.toFloat(), height.toFloat(), dim)
+            val p = fromWord
+            val gliding = p >= 0 && p < w && pillG.isRunning
+            val g = if (gliding) pillG.value else 1f
+            val k = g.coerceIn(0f, 1f)
+            val pausing = shownWord < 0
+            val w0 = wordEdge(w, start = true)
+            val w1 = wordEdge(w, start = false)
+            val startEdge = if (dir < 0f) width.toFloat() else 0f
+            val endEdge = if (dir < 0f) 0f else width.toFloat()
+            // the pill, under the text
+            val side = (if (big) PILL_SIDE_BIG else PILL_SIDE) * (if (full > 0f) (gap / full).coerceAtLeast(MIN_SIDE) else 1f)
+            wordRect(w, dir * gap * a, side, pillNow)
+            if (gliding) {
+                wordRect(p, dir * gap * a, side, TMP_RECT)
+                pillNow.left = TMP_RECT.left + (pillNow.left - TMP_RECT.left) * g
+                pillNow.right = TMP_RECT.right + (pillNow.right - TMP_RECT.right) * g
+            }
+            fill.color = Palette.withAlpha(owner.wordFill, a)
+            val r = (if (big) Tokens2.R_wordFull else Tokens2.R_word).toFloat()
+            c.drawRoundRect(pillNow, r, r, fill)
+            // the row, part by part, reading on: each part with where it is along the way and its colour
+            val wordInk = if (pausing) Palette.mix(lit, owner.wordInk, a) else Palette.mix(dim, owner.wordInk, a * k)
+            if (gliding) {
+                val p0 = wordEdge(p, start = true)
+                span(c, l, startEdge, p0, 0f, top, bottom, lit)
+                span(c, l, p0, w0, dir * gap * a * (1f - g), top, bottom, Palette.mix(owner.wordInk, lit, k))
+                span(c, l, w0, w1, dir * gap * a * (2f - g), top, bottom, wordInk)
+            } else {
+                span(c, l, startEdge, w0, 0f, top, bottom, lit)
+                span(c, l, w0, w1, dir * gap * a, top, bottom, wordInk)
+            }
+            span(c, l, w1, endEdge, dir * gap * a * 2f, top, bottom, dim)
+        }
+
+        /**
+         * Where word [j]'s part of its row begins or ends, in its reading: half way through the space to its neighbour, so that a letter reaching past its own box goes with its word, and the
+         * row's end where it has none on that side.
+         */
+        private fun wordEdge(j: Int, start: Boolean): Float {
+            val own = if (rtl[j] == start) box[4 * j + 2] else box[4 * j]
+            val k = if (start) j - 1 else j + 1
+            if (k !in 0 until n || row[k] != row[j]) return if (rtl[j] == start) width.toFloat() else 0f
+            val other = if (rtl[k] == !start) box[4 * k + 2] else box[4 * k]
+            return (own + other) / 2f
+        }
+
+        /** A part of a row between two x, in either order, moved along by [dx]. */
+        private fun span(c: Canvas, l: android.text.Layout, x0: Float, x1: Float, dx: Float, top: Float, bottom: Float, colour: Int) =
+            part(c, l, dx, minOf(x0, x1), top, maxOf(x0, x1), bottom, colour)
+
+        /** One rect of the text in one colour, moved by [dx]. */
+        private fun part(c: Canvas, l: android.text.Layout, dx: Float, left: Float, top: Float, right: Float, bottom: Float, colour: Int) {
+            if (right <= left || bottom <= top) return
+            val save = c.save()
+            c.translate(dx, 0f)
+            c.clipRect(left, top, right, bottom)
+            paint.color = colour
+            drawText(c, l)
+            c.restoreToCount(save)
+        }
+
+        private fun drawNote(c: Canvas) {
+            val t = noteTint ?: Tint(context, R.drawable.ic_music) { Palette.lyricLit }.also { noteTint = it }
+            val s = (textSize * 0.8f).toInt()
+            val left = if (owner.rtlUi) width - totalPaddingRight - s else totalPaddingLeft
+            val top = totalPaddingTop + (owner.nowRole.viewH - s) / 2
+            t.drawable.setBounds(left, top, left + s, top + s)
+            t.drawable.draw(c)
+        }
+
+        /** The pill at word [j], moved along by [dx]: the word's box, [side] wider each side, 3 px above and 5 below the text's own box. */
+        private fun wordRect(j: Int, dx: Float, side: Float, out: RectF) {
+            val l = layout ?: return
             paint.getFontMetrics(TMP_FM)
-            val mid = layout.getLineBaseline(row[to]) + totalPaddingTop + (TMP_FM.ascent + TMP_FM.descent) / 2f
-            val h = textSize * PILL_H_EM
-            PILL_R.set(l, mid - h / 2f, r, mid + h / 2f)
+            val base = l.getLineBaseline(row[j]) + totalPaddingTop
+            val above = if (owner.big) PILL_ABOVE_BIG else PILL_ABOVE
+            val below = if (owner.big) PILL_BELOW_BIG else PILL_BELOW
+            out.set(box[4 * j] + dx - side, base + TMP_FM.ascent - above, box[4 * j + 2] + dx + side, base + TMP_FM.descent + below)
+        }
+
+        override fun onDetachedFromWindow() {
+            removeCallbacks(tick)
+            pillA.cancel()
+            pillG.cancel()
+            super.onDetachedFromWindow()
         }
     }
 
     /**
-     * The lines, and behind the one under the finger a tint, drawn here: one shape for all the lines instead of a
-     * pressable background (three drawables) made for each. It comes at once and lets go over [Motion.SHORT], as
-     * [Shapes.pressable] does.
+     * The lines, each where it lies with none lit (the line being sung and those after it are moved by a transform, [paint]), and behind the one under the finger a tint, drawn
+     * here: one shape for all the lines instead of a pressable background made for each. It comes at once and lets go over [Motion.SHORT].
      */
-    private class LineList(c: Context) : LinearLayout(c) {
-        private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private inner class LineList(c: Context) : ViewGroup(c) {
+        private val tint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val r = RectF()
         private var lit: View? = null
         private var litAlpha = 0f
         private var letGo: ValueAnimator? = null
+        private var bases = IntArray(0)
+        private var rows = IntArray(0)
+        private var laid = 0
 
-        init { orientation = VERTICAL }
+        fun rowsOf(k: Int) = rows.getOrElse(k) { 1 }
+
+        fun baseOf(k: Int) = bases.getOrElse(k) { 0 }
+
+        /** Its lines have been measured, those [count]. */
+        fun laidFor(count: Int) = laid == count && count > 0 && isLaidOut && !isLayoutRequested
+
+        override fun onMeasure(w: Int, h: Int) {
+            val width = MeasureSpec.getSize(w)
+            val count = childCount
+            if (bases.size < count) { bases = IntArray(count); rows = IntArray(count) }
+            val cw = MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY)
+            val ch = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)
+            var y = paddingTop
+            for (k in 0 until count) {
+                val v = getChildAt(k)
+                v.measure(cw, ch)
+                val n = (v as TextView).lineCount.coerceAtLeast(1)
+                bases[k] = y
+                rows[k] = n
+                y += plainHeight(n) + gap
+            }
+            laid = count
+            // (the larger line's extra at the end of the list: it must still reach its slot)
+            setMeasuredDimension(width, y + paddingBottom + (nowRole.line - lineRole.line))
+        }
+
+        override fun onLayout(changed: Boolean, l: Int, t: Int, right: Int, b: Int) {
+            for (k in 0 until childCount) {
+                val v = getChildAt(k)
+                val top = bases[k] - PILL_ROOM_TOP
+                v.layout(0, top, v.measuredWidth, top + v.measuredHeight)
+                // (it shrinks toward the reading edge and the text's own top)
+                v.pivotX = if (rtlUi) v.measuredWidth - SIDE.toFloat() else SIDE.toFloat()
+                v.pivotY = PILL_ROOM_TOP.toFloat()
+            }
+        }
 
         fun pressed(v: View, on: Boolean) {
             if (on) {
@@ -915,16 +974,13 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
         override fun dispatchDraw(c: Canvas) {
             val v = lit
             if (v != null && litAlpha > 0f && v.parent === this) {
-                // (as the line is seen: it may be at its smaller, dimmed scale)
-                val cx = (v.left + v.right) / 2f
-                val cy = (v.top + v.bottom) / 2f
-                val hw = v.width * v.scaleX / 2f
-                val hh = v.height * v.scaleY / 2f
-                r.set(cx - hw, cy - hh, cx + hw, cy + hh)
-                paint.color = Palette.press
-                paint.alpha = (android.graphics.Color.alpha(Palette.press) * litAlpha).toInt()
-                val rad = Radius.M.dp
-                c.drawRoundRect(r, rad, rad, paint)
+                // (as the line is seen: at its smaller scale, from the reading edge)
+                val y = v.top + v.translationY + PILL_ROOM_TOP
+                r.set(SIDE / 2f, y - 4f, width - SIDE / 2f, y + (v.height - PILL_ROOM_TOP - PILL_ROOM_BOTTOM) * v.scaleY + 4f)
+                tint.color = Palette.fillPress
+                tint.alpha = (Color.alpha(Palette.fillPress) * litAlpha).toInt()
+                val rad = Tokens2.R_mid.toFloat()
+                c.drawRoundRect(r, rad, rad, tint)
             }
             super.dispatchDraw(c)
         }
@@ -935,45 +991,67 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
         }
     }
 
-    private companion object {
-        const val IDLE = 0.85f      // all lines while none is lit (not started, position unknown): text to read
-        /** Lit a little before its time (see [at]). */
+    companion object {
+        /** The column, from the view's top, for the panel's rect: first line's box at y 84, the slot at y 224, the five end by y 448. */
+        const val TOP = 44
+        const val HEIGHT = 462
+        /** Sideways room round the text for the pill: the view is the column grown by this each side. */
+        const val SIDE = 16
+        const val TOP_BIG = 72
+        const val HEIGHT_BIG = 380
+        private const val FIRST_TOP = 84 - TOP
+        private const val SLOT = 224 - 84
+        private const val LAST_BOTTOM = 450 - TOP
+        private const val GAP = 26
+        private const val FIRST_TOP_BIG = 86 - TOP_BIG
+        private const val SLOT_BIG = 234 - 86
+        private const val LAST_BOTTOM_BIG = 450 - TOP_BIG
+        private const val GAP_BIG = 22
+        /** A row of a line that wraps is this much over the role's line box (`music-long-line`). */
+        private const val ROW_EXTRA = 6
+        private const val PILL_ROOM_TOP = 6
+        private const val PILL_ROOM_BOTTOM = 8
+        private const val PILL_SIDE = 13f
+        private const val PILL_ABOVE = 3f
+        private const val PILL_BELOW = 5f
+        private const val PILL_SIDE_BIG = 16f
+        private const val PILL_ABOVE_BIG = 2f
+        private const val PILL_BELOW_BIG = 6f
+        /** How far the word on its pill moves along its row, and what follows it twice that: the pill's padding and the mockup's margin of 3. */
+        private const val PILL_GAP = 16f
+        private const val PILL_GAP_BIG = 19f
+        /** With no room to part in, the pill keeps this share of its padding. */
+        private const val MIN_SIDE = 0.35f
+        private const val STATUS_DY = 8
+        private const val NOTE_BOTTOM = 16
+        private const val BLANK = " "
+
+        /** Lit a little before its time: the eye needs the light a little before the ear hears the word. */
         const val LEAD_MS = 150L
         const val FOLLOW_AFTER_TOUCH_MS = 4000L
         const val LINES_PER_FRAME = 12
         const val IDLE_BUILD_MS = 1500L
-        /** The lyrics alone on the screen: larger than any text role, they are the screen's whole content. */
-        const val BIG_TIMED_SP = 34f
-        const val BIG_PLAIN_SP = 28f
         /** Measures the lines' text off the main thread (one for both copies: they ask one after the other). */
         val worker = Executors.newSingleThreadExecutor()
 
-        // ---- word by word (1.15, 1.16)
-        /** A word fills a little before it is heard, as a line is lit early ([LEAD_MS]), but less. */
+        /** The last line that has started, a moment early (before the first one: -1). The chip's line is this too. */
+        fun lineAt(lines: List<Lyrics.Line>, ms: Long): Int {
+            val t = ms + LEAD_MS
+            var lo = 0
+            var hi = lines.size - 1
+            var i = -1
+            while (lo <= hi) {
+                val mid = (lo + hi) / 2
+                if (lines[mid].ms <= t) { i = mid; lo = mid + 1 } else hi = mid - 1
+            }
+            return i
+        }
+
+        // ---- the word (1.15, 1.16)
+        /** A word lights a little before it is heard, as a line is lit early ([LEAD_MS]), but less. */
         const val WORD_LEAD_MS = 60L
-        /** A word's fill takes at most this long (a long pause before the next word is not sung). */
+        /** A word stays on the pill at most this long (a long pause before the next word is not sung). */
         const val MAX_WORD_MS = 3000L
-        /**
-         * The words still to come on the line being sung: clearly under the ones sung (1.15's 0.6 read as nearly
-         * the same in the car), still over the other lines' [dim].
-         */
-        const val UPCOMING = 0.5f
-        /** The fill's soft edge, in ems of the line's text, drawn in [EDGE_STEPS] steps. */
-        const val EDGE_EM = 0.5f
-        const val EDGE_STEPS = 3
-        /** The pill behind the word being sung: the cover's colour this strong (dark and light screens). */
-        const val PILL_DARK = 0.34f
-        const val PILL_LIGHT = 0.26f
-        /** Its size: this much wider than the word on each side, this tall (ems of the line's text). */
-        const val PILL_PAD_EM = 0.16f
-        const val PILL_H_EM = 1.32f
-        /** It glides to the next word over this long when the two follow each other on a row (gap under [GLIDE_GAP_MS]). */
-        const val GLIDE_MS = 150L
-        const val GLIDE_GAP_MS = 120L
-        /** ...else it fades in over this long, and when a pause begins it (and the word's colour) lets go over [LET_GO_MS]. */
-        const val PILL_IN_MS = 120L
-        const val LET_GO_MS = 180L
-        val PILL_R = RectF()
         val TMP_FM = Paint.FontMetrics()
         // (the main thread's, reused: the words' boxes are measured there, once per layout)
         val TMP_PATH = android.graphics.Path()

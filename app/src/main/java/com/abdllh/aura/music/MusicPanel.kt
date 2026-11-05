@@ -1,28 +1,19 @@
 package com.abdllh.aura.music
 
 import android.Manifest
-import android.animation.Animator
-import android.animation.AnimatorListenerAdapter
-import android.animation.ValueAnimator
 import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.Intent
-import android.content.res.ColorStateList
 import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.RectF
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
-import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.TransitionDrawable
 import android.os.Bundle
 import android.os.SystemClock
 import android.provider.Settings
+import android.text.BidiFormatter
 import android.text.TextUtils
 import android.view.Gravity
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
@@ -33,7 +24,6 @@ import android.widget.GridView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ListView
-import android.widget.ProgressBar
 import android.widget.TextView
 import com.abdllh.aura.R
 import com.abdllh.aura.home.AppRepo
@@ -41,134 +31,136 @@ import com.abdllh.aura.home.HomeActivity
 import com.abdllh.aura.home.Panel
 import com.abdllh.aura.home.Screens
 import com.abdllh.aura.media.MediaMonitor
+import com.abdllh.aura.nav.NavSession
+import com.abdllh.aura.system.DriveState
 import com.abdllh.aura.ui.ABtn
 import com.abdllh.aura.ui.AText
-import com.abdllh.aura.ui.Elev
 import com.abdllh.aura.ui.Fonts
-import com.abdllh.aura.ui.LayoutMove
+import com.abdllh.aura.ui.IconButton
+import com.abdllh.aura.ui.Look
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.PlayPauseView
-import com.abdllh.aura.ui.Radius
+import com.abdllh.aura.ui.PressGesture
+import com.abdllh.aura.ui.SeekView
 import com.abdllh.aura.ui.Segmented
-import com.abdllh.aura.ui.Shapes
 import com.abdllh.aura.ui.Snack
-import com.abdllh.aura.ui.Space
+import com.abdllh.aura.ui.Spinner
 import com.abdllh.aura.ui.Spring
-import com.abdllh.aura.ui.Theme
-import com.abdllh.aura.ui.Touch
+import com.abdllh.aura.ui.Surface
+import com.abdllh.aura.ui.SurfaceCard
+import com.abdllh.aura.ui.ThemeSwap
+import com.abdllh.aura.ui.Tokens2
 import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.WRAP
 import com.abdllh.aura.ui.anim
+import com.abdllh.aura.ui.at
+import com.abdllh.aura.ui.box
 import com.abdllh.aura.ui.enter
-import com.abdllh.aura.ui.exit
 import com.abdllh.aura.ui.fadeTo
 import com.abdllh.aura.ui.flp
 import com.abdllh.aura.ui.iconView
 import com.abdllh.aura.ui.label
+import com.abdllh.aura.ui.look
 import com.abdllh.aura.ui.lp
+import com.abdllh.aura.ui.plateView
 import com.abdllh.aura.ui.pressScale
 import com.abdllh.aura.ui.riseIn
-import com.abdllh.aura.ui.roundedClip
-import com.abdllh.aura.ui.textRole
+import com.abdllh.aura.ui.scrollFade
 import com.abdllh.aura.util.Prefs
-import com.abdllh.aura.util.dp
-import java.lang.ref.WeakReference
 import kotlin.math.abs
 
 /**
- * Aura Music, a panel of the one window: now playing on the start side (cover, progress, controls) and the library on the
- * other side (songs, albums, artists, folders from the unit and USB drives), plus music from a phone over Bluetooth.
- * Opaque, its own room. Built ahead of time when the home screen is quiet ([PanelStack.prepareWhenQuiet]) and kept from then
- * on: what the owner left stays (source, tab, open group, where each list was, the lyrics, YouTube's results), and an open
- * has nothing to build. Out of sight it holds no picture and listens to nothing ([onHide]). (A class name is left for
- * whoever starts it by name: [MusicActivity].)
+ * AMRI Music, a panel of the one window (SPEC.md section 6.4). Parked: the song's wash, the cover, the title, seek and transport on the left, five lines of lyrics on the right, or the library when the
+ * source is USB and files; the map FROZEN under it. Moving, or parked on a trip: the panel lies collapsed ([collapsed], `music-driving`, `music-driving-free`): nothing of it shows, Maps with its column lies
+ * under it ([overMaps]), the dock's music cell stays selected and one lyric line shows under the car ([LyricChip]). A second tap on that cell, or Back, is the panel he came from. Its pixels are the spec's, from the left
+ * in both languages (section 7); text inside goes the language's way.
+ *
+ * Built ahead of time when the home screen is quiet ([PanelStack.prepareWhenQuiet]) and kept from then on: what the owner left stays (source, tab, open group, where each list was, the lyrics), and an open has
+ * nothing to build. Out of sight it listens to nothing ([onHide]). The theme comes in place ([recolours]); the wash of the other theme is made ready before it flips ([readyStep]). (A class name is left for whoever starts
+ * it by name: [MusicActivity].)
  */
 class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
-    override val opaque: Boolean get() = true
     override val keep: Boolean get() = true
-    override val flightCover: View? get() = if (::art.isInitialized) art else null
+    // (lying collapsed nothing shows: no flight)
+    override val flightCover: View? get() = if (::art.isInitialized && !lyingCollapsed) art else null
+    override val recolours: Boolean get() = true
+    override val opaque: Boolean get() = !lyingCollapsed
+    override val solid: Boolean get() = !lyingCollapsed
+    override val overMaps: Boolean get() = lyingCollapsed
+
+    /** Nothing of the panel shows (section 6.0's row for Music): moving, or a trip. Only [expand] brings it up, and what it asks for: parked, and on a trip gear P known. */
+    private var collapsed = false
+    /** (Before it comes up, what it will be when it does: the stack asks first.) */
+    private val lyingCollapsed: Boolean get() = if (showing) collapsed else !opensFull()
+    private fun onTripNow() = NavSession.state != NavSession.State.IDLE
+    /** How it opens: the full panel only parked with no trip. */
+    private fun opensFull() = DriveState.parked && !onTripNow()
+    /** What a tap on the chip or the mini may bring up: on a red light with a trip only with gear P known. */
+    private fun fullAllowed() = DriveState.parked && (!onTripNow() || DriveState.parkKnown)
 
     private enum class Tab { SONGS, ALBUMS, ARTISTS, FOLDERS }
 
     /** How a list comes in: another tab fades in place, a group comes from the end side, Back from the start side. */
     private enum class Nav { NONE, TAB, INTO, BACK }
 
+    override val root = FrameLayout(this)
+    private lateinit var content: FrameLayout
+    private lateinit var wash: ImageView
+    private lateinit var washOld: ImageView
+    private lateinit var room: View
+    private lateinit var coverGroup: FrameLayout
+    /** Under a song's cover only: the empty panel's grey plate lies flat, and in the day theme this would show through it. */
+    private lateinit var coverShadow: ImageView
     private lateinit var art: ImageView
     /** The cover before, leaving under the new one (see [swapCover]). */
     private lateinit var artOld: ImageView
-    private lateinit var artIcon: ImageView
     private lateinit var title: AText
-    private lateinit var artist: AText
-    private lateinit var album: AText
+    private lateinit var sub: AText
+    private lateinit var songTools: FrameLayout
     private lateinit var seek: SeekView
-    private lateinit var tNow: AText
-    private lateinit var tTotal: AText
-    private lateinit var playIcon: PlayPauseView
-    private lateinit var shuffleBtn: ImageView
-    private lateinit var repeatBtn: ImageView
-    /** The "1" on the repeat button's corner: the one song again, not the whole list. */
-    private lateinit var repeatOne: AText
-    private val repeatOneBg = Shapes.oval(0)
-    private lateinit var prevBtn: View
-    private lateinit var nextBtn: View
-    private lateinit var source: Segmented
+    private lateinit var seekHint: AText
+    private lateinit var playBtn: PlayPauseView
+    private lateinit var prevBtn: IconButton
+    private lateinit var nextBtn: IconButton
+    private lateinit var sourceIcon: ImageView
+    private lateinit var sourceName: AText
+    private lateinit var lyricsView: LyricsView
+
+    // the library
+    private lateinit var library: SurfaceCard
     private lateinit var tabs: Segmented
-    private lateinit var listHolder: FrameLayout
     private lateinit var crumb: LinearLayout
     private lateinit var crumbText: AText
-    private lateinit var crumbChevron: ImageView
-    private lateinit var playAllIcon: ImageView
-    private lateinit var playAllText: AText
+    private lateinit var listHolder: FrameLayout
+    private lateinit var listFade: ImageView
     private lateinit var empty: LinearLayout
     private lateinit var emptyText: AText
     private lateinit var emptyBtn: ABtn
-    private lateinit var emptySpinner: ProgressBar
+    private lateinit var emptySpinner: Spinner
 
-    private lateinit var artBox: FrameLayout
-    private lateinit var playBtn: FrameLayout
-    private lateinit var libraryBox: LinearLayout
-    // YouTube: a search of its catalogue; what is chosen is played by YouTube's own app (YtMusic)
-    private lateinit var ytBox: LinearLayout
-    private lateinit var ytInput: android.widget.EditText
-    private lateinit var ytSearchIcon: ImageView
-    private lateinit var ytSpinner: ProgressBar
-    private lateinit var ytList: ListView
-    private lateinit var ytNote: LinearLayout
-    private lateinit var ytNoteText: AText
-    private lateinit var ytNoteBtn: ABtn
-    private var ytSongs: List<YtMusic.Song> = emptyList()
-    /** What was typed, across a new build of the views. */
-    private var ytText = ""
-    private var ytAsked = 0
-    private var ytCover: Bitmap? = null
-    /** What YouTube's app last told (read by the progress tick without asking it again). */
-    private var ytHas = false
-    private var ytDurationMs = 0L
-    private var ytPlaying = false
-    // the layout: in Bluetooth mode the song takes the whole screen (cover beside the title and the controls)
-    private lateinit var left: LinearLayout
-    private lateinit var panel: FrameLayout
-    private lateinit var stage: LinearLayout
-    private lateinit var artSlot: FrameLayout
-    private lateinit var info: LinearLayout
-    private lateinit var btSettings: ABtn
-    // the lyrics take the library's place (and, with Bluetooth, the song makes room for them)
-    private lateinit var lyricsView: LyricsView
-    private lateinit var lyricsBtn: FrameLayout
-    private lateinit var lyricsIcon: ImageView
-    private lateinit var lyricsOffBg: Drawable
-    /** The owner's switch (the button): lyrics wanted. */
-    private var lyricsWanted = false
-    /** Their place is open: wanted, and the song has some (or the owner asked on this very song, see [lyricsPinned]). */
-    private var lyricsOn = false
+    // no song at all: the four places to listen from
+    private lateinit var emptyCard: SurfaceCard
+    private lateinit var emptyRows: List<SourceRowView>
+
+    // the full lyrics
+    private lateinit var fullLayer: FrameLayout
+    private lateinit var fullHead: AText
+    private lateinit var lyricsBig: LyricsView
+    private lateinit var fullPlay: PlayPauseView
+    private lateinit var fullPrev: IconButton
+    private lateinit var fullNext: IconButton
+    private var lyricsFull = false
+
+    // the sheets, made the first time they are asked for
+    private var sourceSheet: SourceSheet? = null
+    private var queueSheet: QueueSheet? = null
+
+    /** The song whose lyrics are asked for (the key on this screen). */
     private var lyricsKey: String? = null
     /** The song whose lines the lyrics show (coming back to the screen on it does not make them again). */
     private var lyricsShown: String? = null
-    /** The button was just pressed on: the song then in front keeps their place open even when it has none ("" = no song). */
-    private var lyricsAsked = false
-    private var lyricsPinned: String? = null
     /** The song whose lyrics were asked for last, as they were asked for (timed lines that come later are matched to it). */
     private var lyricsSong: LyricSong? = null
     /** The lyrics shown for [lyricsSong] (a correction is kept with exactly these lines). */
@@ -191,32 +183,14 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
     /** A line just tapped on Naghm's song stays lit until its sound, which comes the delay later, catches up. */
     private var tapLitMs = 0L
     private var tapLitUntil = 0L
+    /** The chip was tapped off for this song ("off for this song", section 5). */
+    private var chipOffFor: String? = null
 
     /**
      * A song as its lyrics are asked for: its key on this screen, its names, the length the lookup used, and where it
      * plays from (the unit's own file, or the phone over Bluetooth).
      */
     private class LyricSong(val key: String, val title: String, val artist: String, val sec: Int, val track: Track? = null, val bt: Boolean = false)
-    // ...or the whole screen, in large type, over a small bar with the song and its buttons
-    override val root = FrameLayout(this)
-    private lateinit var content: LinearLayout
-    private lateinit var expandBtn: FrameLayout
-    private lateinit var fullLayer: FrameLayout
-    private lateinit var lyricsBig: LyricsView
-    private lateinit var fullClose: FrameLayout
-    private lateinit var fullBar: FrameLayout
-    private lateinit var fullArtBox: FrameLayout
-    private lateinit var fullArt: ImageView
-    private lateinit var fullTitle: AText
-    private lateinit var fullArtist: AText
-    private lateinit var fullPrev: View
-    private lateinit var fullNext: View
-    private lateinit var fullPlay: FrameLayout
-    private lateinit var fullPlayIcon: PlayPauseView
-    private lateinit var fullLine: ThinProgress
-    private lateinit var flyer: ImageView
-    private var flight: ValueAnimator? = null
-    private var lyricsFull = false
 
     private var tab = Tab.SONGS
     private var group: Group? = null
@@ -226,26 +200,24 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         set(v) { field = v; onBluetooth = v == Src.BT }
     private val bt get() = src == Src.BT
     private val yt get() = src == Src.YT
-    private val rtl get() = resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL
+    private val rtl get() = Fonts.arabicUi
+    /** USB and files was chosen with no song of it yet: its library shows, not the four places. */
+    private var libraryAsked = false
+    /** What YouTube's app last told (read by the progress tick without asking it again). */
+    private var ytHas = false
+    private var ytDurationMs = 0L
+    private var ytPlaying = false
+    private var ytCover: Bitmap? = null
     private var lastArtKey = Long.MIN_VALUE
     private var btCover: Bitmap? = null
     /** The song shown (its title comes in with a little movement when it changes). */
     private var shownSong: String? = null
-    /** The cover shown, and whether one was set yet (the first comes without the fade). */
+    /** The cover as its source gave it; the rounded copy at its size is what shows. */
     private var shownCover: Bitmap? = null
-    private var coverShown = false
+    private var coverSet = false
     /** The song the cover shown belongs to: another cover for the same song only crossfades. */
     private var artSong: String? = null
-    /**
-     * The cover's colour (see [Backdrop.Look]): [fill] for the progress, the play button, the indicators and the bars;
-     * [fillText] where it is text or an icon (the playing row, Play all). The theme accent without a cover.
-     */
-    private var fill = Palette.accent
-    private var fillText = Palette.accentFg
-
-    // the theme and the accent this screen was built in (see onLook)
-    private var builtDark = false
-    private var builtAccent = 0
+    private var artGen = 0
 
     /** It is in front, or on its way there; out of sight nothing asks for a picture or for lyrics. */
     private var showing = false
@@ -256,16 +228,6 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         Prefs.raw.getString("musicSource", "local") == "bt" || (BtMusic.playing && !Player.playing) -> Src.BT
         Prefs.raw.getString("musicSource", "local") == "yt" -> Src.YT
         else -> Src.LOCAL
-    }
-
-    /** The views for the theme and the accent that are loaded, with all that can be said before it is shown (see [init]). */
-    private fun build() {
-        builtDark = Palette.dark
-        builtAccent = Prefs.accent
-        buildUi()
-        if (lyricsFull) showFull(true, animate = false)
-        showNowPlaying()
-        showList()
     }
 
     /**
@@ -284,9 +246,11 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         }
     }
 
-    override fun onArgs(args: Bundle) = handle(args)
-
-    private fun close() = finish()
+    override fun onArgs(args: Bundle) {
+        handle(args)
+        // (the mini's title, the widget, the key, with the panel lying collapsed: it comes up if it may)
+        if (collapsed && fullAllowed()) expand()
+    }
 
     private fun askPermission() = requestPermissions(arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE), 3)
 
@@ -298,18 +262,20 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
     /**
      * Comes to the front (was onStart, and onCreate's handle). As far as anything in it can tell it is not in sight until the
      * end of this, as in an activity's onStart: what changed while it was away is simply there, and nothing moves inside the
-     * move that brings it in. What it drew last says nothing about now ([letGoOfPictures]).
+     * move that brings it in.
      */
     override fun onShow(args: Bundle?) {
         debugFail("show")
-        if (lookStale()) buildAgain()
+        catchUpLook()
+        collapsed = !opensFull()
+        root.animate().cancel()
+        root.alpha = if (collapsed) 0f else 1f
         root.visibility = View.INVISIBLE
         root.removeCallbacks(letGo)
         showing = true
         shownAt = SystemClock.uptimeMillis()
         shownSong = null
         lastArtKey = Long.MIN_VALUE
-        coverShown = false
         // (back from off the stack, as a new screen would: the phone may have started playing. Not when the window comes
         // back with it on top: from YouTube's app it stays on YouTube, whatever the phone does meanwhile)
         if (newOnStack) src = sourceNow()
@@ -319,24 +285,27 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         BtMusic.addListener(btListener)
         PhoneLink.addListener(phoneListener)
         MediaMonitor.observe(appListener)
+        DriveState.addListener(driveListener)
         Lyrics.onTimed = timedListener
         LyricsSync.onStatus = syncStatus
         // (the setting may have changed in Settings meanwhile)
-        if (::lyricsView.isInitialized) { val w = Words.on; lyrics { it.wordsOn = w } }
+        val w = Words.on
+        lyrics { it.wordsOn = w }
         Player.restore()
         showNowPlaying()
         showList()
-        (ytList.adapter as BaseAdapter).notifyDataSetChanged() // (its rows let go of their pictures too)
-        if (yt) ytShow()
-        // (at once: the first frame shows where the song is now, and the lit line stands in the middle with no glide)
+        // (at once: the first frame shows where the song is now, and the lit line stands in its slot with no glide)
         seek.removeCallbacks(progressTick)
         progressTick.run()
-        root.visibility = View.VISIBLE
+        if (collapsed && lyricsFull) showFull(false, animate = false, remember = false)
+        (if (lyricsFull) lyricsBig else lyricsView).settle()
+        root.visibility = if (collapsed) View.INVISIBLE else View.VISIBLE
+        syncChip()
     }
 
     /**
      * Something came over it, it left, or the window stopped (was onStop). It stays built, so all that keeps something alive or
-     * running stops here, and it lets go of its pictures.
+     * running stops here, and it lets go of the rows' pictures.
      */
     override fun onHide() {
         Player.removeListener(playerListener)
@@ -344,48 +313,41 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         BtMusic.removeListener(btListener)
         PhoneLink.removeListener(phoneListener)
         MediaMonitor.unobserve(appListener)
+        DriveState.removeListener(driveListener)
         seek.removeCallbacks(progressTick)
         // (listening for the lyrics' timing is the screen's: it stops with it, and starts again when it comes back)
         if (Lyrics.onTimed === timedListener) Lyrics.onTimed = null
         if (LyricsSync.onStatus === syncStatus) LyricsSync.onStatus = null
         LyricsSync.end()
-        if (::lyricsView.isInitialized) { lyricsView.removeCallbacks(lyricsRetry); lyricsView.removeCallbacks(lyricsLoading); lyrics { it.note(null) } }
+        lyricsView.removeCallbacks(lyricsRetry)
+        lyricsView.removeCallbacks(lyricsLoading)
+        lyrics { it.note(null) }
         lyricsKey = null // looked up again when the screen comes back
         // a cover still waiting for its successor (Bluetooth): the screen comes back with whatever there is by then
         cancelArtWait()
-        // (the keyboard's field: a window that comes back forward would bring the keyboard up for it)
-        ytInput.clearFocus()
         showing = false
+        LyricChip.current?.want(false)
         // (not now: it is on the screen until the move away has ended)
         root.removeCallbacks(letGo)
         root.postDelayed(letGo, LET_GO_AFTER_MS)
     }
 
+    override fun onOff() {
+        libraryAsked = false
+        chipOffFor = null
+    }
+
     private val letGo = Runnable { if (!showing && !isGone) letGoOfPictures() }
 
-    /**
-     * What a hidden screen would keep for nothing: the cover (in three views, and in the fields that remember it) and the
-     * rows' pictures. They are all in caches with a limit (ArtLoader's, CoverSearch's, the session's), a limit that holds only if
-     * nobody else keeps what they evict; [onShow] takes them from there again, and the look worked out from the cover stays
-     * (a picture of 48 texels and two colours), so coming back on the same cover costs nothing: [setArt]. A moment after
-     * [onHide], once nothing of it can be on the screen.
-     */
+    /** What a hidden screen would keep for nothing: the rows' pictures, all in a cache with a limit. Bound again when it comes back. The cover and its wash stay: he comes back to them at once. */
     private fun letGoOfPictures() {
-        flight?.cancel()
-        if (accentAnim?.isRunning == true) accentAnim?.end()
-        flyer.setImageDrawable(null)
-        setCover(null)
-        fullArt.setImageBitmap(null)
-        shownCover = null
-        btCover = null
-        ytCover = null
-        for (l in listOf<AbsListView>(listView, gridView, ytList)) for (i in 0 until l.childCount) when (val row = l.getChildAt(i)) {
-            is SongRow -> row.dropPicture()
+        for (l in listOf<AbsListView>(listView, gridView)) for (i in 0 until l.childCount) when (val row = l.getChildAt(i)) {
+            is SongRowView -> row.dropPicture()
             is AlbumCell -> row.dropPicture()
         }
     }
 
-    /** Back leaves the large lyrics, then an album or an artist, first. */
+    /** Back leaves the full lyrics, then an album or an artist, first. */
     override fun onBack(): Boolean = when {
         lyricsFull -> { showFull(false); true }
         group != null -> { group = null; showList(Nav.BACK); true }
@@ -395,6 +357,8 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
     override fun onDestroy() {
         root.removeCallbacks(letGo)
         onBluetooth = null
+        ThemeSwap.readySteps.remove(readyStep)
+        if (current === this) current = null
     }
 
     /**
@@ -415,76 +379,115 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         gridView.adapter = null
     }
 
-    private fun lookStale() = Theme.isDarkNow() != builtDark || Prefs.accent != builtAccent
-
     /** Debug builds: the stack must drop this panel and go on (setprop debug.aura.musicfail build|show). */
     private fun debugFail(at: String) {
         if (com.abdllh.aura.BuildConfig.DEBUG && com.abdllh.aura.system.SystemProps.get("debug.aura.musicfail") == at) throw IllegalStateException("music: $at")
     }
 
-    /** Sunset or sunrise under "auto" (a minute's tick), or a theme or an accent chosen in Settings meanwhile. */
-    override fun onLook() {
-        if (!lookStale() || !showing) return
-        onHide()
-        onShow(null) // (builds it again, and it is on top: nothing new about its place on the stack)
-    }
-
+    // ------------------------------------------------------------------------------------------ the theme
     /**
-     * The screen built again, where it is: what it was built in changed (a language is the whole window's, the shell's). Until
-     * 2.0 this was recreate(), which lost the tab, the open group, where the lists were and YouTube's results: all that stays.
-     * What the old views were told goes with them. Not done in place by recolouring: the new design's screens will (its section 8).
+     * The theme it last recoloured in. [ThemeSwap] marks a hidden panel and the stack catches it up; a theme that came another way (`Theme.refresh`: old Settings, old Controls, a test hook) marks nothing, and
+     * half the panel, what reads [Palette] as it draws, would have gone with it and half not. So it looks for itself when it comes back.
      */
-    private fun buildAgain() {
-        Theme.refresh()
-        shell.windowLook(navBar)
-        ytHideKeyboard()
-        rememberSpot()
-        ytText = ytInput.text.toString()
-        ytInput.removeCallbacks(ytSearchLater)
-        root.removeCallbacks(redrawText)
-        accentAnim?.let { it.removeAllListeners(); it.cancel() }
-        accentAnim = null
-        flight?.cancel()
-        flight = null
-        cancelArtWait()
-        lookGen++
-        back = null
-        lookOf = null
-        shownCover = null
-        coverShown = false
-        shownSong = null
-        artSong = null
-        lastArtKey = Long.MIN_VALUE
-        shownList = null
-        laidWide = null
-        relaying = false
-        transportSet = false
-        breathSet = false
-        shownSourceIcon = 0
-        paintedShuffle = 0
-        paintedRepeat = 0
-        paintedOne = null
-        paintedOneFill = 0
-        paintedLyrics = 0
-        fill = Palette.accent
-        fillText = Palette.accentFg
-        lyricsShown = null
-        root.removeAllViews()
-        build()
+    private var lookedDark = Palette.dark
+
+    private fun catchUpLook() {
+        if (lookedDark == Palette.dark) return
+        Look.apply(root)
+        sourceSheet?.let { Look.apply(it) }
+        queueSheet?.let { Look.apply(it) }
     }
 
+    /** Before a flip, on the worker: the song's wash for that theme, so the swap decodes nothing. [Backdrop] keeps it by the cover. */
+    private val readyStep: (Boolean, () -> Unit) -> Unit = { night, done -> Backdrop.washAsync(this, shownCover, night) { done() } }
+
+    /** At the swap, or as the panel catches up when it comes back: what is a bitmap of one theme, and the rows that are off the list. */
+    private fun takeTheme() {
+        lookedDark = Palette.dark
+        if (washNow?.night != Palette.dark) {
+            val g = artGen
+            Backdrop.washAsync(this, shownCover, Palette.dark) { w -> if (g == artGen && !isGone && w.night == Palette.dark) applyWash(w, animate = false) }
+        }
+        if (shownCover == null) art.setImageDrawable(Backdrop.noArt(this, COVER, Tokens2.R_coverBig))
+        if (::listView.isInitialized) (listView.adapter as? BaseAdapter)?.notifyDataSetChanged()
+    }
+
+    // ------------------------------------------------------------------------------------------ collapsed, the full panel
+    private val driveListener: () -> Unit = {
+        // (the car stopping changes nothing by itself: it only allows more, section 6.0)
+        if (DriveState.moving && !collapsed) collapse()
+        syncChip()
+    }
+
+    /** A trip began under the full panel. */
+    override fun onTrip(on: Boolean) {
+        if (on && !collapsed && showing) collapse()
+        // (one at x 12 would lie over the column, which is never covered on a trip; it opens beside it next time)
+        if (on) { sourceSheet?.close(); queueSheet?.close() }
+        syncChip()
+    }
+
+    /** The car moves, or a trip began: the full lyrics and the library go with the panel, 180, and the map and the column are simply there under it. */
+    private fun collapse() {
+        collapsed = true
+        if (lyricsFull) showFull(false, animate = false, remember = false)
+        shell.panels.panelChanged(this) // ("wake first": the map and Maps' frame under it, before anything fades)
+        syncChip()
+        if (root.isShown && Prefs.screenAnimations) root.anim(Tokens2.MS_cardIn, Motion.MOVE).alpha(0f).withEndAction { if (collapsed) root.visibility = View.INVISIBLE }.start()
+        else { root.animate().cancel(); root.alpha = 0f; root.visibility = View.INVISIBLE }
+    }
+
+    /** Back up: the chip goes, the panel fades in over the map, and only when it is opaque does the map freeze and Maps' frame go. */
+    private fun expand() {
+        collapsed = false
+        syncChip()
+        (if (lyricsFull) lyricsBig else lyricsView).settle()
+        root.animate().cancel()
+        root.visibility = View.VISIBLE
+        if (Prefs.screenAnimations && shell.resumedNow) {
+            root.alpha = 0f
+            root.anim(Tokens2.MS_roomIn, Motion.MOVE).alpha(1f).withEndAction { if (!collapsed) shell.panels.panelChanged(this) }.start()
+        } else {
+            root.alpha = 1f
+            shell.panels.panelChanged(this)
+        }
+    }
+
+    /** The chip follows what is lying collapsed, song by song. */
+    private fun syncChip() {
+        val c = LyricChip.current ?: return
+        c.onTap = chipTapped
+        val on = showing && collapsed && (chipOffFor == null || chipOffFor != lyricsKey)
+        c.want(on)
+        if (on) {
+            var at = positionNow() + lyricsShift
+            if (SystemClock.uptimeMillis() < tapLitUntil) at = maxOf(at, tapLitMs)
+            c.at(chipRows(), at)
+        }
+    }
+
+    /** Parked, on a red light with gear P known or with no trip: the full panel. Otherwise: off for this song. */
+    private val chipTapped: () -> Unit = {
+        if (fullAllowed()) expand() else { chipOffFor = lyricsKey; syncChip() }
+    }
+
+    /** What the chip can follow: timed lines, with a known place in the song. */
+    private fun chipRows(): List<Lyrics.Line>? = lyricsResult?.takeIf { it.synced && lyricsShown == lyricsKey && lyricsKey != null && !positionUnknown }?.lines
+
+    // ------------------------------------------------------------------------------------------ the listeners
     private val playerListener: () -> Unit = {
         if (src == Src.LOCAL) showNowPlaying()
         followPlaying()
         if (listView.adapter === tracks) tracks.notifyDataSetChanged()
+        queueSheet?.refresh()
     }
     private val libraryListener: () -> Unit = { Player.restore(); showList(); showNowPlaying() }
-    private val btListener: () -> Unit = { if (bt) showNowPlaying() }
+    private val btListener: () -> Unit = { if (bt) showNowPlaying() else syncRows() }
     /** Naghm's lyrics came (or new ones): shown for its song in place of the screen's own (1.19, [phoneLyrics]). */
     private val phoneListener: () -> Unit = {
         val s = lyricsSong
         val r = phoneLyrics(s)
-        if (s != null && r != null && lyricsKey == s.key && lyricsResult !== r && phoneSeen !== r && ::lyricsView.isInitialized && !isGone) {
+        if (s != null && r != null && lyricsKey == s.key && lyricsResult !== r && phoneSeen !== r && !isGone) {
             phoneSeen = r
             val own = lyricsResult?.takeIf { lyricsShown == s.key }
             if (own == null || phoneTakesOver(own, r)) {
@@ -492,6 +495,7 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
                 lyricsAnswer(s.key, r, false)
             }
         }
+        syncRows()
     }
     /** Naghm's lyrics already looked at (the listener runs with its every state). */
     private var phoneSeen: Lyrics.Result? = null
@@ -546,28 +550,30 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
     private val progressTick = object : Runnable {
         override fun run() {
             val at = positionNow()
-            val playing = when (src) {
-                Src.YT -> ytPlaying
-                Src.BT -> BtMusic.playing
-                Src.LOCAL -> Player.playing
-            }
+            val playing = nowPlaying()
             // (the lyrics' time: the song's, with the owner's correction of a Bluetooth song's timing, or the sound's delay)
             var lyricAt = at + lyricsShift
             if (SystemClock.uptimeMillis() < tapLitUntil) lyricAt = maxOf(lyricAt, tapLitMs)
-            if (lyricsOn) {
-                val unknown = positionUnknown
-                lyrics { it.needSync = unknown; it.at(lyricAt, playing) }
-            }
+            val unknown = positionUnknown
+            lyrics { it.needSync = unknown; it.at(lyricAt, playing) }
+            val chip = if (collapsed) LyricChip.current else null
+            if (chip != null) syncChip()
             when (src) {
                 // YouTube's app tells its song's length and where it is (the real position)
                 Src.YT -> {
                     val p = MediaMonitor.appPosition(YtMusic.players)
                     showProgress(ytHas && ytDurationMs > 0 && p != null, at, ytDurationMs)
                 }
-                // the phone does not say where a song is (BtMusic keeps a clock): an unknown position shows nothing
+                // the phone does not say where a song is (BtMusic keeps a clock): an unknown position shows one line in the slot
                 Src.BT -> {
                     val d = BtMusic.durationSec * 1000L
-                    showProgress(BtMusic.connected && BtMusic.title.isNotBlank() && BtMusic.positionKnown && d > 0, at, d)
+                    val has = BtMusic.title.isNotBlank()
+                    when {
+                        has && BtMusic.positionKnown && d > 0 -> showProgress(BtMusic.connected, at, d)
+                        has && BtMusic.positionKnown -> showSlotText(clockText(at))
+                        has && BtMusic.connected && lyricsResult?.synced == true && lyricsShown == lyricsKey -> showSlotText(getString(R.string.music_tap_line))
+                        else -> showSlotText("")
+                    }
                 }
                 Src.LOCAL -> {
                     val d = Player.duration()
@@ -575,245 +581,68 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
                 }
             }
             // the lyrics follow the song closely: the next tick comes when the next line is due, not up to a tick late
-            val next = if (lyricsOn && playing) lyricsView.msToNext(lyricAt) else Long.MAX_VALUE
-            seek.postDelayed(this, minOf(if (lyricsOn) 250L else 500L, next).coerceAtLeast(16L))
+            val next = if (playing) minOf(lyricsView.msToNext(lyricAt), chip?.msToNext(lyricAt) ?: Long.MAX_VALUE) else Long.MAX_VALUE
+            seek.postDelayed(this, minOf(TICK_MS, next).coerceAtLeast(16L))
         }
     }
 
-    /** The bar and the times; nothing at all where the song or its position is not known (no empty bar, no dashes). */
+    private var shownSec = -1L
+    private var shownLen = -1L
+
+    /** The bar and the times, one change a second. With the word's pill on its way the tick waits for the next look: a tick on the left and a pill on the right would redraw the whole panel (SPEC.md section 4). */
     private fun showProgress(known: Boolean, p: Long, d: Long) {
-        seek.visibility = if (known) View.VISIBLE else View.INVISIBLE
-        val f = if (known) (p.toFloat() / d).coerceIn(0f, 1f) else 0f
-        if (!seek.dragging) {
-            seek.progress = f
-            tNow.setTextIfChanged(if (known) clockText(p.coerceAtMost(d)) else "")
-            tTotal.setTextIfChanged(if (known) clockText(d) else "")
-        }
-        fullLine.progress = if (known) f else -1f
+        if (!known) { showSlotText(""); return }
+        if (seek.visibility != View.VISIBLE) seek.visibility = View.VISIBLE
+        if (seekHint.visibility != View.INVISIBLE) seekHint.visibility = View.INVISIBLE
+        if (seek.dragging) return
+        val sec = p / 1000L
+        if (sec == shownSec && d == shownLen) return
+        if (lyricsView.pillMoving || lyricsBig.pillMoving) return
+        shownSec = sec
+        shownLen = d
+        seek.setTimes(clockText(p.coerceAtMost(d)), clockText(d))
+        seek.progress = (p.toFloat() / d).coerceIn(0f, 1f)
+    }
+
+    /** No bar: one line in the slot, or nothing. */
+    private fun showSlotText(s: CharSequence) {
+        if (seek.visibility != View.INVISIBLE) seek.visibility = View.INVISIBLE
+        shownSec = -1L
+        seekHint.setTextIfChanged(s)
+        val v = if (s.isEmpty()) View.INVISIBLE else View.VISIBLE
+        if (seekHint.visibility != v) seekHint.visibility = v
     }
 
     // ------------------------------------------------------------------------------------------ lyrics
     /** Both sizes of the lyrics (beside the song, and alone on the screen) are told the same things. */
     private inline fun lyrics(f: (LyricsView) -> Unit) { f(lyricsView); f(lyricsBig) }
 
-    private fun toggleLyrics() {
-        val on = !lyricsWanted
-        relayout(panelAfter = !(bt && !on)) {
-            lyricsWanted = on
-            lyricsOn = on
-            lyricsAsked = on
-            Prefs.raw.edit().putBoolean("musicLyrics", on).apply()
-            lyricsKey = null
-            showList()
-            showNowPlaying()
-        }
-    }
-
-    /**
-     * The song in front has lyrics to show, or not: their place opens or closes with it, and the button stays on. A
-     * song without any gives the room back (to the cover, to the library) instead of a line saying so; the next one
-     * that has some brings them back the size they were. Not for the song the owner pressed the button on: there the
-     * line that says why nothing shows is the answer.
-     */
-    private fun lyricsHave(some: Boolean) {
-        if (!lyricsWanted) return
-        val show = some || lyricsPinned == (lyricsKey ?: "")
-        if (show == lyricsOn) return
-        val moving = root.isLaidOut && root.isShown
-        when {
-            show && Prefs.raw.getBoolean("musicLyricsFull", false) -> {
-                lyricsOn = true
-                if (moving) {
-                    showFull(true, remember = false)
-                    // the song's side takes its new layout once it is out of sight
-                    root.postDelayed({ if (lyricsFull && lyricsOn) showList() }, 240L)
-                } else {
-                    showList()
-                    showFull(true, animate = false, remember = false)
-                }
-            }
-            show -> relayout(panelAfter = true) { lyricsOn = true; showList(); paintNames() }
-            lyricsFull -> {
-                // the large lyrics are left first; large stays the owner's choice for the next song that has some
-                lyricsOn = false
-                showList() // (the song's side is out of sight: it comes back in its new layout)
-                paintNames()
-                if (moving) afterLayout { if (lyricsFull && !lyricsOn) showFull(false, remember = false) }
-                else showFull(false, animate = false, remember = false)
-            }
-            else -> relayout(panelAfter = !bt) { lyricsOn = false; showList(); paintNames() }
-        }
-    }
-
-    private var relaying = false
-
-    /** Runs [then] once the layout asked for is done, just before it is drawn. */
-    private fun afterLayout(then: () -> Unit) {
-        val o = root.viewTreeObserver
-        o.addOnPreDrawListener(object : android.view.ViewTreeObserver.OnPreDrawListener {
-            override fun onPreDraw(): Boolean {
-                (if (o.isAlive) o else root.viewTreeObserver).removeOnPreDrawListener(this)
-                then()
-                return true
-            }
-        })
-        root.requestLayout()
-    }
-
-    /**
-     * A change of layout (the lyrics on or off, another source): the cover, the song's names and the buttons travel to
-     * their new places, what leaves fades out where it stood and what comes in rises into its place.
-     * [panelAfter]: the panel beside the song is still there afterwards (then only what is in it changes).
-     */
-    private fun relayout(panelAfter: Boolean, change: () -> Unit) {
-        // (a change inside a change, such as the lyrics closing as the source changes: one movement, the outer one's)
-        if (relaying || !root.isLaidOut || !root.isShown || lyricsFull) { change(); return }
-        val hadPanel = panel.visibility == View.VISIBLE
-        val inside = listOf(libraryBox, ytBox, lyricsView)
-        val was = inside.firstOrNull { hadPanel && it.visibility == View.VISIBLE }
-        // (a paused cover's smaller size moves from its slot to the cover itself: the move measures the cover by its
-        // own scale, and would otherwise start it from a place 6 % off)
-        val k = artSlot.scaleX
-        if (k != 1f) { breath.snapTo(1f); artBox.scaleX = k; artBox.scaleY = k }
-        val move = LayoutMove(root, listOf(artBox, info, lyricsBtn, source), setOf(artBox),
-            leaving = if (hadPanel && !panelAfter) listOf(panel) else listOfNotNull(was))
-        relaying = true
-        try { change() } finally { relaying = false }
-        val hasPanel = panel.visibility == View.VISIBLE
-        val now = inside.firstOrNull { hasPanel && it.visibility == View.VISIBLE }
-        // (the same thing in the same panel: nothing left, nothing came)
-        if (was != null && was === now) move.keepLeaving() else if (now != null) now.riseIn(12f, 40L, Motion.MEDIUM)
-        // the panel itself comes in from its side
-        if (hasPanel && !hadPanel) panel.enter(dx = if (rtl) -36f else 36f, delay = 60L, dur = Motion.LONG)
-        move.play()
-        // (and back to the slot as the cover travels to its full size, so the cover lands paused in one motion; started
-        // after the move has measured where the cover arrives, with the slot still at full size)
-        if (k != 1f) afterLayout { breathe(nowPlaying()) }
-        redrawAfterMove()
-    }
-
-    /**
-     * The song's labels drawn anew once a move has settled. After a relayout, specks of other letters showed beside
-     * the title, the artist and the length until the screen was next hidden. Text that travels is drawn at a new
-     * fraction of a pixel on every frame, and the GPU's store of letters fills and reuses its places; a label still
-     * drawing the run of letters it recorded before the move then picks up pieces of what took those places (redrawing
-     * the column alone does not help: the labels inside keep their recording). Until 1.12 the labels were set again
-     * on every tick, which hid it. One frame, once per move.
-     */
-    private fun redrawAfterMove() {
-        root.removeCallbacks(redrawText)
-        root.postDelayed(redrawText, Motion.LONG + 32L)
-    }
-
-    private val redrawText = Runnable { if (!isGone) rerecord(left) }
-
-    private fun rerecord(v: View) {
-        if (v is TextView) v.invalidate() else if (v is ViewGroup) for (i in 0 until v.childCount) rerecord(v.getChildAt(i))
-    }
-
-    /**
-     * The lyrics alone on the whole screen ([on]) or back beside the song: the screen below steps back and fades, the
-     * large lines come up, and the cover travels between its place and the small bar's.
-     */
+    /** The lyrics alone on the screen ([on]) or back beside the song: one fades over the other, the left column stays laid out. Parked only. */
     private fun showFull(on: Boolean, animate: Boolean = true, remember: Boolean = true) {
-        val moving = animate && root.isLaidOut && root.isShown
+        val moving = animate && root.isShown && Prefs.screenAnimations
         lyricsFull = on
-        // ([remember]: the owner's own press, not a song without lyrics passing by)
+        // ([remember]: the owner's own press, not the car starting to move)
         if (remember) Prefs.raw.edit().putBoolean("musicLyricsFull", on).apply()
-        flight?.cancel()
-        val parts = listOf(content, fullBar, fullClose, lyricsBig)
+        (if (on) lyricsBig else lyricsView).settle()
         if (!moving) {
-            for (v in parts) { v.animate().cancel(); v.setTag(R.id.aura_exiting, null) }
+            content.animate().cancel()
+            fullLayer.animate().cancel()
+            content.alpha = 1f
+            fullLayer.alpha = 1f
             content.visibility = if (on) View.INVISIBLE else View.VISIBLE
-            content.alpha = 1f; content.scaleX = 1f; content.scaleY = 1f
-            // (out of sight, never gone: it stays laid out, so nothing is measured when it comes in)
             fullLayer.visibility = if (on) View.VISIBLE else View.INVISIBLE
-            for (v in listOf(fullBar, fullClose, lyricsBig)) { v.alpha = 1f; v.translationY = 0f }
-            fullArtBox.alpha = 1f
-            flyer.visibility = View.GONE
-            if (on) lyricsBig.post { lyricsBig.settle() }
             return
         }
         if (on) {
             fullLayer.visibility = View.VISIBLE
-            lyricsBig.settle()
-            fly(toBar = true)
-            content.exit(scaleTo = 0.97f, dur = Motion.SHORT) { if (lyricsFull) content.visibility = View.INVISIBLE }
-            lyricsBig.enter(dy = 20f, delay = 60L)
-            fullBar.enter(dy = 14f, delay = 40L)
-            fullClose.enter(delay = 120L, dur = Motion.SHORT)
+            if (fullLayer.alpha >= 1f) fullLayer.alpha = 0f
+            fullLayer.fadeTo(1f, Tokens2.MS_lyricsIn, Motion.MOVE)
+            content.fadeTo(0f, Tokens2.MS_cardOut, Motion.EXIT) { if (lyricsFull) content.visibility = View.INVISIBLE }
         } else {
-            // leaving is quicker than arriving
-            lyricsView.settle()
-            fly(toBar = false)
-            content.enter(scaleFrom = 0.98f, delay = 40L)
-            lyricsBig.exit(dy = 12f) { if (!lyricsFull) fullLayer.visibility = View.INVISIBLE }
-            fullBar.exit(dy = 10f)
-            fullClose.exit(dur = Motion.XSHORT)
-        }
-    }
-
-    /**
-     * The cover on its way between the song's cover and the bar's small one: a copy that travels above both (the two
-     * real ones stay where the layout put them), its corners keeping their roundness as it changes size.
-     */
-    private fun fly(toBar: Boolean) {
-        val cover = shownCover
-        val big = artBox
-        val small = fullArtBox
-        if (cover == null || big.width == 0 || small.width == 0 || !big.isLaidOut || !small.isLaidOut) {
-            // (no cover to carry, or nothing laid out yet: the two layouts just fade)
-            fullArtBox.alpha = 1f
-            big.alpha = 1f
-            flyer.visibility = View.GONE
-            return
-        }
-        val o = IntArray(2); root.getLocationInWindow(o)
-        val a = IntArray(2); big.getLocationInWindow(a)
-        val b = IntArray(2); small.getLocationInWindow(b)
-        // (the bar is on its way in or out: where it rests, not where it is this frame)
-        val bx = b[0] - o[0] - fullBar.translationX
-        val by = b[1] - o[1] - fullBar.translationY
-        val ax = (a[0] - o[0]).toFloat()
-        val ay = (a[1] - o[1]).toFloat()
-        val side = big.width
-        // (the cover as seen: a paused one is shown a little smaller, by its slot)
-        val from = artSlot.scaleX
-        val to = small.width.toFloat() / side
-        flyer.layoutParams = flyer.layoutParams.apply { width = side; height = side }
-        flyer.setImageBitmap(cover)
-        flyer.pivotX = 0f; flyer.pivotY = 0f
-        flyer.visibility = View.VISIBLE
-        // (the copy stands in for both real ones until it lands)
-        fullArtBox.alpha = 0f
-        big.alpha = 0f
-        var radius = 0f
-        flyer.clipToOutline = true
-        flyer.outlineProvider = object : android.view.ViewOutlineProvider() {
-            override fun getOutline(v: View, out: android.graphics.Outline) { out.setRoundRect(0, 0, v.width, v.height, radius) }
-        }
-        fun place(t: Float) { // 0 = the song's cover, 1 = the bar's
-            val s = from + (to - from) * t
-            flyer.scaleX = s; flyer.scaleY = s
-            flyer.translationX = ax + (bx - ax) * t
-            flyer.translationY = ay + (by - ay) * t
-            radius = (COVER_RADIUS * from + (BAR_COVER_RADIUS - COVER_RADIUS * from) * t).dp / s // (as seen: the copy is scaled)
-            flyer.invalidateOutline()
-        }
-        place(if (toBar) 0f else 1f)
-        // (fast out, soft landing, both ways: a flight that starts slowly trails the screen that already left)
-        flight = ValueAnimator.ofFloat(if (toBar) 0f else 1f, if (toBar) 1f else 0f).apply {
-            duration = if (toBar) Motion.LONG else Motion.MEDIUM
-            interpolator = Motion.EMPHASIZED
-            addUpdateListener { place(it.animatedValue as Float) }
-            addListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: Animator) {
-                    flyer.visibility = View.GONE
-                    fullArtBox.alpha = 1f
-                    big.alpha = 1f
-                }
-            })
-            start()
+            content.visibility = View.VISIBLE
+            if (content.alpha >= 1f) content.alpha = 0f
+            content.fadeTo(1f, Tokens2.MS_lyricsIn, Motion.MOVE)
+            fullLayer.fadeTo(0f, Tokens2.MS_cardOut, Motion.EXIT) { if (!lyricsFull) fullLayer.visibility = View.INVISIBLE }
         }
     }
 
@@ -827,16 +656,15 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
     /** Until when a new song's names and cover are moving: new lyrics wait for it (making them is heavy). */
     private var songMovesUntil = 0L
 
-    /** The lyrics of what plays now, looked up once per song while the owner wants them (see [lyricsHave]). */
+    /** The lyrics of what plays now, looked up once per song. */
     private fun refreshLyrics() {
         if (!::lyricsView.isInitialized || !showing) return
-        if (!lyricsWanted) { LyricsSync.end(); return }
         val s = if (yt) {
             // (YouTube's app tells the song's own length: the right recording's lyrics)
             MediaMonitor.app(YtMusic.players)
                 ?.let { LyricSong("yt:${it.title}|${it.artist}", it.title, it.artist, (it.durationMs / 1000).toInt()) }
         } else if (bt) {
-            if (!BtMusic.connected || BtMusic.title.isBlank()) null
+            if (BtMusic.title.isBlank()) null
             // (once per song: the phone's own length, when it told one, helps to pick the right recording)
             else LyricSong("bt:${BtMusic.title}|${BtMusic.artist}", BtMusic.title, BtMusic.artist, BtMusic.phoneDurationSec, bt = true)
         } else Player.current?.let { LyricSong("lib:${it.id}", it.title, it.artist, (it.durationMs / 1000).toInt(), track = it) }
@@ -848,10 +676,8 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         lyricsSong = s
         // (another song: its own correction comes with its lyrics; the same one shown again keeps its own meanwhile)
         if (lyricsShown != s?.key) { lyricsOffset = 0L; lyricsResult = null }
-        val pin = s?.key ?: ""
-        if (lyricsAsked) { lyricsAsked = false; lyricsPinned = pin } else if (pin != lyricsPinned) lyricsPinned = null
         lyricsView.removeCallbacks(lyricsLoading)
-        if (s == null) { lyricsShown = null; lyrics { it.showStatus(getString(R.string.lyrics_nothing)) }; lyricsHave(false); return }
+        if (s == null) { lyricsShown = null; lyrics { it.showStatus("") }; return }
         // 1.19: Naghm's song with the phone's lyrics already here: those, at once (the same lines as on the phone, timed
         // on the very recording; the screen's own lookup does not always find them)
         phoneLyrics(s)?.let { r ->
@@ -859,7 +685,7 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
             lyricsAnswer(s.key, if (own == null || phoneTakesOver(own, r)) r else own, false)
             return
         }
-        // (while they are looked up their place stays as it is: open with what it showed, stepped back, or closed)
+        // (while they are looked up their place stays as it is, stepped back)
         if (lyricsShown != s.key) {
             lyrics { it.dim() }
             // (what shows is stepped back and no longer follows: back on that song before this answer comes — the
@@ -886,15 +712,15 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         when {
             r == null && failed -> {
                 lyricsShown = null
-                lyrics { it.showStatus(getString(R.string.lyrics_failed)) { lyricsView.removeCallbacks(lyricsRetry); lyricsKey = null; refreshLyrics() } }
+                lyricsResult = null
+                lyrics { it.showStatus(getString(R.string.music_lyrics_failed)) { lyricsView.removeCallbacks(lyricsRetry); lyricsKey = null; refreshLyrics() } }
                 // asked again in a while (the internet, or the server, may be back): one retry at a time
                 lyricsView.removeCallbacks(lyricsRetry)
                 lyricsRetryKey = key
                 lyricsView.postDelayed(lyricsRetry, 20_000L)
-                lyricsHave(false)
             }
-            r == null -> { lyricsShown = null; lyrics { it.showStatus(getString(R.string.lyrics_none)) }; lyricsHave(false) }
-            r.instrumental -> { lyricsShown = null; lyrics { it.showStatus(getString(R.string.lyrics_instrumental)) }; lyricsHave(false) }
+            r == null -> { lyricsShown = null; lyricsResult = null; lyrics { it.showStatus(getString(R.string.music_no_lyrics)) } }
+            r.instrumental -> { lyricsShown = null; lyricsResult = null; lyrics { it.showStatus(getString(R.string.lyrics_instrumental)) } }
             else -> {
                 val unknown = positionUnknown
                 // (the same song's lines again stay where they are; other ones, Naghm's after the screen's own, go up)
@@ -909,11 +735,11 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
                 if (com.abdllh.aura.BuildConfig.DEBUG) android.util.Log.d("AuraMusic", "lyrics up: ${r.source}, ${r.lines.size} lines, offset $lyricsOffset, put up: ${!same}")
                 lyricsShown = key
                 lyrics { it.needSync = unknown; it.at(at) }
-                lyricsHave(true)
                 listenFor(r)
                 if (r.synced && lyricsSong?.bt == true) offerDelayHint()
             }
         }
+        syncChip()
     }
 
     /**
@@ -1029,7 +855,7 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
             BtMusic.syncTo(target - lyricsShift)
             val at = BtMusic.positionMs() + lyricsShift
             lyrics { it.needSync = false; it.at(at) }
-            (if (lyricsFull) lyricsBig else lyricsView).flashSynced()
+            Snack.show(this, R.string.music_synced)
         } else if (Player.current != null) {
             Player.seekTo(l.ms)
             holdSeek(l.ms)
@@ -1038,8 +864,7 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         }
     }
 
-    /** Where the lyrics' messages stand: above the small bar when the lyrics fill the screen. */
-    private val snackAbove: Int get() = if (lyricsFull) FULL_BAR_DP + Space.L + Space.S else Snack.ABOVE_DP
+    private val snackAbove: Int get() = Snack.ABOVE_DP
 
     /**
      * A lyric line held down: the song's saved timing correction is forgotten (1.15). Without one, on Naghm's song
@@ -1093,13 +918,16 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
     }
 
     // ------------------------------------------------------------------------------------------ now playing
+    /** Nothing to show: the room, the grey cover and the four places (`empty-no-song-music`). */
+    private val noSong: Boolean get() = when (src) {
+        Src.YT -> !ytHas
+        Src.BT -> BtMusic.title.isBlank()
+        Src.LOCAL -> Player.current == null && !libraryAsked
+    }
+
     private fun showNowPlaying() {
-        val local = src == Src.LOCAL
-        // (the whole button, not only its icon: an empty spot still took taps and turned the unit's own player's
-        // shuffle and repeat while another source played)
-        (shuffleBtn.parent as View).visibility = if (local) View.VISIBLE else View.INVISIBLE
-        (repeatBtn.parent as View).visibility = if (local) View.VISIBLE else View.INVISIBLE
         seek.enabledSeek = !bt || BtMusic.canSeek // (a phone song moves only through Naghm)
+        val rowName = getString(sourceWord(rowNow(), true))
         when (src) {
             Src.YT -> {
                 // what YouTube's app plays, as its own session tells it
@@ -1107,7 +935,6 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
                 ytHas = s != null
                 ytDurationMs = s?.durationMs ?: 0L
                 ytPlaying = s?.playing == true
-                sourceIcon(R.drawable.ic_music)
                 songChanged("yt:${s?.title}|${s?.artist}")
                 // Every publish of the app's session (play, pause, buffering, another app's news) used to bring a new
                 // Bitmap for the same cover, and each one crossfaded the cover and blinked the backdrop: a new picture
@@ -1119,51 +946,44 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
                     ytCover = cover
                     if (!same) setArt(cover, YT_ART)
                 }
-                if (s == null) names(getString(R.string.yt_idle)) else names(s.title, s.artist, s.album)
+                if (s == null) names(getString(R.string.media_nothing), getString(R.string.music_pick_source))
+                else names(s.title, join(wrap(s.artist), rowName))
                 playState(ytPlaying, on = s != null)
             }
             Src.BT -> {
-                sourceIcon(R.drawable.ic_bluetooth)
                 val linked = BtMusic.available && BtMusic.connected
                 songChanged("bt:${BtMusic.title}|${BtMusic.artist}")
                 btArt()
-                val linkedPhone = if (BtMusic.phone.isBlank()) getString(R.string.music_bt_phone_connected)
-                    else getString(R.string.music_bt_connected, BtMusic.phone)
-                // (Naghm on the phone tells the song's real time and takes seeking: say so under the song)
-                val phone = if (BtMusic.viaNaghm) getString(R.string.music_bt_naghm, linkedPhone) else linkedPhone
                 // (where the song is cannot be shown until it is known: its length goes beside the artist meanwhile)
                 val d = BtMusic.durationSec * 1000L
-                val by = if (!BtMusic.positionKnown && d > 0) join(BtMusic.artist, clockText(d)) else BtMusic.artist
+                val by = if (!BtMusic.positionKnown && d > 0) join(wrap(BtMusic.artist), clockText(d)) else wrap(BtMusic.artist)
                 when {
-                    !linked -> names(getString(R.string.music_bt_not_connected), hint = true)
-                    BtMusic.title.isBlank() -> names(getString(R.string.music_bt_idle), phone = phone)
-                    else -> names(BtMusic.title, by, phone = phone)
+                    BtMusic.title.isBlank() -> names(getString(R.string.media_nothing), getString(if (linked) R.string.music_bt_idle else R.string.music_pick_source))
+                    !linked -> names(BtMusic.title, getString(R.string.music_bt_lost))
+                    else -> names(BtMusic.title, join(by, rowName))
                 }
-                btSettings.visibility = if (linked) View.GONE else View.VISIBLE
                 playState(BtMusic.playing, on = linked)
             }
             Src.LOCAL -> {
-                sourceIcon(R.drawable.ic_music)
                 val t = Player.current
                 songChanged("lib:${t?.id}")
                 if (t == null) {
-                    names(getString(R.string.media_nothing))
+                    names(getString(R.string.media_nothing), getString(if (libraryAsked) sourceWord(SourceRow.USB, true) else R.string.music_pick_source))
                     if (lastArtKey != NO_ART) setArt(null, NO_ART)
                 } else {
-                    names(t.title, t.artist.ifBlank { getString(R.string.music_unknown_artist) }, t.album)
+                    names(t.title, join(wrap(t.artist.ifBlank { getString(R.string.music_unknown_artist) }), rowName))
                     if (lastArtKey != t.albumId) {
                         lastArtKey = t.albumId
-                        ArtLoader.get(this, t, 600) { b -> if (Player.current?.albumId == t.albumId && src == Src.LOCAL) setArt(b, t.albumId) }
+                        ArtLoader.get(this, t, ART_PX) { b -> if (Player.current?.albumId == t.albumId && src == Src.LOCAL) setArt(b, t.albumId) }
                     }
                 }
-                repeatBtn.contentDescription = Player.repeat.name
                 // (play also starts the library from its first song when nothing was played yet)
                 playState(Player.playing, on = t != null || Library.tracks.isNotEmpty())
             }
         }
-        if (!bt) btSettings.visibility = View.GONE
-        syncBar()
-        paintToggles()
+        paintSourceTile()
+        syncEmpty()
+        syncRows()
         refreshLyrics()
     }
 
@@ -1171,13 +991,120 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
     private fun sameCover(a: Bitmap, b: Bitmap): Boolean =
         try { a.width == b.width && a.height == b.height && a.sameAs(b) } catch (_: Throwable) { false }
 
-    private var shownSourceIcon = 0
+    // ---- the source, as it is named
+    private fun rowNow(): SourceRow = when (src) {
+        Src.BT -> if (BtMusic.viaNaghm) SourceRow.NAGHM else SourceRow.BT
+        Src.LOCAL -> SourceRow.USB
+        Src.YT -> SourceRow.YT
+    }
 
-    /** The placeholder's icon under the cover (only set when it changes: a new drawable each second was garbage). */
-    private fun sourceIcon(res: Int) {
-        if (res == shownSourceIcon) return
-        shownSourceIcon = res
-        artIcon.setImageResource(res)
+    private fun sourceWord(r: SourceRow, full: Boolean): Int = when (r) {
+        SourceRow.NAGHM -> if (full) R.string.music_src_naghm else R.string.music_src_naghm_short
+        SourceRow.BT -> if (full) R.string.music_src_bt else R.string.music_src_bt_short
+        SourceRow.USB -> if (full) R.string.music_src_usb else R.string.music_src_usb_short
+        SourceRow.YT -> if (full) R.string.music_src_yt else R.string.music_src_yt_short
+    }
+
+    private var paintedRow: SourceRow? = null
+
+    /** The tile's glyph and short name (only set when it changes). */
+    private fun paintSourceTile() {
+        val r = rowNow()
+        if (r == paintedRow) return
+        paintedRow = r
+        sourceIcon.setImageResource(r.icon)
+        sourceName.setText(sourceWord(r, false))
+    }
+
+    internal fun rowTitle(r: SourceRow, full: Boolean): String = getString(sourceWord(r, full))
+
+    /** What the row says of its state, what is true now (SPEC.md section 12). */
+    internal fun rowState(r: SourceRow): String = when (r) {
+        SourceRow.NAGHM -> getString(if (PhoneLink.connected) R.string.music_iphone_on else R.string.music_naghm_off)
+        SourceRow.BT -> when {
+            !BtMusic.connected -> getString(R.string.music_phone_off)
+            BtMusic.phone.isBlank() -> getString(R.string.music_bt_phone_connected)
+            else -> getString(R.string.music_bt_connected, BtMusic.phone)
+        }
+        SourceRow.USB -> if (Library.tracks.isEmpty()) getString(R.string.music_no_drive) else songCount(Library.tracks.size)
+        SourceRow.YT -> getString(if (YtMusic.player(this) != null) R.string.music_yt_opens else R.string.music_yt_missing)
+    }
+
+    internal fun rowChosen(r: SourceRow): Boolean = r == rowNow()
+
+    /** Western digits in both languages (SPEC.md section 3): a `%d` would follow the locale's. */
+    private fun songCount(n: Int) = String.format(java.util.Locale.ROOT, resources.getQuantityString(R.plurals.music_songs, n), n)
+
+    /** A row tapped, in the sheet or on the empty panel. */
+    internal fun chooseRow(r: SourceRow) {
+        when (r) {
+            SourceRow.NAGHM -> {
+                selectSource(Src.BT)
+                if (!PhoneLink.connected) Snack.show(this, R.string.music_naghm_off)
+            }
+            SourceRow.BT -> {
+                selectSource(Src.BT)
+                // (the way to pair or connect a phone is in the firmware's own app)
+                if (!BtMusic.connected) openBluetooth(this)
+            }
+            SourceRow.USB -> {
+                // (the music files are asked for when the owner chooses them)
+                if (!Library.hasPermission(this)) askPermission()
+                libraryAsked = true
+                selectSource(Src.LOCAL)
+                showNowPlaying()
+                showList()
+            }
+            SourceRow.YT -> {
+                selectSource(Src.YT)
+                // (no search in AMRI: its own app; what he plays there comes back by its session)
+                if (!YtMusic.openApp(this)) {
+                    Snack.show(this, R.string.yt_no_app, long = true, outlives = true)
+                    YtMusic.openStore(this)
+                }
+            }
+        }
+    }
+
+    private fun syncRows() {
+        if (::emptyRows.isInitialized && noSong) for (r in emptyRows) r.set(rowTitle(r.row, full = r.row != SourceRow.NAGHM), if (r.row == SourceRow.NAGHM && !PhoneLink.connected) getString(R.string.music_from_iphone) else rowState(r.row), false)
+        if (sourceSheet?.isOpen == true) sourceSheet?.refresh()
+    }
+
+    private fun sheet(s: com.abdllh.aura.ui.Sheet) {
+        catchUpLook()
+        val sheets = shell.root.sheets
+        if (s.parent == null) sheets.addView(s, FrameLayout.LayoutParams(MATCH, MATCH))
+        shell.root.closeSheets()
+        s.placeOnTrip(onTripNow())
+        s.open()
+    }
+
+    /** The source sheet, from the tile or the mini's cover anywhere. */
+    internal fun showSources() {
+        if (!showing) { BtMusic.init(this); Player.init(this) }
+        sheet(sourceSheet ?: SourceSheet(this, this).also { sourceSheet = it })
+    }
+
+    private fun showQueue() = sheet(queueSheet ?: QueueSheet(this, this).also { queueSheet = it })
+
+    // ---- what the queue sheet asks
+    internal val queueIsLocal: Boolean get() = src == Src.LOCAL
+    internal val songTitle: String get() = title.text.toString()
+    internal val songArtist: String get() = when (src) {
+        Src.BT -> BtMusic.artist
+        Src.YT -> MediaMonitor.app(YtMusic.players)?.artist.orEmpty()
+        Src.LOCAL -> Player.current?.artist.orEmpty()
+    }
+    internal val songArt: Bitmap? get() = shownCover
+    internal val queueElsewhere: Int get() = if (bt) R.string.music_queue_on_phone else R.string.music_queue_in_app
+
+    internal fun playQueue(t: Track) {
+        val q = Player.queue
+        val i = q.indexOf(t)
+        if (i < 0) return
+        skipDir = 0; skipAt = SystemClock.uptimeMillis()
+        Player.play(q, i)
     }
 
     /**
@@ -1207,54 +1134,23 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         root.removeCallbacks(artWait)
     }
 
-    // the song's names as its source tells them; how they are laid out depends on the layout (paintNames)
-    private var nTitle = ""
-    private var nArtist = ""
-    private var nAlbum = ""
-    private var nPhone = ""
-    private var nHint = false
-
-    private fun names(title: String, artist: String = "", album: String = "", phone: String = "", hint: Boolean = false) {
-        nTitle = title; nArtist = artist; nAlbum = album; nPhone = phone; nHint = hint
-        paintNames()
+    // the song's names as they are shown
+    private fun names(t: String, s: CharSequence) {
+        title.setTextIfChanged(t)
+        sub.setTextIfChanged(s)
+        fullHead.setTextIfChanged(if (noSong) "" else join(t, songArtist))
     }
 
-    private fun join(a: String, b: String) = listOf(a, b).filter { it.isNotBlank() }.joinToString("  ·  ")
+    private fun wrap(s: String): String = if (s.isBlank()) "" else BidiFormatter.getInstance().unicodeWrap(s)
 
-    /**
-     * Beside the library (or the lyrics) the names take two lines, the album joined to the artist, so the cover keeps
-     * the room; the song alone on the screen (Bluetooth) has room for a third, the phone it comes from. Without a
-     * phone the second line says how to get one.
-     */
-    private fun paintNames() {
-        if (!::title.isInitialized) return
-        val wide = bt && !lyricsOn
-        title.setTextIfChanged(nTitle)
-        val second = when {
-            nHint -> getString(R.string.music_bt_hint)
-            wide -> nArtist
-            else -> join(nArtist, nAlbum)
-        }
-        val lines = if (nHint) 2 else 1
-        if (artist.maxLines != lines) artist.maxLines = lines
-        artist.setTextIfChanged(second)
-        val third = if (wide && !nHint) nPhone.ifBlank { nAlbum } else ""
-        album.setTextIfChanged(third)
-        album.visibility = if (third.isEmpty()) View.GONE else View.VISIBLE
-    }
-
-    /** The small bar under the large lyrics says what the song's side says. */
-    private fun syncBar() {
-        fullTitle.setTextIfChanged(nTitle)
-        fullArtist.setTextIfChanged(if (nHint) "" else nArtist)
-        fullArtist.visibility = if (fullArtist.text.isNullOrBlank()) View.GONE else View.VISIBLE
-    }
+    private fun join(a: String, b: String) = listOf(a, b).filter { it.isNotBlank() }.joinToString(" · ")
 
     /** Playing or not, and whether there is anything for the buttons to do. */
     private fun playState(playing: Boolean, on: Boolean) {
-        playIcon.setPlaying(playing)
-        fullPlayIcon.setPlaying(playing)
-        breathe(playing)
+        playBtn.setPlaying(playing)
+        fullPlay.setPlaying(playing)
+        // (no song: the grey cover stands at its full size, nothing is paused)
+        breathe(playing || noSong)
         setTransport(on)
     }
 
@@ -1269,22 +1165,20 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
      */
     private fun setTransport(on: Boolean) {
         if (transportSet && on == transportOn) return
-        val animate = transportSet && root.isShown
         transportSet = true
         transportOn = on
-        for (v in listOf(prevBtn, playBtn, nextBtn, fullPrev, fullPlay, fullNext)) {
+        for (v in listOf<View>(prevBtn, playBtn, nextBtn, fullPrev, fullPlay, fullNext)) {
             v.isEnabled = on
             v.isClickable = on
-            if (animate) v.fadeTo(if (on) 1f else DISABLED_ALPHA) else { v.animate().cancel(); v.alpha = if (on) 1f else DISABLED_ALPHA }
+            v.alpha = if (on) 1f else DISABLED_ALPHA
         }
     }
 
     /**
-     * The cover breathes out a little while the music is paused, and back in when it plays: the largest thing on the
-     * screen says at a glance whether music plays. Its slot is scaled, not the cover (LayoutMove and the flight to the
-     * lyrics' bar move the cover itself).
+     * The cover breathes out a little while the music is paused, and back in when it plays, on a spring: the largest thing on the
+     * screen says at a glance whether music plays. The group with its shadow is scaled, one transform over two bitmaps. Parked only: the panel is.
      */
-    private val breath = Spring(1f, 380f, 0.78f) { artSlot.scaleX = it; artSlot.scaleY = it }
+    private val breath = Spring(1f, 380f, 0.78f) { coverGroup.scaleX = it; coverGroup.scaleY = it }
     private var breathSet = false
 
     private fun breathe(playing: Boolean) {
@@ -1299,17 +1193,13 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         if (key == shownSong) return
         shownSong = key
         seekTarget = -1L
+        chipOffFor = null
         if (first) return
-        songMovesUntil = SystemClock.uptimeMillis() + Motion.LONG
+        songMovesUntil = SystemClock.uptimeMillis() + Motion.MEDIUM
         // (only what is on the screen: the other set of names is out of sight)
-        if (lyricsFull) {
-            fullTitle.riseIn(8f, 0L, Motion.MEDIUM)
-            fullArtist.riseIn(8f, 50L, Motion.MEDIUM)
-            return
-        }
-        title.riseIn(10f, 0L, Motion.MEDIUM)
-        artist.riseIn(10f, 50L, Motion.MEDIUM)
-        if (album.visibility == View.VISIBLE) album.riseIn(10f, 90L, Motion.MEDIUM)
+        if (lyricsFull || !root.isShown) return
+        title.riseIn(8f, 0L, Motion.SHORT)
+        sub.riseIn(8f, 40L, Motion.SHORT)
     }
 
     /** The direction of the last skip (-1 previous, +1 next) and when it was pressed, for the next cover's entrance. */
@@ -1331,55 +1221,40 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         return d
     }
 
+    /**
+     * A cover, from its source. Rounded once at its size and its wash built on [Backdrop]'s worker, then both land in one frame ([land]). What is on the screen stays until then; nothing per frame.
+     * Late on a screen already up: a crossfade from the side of the skip, as [swapCover] says; a screen just coming up simply has it.
+     */
     private fun setArt(b: Bitmap?, key: Long) {
-        // (out of sight it takes no picture, it asks again when it comes back: only what the cover looks like is worked out)
-        if (!showing && b != null) { lookAhead(b); return }
-        // the first picture since it came back, or of all: there is nothing on the screen to move it from
-        val returning = !coverShown
-        // a new picture on a screen that already showed one (the keys are set before a cover loads: not those)
-        val changed = b !== shownCover && coverShown
+        lastArtKey = key
+        cancelArtWait()
+        if (coverSet && b === shownCover) { art.animate().cancel(); art.alpha = 1f; return }
+        val changed = coverSet
         val sameSong = artSong == shownSong
         artSong = shownSong
         shownCover = b
-        coverShown = true
-        lastArtKey = key
-        cancelArtWait()
-        val next = b?.let { BitmapDrawable(resources, it) }
-        when {
-            !changed -> setCover(next)
-            sameSong -> swapCover(next, null) // (a better copy of the same song's cover: a plain crossfade)
-            else -> swapCover(next, takeSkip())
+        coverSet = true
+        val g = ++artGen
+        val c = applicationContext
+        val night = Palette.dark
+        if (b == null) {
+            Backdrop.washAsync(c, null, night) { w -> if (g == artGen && !isGone) land(Backdrop.noArt(this, COVER, Tokens2.R_coverBig), w, changed, sameSong) }
+        } else {
+            Backdrop.roundAsync(c, b, COVER, Tokens2.R_coverBig) { r ->
+                Backdrop.washAsync(c, b, night) { w -> if (g == artGen && !isGone) land(BitmapDrawable(resources, r), w, changed, sameSong) }
+            }
         }
-        artIcon.visibility = if (b == null) View.VISIBLE else View.GONE
-        // the same cover in the small bar under the large lyrics
-        fullArt.setImageBitmap(b)
-        if (changed && lyricsFull) { fullArt.alpha = 0f; fullArt.fadeTo(1f, Motion.MEDIUM) }
-        // back on the cover it left: its look never went
-        if (returning && back != null && (if (b == null) lookOf == null else lookOf?.get() === b)) return
-        // its colours and the backdrop: worked out off the main thread (the first at once: there is nothing to fade from.
-        // A cover that came while the screen was away holds nothing up either: its look is simply there when it comes during
-        // the move that brings the screen in, with no fade or recolouring on top of that move, and fades in if it is later)
-        val t = lookTheme()
-        val g = ++lookGen
-        lookOf = b?.let { WeakReference(it) }
-        if (!changed && (b == null || !returning)) applyLook(Backdrop.look(b, t), animate = false)
-        else Backdrop.lookAsync(b, t) { l -> if (g == lookGen && !isGone) applyLook(l, animate = SystemClock.uptimeMillis() - shownAt > ARRIVING_MS) }
     }
 
-    private fun lookTheme() = Backdrop.Theme(Palette.dark, Palette.bg, Palette.card, Palette.accent, Palette.accentFg,
-        resources.displayMetrics.widthPixels.toFloat() / resources.displayMetrics.heightPixels.coerceAtLeast(1))
-
-    /** The look of a cover the screen is not showing, for when it opens: built ahead of time, the first open is on it at once. */
-    private fun lookAhead(b: Bitmap) {
-        if (lookOf?.get() === b) return
-        val g = ++lookGen
-        lookOf = WeakReference(b)
-        Backdrop.lookAsync(b, lookTheme()) { l -> if (g == lookGen && !isGone) applyLook(l, animate = false) }
+    private fun land(d: Drawable, w: Backdrop.Wash, changed: Boolean, sameSong: Boolean) {
+        val animate = changed && root.isShown && SystemClock.uptimeMillis() - shownAt > ARRIVING_MS
+        when {
+            !animate -> setCover(d)
+            sameSong -> swapCover(d, null) // (a better copy of the same song's cover: a plain crossfade)
+            else -> swapCover(d, takeSkip())
+        }
+        if (w.night == Palette.dark) applyWash(w, animate)
     }
-
-    private var lookGen = 0
-    /** The cover the look was worked out from (null: none), by reference only: the screen does not hold it for that. */
-    private var lookOf: WeakReference<Bitmap>? = null
 
     private fun setCover(d: Drawable?) {
         art.animate().cancel(); artOld.animate().cancel()
@@ -1416,142 +1291,103 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         artOld.anim(Motion.SHORT, Motion.EXIT).alpha(0f).translationX(-COVER_SLIDE_DP / 2 * d * dir).withEndAction(clear).start()
     }
 
-    // the screen's backdrop: its root draws it, the one full-screen fill (see Backdrop)
-    private var back: BitmapDrawable? = null
+    // ---- the wash: one small opaque bitmap stretched over the panel
+    private var washNow: Backdrop.Wash? = null
 
-    private fun applyLook(l: Backdrop.Look, animate: Boolean) {
-        val next = BitmapDrawable(resources, l.back).apply { isFilterBitmap = true }
-        val old = back
-        back = next
-        if (!animate || old == null) root.background = next
-        else {
-            // the new backdrop over the old one (both opaque: the old one needs no fading of its own)
-            val fade = TransitionDrawable(arrayOf(old, next)).apply { isCrossFadeEnabled = false }
-            root.background = fade
-            fade.startTransition(Motion.AMBIENT.toInt())
-            root.postDelayed({ if (back === next) root.background = next }, Motion.AMBIENT + 40)
+    private fun applyWash(w: Backdrop.Wash, animate: Boolean) {
+        val had = washNow != null
+        washNow = w
+        lyrics { it.wordColours(w.wordPill, w.wordPillInk) }
+        LyricChip.current?.wordColours(w.wordPill, w.wordPillInk)
+        wash.animate().cancel()
+        if (!animate || !had) {
+            wash.alpha = 1f
+            wash.setImageBitmap(w.panel)
+            wash.background = null
+            washOld.setImageDrawable(null)
+            washOld.visibility = View.INVISIBLE
+            return
         }
-        accentTo(l.fill, l.text, animate)
-        // the cover's colour in its shadow: it glows on the background
-        if (android.os.Build.VERSION.SDK_INT >= 28) {
-            val glow = if (shownCover != null) l.fill else Palette.shadow
-            artBox.outlineSpotShadowColor = glow
-            artBox.outlineAmbientShadowColor = glow
-            playBtn.outlineSpotShadowColor = l.fill
-            playBtn.outlineAmbientShadowColor = l.fill
+        // the new one over the old one (both opaque: the old one needs no fading of its own)
+        washOld.setImageDrawable(wash.drawable)
+        washOld.visibility = View.VISIBLE
+        wash.setImageBitmap(w.panel)
+        wash.alpha = 0f
+        wash.animate().alpha(1f).setStartDelay(0).setDuration(Tokens2.MS_coverWash).setInterpolator(Motion.MOVE).withEndAction {
+            washOld.setImageDrawable(null)
+            washOld.visibility = View.INVISIBLE
+        }.start()
+    }
+
+    private var emptyShown: Boolean? = null
+
+    /** The room and the four places, or the song: a crossfade, nothing moves. The cover and the two lines are the same views in the same slots. */
+    private fun syncEmpty() {
+        val e = noSong
+        val lib = src == Src.LOCAL
+        if (lyricsFull && e) showFull(false, animate = false, remember = false)
+        val animate = emptyShown != null && emptyShown != e && root.isShown
+        val rightNow: View = when { e -> emptyCard; lib -> library; else -> lyricsView }
+        for (v in listOf(emptyCard, library, lyricsView)) {
+            val on = v === rightNow
+            if (on == (v.visibility == View.VISIBLE)) continue
+            if (on) {
+                v.visibility = View.VISIBLE
+                if (root.isShown) { v.alpha = 0f; v.fadeTo(1f, Tokens2.MS_swap, Motion.MOVE) } else { v.animate().cancel(); v.alpha = 1f }
+            } else { v.animate().cancel(); v.visibility = View.INVISIBLE; v.alpha = 1f }
+        }
+        title.setRole(if (e) Type.stateTitle else Type.musicTitle)
+        sub.setRole(if (e) Type.stateBody else Type.musicSub)
+        if (emptyShown == e) return
+        emptyShown = e
+        if (animate) {
+            room.visibility = View.VISIBLE
+            room.fadeTo(if (e) 1f else 0f, Tokens2.MS_cover, Motion.MOVE) { room.visibility = if (emptyShown == true) View.VISIBLE else View.INVISIBLE }
+            songTools.visibility = View.VISIBLE
+            songTools.fadeTo(if (e) 0f else 1f, Tokens2.MS_swap, Motion.MOVE) { songTools.visibility = if (emptyShown == true) View.INVISIBLE else View.VISIBLE }
+            coverShadow.fadeTo(if (e) 0f else 1f, Tokens2.MS_swap, Motion.MOVE)
+        } else {
+            room.animate().cancel()
+            songTools.animate().cancel()
+            coverShadow.animate().cancel()
+            room.alpha = if (e) 1f else 0f
+            room.visibility = if (e) View.VISIBLE else View.INVISIBLE
+            songTools.alpha = if (e) 0f else 1f
+            songTools.visibility = if (e) View.INVISIBLE else View.VISIBLE
+            coverShadow.alpha = if (e) 0f else 1f
         }
     }
 
-    private var accentAnim: ValueAnimator? = null
-
-    /** Everything in the cover's colour turns to the new one together, in step with the new cover coming in. */
-    private fun accentTo(f: Int, t: Int, animate: Boolean) {
-        accentAnim?.let { it.removeAllListeners(); it.cancel() }
-        accentAnim = null
-        if (!animate || !root.isShown) { paintAccent(f, t); repaintRows(); return }
-        val f0 = fill
-        val t0 = fillText
-        if (f0 == f && t0 == t) return
-        accentAnim = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = Motion.MEDIUM
-            interpolator = Motion.STANDARD
-            addUpdateListener { val k = it.animatedValue as Float; paintAccent(Palette.mix(f0, f, k), Palette.mix(t0, t, k)) }
-            addListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: Animator) { paintAccent(f, t); repaintRows() }
-            })
-            start()
-        }
-    }
-
-    // fills in the cover's colour, kept to be recoloured in place (a new drawable a frame was garbage)
-    private val playTint = Tint { Shapes.oval(0) }
-    private val fullPlayTint = Tint { Shapes.oval(0) }
-    private val lyricsOnTint = Tint { Shapes.oval(0) }
-    private val playAllTint = Tint { Shapes.pill(0) }
-
-    private fun paintAccent(f: Int, t: Int) {
-        fill = f
-        fillText = t
-        seek.color = f
-        fullLine.color = f
-        val pressed = Palette.mix(f, 0xFF000000.toInt(), 0.2f)
-        playTint.set(f, pressed)
-        fullPlayTint.set(f, pressed)
-        lyricsOnTint.set(f, pressed)
-        val on = Palette.onColor(f)
-        playIcon.color = on
-        fullPlayIcon.color = on
-        source.indicator = f
-        tabs.indicator = Palette.withAlpha(f, if (Palette.dark) 0.32f else 0.24f)
-        crumbChevron.setColorFilter(t)
-        playAllTint.set(Palette.withAlpha(f, 0.18f), Palette.withAlpha(f, 0.28f))
-        playAllIcon.setColorFilter(t)
-        playAllText.setTextColor(t)
-        lyricsView.accent(f, t)
-        lyricsBig.accent(f, t)
-        paintToggles()
-    }
-
-    /** The rows that show the cover's colour (the playing one) take the new one. */
-    private fun repaintRows() {
-        if (::listView.isInitialized && listView.adapter === tracks) tracks.notifyDataSetChanged()
-    }
-
-    // what the toggles were last painted with: only a change repaints them
-    private var paintedShuffle = 0
-    private var paintedRepeat = 0
-    private var paintedOne: Boolean? = null
-    private var paintedOneFill = 0
-    private var paintedLyrics = 0
-
-    /** Shuffle, repeat and the lyrics button: in the cover's colour when on. */
-    private fun paintToggles() {
-        val sh = if (Player.shuffle) fillText else Palette.text2
-        if (sh != paintedShuffle) { paintedShuffle = sh; shuffleBtn.setColorFilter(sh) }
-        val rp = if (Player.repeat != Player.Repeat.OFF) fillText else Palette.text2
-        if (rp != paintedRepeat) { paintedRepeat = rp; repeatBtn.setColorFilter(rp) }
-        if (fill != paintedOneFill) { paintedOneFill = fill; repeatOneBg.setColor(fill); repeatOne.setTextColor(Palette.onColor(fill)) }
-        val one = Player.repeat == Player.Repeat.ONE
-        if (one != paintedOne) {
-            val first = paintedOne == null
-            paintedOne = one
-            when {
-                first -> repeatOne.visibility = if (one) View.VISIBLE else View.GONE
-                one -> repeatOne.enter(scaleFrom = 0.4f, dur = Motion.SHORT)
-                else -> repeatOne.exit(scaleTo = 0.4f, dur = Motion.XSHORT) { repeatOne.visibility = View.GONE }
-            }
-        }
-        val ly = if (lyricsWanted) Palette.onColor(fill) else Palette.text
-        if (ly != paintedLyrics) { paintedLyrics = ly; lyricsIcon.setColorFilter(ly) }
-        val bg = if (lyricsWanted) lyricsOnTint.drawable else lyricsOffBg
-        if (lyricsBtn.background !== bg) lyricsBtn.background = bg
+    /** A label's role in its slot: the view stays where it is, only its size and weight go with the state. */
+    private fun AText.setRole(r: Type.Role) {
+        if (tag === r) return
+        tag = r
+        setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, r.sp)
+        typeface = Fonts.of(r)
     }
 
     private fun paintTabs() {
         if (tabs.selected != tab.ordinal) tabs.select(tab.ordinal)
-        if (source.selected != src.ordinal) source.select(src.ordinal)
     }
 
     private fun selectSource(to: Src) {
         if (to == src) return
-        relayout(panelAfter = !(to == Src.BT && !lyricsOn)) {
-            val was = src
-            src = to
-            val e = Prefs.raw.edit().putString("musicSource", to.pref)
-            if (to != Src.BT) e.putString("musicSourceOwn", to.pref) // (what the music key comes back to)
-            e.apply()
-            // the speakers go with the source: the phone's music unmuted or muted, the unit's own player and
-            // YouTube's app paused when they are left
-            if (to == Src.BT) BtMusic.activate() else BtMusic.deactivate()
-            if (to == Src.YT) Player.pauseForOtherSource()
-            if (was == Src.YT) MediaMonitor.appControl(YtMusic.players, MediaMonitor.Do.PAUSE)
-            cancelArtWait()
-            lastArtKey = Long.MIN_VALUE
-            seekTarget = -1L
-            skipAt = 0L
-            showNowPlaying()
-            showList()
-        }
+        val was = src
+        src = to
+        val e = Prefs.raw.edit().putString("musicSource", to.pref)
+        if (to != Src.BT) e.putString("musicSourceOwn", to.pref) // (what the music key comes back to)
+        e.apply()
+        // the speakers go with the source: the phone's music unmuted or muted, the unit's own player and
+        // YouTube's app paused when they are left
+        if (to == Src.BT) BtMusic.activate() else BtMusic.deactivate()
+        if (to == Src.YT) Player.pauseForOtherSource()
+        if (was == Src.YT) MediaMonitor.appControl(YtMusic.players, MediaMonitor.Do.PAUSE)
+        cancelArtWait()
+        lastArtKey = Long.MIN_VALUE
+        seekTarget = -1L
+        skipAt = 0L
+        showNowPlaying()
+        showList()
     }
 
     private fun transport(action: Int) {
@@ -1578,230 +1414,6 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         Player.play(list, i)
     }
 
-    // ------------------------------------------------------------------------------------------ YouTube
-    private fun buildYt(): View {
-        ytBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(Space.M.dp, Space.M.dp, Space.M.dp, 0); visibility = View.GONE }
-        val bar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            background = Shapes.pill(Palette.withAlpha(Palette.card3, 0.75f))
-            setPaddingRelative(Space.L.dp, 0, 0, 0)
-        }
-        // the search icon, or a spinner while a search is on its way (the phone's internet can be slow)
-        val glyph = FrameLayout(this)
-        ytSearchIcon = iconView(R.drawable.ic_search, 24, Palette.text2)
-        glyph.addView(ytSearchIcon, flp(24.dp, 24.dp, Gravity.CENTER))
-        ytSpinner = spinner().apply { visibility = View.GONE }
-        glyph.addView(ytSpinner, flp(22.dp, 22.dp, Gravity.CENTER))
-        bar.addView(glyph, lp(24.dp, 24.dp))
-        ytInput = android.widget.EditText(this).apply {
-            setHint(R.string.yt_search_hint)
-            setHintTextColor(Palette.text3)
-            setTextColor(Palette.text)
-            textSize = Type.BODY.sp
-            typeface = Fonts.get(Type.BODY.weight)
-            isSingleLine = true
-            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH or android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI
-            background = null
-            setPadding(Space.XS.dp, 0, Space.XS.dp, 0)
-            setText(ytText)
-            addTextChangedListener(object : android.text.TextWatcher {
-                override fun afterTextChanged(s: android.text.Editable?) = ytTyped(s?.toString().orEmpty())
-                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-            })
-            setOnEditorActionListener { _, action, ev ->
-                if (action == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH || ev?.keyCode == android.view.KeyEvent.KEYCODE_ENTER) {
-                    removeCallbacks(ytSearchLater)
-                    if (text.trim().length >= 2) ytSearch(text.toString())
-                    ytHideKeyboard() // (it covers most of a car screen: the results show)
-                    true
-                } else false
-            }
-        }
-        bar.addView(ytInput, lp(0, MATCH, 1f).apply { marginStart = Space.S.dp })
-        bar.addView(FrameLayout(this).apply {
-            background = Shapes.ghostOval()
-            isClickable = true
-            pressScale(Motion.PRESS_ICON)
-            contentDescription = getString(R.string.yt_clear)
-            setOnClickListener { ytInput.setText(""); ytHideKeyboard() }
-            addView(iconView(R.drawable.ic_close, 22, Palette.text2).apply { layoutParams = flp(22.dp, 22.dp, Gravity.CENTER) })
-        }, lp(Touch.MIN.dp, Touch.MIN.dp))
-        ytBox.addView(bar, lp(MATCH, Touch.MIN.dp))
-
-        val body = FrameLayout(this)
-        ytList = ListView(this).apply {
-            libraryStyle()
-            adapter = object : BaseAdapter() {
-                override fun getCount() = ytSongs.size
-                override fun getItem(i: Int) = ytSongs[i]
-                override fun getItemId(i: Int) = i.toLong()
-                override fun getView(i: Int, convert: View?, parent: ViewGroup): View {
-                    val row = (convert as? YtRow) ?: YtRow(this@MusicPanel)
-                    row.bind(ytSongs[i])
-                    return row
-                }
-            }
-        }
-        body.addView(ytList, flp(MATCH, MATCH))
-        ytNote = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(Space.XXL.dp, 0, Space.XXL.dp, Space.XL.dp) }
-        ytNote.addView(iconView(R.drawable.ic_music_list, 40, Palette.text3), lp(40.dp, 40.dp))
-        ytNoteText = label(Type.BODY, Palette.text2, lines = 5, gravity = Gravity.CENTER)
-        ytNote.addView(ytNoteText, lp(MATCH, WRAP).apply { topMargin = Space.M.dp })
-        ytNoteBtn = ABtn(this).apply {
-            kind = ABtn.Kind.PRIMARY
-            setText(R.string.yt_get_app)
-            setOnClickListener { YtMusic.openStore(this@MusicPanel) }
-        }
-        ytNote.addView(ytNoteBtn, lp(WRAP, WRAP).apply { topMargin = Space.L.dp })
-        body.addView(ytNote, flp(MATCH, MATCH))
-        ytBox.addView(body, lp(MATCH, 0, 1f).apply { topMargin = Space.S.dp })
-        ytShow()
-        return ytBox
-    }
-
-    private fun spinner() = ProgressBar(this).apply {
-        isIndeterminate = true
-        indeterminateTintList = ColorStateList.valueOf(Palette.text3)
-    }
-
-    private val ytSearchLater = Runnable { ytSearch(ytInput.text.toString()) }
-
-    /** Typed: searched once the typing rests (the catalogue is asked over the phone's internet). */
-    private fun ytTyped(q: String) {
-        ytInput.removeCallbacks(ytSearchLater)
-        if (q.trim().length < 2) {
-            ytAsked++ // (an answer still on its way is for a query that is gone)
-            ytBusy(false)
-            ytSongs = emptyList()
-            ytShow()
-        } else ytInput.postDelayed(ytSearchLater, 700L)
-    }
-
-    private fun ytSearch(q: String) {
-        val asked = ++ytAsked
-        ytBusy(true)
-        if (ytSongs.isEmpty()) ytShow(getString(R.string.yt_searching))
-        YtMusic.search(q) { songs ->
-            if (asked != ytAsked || isGone) return@search
-            ytBusy(false)
-            ytSongs = songs.orEmpty()
-            ytShow(if (songs == null) getString(R.string.yt_failed) else null)
-            if (songs != null) ytList.setSelection(0)
-        }
-    }
-
-    /** A search on its way: the spinner in the bar, and the results there are step back until the new ones come. */
-    private fun ytBusy(on: Boolean) {
-        ytSearchIcon.visibility = if (on) View.INVISIBLE else View.VISIBLE
-        ytSpinner.visibility = if (on) View.VISIBLE else View.GONE
-        if (on) { if (ytSongs.isNotEmpty()) ytList.fadeTo(0.5f, Motion.XSHORT) } else if (ytList.alpha < 1f) ytList.fadeTo(1f)
-    }
-
-    /** The results, or the line that stands in their place ([note], or what the state calls for). */
-    private fun ytShow(note: String? = null) {
-        (ytList.adapter as BaseAdapter).notifyDataSetChanged()
-        val noApp = YtMusic.player(this) == null
-        val text = note ?: when {
-            ytSongs.isNotEmpty() -> null
-            ytInput.text.trim().length >= 2 -> getString(R.string.yt_none)
-            noApp -> getString(R.string.yt_no_app)
-            else -> getString(R.string.yt_hint)
-        }
-        ytNote.visibility = if (text != null) View.VISIBLE else View.GONE
-        ytList.visibility = if (text != null) View.INVISIBLE else View.VISIBLE
-        ytNoteText.setTextIfChanged(text.orEmpty())
-        ytNoteBtn.visibility = if (noApp && note == null && ytSongs.isEmpty() && ytInput.text.trim().length < 2) View.VISIBLE else View.GONE
-    }
-
-    /** A song chosen: YouTube's own app takes it and plays; this screen comes back as soon as it does. */
-    private fun ytPlay(s: YtMusic.Song) {
-        ytHideKeyboard()
-        val c = applicationContext
-        val ok = YtMusic.play(this, s) { com.abdllh.aura.home.Screens.music(c) }
-        if (!ok) {
-            // (the store comes over this screen right after: the message must outlive it)
-            Snack.show(this, R.string.yt_no_app, long = true, outlives = true)
-            YtMusic.openStore(this)
-        }
-    }
-
-    private fun ytHideKeyboard() {
-        try {
-            (getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).hideSoftInputFromWindow(ytInput.windowToken, 0)
-            ytInput.clearFocus()
-        } catch (_: Throwable) {
-        }
-    }
-
-    /**
-     * A picture for a row or a cell: at once when it is at hand, faded in when it comes later (late covers popping in
-     * one by one across a grid looked busy). [still]: the row still shows what asked for it (rows are recycled).
-     */
-    private fun picture(img: ImageView, load: (done: (Bitmap?) -> Unit) -> Unit, still: () -> Boolean) {
-        img.animate().cancel()
-        img.alpha = 1f
-        img.setImageDrawable(null)
-        // (out of sight no row holds a picture, they are all bound again when it comes back: it only gets to the cache)
-        if (!showing) { load { }; return }
-        var sync = true
-        load { b ->
-            if (b != null && still() && showing) {
-                img.setImageBitmap(b)
-                if (!sync) { img.alpha = 0f; img.fadeTo(1f) }
-            }
-        }
-        sync = false
-    }
-
-    /** A song row's parts, shared by the library's songs and YouTube's results (recycled by their lists). */
-    private open inner class SongRow(ctx: Context) : LinearLayout(ctx) {
-        protected val img = ImageView(ctx).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
-        protected val t1 = ctx.label(Type.LABEL, Palette.text)
-        protected val t2 = ctx.label(Type.FOOTNOTE, Palette.text2)
-        protected val dur = ctx.label(Type.CAPTION, Palette.text3).apply { fontFeatureSettings = "tnum" }
-        protected val ghostBg = Shapes.ghost(Radius.L)
-
-        init {
-            orientation = HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            minimumHeight = 76.dp
-            setPaddingRelative(Space.S.dp, Space.S.dp, Space.L.dp, Space.S.dp)
-            isClickable = true
-            background = ghostBg
-            pressScale(Motion.PRESS_SURFACE)
-            layoutParams = AbsListView.LayoutParams(MATCH, WRAP)
-            val box = FrameLayout(ctx).apply { background = Shapes.rect(Palette.card2, Radius.S); roundedClip(Radius.S) }
-            box.addView(ctx.iconView(R.drawable.ic_music, 22, Palette.text3).apply { layoutParams = flp(22.dp, 22.dp, Gravity.CENTER) })
-            box.addView(img, flp(MATCH, MATCH))
-            addView(box, lp(THUMB_DP.dp, THUMB_DP.dp))
-            val col = LinearLayout(ctx).apply { orientation = VERTICAL }
-            col.addView(t1, lp(MATCH, WRAP))
-            col.addView(t2, lp(MATCH, WRAP).apply { topMargin = Space.XXS.dp })
-            addView(col, lp(0, WRAP, 1f).apply { marginStart = Space.L.dp; marginEnd = Space.S.dp })
-            addView(dur, lp(WRAP, WRAP))
-        }
-
-        fun dropPicture() { img.animate().cancel(); img.setImageDrawable(null) }
-    }
-
-    /** A found song (a late picture for a recycled row is ignored). */
-    private inner class YtRow(ctx: Context) : SongRow(ctx) {
-        private var song: YtMusic.Song? = null
-
-        init { setOnClickListener { song?.let { ytPlay(it) } } }
-
-        fun bind(s: YtMusic.Song) {
-            val again = song?.thumb == s.thumb && img.drawable != null
-            song = s
-            t1.setTextIfChanged(s.title)
-            t2.setTextIfChanged(join(s.artist, s.album))
-            dur.setTextIfChanged(if (s.sec > 0) clockText(s.sec * 1000L) else "")
-            if (!again) picture(img, { done -> YtMusic.thumb(s.thumb, done) }) { song?.thumb == s.thumb }
-        }
-    }
-
     // ------------------------------------------------------------------------------------------ library
     /** One list (songs, a group's songs, artists, folders) and one grid (albums) for the screen's life. */
     private lateinit var listView: ListView
@@ -1815,39 +1427,6 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
     /** The song the list last saw playing (see [followPlaying]). */
     private var followedId: Long? = null
 
-    /**
-     * Bluetooth mode has no library to show: the song takes the whole screen, the cover beside its title and controls.
-     * The unit's own music keeps the cover above them, beside the library.
-     */
-    /** The layout [applyLayout] last set (wide: Bluetooth's); null before the first. */
-    private var laidWide: Boolean? = null
-
-    private fun applyLayout() {
-        if (!::stage.isInitialized) return
-        val wide = bt && !lyricsOn // (the lyrics need the panel)
-        // (only a change lays the column out again: this runs on every reload of the library, every few seconds while
-        // a USB stick is being indexed)
-        if (wide == laidWide) return
-        laidWide = wide
-        panel.visibility = if (wide) View.GONE else View.VISIBLE
-        // (set again, not only changed: a start / end margin is turned into left / right when the params are set, so
-        // a changed one was not seen, and the gutter stayed 0 after the Bluetooth layout)
-        left.layoutParams = (left.layoutParams as LinearLayout.LayoutParams).apply {
-            weight = if (wide) 1f else 0.46f
-            marginEnd = if (wide) 0 else Space.GUTTER.dp
-        }
-        stage.orientation = if (wide) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
-        stage.gravity = if (wide) Gravity.CENTER_VERTICAL else Gravity.NO_GRAVITY
-        artSlot.layoutParams = if (wide) LinearLayout.LayoutParams(0, MATCH, 0.44f).apply { topMargin = Space.L.dp; bottomMargin = Space.L.dp }
-            else LinearLayout.LayoutParams(MATCH, 0, 1f).apply { topMargin = Space.M.dp; bottomMargin = Space.M.dp }
-        info.layoutParams = if (wide) LinearLayout.LayoutParams(0, WRAP, 0.56f).apply { marginStart = 40.dp; marginEnd = Space.L.dp }
-            else LinearLayout.LayoutParams(MATCH, WRAP)
-        title.textSize = if (wide) TITLE_WIDE_SP else TITLE_SP
-        title.maxLines = if (wide) 2 else 1
-        artist.textRole(if (wide) Type.TITLE else Type.LABEL)
-        left.requestLayout()
-    }
-
     /** The groups of [t] as the library has them now (null for the songs). */
     private fun groupsOf(t: Tab): List<Group>? = when (t) {
         Tab.SONGS -> null
@@ -1857,23 +1436,18 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
     }
 
     /**
-     * The panel's content for the source, and the library's list for the tab and group. A list keeps its place when its
-     * songs change (a USB stick still being indexed reloads every few seconds) and when the owner comes back to it
-     * from another tab or a group; [nav] is how a new list comes in.
+     * The library's list for the tab and group. A list keeps its place when its songs change (a USB stick still being indexed reloads every few seconds) and when the owner comes back to it
+     * from another tab or a group; [nav] is how a new list comes in. Its states stand in the card's list area.
      */
     private fun showList(nav: Nav = Nav.NONE) {
         if (!::listHolder.isInitialized) return
-        applyLayout()
-        // Bluetooth: the library makes way for the song (see applyLayout); the lyrics, when shown, take the panel
-        libraryBox.visibility = if (src != Src.LOCAL || lyricsOn) View.GONE else View.VISIBLE
-        ytBox.visibility = if (yt && !lyricsOn) View.VISIBLE else View.GONE
-        lyricsView.visibility = if (lyricsOn) View.VISIBLE else View.GONE
-        expandBtn.visibility = if (lyricsOn) View.VISIBLE else View.GONE
         paintTabs()
         // (a reload makes new groups: the one open is found again by its key, or left when it is gone)
         group = group?.let { g -> groupsOf(tab)?.firstOrNull { it.key == g.key } }
-        crumb.visibility = if (group != null) View.VISIBLE else View.GONE
-        crumbText.setTextIfChanged(group?.title.orEmpty())
+        val g0 = group
+        crumb.visibility = if (g0 != null) View.VISIBLE else View.INVISIBLE
+        tabs.visibility = if (g0 != null) View.INVISIBLE else View.VISIBLE
+        crumbText.setTextIfChanged(g0?.title.orEmpty())
         val state = when {
             !Library.hasPermission(this) -> 0
             !Library.loaded -> 1
@@ -1883,16 +1457,16 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         if (state >= 0) {
             rememberSpot()
             shownList = null
-            listView.visibility = View.GONE
-            gridView.visibility = View.GONE
+            listHolder.visibility = View.INVISIBLE
             when (state) {
                 0 -> showEmpty(getString(R.string.music_permission), getString(R.string.music_allow)) { askPermission() }
                 1 -> showEmpty(getString(R.string.music_loading), null) {}
-                else -> showEmpty(getString(R.string.music_empty), getString(R.string.music_bluetooth)) { selectSource(Src.BT) }
+                else -> showEmpty(getString(R.string.music_no_drive), getString(R.string.music_src_bt)) { chooseRow(SourceRow.BT) }
             }
             return
         }
         empty.visibility = View.GONE
+        listHolder.visibility = View.VISIBLE
         val g = group
         val key = "${tab.name}|${g?.key}"
         val grid = g == null && tab == Tab.ALBUMS
@@ -1902,7 +1476,7 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
             g != null -> tracks.items = g.tracks
             tab == Tab.SONGS -> tracks.items = Library.tracks
             tab == Tab.ALBUMS -> albums.items = Library.albums
-            tab == Tab.ARTISTS -> groups.set(Library.artists, R.drawable.ic_user)
+            tab == Tab.ARTISTS -> groups.set(Library.artists, R.drawable.ic_person)
             else -> groups.set(Library.folders, R.drawable.ic_folder)
         }
         val adapter: BaseAdapter = when {
@@ -1949,10 +1523,10 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
                 listHolder.animate().cancel()
                 listHolder.translationX = 0f
                 listHolder.alpha = 0f
-                listHolder.fadeTo(1f)
+                listHolder.fadeTo(1f, Tokens2.MS_swap, Motion.MOVE)
             }
-            Nav.INTO -> { listHolder.enter(dx = 32f * toward); crumb.riseIn(6f) }
-            Nav.BACK -> listHolder.enter(dx = -32f * toward)
+            Nav.INTO -> listHolder.enter(dx = 12f * toward, dur = Tokens2.MS_cardIn)
+            Nav.BACK -> listHolder.enter(dx = -12f * toward, dur = Tokens2.MS_cardIn)
         }
     }
 
@@ -1994,7 +1568,8 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         isVerticalScrollBarEnabled = false
         overScrollMode = View.OVER_SCROLL_NEVER
         clipToPadding = false
-        if (this is ListView) { divider = null; setPadding(0, Space.XS.dp, 0, Space.M.dp) }
+        setPadding(0, 0, 0, 28)
+        if (this is ListView) divider = null
     }
 
     private inner class TracksAdapter : BaseAdapter() {
@@ -2004,22 +1579,27 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         override fun getItemId(i: Int) = items[i].id
         override fun hasStableIds() = true
         override fun getView(i: Int, convert: View?, parent: ViewGroup): View {
-            val row = (convert as? TrackRow) ?: TrackRow(this@MusicPanel)
-            row.bind(items, i, items[i].id == Player.current?.id && src == Src.LOCAL)
+            val row = (convert as? SongRowView) ?: SongRowView(this@MusicPanel)
+            val t = items[i]
+            row.bind(t.title, t.artist.ifBlank { t.album }, t.durationText, t.id == Player.current?.id && src == Src.LOCAL)
+            row.picture(t.albumId, showing) { done -> ArtLoader.get(this@MusicPanel, t, SongRowView.COVER, Tokens2.R_small, done) }
+            row.setOnClickListener { if (i < items.size) playFrom(items, i) }
             return row
         }
     }
 
     private inner class GroupsAdapter : BaseAdapter() {
         var items: List<Group> = emptyList()
-        private var icon = R.drawable.ic_user
+        private var icon = R.drawable.ic_person
         fun set(g: List<Group>, ic: Int) { items = g; icon = ic }
         override fun getCount() = items.size
         override fun getItem(i: Int) = items[i]
         override fun getItemId(i: Int) = i.toLong()
         override fun getView(i: Int, convert: View?, parent: ViewGroup): View {
-            val row = (convert as? GroupRow) ?: GroupRow(this@MusicPanel)
-            row.bind(items[i], icon)
+            val row = (convert as? SongRowView) ?: SongRowView(this@MusicPanel)
+            val g = items[i]
+            row.bindGroup(icon, g.title, songCount(g.tracks.size))
+            row.setOnClickListener { openGroup(g) }
             return row
         }
     }
@@ -2031,208 +1611,85 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         override fun getItemId(i: Int) = i.toLong()
         override fun getView(i: Int, convert: View?, parent: ViewGroup): View {
             val cell = (convert as? AlbumCell) ?: AlbumCell(this@MusicPanel)
-            val gv = parent as GridView
-            val side = (gv.width - gv.paddingLeft - gv.paddingRight - 2 * Space.M.dp) / 3
-            cell.bind(items[i], side.coerceAtLeast(80.dp))
+            cell.bind(items[i])
             return cell
         }
     }
 
-    /** Artist / folder row (recycled by the list). */
-    private inner class GroupRow(ctx: Context) : LinearLayout(ctx) {
-        private val icon = ctx.iconView(R.drawable.ic_user, 24, Palette.text2)
-        private val title = ctx.label(Type.LABEL, Palette.text)
-        private val sub = ctx.label(Type.FOOTNOTE, Palette.text2)
-        private var shownIcon = 0
-        private var g: Group? = null
-
-        init {
-            orientation = HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            minimumHeight = 76.dp
-            setPaddingRelative(Space.M.dp, Space.S.dp, Space.L.dp, Space.S.dp)
-            background = Shapes.ghost(Radius.L)
-            isClickable = true
-            pressScale(Motion.PRESS_SURFACE)
-            setOnClickListener { g?.let { openGroup(it) } }
-            layoutParams = AbsListView.LayoutParams(MATCH, WRAP)
-            val badge = FrameLayout(ctx).apply { background = Shapes.oval(Palette.card2) }
-            badge.addView(icon, flp(24.dp, 24.dp, Gravity.CENTER))
-            addView(badge, lp(54.dp, 54.dp))
-            val col = LinearLayout(ctx).apply { orientation = VERTICAL }
-            col.addView(title, lp(MATCH, WRAP))
-            col.addView(sub, lp(MATCH, WRAP).apply { topMargin = Space.XXS.dp })
-            addView(col, lp(0, WRAP, 1f).apply { marginStart = Space.L.dp })
-        }
-
-        fun bind(group: Group, ic: Int) {
-            g = group
-            if (ic != shownIcon) { shownIcon = ic; icon.setImageResource(ic) }
-            title.setTextIfChanged(group.title)
-            sub.setTextIfChanged(getString(R.string.music_tracks_count, group.tracks.size))
-        }
-    }
-
-    /** Album cover + name in the grid (recycled; a late cover for a recycled cell is ignored). */
-    private inner class AlbumCell(ctx: Context) : LinearLayout(ctx) {
-        private val box = FrameLayout(ctx).apply { background = Shapes.rect(Palette.card2, Radius.M); roundedClip(Radius.M) }
-        private val img = ImageView(ctx).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
-        private val title = ctx.label(Type.BUTTON, Palette.text)
-        private val sub = ctx.label(Type.CAPTION, Palette.text2)
+    /** Album cell (SPEC.md section 5): cover 120 radius 16, `gridLabel`, two lines at most. Recycled; a late cover for a recycled cell is ignored. */
+    private inner class AlbumCell(ctx: Context) : FrameLayout(ctx) {
+        private val img = ImageView(ctx).apply { scaleType = ImageView.ScaleType.FIT_XY }
+        private val name = ctx.label(Type.gridLabel, { Palette.ink }, lines = 2, gravity = Gravity.CENTER_HORIZONTAL)
         private var key = Long.MIN_VALUE
-        private var size = 0
         private var g: Group? = null
+        private var seenDark = Palette.dark
 
         init {
-            orientation = VERTICAL
             isClickable = true
-            pressScale(Motion.PRESS_SURFACE)
+            pressScale(PressGesture.SURFACE)
             setOnClickListener { g?.let { openGroup(it) } }
-            box.addView(ctx.iconView(R.drawable.ic_disc, 40, Palette.text3).apply { layoutParams = flp(40.dp, 40.dp, Gravity.CENTER) })
-            box.addView(img, flp(MATCH, MATCH))
-            addView(box, lp(MATCH, 80.dp))
-            addView(title, lp(MATCH, WRAP).apply { topMargin = Space.S.dp })
-            addView(sub, lp(MATCH, WRAP))
+            layoutParams = AbsListView.LayoutParams(MATCH, ALBUM_H)
+            addView(ctx.plateView(Tokens2.R_mid) { Palette.fill2 }, flp(ALBUM, ALBUM, Gravity.TOP or Gravity.CENTER_HORIZONTAL))
+            addView(ctx.iconView(R.drawable.ic_disc, 44) { Palette.ink2 }, flp(44, 44, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = (ALBUM - 44) / 2 })
+            addView(img, flp(ALBUM, ALBUM, Gravity.TOP or Gravity.CENTER_HORIZONTAL))
+            addView(name, flp(MATCH, WRAP, Gravity.TOP).apply { topMargin = ALBUM + 6; marginStart = 4; marginEnd = 4 })
         }
 
         fun dropPicture() { img.animate().cancel(); img.setImageDrawable(null) }
 
-        fun bind(group: Group, side: Int) {
+        fun bind(group: Group) {
+            if (seenDark != Palette.dark) { seenDark = Palette.dark; Look.apply(this) }
             g = group
-            val blp = box.layoutParams
-            if (blp.height != side) { blp.height = side; box.layoutParams = blp }
-            title.setTextIfChanged(group.title)
-            sub.setTextIfChanged(group.subtitle)
+            name.setTextIfChanged(group.title)
             val t = group.tracks.first()
-            if (key == t.albumId && size == side && img.drawable != null) return
-            key = t.albumId
-            size = side
-            // (at the size it is shown: a cover decoded at twice that held four times the memory in the cache)
-            picture(img, { done -> ArtLoader.get(context, t, side, done) }) { key == t.albumId }
-        }
-    }
-
-    private inner class TrackRow(ctx: Context) : SongRow(ctx) {
-        private val eq = com.abdllh.aura.ui.EqGlyph(ctx)
-        // the playing row's tint in the cover's colour, kept and recoloured (not a new drawable per bind)
-        private val nowFill = Shapes.rect(0, Radius.L)
-        private val nowPressed = Shapes.rect(0, Radius.L)
-        private val nowBg = Shapes.pressable(nowFill, nowPressed)
-        private var nowColour = 0
-        private var items: List<Track> = emptyList()
-        private var index = 0
-        private var key = Long.MIN_VALUE
-
-        init {
-            addView(eq, lp(22.dp, 20.dp))
-            setOnClickListener { if (index < items.size) playFrom(items, index) }
-        }
-
-        fun bind(list: List<Track>, i: Int, now: Boolean) {
-            items = list
-            index = i
-            val t = list[i]
-            t1.setTextIfChanged(t.title)
-            t1.setTextColor(if (now) fillText else Palette.text)
-            t2.setTextIfChanged(t.subtitle)
-            dur.setTextIfChanged(t.durationText)
-            // the song that is playing: its row tinted with the cover's colour, the bars instead of the duration
-            dur.visibility = if (now) View.GONE else View.VISIBLE
-            eq.visibility = if (now) View.VISIBLE else View.GONE
-            eq.color = fill
-            eq.animating = now && Player.playing
-            if (now && nowColour != fill) {
-                nowColour = fill
-                nowFill.setColor(Palette.withAlpha(fill, 0.16f))
-                nowPressed.setColor(Palette.withAlpha(fill, 0.26f))
-            }
-            val bg = if (now) nowBg else ghostBg
-            if (background !== bg) background = bg
             if (key == t.albumId && img.drawable != null) return
             key = t.albumId
-            picture(img, { done -> ArtLoader.get(context, t, THUMB_DP.dp, done) }) { key == t.albumId }
+            img.animate().cancel()
+            img.alpha = 1f
+            img.setImageDrawable(null)
+            if (!showing) { ArtLoader.get(context, t, ALBUM, Tokens2.R_mid) { }; return }
+            var sync = true
+            ArtLoader.get(context, t, ALBUM, Tokens2.R_mid) { b ->
+                if (b != null && key == t.albumId && showing) {
+                    img.setImageBitmap(b)
+                    if (!sync) { img.alpha = 0f; img.fadeTo(1f) }
+                }
+            }
+            sync = false
         }
     }
 
-    // ------------------------------------------------------------------------------------------ UI
+    // ------------------------------------------------------------------------------------------ the views, at the spec's pixels
     private fun buildUi() {
-        val root = this.root
-        // (no backdrop views: the root draws the backdrop, see Backdrop)
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(Space.GUTTER.dp, Space.M.dp, Space.GUTTER.dp, Space.GUTTER.dp) }
+        // (the bottom of the room: until the first wash lands, and the window has no background)
+        washOld = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_XY; visibility = View.INVISIBLE }
+        wash = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_XY }.look { if (washNow == null) setBackgroundColor(Palette.bg) }
+        root.addView(washOld, at(0, 0, 1024, 600))
+        root.addView(wash, at(0, 0, 1024, 600))
+        room = lateImage("room").apply { visibility = View.INVISIBLE; alpha = 0f }
+        root.addView(room, at(0, 0, 1024, 516))
+        content = FrameLayout(this)
+        root.addView(content, at(0, 0, 1024, 600))
 
-        // ---- now playing
-        left = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
-        val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        val frost = Palette.withAlpha(Palette.card, if (Palette.dark) 0.55f else 0.75f)
-        top.addView(FrameLayout(this).apply {
-            background = Shapes.pressable(Shapes.oval(frost), Shapes.oval(Palette.card3))
-            isClickable = true
-            pressScale(Motion.PRESS_ICON)
-            contentDescription = getString(R.string.music_back)
-            setOnClickListener { close() }
-            addView(iconView(R.drawable.ic_chevron_left, 28, Palette.text).apply {
-                layoutParams = flp(28.dp, 28.dp, Gravity.CENTER)
-                if (rtl) scaleX = -1f
-            })
-        }, lp(Touch.MIN.dp, Touch.MIN.dp))
-        // (a step smaller than the panel's tabs: beside the two round buttons it ran 15 dp past the column in English)
-        source = Segmented(this, listOf(getString(R.string.music_library), getString(R.string.music_bluetooth), getString(R.string.music_youtube)),
-            equal = false, textSp = Type.FOOTNOTE.sp) { i ->
-            val to = Src.values()[i]
-            // (the music files are asked for when the owner chooses them: see onCreate)
-            if (to == Src.LOCAL && !Library.hasPermission(this)) askPermission()
-            selectSource(to)
-        }.apply { trackColor = frost }
-        top.addView(View(this), lp(0, 1, 1f))
-        lyricsOffBg = Shapes.ghostOval()
-        lyricsIcon = iconView(R.drawable.ic_lyrics, 26, Palette.text)
-        lyricsBtn = FrameLayout(this).apply {
-            isClickable = true
-            pressScale(Motion.PRESS_ICON)
-            contentDescription = getString(R.string.lyrics_toggle)
-            setOnClickListener { toggleLyrics() }
-            addView(lyricsIcon, flp(26.dp, 26.dp, Gravity.CENTER))
-        }
-        top.addView(lyricsBtn, lp(Touch.MIN.dp, Touch.MIN.dp).apply { marginEnd = Space.XS.dp })
-        top.addView(source, lp(WRAP, Touch.MIN.dp))
-        left.addView(top, lp(MATCH, WRAP))
+        // ---- the cover, with its baked shadow; the group breathes
+        coverGroup = FrameLayout(this)
+        coverShadow = lateImage("cover-shadow")
+        coverGroup.addView(coverShadow, flp(MATCH, MATCH))
+        artOld = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_XY; visibility = View.INVISIBLE }
+        art = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_XY }
+        art.setImageDrawable(Backdrop.noArt(this, COVER, Tokens2.R_coverBig))
+        coverGroup.addView(artOld, at(48, 48, COVER, COVER))
+        coverGroup.addView(art, at(48, 48, COVER, COVER))
+        content.addView(coverGroup, at(44, 0, 300, 300))
 
-        artBox = FrameLayout(this).apply {
-            background = Shapes.rect(Palette.card2, COVER_RADIUS)
-            roundedClip(COVER_RADIUS)
-            // A glow in the cover's own colour (applyLook), on both themes: unlike lift()'s black shadow it shows on the
-            // dark one. Not larger: a shadow is drawn again whenever the cover moves.
-            elevation = Elev.OVERLAY.dp
-        }
-        artIcon = iconView(R.drawable.ic_music, 72, Palette.text3)
-        artBox.addView(artIcon, flp(72.dp, 72.dp, Gravity.CENTER))
-        artOld = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; visibility = View.INVISIBLE }
-        artBox.addView(artOld, flp(MATCH, MATCH))
-        art = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
-        artBox.addView(art, flp(MATCH, MATCH))
-        artSlot = object : FrameLayout(this) {
-            override fun onMeasure(w: Int, h: Int) {
-                // the cover is the largest square that fits the space left between the header and the title
-                val s = minOf(MeasureSpec.getSize(w), MeasureSpec.getSize(h))
-                (artBox.layoutParams as LayoutParams).apply { width = s; height = s }
-                super.onMeasure(MeasureSpec.makeMeasureSpec(MeasureSpec.getSize(w), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(MeasureSpec.getSize(h), MeasureSpec.EXACTLY))
-            }
-        }
-        artSlot.addView(artBox, flp(1, 1, Gravity.CENTER))
-        // the cover and the song's info: one above the other beside the library, side by side in Bluetooth mode
-        stage = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        stage.addView(artSlot, lp(MATCH, 0, 1f))
-        info = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
-        stage.addView(info, lp(MATCH, WRAP))
-        left.addView(stage, lp(MATCH, 0, 1f))
+        title = label(Type.musicTitle, { Palette.ink }, gravity = Gravity.CENTER)
+        sub = label(Type.musicSub, { Palette.ink2 }, gravity = Gravity.CENTER)
+        content.addView(title, Type.musicTitle.box(24, 258, 340))
+        content.addView(sub, Type.musicSub.box(24, 298, 340))
 
-        title = label(TITLE_SP, Palette.text, Fonts.BOLD, gravity = Gravity.CENTER)
-        artist = label(Type.LABEL, Palette.text2, gravity = Gravity.CENTER)
-        album = label(Type.BODY, Palette.text3, gravity = Gravity.CENTER).apply { visibility = View.GONE }
-        info.addView(title, lp(MATCH, WRAP))
-        info.addView(artist, lp(MATCH, WRAP).apply { topMargin = Space.XS.dp })
-        info.addView(album, lp(MATCH, WRAP).apply { topMargin = Space.XXS.dp })
-
+        // ---- what a song has: seek, transport, the side tools
+        songTools = FrameLayout(this)
+        content.addView(songTools, at(0, 0, 1024, 600))
         seek = SeekView(this).apply {
             onSeek = { f ->
                 if (yt) {
@@ -2245,262 +1702,193 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
                 } else { val to = (Player.duration() * f).toLong(); Player.seekTo(to); holdSeek(to) }
             }
         }
-        // (a 52 dp strip to grab, the bar itself thin in its middle; the times sit close under it)
-        info.addView(seek, lp(MATCH, 52.dp).apply { topMargin = Space.XS.dp })
-        val times = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; layoutDirection = View.LAYOUT_DIRECTION_LTR }
-        // (digits of one width, and both halves as wide: the times neither wobble nor move the row as they count)
-        tNow = label(Type.CAPTION, Palette.text2).apply { fontFeatureSettings = "tnum" }
-        tTotal = label(Type.CAPTION, Palette.text2, gravity = Gravity.END).apply { fontFeatureSettings = "tnum" }
-        times.addView(tNow, lp(0, WRAP, 1f))
-        times.addView(tTotal, lp(0, WRAP, 1f))
-        // (tucked into the strip's lower edge, below the largest knob: the room goes to the cover)
-        info.addView(times, lp(MATCH, WRAP).apply { setMargins(Space.M.dp, -Space.S.dp, Space.M.dp, 0) })
-
-        val ctl = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; layoutDirection = View.LAYOUT_DIRECTION_LTR }
-        shuffleBtn = ImageView(this)
-        repeatBtn = ImageView(this)
-        ctl.addView(ctlButton(R.drawable.ic_shuffle, 26, shuffleBtn, 0) { Player.setShuffle(!Player.shuffle) }, lp(Touch.MIN.dp, Touch.MIN.dp))
-        prevBtn = ctlButton(R.drawable.ic_skip_back, 32, null, R.string.media_prev) { transport(0) }
-        ctl.addView(prevBtn, lp(72.dp, 72.dp).apply { marginStart = Space.M.dp })
-        playIcon = PlayPauseView(this)
-        playBtn = FrameLayout(this).apply {
-            background = playTint.drawable
+        // (30 drawn, 48 to take: its centre is the slot's)
+        songTools.addView(seek, at(24, 331, 340, 48))
+        seekHint = label(Type.musicSub, { Palette.ink2 }, gravity = Gravity.CENTER).apply { visibility = View.INVISIBLE }
+        songTools.addView(seekHint, Type.musicSub.box(24, 339, 340))
+        prevBtn = IconButton(this, R.drawable.ic_prev, 44, 88, 88, token = { Palette.ink }).apply {
+            contentDescription = getString(R.string.media_prev)
+            setOnClickListener { transport(0) }
+        }
+        songTools.addView(prevBtn, at(44, 400, 88, 88))
+        playBtn = PlayPauseView(this).apply {
+            disc = { Palette.ink }
+            token = { Palette.wash }
+            glyphPx = 44
             isClickable = true
-            pressScale(Motion.PRESS_CONTROL)
-            elevation = Elev.FLOAT.dp // (a glow in the cover's colour, see artBox)
+            pressScale(PressGesture.CONTROL)
             contentDescription = getString(R.string.media_play)
             setOnClickListener { transport(1) }
-            addView(playIcon, flp(40.dp, 40.dp, Gravity.CENTER))
         }
-        ctl.addView(playBtn, lp(88.dp, 88.dp).apply { marginStart = Space.M.dp; marginEnd = Space.M.dp })
-        nextBtn = ctlButton(R.drawable.ic_skip_fwd, 32, null, R.string.media_next) { transport(2) }
-        ctl.addView(nextBtn, lp(72.dp, 72.dp).apply { marginEnd = Space.M.dp })
-        repeatOne = label(Type.CAPTION, Palette.text, gravity = Gravity.CENTER).apply {
-            text = "1"
-            // (the Latin face in every language: the Arabic one's taller lines did not fit the badge, and the digit is
-            // the same in both)
-            typeface = Fonts.get(600)
-            includeFontPadding = false
-            background = repeatOneBg
-            visibility = View.GONE
+        songTools.addView(playBtn, at(146, 396, 96, 96))
+        nextBtn = IconButton(this, R.drawable.ic_next, 44, 88, 88, token = { Palette.ink }).apply {
+            contentDescription = getString(R.string.media_next)
+            setOnClickListener { transport(2) }
         }
-        ctl.addView(ctlButton(R.drawable.ic_repeat, 26, repeatBtn, 0) { Player.cycleRepeat() }.apply {
-            // (on the icon's upper corner, the side the arrows turn towards)
-            addView(repeatOne, flp(16.dp, 16.dp, Gravity.TOP or Gravity.END).apply { setMargins(0, 7.dp, 7.dp, 0) })
-        }, lp(Touch.MIN.dp, Touch.MIN.dp))
-        info.addView(ctl, lp(MATCH, WRAP).apply { topMargin = Space.S.dp })
-        // Bluetooth without a phone: the way to pair or connect one is the screen's main action
-        btSettings = ABtn(this).apply {
-            kind = ABtn.Kind.PRIMARY
-            size = ABtn.Size.L
-            setText(R.string.music_bt_settings)
-            val ic = getDrawable(R.drawable.ic_bluetooth)?.mutate()?.apply { setTint(Palette.onColor(Palette.accent)); setBounds(0, 0, 22.dp, 22.dp) }
-            setCompoundDrawablesRelative(ic, null, null, null)
-            compoundDrawablePadding = Space.S.dp
-            visibility = View.GONE
-            setOnClickListener { openBluetooth(this@MusicPanel) }
-        }
-        info.addView(btSettings, lp(WRAP, WRAP).apply { topMargin = Space.L.dp })
-        row.addView(left, lp(0, MATCH, 0.46f).apply { marginEnd = Space.GUTTER.dp })
+        songTools.addView(nextBtn, at(256, 400, 88, 88))
 
-        // ---- library (frosted panel over the blurred cover); Bluetooth mode hides it
-        panel = FrameLayout(this).apply {
-            background = Shapes.rect(Palette.withAlpha(Palette.card, if (Palette.dark) 0.72f else 0.82f), Radius.XL, Palette.glassStroke)
+        val tile = FrameLayout(this).apply {
+            isClickable = true
+            pressScale(PressGesture.ICON)
+            contentDescription = getString(R.string.music_sources_title)
+            setOnClickListener { showSources() }
+            addView(plateView(Tokens2.R_inner) { Palette.fill }, flp(MATCH, MATCH))
         }
-        libraryBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(Space.M.dp, Space.M.dp, Space.M.dp, 0) }
-        panel.addView(libraryBox, flp(MATCH, MATCH))
+        sourceIcon = iconView(R.drawable.ic_iphone, 28) { Palette.ink }
+        tile.addView(sourceIcon, at(24, 13, 28, 28))
+        sourceName = label(Type.gridLabel, { Palette.ink }, gravity = Gravity.CENTER)
+        tile.addView(sourceName, at(2, 37, 72, Type.gridLabel.viewH))
+        songTools.addView(tile, at(12, 48, 76, 76))
+        songTools.addView(sideTool(R.drawable.ic_queue, 32, R.string.music_queue_title) { showQueue() }, at(12, 132, 76, 76))
+        songTools.addView(sideTool(R.drawable.ic_expand, 30, R.string.lyrics_bigger) { showFull(true) }, at(300, 48, 76, 76))
+
+        // ---- the right: the lyrics, the library, or the four places
+        lyricsView = LyricsView(this).apply { onLineTap = { l -> onLineTap(l) }; onLineHold = { l -> onLineHold(l) }; wordsOn = Words.on }
+        content.addView(lyricsView, at(398 - LyricsView.SIDE, LyricsView.TOP, 596 + 2 * LyricsView.SIDE, LyricsView.HEIGHT))
+        buildLibrary()
+        content.addView(library, Surface.CARD.at(384, 44, 628, 462))
+        emptyCard = SurfaceCard(this, Surface.CARD).apply { visibility = View.INVISIBLE }
+        val rowsCol = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        emptyRows = SourceRow.values().mapIndexed { i, r ->
+            SourceRowView(this, r, chevron = true, first = i == 0) { chooseRow(it) }.also { rowsCol.addView(it, lp(MATCH, SourceRowView.HEIGHT)) }
+        }
+        emptyCard.addView(rowsCol, flp(MATCH, MATCH))
+        content.addView(emptyCard, Surface.CARD.at(398, 48, 596, 4 * SourceRowView.HEIGHT))
+
+        buildFull()
+        root.addView(fullLayer, at(0, 0, 1024, 600))
+        root.look { takeTheme() }
+    }
+
+    /** A big bitmap of the theme, decoded off the main thread: a hardware bitmap there holds the build, or the swap, for what can be a second on a loaded GPU. */
+    private fun lateImage(stem: String): ImageView = ImageView(this).apply {
+        scaleType = ImageView.ScaleType.FIT_XY
+        look {
+            val night = Palette.dark
+            val c = applicationContext
+            Thread({
+                val b = com.abdllh.aura.ui.Surfaces.themed(c, stem, night)
+                post { if (night == Palette.dark) setImageBitmap(b) }
+            }, "music-art").start()
+        }
+    }
+
+    private fun sideTool(icon: Int, px: Int, desc: Int, onClick: () -> Unit) =
+        IconButton(this, icon, px, 76, 76, IconButton.Kind.TONAL, plateW = 76, plateH = 76, plateRadius = Tokens2.R_inner, plateToken = { Palette.fill }, token = { Palette.ink }).apply {
+            contentDescription = getString(desc)
+            setOnClickListener { onClick() }
+        }
+
+    private fun buildLibrary() {
+        library = SurfaceCard(this, Surface.CARD).apply { visibility = View.INVISIBLE }
         tabs = Segmented(this, listOf(getString(R.string.music_songs), getString(R.string.music_albums),
-            getString(R.string.music_artists), getString(R.string.music_folders)), equal = true) { i ->
+            getString(R.string.music_tab_artists), getString(R.string.music_folders)), equal = false) { i ->
             tab = Tab.values()[i]
             group = null
             showList(Nav.TAB)
-        }.apply { trackColor = Palette.withAlpha(Palette.card3, 0.75f); onIndicator = Palette.text }
-        libraryBox.addView(tabs, lp(MATCH, Touch.MIN.dp))
-        // the open album / artist / folder: its name, the way back, and Play all
+        }
+        // (each as wide as its word, and what is left shared out: as drawn, and no word cut)
+        for (i in 0 until tabs.childCount) (tabs.getChildAt(i).layoutParams as LinearLayout.LayoutParams).weight = 1f
+        // (at the reading edge)
+        library.addView(tabs, at(if (rtl) 180 else 8, 8, 440, 60))
+        // the open album, artist or folder: the way back, its name, and Play all
         crumb = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            visibility = View.GONE
-            minimumHeight = Touch.MIN.dp
-            background = Shapes.ghost(Radius.M)
-            isClickable = true
-            setOnClickListener { group = null; showList(Nav.BACK) }
-            setPaddingRelative(Space.XS.dp, 0, 0, 0)
+            visibility = View.INVISIBLE
         }
-        crumbChevron = iconView(R.drawable.ic_chevron_left, 26, Palette.accentFg).apply { if (rtl) scaleX = -1f }
-        crumb.addView(crumbChevron, lp(26.dp, 26.dp))
-        crumbText = label(Type.LABEL, Palette.text)
-        crumb.addView(crumbText, lp(0, WRAP, 1f).apply { marginStart = Space.S.dp })
-        playAllIcon = iconView(R.drawable.ic_play, 20, Palette.accentFg)
-        playAllText = label(Type.BUTTON, Palette.accentFg).apply { setText(R.string.music_play_all) }
-        crumb.addView(LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            // (a 48 dp pill inside a 56 dp target)
-            background = Shapes.touchInset(playAllTint.drawable, 48)
-            setPaddingRelative(Space.L.dp, 0, Space.L.dp + Space.XS.dp, 0)
-            minimumHeight = Touch.MIN.dp
-            isClickable = true
-            pressScale(Motion.PRESS_CONTROL)
+        crumb.addView(IconButton(this, R.drawable.ic_back, 28, 56, 60, token = { Palette.ink }).apply {
+            contentDescription = getString(R.string.music_back)
+            setOnClickListener { group = null; showList(Nav.BACK) }
+        }, lp(56, 60))
+        crumbText = label(Type.resultTitle, { Palette.ink })
+        crumb.addView(crumbText, lp(0, Type.resultTitle.viewH, 1f).apply { marginStart = 8; marginEnd = 8 })
+        crumb.addView(ABtn(this).apply {
+            kind = ABtn.Kind.TONAL
+            icon(R.drawable.ic_play)
+            setText(R.string.music_play_all)
             setOnClickListener { group?.let { playFrom(it.tracks, 0) } }
-            addView(playAllIcon, lp(20.dp, 20.dp))
-            addView(playAllText, lp(WRAP, WRAP).apply { marginStart = Space.S.dp })
-        }, lp(WRAP, Touch.MIN.dp))
-        libraryBox.addView(crumb, lp(MATCH, WRAP).apply { topMargin = Space.XS.dp })
-        val body = FrameLayout(this)
+        }, lp(PLAY_ALL_W, ABtn.Size.M.height))
+        library.addView(crumb, at(8, 8, 612, 60))
+
         listHolder = FrameLayout(this)
         listView = ListView(this).apply { libraryStyle() }
         listHolder.addView(listView, flp(MATCH, MATCH))
         gridView = GridView(this).apply {
-            numColumns = 3
-            verticalSpacing = Space.M.dp
-            horizontalSpacing = Space.M.dp
+            numColumns = ALBUM_COLUMNS
+            verticalSpacing = 0
+            horizontalSpacing = 0
             stretchMode = GridView.STRETCH_COLUMN_WIDTH
             libraryStyle()
-            setPadding(Space.XS.dp, Space.S.dp, Space.XS.dp, Space.M.dp)
             visibility = View.GONE
         }
         listHolder.addView(gridView, flp(MATCH, MATCH))
-        body.addView(listHolder, flp(MATCH, MATCH))
+        listFade = scrollFade(Surface.CARD, top = false)
+        listHolder.addView(listFade, flp(MATCH, 28, Gravity.BOTTOM))
+        library.addView(listHolder, at(8, 72, 612, 382))
+
         empty = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; visibility = View.GONE }
-        empty.addView(iconView(R.drawable.ic_usb, 48, Palette.text3), lp(48.dp, 48.dp))
-        emptyText = label(Type.BODY, Palette.text2, lines = 3, gravity = Gravity.CENTER)
-        empty.addView(emptyText, lp(MATCH, WRAP).apply { setMargins(Space.XXL.dp, Space.M.dp, Space.XXL.dp, 0) })
-        emptyBtn = ABtn(this).apply { kind = ABtn.Kind.PRIMARY }
-        empty.addView(emptyBtn, lp(WRAP, WRAP).apply { topMargin = Space.L.dp })
-        emptySpinner = spinner().apply { visibility = View.GONE }
-        empty.addView(emptySpinner, lp(28.dp, 28.dp).apply { topMargin = Space.L.dp })
-        body.addView(empty, flp(MATCH, MATCH))
-        libraryBox.addView(body, lp(MATCH, 0, 1f).apply { topMargin = Space.S.dp })
-
-        panel.addView(buildYt(), flp(MATCH, MATCH))
-        lyricsView = LyricsView(this).apply { visibility = View.GONE; onLineTap = { l -> onLineTap(l) }; onLineHold = { l -> onLineHold(l) }; wordsOn = Words.on }
-        panel.addView(lyricsView, flp(MATCH, MATCH))
-        // over the lyrics, in the panel's corner: the lyrics alone on the whole screen
-        expandBtn = FrameLayout(this).apply {
-            background = Shapes.pressable(Shapes.oval(Palette.withAlpha(Palette.card3, 0.7f)), Shapes.oval(Palette.card3))
-            isClickable = true
-            pressScale(Motion.PRESS_ICON)
-            visibility = View.GONE
-            contentDescription = getString(R.string.lyrics_bigger)
-            setOnClickListener { showFull(true) }
-            addView(iconView(R.drawable.ic_expand, 24, Palette.text).apply { layoutParams = flp(24.dp, 24.dp, Gravity.CENTER) })
-        }
-        panel.addView(expandBtn, flp(Touch.MIN.dp, Touch.MIN.dp, Gravity.TOP or Gravity.END).apply { setMargins(Space.S.dp, Space.S.dp, Space.S.dp, 0) })
-
-        row.addView(panel, lp(0, MATCH, 0.54f))
-        root.addView(row, MATCH, MATCH)
-        content = row
-        // (what travels between two layouts crosses its parents' edges on the way: see relayout)
-        for (g in listOf(root, row, left, top, stage, artSlot)) { g.clipChildren = false; g.clipToPadding = false }
-        root.addView(buildFull(), MATCH, MATCH)
-        // the cover on its way between the two layouts (see fly)
-        flyer = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; visibility = View.GONE }
-        root.addView(flyer, flp(1, 1))
-        setArt(null, -3)
+        emptyText = label(Type.stateTitle, { Palette.ink }, lines = 3, gravity = Gravity.CENTER)
+        empty.addView(emptyText, lp(MATCH, WRAP).apply { setMargins(40, 0, 40, 0) })
+        emptyBtn = ABtn(this).apply { kind = ABtn.Kind.TONAL }
+        empty.addView(emptyBtn, lp(EMPTY_BTN_W, ABtn.Size.M.height).apply { topMargin = 18 })
+        emptySpinner = Spinner(this, 24).apply { visibility = View.GONE }
+        empty.addView(emptySpinner, lp(24, 24).apply { topMargin = 18 })
+        library.addView(empty, at(0, 72, 628, 382))
     }
 
-    /** The lyrics alone on the whole screen: large lines, a way back in the corner, and a small bar for the song. */
-    private fun buildFull(): View {
-        fullLayer = FrameLayout(this).apply { isClickable = true; visibility = View.INVISIBLE } // (taps do not reach the screen below)
+    /** The full lyrics: no cover, the song's name above, the larger lines, small transport bottom left, collapse bottom right. */
+    private fun buildFull() {
+        fullLayer = FrameLayout(this).apply { isClickable = true; visibility = View.INVISIBLE } // (taps do not reach the panel below)
         lyricsBig = LyricsView(this, big = true).apply { onLineTap = { l -> onLineTap(l) }; onLineHold = { l -> onLineHold(l) }; wordsOn = Words.on }
-        fullLayer.addView(lyricsBig, flp(MATCH, MATCH).apply { bottomMargin = (FULL_BAR_DP + Space.XL).dp })
-
-        val frost = Palette.withAlpha(Palette.card, if (Palette.dark) 0.55f else 0.75f)
-        fullClose = FrameLayout(this).apply {
-            background = Shapes.pressable(Shapes.oval(frost), Shapes.oval(Palette.card3))
-            isClickable = true
-            pressScale(Motion.PRESS_ICON)
-            contentDescription = getString(R.string.lyrics_smaller)
-            setOnClickListener { showFull(false) }
-            addView(iconView(R.drawable.ic_collapse, 26, Palette.text).apply { layoutParams = flp(26.dp, 26.dp, Gravity.CENTER) })
+        fullLayer.addView(lyricsBig, at(40 - LyricsView.SIDE, LyricsView.TOP_BIG, 944 + 2 * LyricsView.SIDE, LyricsView.HEIGHT_BIG))
+        fullHead = label(Type.musicSub, { Palette.ink2 })
+        fullLayer.addView(fullHead, Type.musicSub.box(40, 40, 944))
+        fullPrev = IconButton(this, R.drawable.ic_prev, 34, 72, 52, token = { Palette.ink }).apply {
+            contentDescription = getString(R.string.media_prev)
+            setOnClickListener { transport(0) }
         }
-        // (where the screen's own way back is: the corner that leaves)
-        fullLayer.addView(fullClose, flp(Touch.MIN.dp, Touch.MIN.dp, Gravity.TOP or Gravity.START).apply { setMargins(Space.GUTTER.dp, Space.M.dp, Space.GUTTER.dp, 0) })
-
-        fullBar = FrameLayout(this).apply {
-            background = Shapes.pill(Palette.withAlpha(Palette.card, if (Palette.dark) 0.66f else 0.84f), Palette.glassStroke)
+        fullLayer.addView(fullPrev, at(24, 452, 72, 52))
+        fullPlay = PlayPauseView(this).apply {
+            token = { Palette.ink }
+            glyphPx = 38
             isClickable = true
-        }
-        val line = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPaddingRelative(Space.M.dp, 0, Space.M.dp, 0)
-        }
-        fullArtBox = FrameLayout(this).apply { background = Shapes.rect(Palette.card2, BAR_COVER_RADIUS); roundedClip(BAR_COVER_RADIUS) }
-        fullArtBox.addView(iconView(R.drawable.ic_music, 26, Palette.text3).apply { layoutParams = flp(26.dp, 26.dp, Gravity.CENTER) })
-        fullArt = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
-        fullArtBox.addView(fullArt, flp(MATCH, MATCH))
-        line.addView(fullArtBox, lp(64.dp, 64.dp))
-        val names = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        fullTitle = label(Type.LABEL, Palette.text)
-        fullArtist = label(Type.FOOTNOTE, Palette.text2)
-        names.addView(fullTitle, lp(MATCH, WRAP))
-        names.addView(fullArtist, lp(MATCH, WRAP).apply { topMargin = Space.XXS.dp })
-        line.addView(names, lp(0, WRAP, 1f).apply { marginStart = Space.L.dp; marginEnd = Space.M.dp })
-        // (previous, play, next: left to right in every language, like the buttons of the song's side)
-        val ctl = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; layoutDirection = View.LAYOUT_DIRECTION_LTR }
-        fullPrev = ctlButton(R.drawable.ic_skip_back, 28, null, R.string.media_prev) { transport(0) }
-        ctl.addView(fullPrev, lp(Touch.LARGE.dp, Touch.LARGE.dp))
-        fullPlayIcon = PlayPauseView(this)
-        fullPlay = FrameLayout(this).apply {
-            background = fullPlayTint.drawable
-            isClickable = true
-            pressScale(Motion.PRESS_ICON)
+            pressScale(PressGesture.ICON)
             contentDescription = getString(R.string.media_play)
             setOnClickListener { transport(1) }
-            addView(fullPlayIcon, flp(30.dp, 30.dp, Gravity.CENTER))
         }
-        ctl.addView(fullPlay, lp(Touch.LARGE.dp, Touch.LARGE.dp).apply { marginStart = Space.XS.dp; marginEnd = Space.XS.dp })
-        fullNext = ctlButton(R.drawable.ic_skip_fwd, 28, null, R.string.media_next) { transport(2) }
-        ctl.addView(fullNext, lp(Touch.LARGE.dp, Touch.LARGE.dp))
-        line.addView(ctl, lp(WRAP, WRAP))
-        fullBar.addView(line, flp(MATCH, MATCH))
-        // how far the song is: a thin line inside the bar's bottom edge
-        fullLine = ThinProgress(this)
-        fullBar.addView(fullLine, flp(MATCH, 3.dp, Gravity.BOTTOM).apply { setMargins(34.dp, 0, 34.dp, 7.dp) })
-        fullLayer.addView(fullBar, flp(MATCH, FULL_BAR_DP.dp, Gravity.BOTTOM).apply { setMargins(Space.GUTTER.dp, 0, Space.GUTTER.dp, Space.M.dp) })
-        return fullLayer
-    }
-
-    private fun ctlButton(icon: Int, size: Int, img: ImageView?, desc: Int, onClick: () -> Unit): FrameLayout = FrameLayout(this).apply {
-        background = Shapes.ghostOval()
-        isClickable = true
-        pressScale(Motion.PRESS_ICON)
-        if (desc != 0) contentDescription = getString(desc)
-        setOnClickListener { onClick() }
-        val v = img ?: ImageView(this@MusicPanel)
-        v.setImageResource(icon)
-        if (img == null) v.setColorFilter(Palette.text)
-        v.scaleType = ImageView.ScaleType.FIT_CENTER
-        addView(v, flp(size.dp, size.dp, Gravity.CENTER))
-    }
-
-    /** A fill in the cover's colour with its pressed shade, recoloured in place as the colour changes. */
-    private class Tint(shape: () -> GradientDrawable) {
-        private val normal = shape()
-        private val pressed = shape()
-        val drawable: Drawable = Shapes.pressable(normal, pressed)
-        fun set(c: Int, pressedColour: Int) { normal.setColor(c); pressed.setColor(pressedColour) }
+        fullLayer.addView(fullPlay, at(96, 452, 72, 52))
+        fullNext = IconButton(this, R.drawable.ic_next, 34, 72, 52, token = { Palette.ink }).apply {
+            contentDescription = getString(R.string.media_next)
+            setOnClickListener { transport(2) }
+        }
+        fullLayer.addView(fullNext, at(168, 452, 72, 52))
+        fullLayer.addView(IconButton(this, R.drawable.ic_collapse, 30, 72, 52, token = { Palette.ink2 }).apply {
+            contentDescription = getString(R.string.lyrics_smaller)
+            setOnClickListener { showFull(false) }
+        }, at(928, 452, 72, 52))
     }
 
     // Was onCreate, here after every field of the class (Kotlin runs these in order). Runs when the home screen is quiet or, when
     // Music is asked for before that, at that moment. All it can already say is said, with the list's rows, so that they are laid
-    // out with the rest while out of sight and the first open has no more to do than a later one; the pictures and the lyrics
+    // out with the rest while out of sight and the first open has no more to do than a later one; the rows' pictures and the lyrics
     // wait for it ([showing]).
     init {
         debugFail("build")
-        Theme.refresh()
         Player.init(this)
         BtMusic.init(this)
         MediaMonitor.start(this) // (other apps' sessions: the YouTube source reads one)
         src = sourceNow()
-        lyricsWanted = Prefs.raw.getBoolean("musicLyrics", false)
-        lyricsOn = lyricsWanted // (until the song in front turns out to have none)
-        lyricsFull = lyricsOn && Prefs.raw.getBoolean("musicLyricsFull", false)
-        build()
+        lyricsFull = src != Src.LOCAL && Prefs.raw.getBoolean("musicLyricsFull", false)
+        buildUi()
+        collapsed = false
+        if (lyricsFull) showFull(true, animate = false, remember = false)
+        showNowPlaying()
+        showList()
         btCover = null
         ytCover = null
+        ThemeSwap.readySteps.add(readyStep)
+        current = this
         // Asked for only where the music files are wanted (the library's own button, or choosing its source): the
         // screen opened for the phone's music used to start with a system dialog over the song.
         if (Library.hasPermission(this) && !Library.loaded) Library.load(this)
@@ -2510,6 +1898,15 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         /** The source the screen is on while there is one (null: none), for [com.abdllh.aura.system.MusicKeys]. */
         @Volatile var onBluetooth: Boolean? = null
             private set
+
+        /** The one there is, built ahead or asked for. */
+        private var current: MusicPanel? = null
+
+        /** A tap on the mini's cover, on any screen with a mini: the source sheet, beside the column on a trip (SPEC.md section 6.4). */
+        fun openSources(shell: HomeActivity) {
+            if (current == null) shell.panels.prepare(Screens.MUSIC)
+            current?.showSources()
+        }
 
         // art keys for "no cover" states (album ids are >= 0)
         private const val BT_ART = Long.MIN_VALUE + 1
@@ -2530,24 +1927,22 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         private const val TAP_LIT_SLACK_MS = 400L
         private const val DELAY_HINT_KEY = "btDelayHinted"
 
-        /** Corner radius of the song's cover, and of the small one in the bar under the large lyrics (dp). */
-        private const val COVER_RADIUS = Radius.XL
-        private const val BAR_COVER_RADIUS = Radius.M
-        /** Height of that bar (dp). */
-        private const val FULL_BAR_DP = 88
-        /**
-         * The song's title: the screen's display text, between the headline and display roles (bold, so the step to
-         * the artist under it is one clear one); larger when the song has the screen to itself.
-         */
-        private const val TITLE_SP = 28f
-        private const val TITLE_WIDE_SP = 34f
-        /** List thumbnails (dp). */
-        private const val THUMB_DP = 58
+        /** The big cover, as it is shown (section 4's table). */
+        private const val COVER = 204
+        /** Asked of the loader for the big cover. */
+        private const val ART_PX = 600
+        /** Buttons in the library, wide enough for their word in either language: an exact width, a wrapped one lost its padding. */
+        private const val PLAY_ALL_W = 196
+        private const val EMPTY_BTN_W = 220
+        /** The album cell's cover, its height, and the columns of the grid: 612 / 4. */
+        private const val ALBUM = 120
+        private const val ALBUM_H = 196
+        private const val ALBUM_COLUMNS = 4
         /** A paused cover, as seen (see [breathe]). */
         private const val PAUSED_SCALE = 0.94f
         /** Buttons with nothing to do (the same as a disabled [ABtn]). */
         private const val DISABLED_ALPHA = 0.4f
-        /** How far a new cover comes from (dp); the old one leaves half that the other way. */
+        /** How far a new cover comes from; the old one leaves half that the other way. */
         private const val COVER_SLIDE_DP = 28f
         /** A skip press counts for the next cover this long (a Bluetooth cover is looked up by name first). */
         private const val SKIP_MEMORY_MS = 5000L
@@ -2561,6 +1956,8 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         private const val ARRIVING_MS = 400L
         /** "Looking for the lyrics" shows only when the answer takes longer than this. */
         private const val LOADING_AFTER_MS = 600L
+        /** How often it looks at where the song is. Nothing redraws unless something changed. */
+        private const val TICK_MS = 250L
 
         /** Bluetooth settings live in the stock phone app on this firmware (pairing, connect). */
         fun openBluetooth(ctx: Context) {
@@ -2573,95 +1970,8 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
 
 /**
  * Sets the text only when it is another text. A TextView lays its text out again on every setText, and one whose
- * width wraps its content asks the whole screen for a layout pass: the progress tick (four times a second with the
- * lyrics) and the phone's repeated song reports did both for text that had not changed.
+ * width wraps its content asks the whole screen for a layout pass: the progress tick and the phone's repeated song reports did both for text that had not changed.
  */
 private fun TextView.setTextIfChanged(s: CharSequence?) {
     if (!TextUtils.equals(text, s)) text = s
 }
-
-/** Progress bar with a knob; drag to seek. Always left-to-right, like the time labels. */
-class SeekView(ctx: Context) : View(ctx) {
-    var progress = 0f
-        set(v) { val n = v.coerceIn(0f, 1f); if (n != field) { field = n; invalidate() } }
-    /** Played part (the cover's colour). */
-    var color = Palette.accent
-        set(v) { if (v != field) { field = v; invalidate() } }
-    var onSeek: ((Float) -> Unit)? = null
-    var enabledSeek = true
-        set(v) { if (v != field) { field = v; invalidate() } }
-    var dragging = false
-        private set
-    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val r = RectF()
-    /** 0 resting, 1 held: the bar thickens and the knob grows under the finger (on a spring, not in one frame). */
-    private var grab = 0f
-    private val grabSpring = Spring(0f, 700f, 0.85f) { grab = it; invalidate() }
-
-    init { layoutDirection = LAYOUT_DIRECTION_LTR }
-
-    override fun onDraw(c: Canvas) {
-        val h = (6f + 4f * grab).dp
-        val y = height / 2f
-        val pad = 12f.dp
-        val w = width - 2 * pad
-        r.set(pad, y - h / 2, pad + w, y + h / 2)
-        p.color = Palette.track
-        c.drawRoundRect(r, h / 2, h / 2, p)
-        if (progress > 0f) {
-            r.set(pad, y - h / 2, pad + (w * progress).coerceAtLeast(h), y + h / 2)
-            p.color = color
-            c.drawRoundRect(r, h / 2, h / 2, p)
-        }
-        if (enabledSeek) {
-            val k = (8f + 4f * grab).dp
-            p.color = 0x30000000
-            c.drawCircle(pad + w * progress, y + 1f.dp, k + 1f.dp, p)
-            p.color = 0xFFFFFFFF.toInt()
-            c.drawCircle(pad + w * progress, y, k, p)
-        }
-    }
-
-    override fun onTouchEvent(e: MotionEvent): Boolean {
-        if (!enabledSeek) return false
-        val pad = 12f.dp
-        val f = ((e.x - pad) / (width - 2 * pad)).coerceIn(0f, 1f)
-        when (e.actionMasked) {
-            MotionEvent.ACTION_DOWN -> { dragging = true; parent?.requestDisallowInterceptTouchEvent(true); progress = f; grabSpring.animateTo(1f) }
-            MotionEvent.ACTION_MOVE -> progress = f
-            MotionEvent.ACTION_UP -> { dragging = false; progress = f; grabSpring.animateTo(0f); onSeek?.invoke(f) }
-            MotionEvent.ACTION_CANCEL -> { dragging = false; grabSpring.animateTo(0f) }
-        }
-        return true
-    }
-
-    override fun onDetachedFromWindow() {
-        grabSpring.snapTo(0f)
-        super.onDetachedFromWindow()
-    }
-}
-
-/** How far the song is, as a thin line (nothing at all while that is unknown). Left to right, like [SeekView]. */
-class ThinProgress(ctx: Context) : View(ctx) {
-    /** 0..1, or negative when unknown. */
-    var progress = -1f
-        set(v) { val n = if (v < 0f) -1f else v.coerceAtMost(1f); if (n != field) { field = n; invalidate() } }
-    var color = Palette.accent
-        set(v) { if (v != field) { field = v; invalidate() } }
-    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val r = RectF()
-
-    override fun onDraw(c: Canvas) {
-        if (progress < 0f) return
-        val h = height.toFloat()
-        r.set(0f, 0f, width.toFloat(), h)
-        p.color = Palette.track
-        c.drawRoundRect(r, h / 2, h / 2, p)
-        if (progress > 0f) {
-            r.set(0f, 0f, (width * progress).coerceAtLeast(h), h)
-            p.color = color
-            c.drawRoundRect(r, h / 2, h / 2, p)
-        }
-    }
-}
-

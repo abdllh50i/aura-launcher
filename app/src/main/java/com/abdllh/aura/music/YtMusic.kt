@@ -262,6 +262,28 @@ object YtMusic {
         }
     }
 
+    /**
+     * The source row: YouTube's app to the front, with the speakers, and no song named: there is no search box in AMRI (SPEC.md section 6.4). What he plays there
+     * comes back by its session, as FROM_SERVICE. False when no YouTube app is on the unit.
+     */
+    fun openApp(c: Context): Boolean {
+        val pkg = player(c) ?: return false
+        app = c.applicationContext
+        Player.pauseForOtherSource()
+        BtMusic.deactivate()
+        takeSpeakers(c)
+        HomeGuard.launching(pkg)
+        return try {
+            val i = c.packageManager.getLaunchIntentForPackage(pkg) ?: return false
+            c.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            Log.i(TAG, "opened $pkg")
+            true
+        } catch (t: Throwable) {
+            Log.w(TAG, "open $pkg: $t")
+            false
+        }
+    }
+
     /** The app did not start playing in time (it asks for something on its own screen): the owner stays there. */
     private val giveUp = Runnable {
         if (handed != null) note("no song played within ${HAND_MS / 1000} s of the hand-over")

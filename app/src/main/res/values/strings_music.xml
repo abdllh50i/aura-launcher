@@ -5,4 +5,36 @@
     <string name="music_loading">Loading your music…</string>
     <string name="lyrics_retry">Try again</string>
     <string name="yt_clear">Clear the search</string>
+    <string name="music_src_naghm">From Naghm</string>
+    <string name="music_src_naghm_short">Naghm</string>
+    <string name="music_src_bt">Bluetooth</string>
+    <string name="music_src_bt_short">BT</string>
+    <string name="music_src_usb">USB and files</string>
+    <string name="music_src_usb_short">USB</string>
+    <string name="music_src_yt">YouTube Music</string>
+    <string name="music_src_yt_short">YouTube</string>
+    <string name="music_sources_title">Listen from</string>
+    <string name="music_queue_title">Up next</string>
+    <string name="music_queue_on_phone">The list is on your phone</string>
+    <string name="music_queue_in_app">The list is in the YouTube app</string>
+    <string name="music_pick_source">Choose a source</string>
+    <string name="music_from_iphone">From the iPhone</string>
+    <string name="music_iphone_on">iPhone connected</string>
+    <string name="music_phone_off">No phone connected</string>
+    <string name="music_naghm_off">Open Naghm on the iPhone</string>
+    <string name="music_no_drive">No drive</string>
+    <string name="music_yt_opens">Opens the app</string>
+    <string name="music_yt_missing">App not installed</string>
+    <string name="music_tap_line">Tap the line being sung</string>
+    <string name="music_no_lyrics">No lyrics for this song</string>
+    <string name="music_lyrics_failed">Couldn\'t get the lyrics</string>
+    <string name="music_synced">Set</string>
+    <string name="music_bt_lost">Bluetooth lost</string>
+    <string name="music_tab_artists">Artists</string>
+    <string name="music_shuffle">Shuffle</string>
+    <string name="music_repeat">Repeat</string>
+    <plurals name="music_songs">
+        <item quantity="one">%1$d song</item>
+        <item quantity="other">%1$d songs</item>
+    </plurals>
 </resources>

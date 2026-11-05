@@ -68,6 +68,9 @@ object Player {
 
     val current: Track? get() = order.getOrNull(index)?.let { queue.getOrNull(it) }
 
+    /** The songs from the one playing on, in the order they will play: the queue sheet. */
+    fun upcoming(): List<Track> = (index.coerceAtLeast(0) until order.size).mapNotNull { queue.getOrNull(order[it]) }
+
     fun addListener(l: () -> Unit) { listeners.add(l) }
     fun removeListener(l: () -> Unit) { listeners.remove(l) }
     private fun changed() { for (l in listeners) l() }
