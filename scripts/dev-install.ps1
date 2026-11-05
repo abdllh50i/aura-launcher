@@ -18,6 +18,8 @@ if (-not $NoBuild) {
 # From 2.x the guard acts during a trial (docs/DEV.md, "The guard"): three force-stops of this script in a boot, each before 5 minutes of
 # life, would be a crash loop to it. Here a start is a healthy one after 20 s.
 & $adb -s $Serial shell "setprop debug.aura.guard.livedsec 20" | Out-Null
+# And to the map's own guard, two force-stops with the map up in a boot mean no live map at Home until the next boot (MapGuard): not in a dev loop.
+& $adb -s $Serial shell "setprop debug.aura.mapguard off" | Out-Null
 # A home intent limited to the package, never the class by name: only a start that names no component makes a home-type
 # activity (docs/DEV.md, "One way to the screens"). For the Home key to come back to AMRI as on the unit, once per
 # emulator:  adb shell cmd package set-home-activity com.abdllh.aura/.home.HomeActivity

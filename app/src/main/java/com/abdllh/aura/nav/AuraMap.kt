@@ -1459,6 +1459,12 @@ object MapGuard {
     fun homeMapAllowed(c: Context): Boolean {
         val sp = sp(c)
         val m = marker(c)
+        // (debug builds: a dev loop's force-stops are not a map that cannot run. scripts/dev-install.ps1 sets this)
+        if (com.abdllh.aura.BuildConfig.DEBUG && com.abdllh.aura.system.SystemProps.get("debug.aura.mapguard") == "off") {
+            m.delete()
+            liveMark(c).delete()
+            return true
+        }
         // (the 1.11 flag too, left by a crash before the update)
         if (m.exists() || sp.getBoolean("starting", false)) {
             sp.edit().putInt("fails", sp.getInt("fails", 0) + 1).remove("starting").commit()
