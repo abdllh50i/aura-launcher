@@ -102,6 +102,9 @@ abstract class Panel(val shell: HomeActivity, val name: String) : ContextWrapper
 
     open fun onTrimMemory(level: Int) {}
 
+    /** The stack has come to rest, from wherever a move stopped: what the panel moved itself goes to where it is at rest. [top]: it is what shows. */
+    open fun onSettle(top: Boolean) {}
+
     /** Off the stack and not kept, or the window is ending: everything it holds goes. */
     open fun onDestroy() {}
 

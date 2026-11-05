@@ -463,6 +463,7 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
                 p in stack -> p.frame.visibility = View.INVISIBLE
                 else -> gone(p)
             }
+            call(p, "onSettle") { p.onSettle(p === t) }
         }
         setBeside(b)
         root.mapHost.covered = t.opaque

@@ -47,6 +47,7 @@ class BootHome : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         startedAt = SystemClock.elapsedRealtime()
+        showWall()
         try {
             registerReceiver(unlocked, IntentFilter(Intent.ACTION_USER_UNLOCKED))
             registered = true
@@ -54,6 +55,38 @@ class BootHome : Activity() {
             Log.w(TAG, "receiver: $t")
         }
         look()
+    }
+
+    /**
+     * Its picture (SPEC.md section 6.7): the wall with the logo 200 wide at (412, 266), the pixels Home's first frame starts from, so there is no seam. Which theme comes from the one flag kept in device-protected
+     * storage ([BootFlag]); with none, night. Only what is in the APK besides that: the user's storage is not open yet. A picture that cannot be had leaves the black it always was.
+     */
+    private fun showWall() {
+        try {
+            val dp = createDeviceProtectedStorageContext()
+            val night = BootFlag.night(dp)
+            val arabic = BootFlag.arabic(dp)
+            val root = android.widget.FrameLayout(this)
+            val wall = assets.open("surfaces/wall-${if (night) "night" else "day"}.png").use {
+                android.graphics.BitmapFactory.decodeStream(it, null, android.graphics.BitmapFactory.Options().apply { inScaled = false })
+            }
+            root.addView(android.widget.ImageView(this).apply {
+                scaleType = android.widget.ImageView.ScaleType.FIT_XY
+                setImageBitmap(wall)
+            }, android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.MATCH_PARENT, android.widget.FrameLayout.LayoutParams.MATCH_PARENT))
+            HomePanel.bootLogo(this, night, arabic)?.let { logo ->
+                root.addView(android.widget.ImageView(this).apply {
+                    scaleType = android.widget.ImageView.ScaleType.FIT_XY
+                    setImageBitmap(logo)
+                }, android.widget.FrameLayout.LayoutParams(logo.width, logo.height, android.view.Gravity.LEFT or android.view.Gravity.TOP).apply {
+                    leftMargin = 412
+                    topMargin = 296 - logo.height / 2
+                })
+            }
+            setContentView(root)
+        } catch (t: Throwable) {
+            Log.w(TAG, "picture: $t")
+        }
     }
 
     override fun onDestroy() {

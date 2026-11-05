@@ -187,6 +187,7 @@ class MapController(private val shell: HomeActivity) {
             onReady?.invoke()
         }
         m.onDrawn = { drawn() }
+        m.setLabels(front != Front.HOME)
         applyFront(m)
         // (under what covers it, under the panels: the slot is never empty again until the window ends)
         host.addView(m.view, 0)
@@ -298,8 +299,13 @@ class MapController(private val shell: HomeActivity) {
         front = Front.MAPS
         mapsSide = side
         val m = map
-        if (m == null) startForMaps() else safely("maps") { applyFront(m) }
+        if (m == null) startForMaps() else safely("maps") { m.setLabels(true); applyFront(m) }
         syncCover()
+    }
+
+    /** Nothing but the card shows the map now: no labels and no POIs in it (SPEC.md section 11). Said when Home has come to rest: gone at the start of the wall's fade they would blink off in the open map. */
+    fun homeLabels() {
+        if (front == Front.HOME) safely("home labels") { map?.setLabels(false) }
     }
 
     private fun applyFront(m: AuraMap) {
@@ -309,18 +315,26 @@ class MapController(private val shell: HomeActivity) {
                 m.setInteractive(false)
                 m.zoomBack()
                 m.pictureFile = MapBackdropView.pictureFile(shell)
-                val c = homeRoom
-                m.pictureArea = c
-                if (c != null) m.setRoom(c.left, c.top, homeW - c.right, homeH - c.bottom, HOME_NAV_TOP)
+                m.pictureArea = homeRoom
+                placeHome(m)
             }
             Front.MAPS -> {
                 m.setInteractive(true)
                 m.pictureFile = null
+                m.flatNav = false
                 val rtl = shell.resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL
                 m.setRoom(if (rtl) 0 else mapsSide, 0, if (rtl) mapsSide else 0, 0, MAPS_NAV_TOP)
             }
         }
         sync()
+    }
+
+    /** `map-*.json`'s camera: home, the car at (192, 179), 48 px; home on a trip, heading up, flat, the car at (192, 218), 40 px; both at zoom 14.6. */
+    private fun placeHome(m: AuraMap) {
+        val trip = NavSession.state == NavSession.State.NAVIGATING
+        if (m.flatNav != trip) m.flatNav = trip
+        if (trip) m.setRoom(0, 0, HOME_TRIP_RIGHT, HOME_TRIP_BOTTOM, 0.0)
+        else m.setRoom(HOME_LEFT, HOME_TOP, HOME_RIGHT, HOME_BOTTOM, 0.0)
     }
 
     // ------------------------------------------------------------------------------------------ what is on it
@@ -356,6 +370,8 @@ class MapController(private val shell: HomeActivity) {
         val onMaps = front == Front.MAPS
         if (!navigating) m.fellBehind = false
         m.setFps(if (navigating && onMaps && !m.fellBehind) 60 else 30) // a turning, tilted map needs the frames; the home screen's card does not
+        if (front == Front.HOME) placeHome(m)
+        m.setCarPx(if (onMaps) (if (navigating) 0 else CAR_MAPS_PX) else if (navigating) CAR_HOME_TRIP_PX else CAR_HOME_PX)
         if (!navigating && turnShown != null) { turnShown = null; m.setTurn(null) }
         val trip = if (onMaps) st != NavSession.State.IDLE else navigating
         if (!trip) {
@@ -380,7 +396,8 @@ class MapController(private val shell: HomeActivity) {
         val step = r.steps[p.next]
         // the turn ahead, as an arrow on the route itself (not the start or the arrival, nor a turn still far off);
         // through a roundabout it runs on to the exit taken, so its head shows the way out, not the ring
-        val turn = if (step.type == "arrive" || step.type == "depart" || p.toNext > TURN_ARROW_FROM_M || NavSession.rerouting) null else r to p.next
+        // (on the home screen's card, the route ahead and no arrow: Home hands over to Maps before the turn)
+        val turn = if (!onMaps || step.type == "arrive" || step.type == "depart" || p.toNext > TURN_ARROW_FROM_M || NavSession.rerouting) null else r to p.next
         if (turn != turnShown) {
             turnShown = turn
             if (turn == null) m.setTurn(null)
@@ -413,8 +430,17 @@ class MapController(private val shell: HomeActivity) {
     companion object {
         private const val TAG = "AuraMap"
         private const val HOLDER = "shell"
-        /** The player covers the lower part of the home screen's card: the car stays in the middle of what is visible. */
-        private const val HOME_NAV_TOP = 0.08
+        // the home screen's padding, by map-night.json's camera: left, top, right, bottom
+        private const val HOME_LEFT = 14
+        private const val HOME_TOP = 44
+        private const val HOME_RIGHT = 654
+        private const val HOME_BOTTOM = 286
+        private const val HOME_TRIP_RIGHT = 640
+        private const val HOME_TRIP_BOTTOM = 164
+        // the sprite, px; 0: its own size, the navigating one
+        private const val CAR_HOME_PX = 48
+        private const val CAR_HOME_TRIP_PX = 40
+        private const val CAR_MAPS_PX = 64
         private const val MAPS_NAV_TOP = 0.42
         /** The turn's arrow is on the map from this far before it (its size is the map's: [AuraMap.setTurn]). */
         private const val TURN_ARROW_FROM_M = 900.0

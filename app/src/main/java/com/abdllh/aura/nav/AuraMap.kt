@@ -311,6 +311,8 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
             pushTurn()
             pushDest()
             pushExtras()
+            labelsOff = emptyList()
+            if (!labelsOn) applyLabels()
             syncLayers()
             placeOverlays()
             onReady?.invoke()
@@ -840,12 +842,76 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         syncLayers()
     }
 
-    /** Navigating, the minor places and house numbers go ([MapStyle.NAV_HIDDEN]); browsing, they come back. */
+    /** Navigating, the minor places and house numbers go ([MapStyle.NAV_HIDDEN]); browsing, they come back. Not while [setLabels] has them all off. */
     private fun syncLayers() {
         val s = style ?: return
+        if (!labelsOn) return
         val v = PropertyFactory.visibility(if (camera == Camera.NAVIGATE) Property.NONE else Property.VISIBLE)
         for (id in MapStyle.NAV_HIDDEN) try { s.getLayer(id)?.setProperties(v) } catch (_: Throwable) { }
     }
+
+    private var labelsOn = true
+    /** The symbol layers [setLabels] has turned off: the ones that were showing, so a layer off for its own reasons stays so. */
+    private var labelsOff = emptyList<String>()
+
+    /**
+     * All words and places on the map, or none: the home screen's card shows roads, route, car and chips (SPEC.md section 11). On again at the start of a move to Maps, and MapLibre fades its symbols in by itself
+     * while the map settles.
+     */
+    fun setLabels(on: Boolean) {
+        if (on == labelsOn) return
+        labelsOn = on
+        applyLabels()
+    }
+
+    private fun applyLabels() {
+        val s = style ?: return
+        try {
+            if (labelsOn) {
+                val v = PropertyFactory.visibility(Property.VISIBLE)
+                for (id in labelsOff) s.getLayer(id)?.setProperties(v)
+                labelsOff = emptyList()
+                syncLayers()
+            } else {
+                val v = PropertyFactory.visibility(Property.NONE)
+                val off = ArrayList<String>()
+                for (l in s.layers) if (l is com.mapbox.mapboxsdk.style.layers.SymbolLayer && l.visibility.value != Property.NONE) {
+                    l.setProperties(v)
+                    off.add(l.id)
+                }
+                labelsOff = off
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "labels: $t")
+        }
+    }
+
+    /** The sprite's size on the screen, by the blend's own k while a room changes (48 to 64 going to Maps), at once otherwise. 0: its own size. */
+    fun setCarPx(px: Int) {
+        val to = if (px <= 0) 1f else px / CarMarker.SIZE.toFloat()
+        if (to == carScaleTo) return
+        carScaleFrom = carView.scaleX
+        carScaleTo = to
+        if (blendFrom == null) placeCarScale(to)
+    }
+
+    private var carScaleFrom = 1f
+    private var carScaleTo = 1f
+
+    private fun placeCarScale(s: Float) {
+        if (carView.scaleX != s) {
+            carView.scaleX = s
+            carView.scaleY = s
+        }
+    }
+
+    /** Navigating on the home screen's card: flat at zoom 14.6, heading up, the car where the room says (`homeTrip` in `map-*.json`). */
+    var flatNav = false
+        set(v) {
+            if (v == field) return
+            field = v
+            if (camera == Camera.NAVIGATE) startBlend()
+        }
 
     /**
      * From the camera as it is now to the one that follows the car: eased by the frame loop while the car goes on
@@ -908,7 +974,8 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         val ahead = turnAt - drawnAlong
         if (turnLine != null && onRoute && ahead > -15 && ahead < max(120.0, v / 3.6 * 7)) { z = max(z, 16.9); tilt = NAV_TILT_TURN }
         z = (z + navZoomOffset).coerceIn(12.0, 19.0)
-        val pad = navTopPadding * (0.95 + 0.19 * ((v - 40) / 50).coerceIn(0.0, 1.0))
+        var pad = navTopPadding * (0.95 + 0.19 * ((v - 40) / 50).coerceIn(0.0, 1.0))
+        if (flatNav) { z = FOLLOW_ZOOM; tilt = 0.0; pad = 0.0 }
         val b = lookBearing(v)
         if (!steerReady) {
             navZoom = z; navTilt = tilt; navPad = pad; camBearing = b
@@ -962,8 +1029,12 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         val from = blendFrom
         val out = if (from == null) d else {
             val t = ((now - blendStart).toDouble() / blendMs).coerceIn(0.0, 1.0)
-            if (t >= 1.0) { blendFrom = null; d }
-            else from.lerp(d, if (blendSpring) springK((now - blendStart) / 1000.0) else Motion.STANDARD.getInterpolation(t.toFloat()).toDouble())
+            if (t >= 1.0) { blendFrom = null; placeCarScale(carScaleTo); d }
+            else {
+                val k = if (blendSpring) springK((now - blendStart) / 1000.0) else Motion.STANDARD.getInterpolation(t.toFloat()).toDouble()
+                placeCarScale(carScaleFrom + (carScaleTo - carScaleFrom) * k.toFloat())
+                from.lerp(d, k)
+            }
         }
         if (applied?.near(out) != true) {
             inDrive = true
@@ -1175,7 +1246,8 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         /** A new room: 95 % at 365 ms, settled by here (the design's section 9). */
         private const val ROOM_MS = 520L
         private const val ROOM_SPRING = 13.0
-        private const val FOLLOW_ZOOM = 15.0
+        /** Home and the start of browse: 14.6, the same, so Home to Maps is a pure pan (SPEC.md section 9). */
+        private const val FOLLOW_ZOOM = 14.6
         private const val FLIGHT_MS = 900L
         private const val OVERVIEW_MS = 750
         private const val NAV_TILT = 50.0

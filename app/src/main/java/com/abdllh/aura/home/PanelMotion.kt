@@ -1,22 +1,22 @@
 package com.abdllh.aura.home
 
+import android.animation.TimeInterpolator
 import android.view.View
 import com.abdllh.aura.R
 import com.abdllh.aura.ui.Motion
+import com.abdllh.aura.ui.Tokens2
 import com.abdllh.aura.ui.afterNextDraw
 import com.abdllh.aura.ui.anim
 import com.abdllh.aura.ui.enter
 import com.abdllh.aura.ui.exit
 
 /**
- * How one panel takes over from another, by the pair. Two for now: the design's exact laws per pair (its section 9)
- * replace what [between] answers, nothing else has to change. The stack asks only while the window is resumed
- * (otherwise there is no move at all), and it cleans up after any move whatever it does: a move that throws or never
- * calls `done` ends at the stack's limit, with every view at rest.
+ * How one panel takes over from another, by the pair (SPEC.md section 9, "Between screens"). The stack asks only while the window is resumed
+ * (otherwise there is no move at all), and it cleans up after any move whatever it does: a move that throws or never calls `done` ends at the stack's limit, with every view at rest.
  *
- * Rules a move keeps: only alpha and transforms of the two views it is given (they are the panels' frames, not their
- * roots); a later call on the same view takes over from where it is (the second tap turns it back, it is never queued),
- * and the one it replaced does not call its `done`. The surface under the window knows nothing of any of this.
+ * Rules a move keeps: only alpha and transforms of what it is given; a later call on the same view takes over from where it is (the second tap turns it back, it is never queued),
+ * and the one it replaced does not call its `done`. The surface under the window knows nothing of any of this: the camera has its spring from the same moment ([com.abdllh.aura.nav.MapController]), and the rows' change is
+ * the chrome's, by [com.abdllh.aura.system.Front].
  */
 object PanelMotion {
     const val OPEN_MS = 200L
@@ -42,9 +42,54 @@ object PanelMotion {
      * where it is under them: Maps does not go, so its side is a card rising; Home's wall fades off it and back.
      */
     fun between(from: String, to: String, beside: Boolean = false): Move = when {
+        from == Screens.HOME || to == Screens.HOME -> WithHome(if (from == Screens.HOME) to else from, beside)
         beside -> if (from == Screens.MAPS || to == Screens.MAPS) Rise else OverMap
         from == Screens.MAPS || to == Screens.MAPS -> OverMap
         else -> Rise
+    }
+
+    /**
+     * Home and any other panel, by section 9's tables. Home knows its own parts ([HomePanel.leaving], [HomePanel.returning]). The other panel comes and goes as one layer, so a first open pays its cost
+     * once, and each move starts after the frame that holds that cost: Maps at 60 for 200 `move` with its cards rising 8 (its scrims rise with them, at an alpha where it cannot be seen), and out in 120 `exit`; Music's wash
+     * and all on it at 0 for 240 `move`, out in 180 `exit`; a room at 0 for 200 `move`, rising 8, out in 180 `exit`. Home's own texts have gone by 120 and the rows have changed by 160, whatever the other panel's first frame costs.
+     */
+    private class WithHome(private val other: String, private val beside: Boolean) : Move {
+        private val overMap get() = beside || other == Screens.MAPS
+
+        override fun opening(to: View, under: View, done: () -> Unit) {
+            val home = (under as? PanelFrame)?.panel as? HomePanel
+            var left = 2
+            val one = { if (--left == 0) done() }
+            if (home != null) home.leaving(overMap, one) else one()
+            val dy = if (other == Screens.MUSIC) 0f else RISE_DP
+            val delay = if (overMap) Tokens2.MS_columnDelay else 0L
+            val ms = if (other == Screens.MUSIC) WALL_MS else OPEN_MS
+            if (to.getTag(R.id.aura_exiting) == true) { // (it was leaving: it turns back from where it is)
+                to.setTag(R.id.aura_exiting, null)
+                come(to, dy, delay, ms, Motion.MOVE, one)
+                return
+            }
+            to.alpha = 0f
+            to.translationY = dy * to.resources.displayMetrics.density
+            to.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+            to.afterNextDraw {
+                if (to.alpha == 0f && to.getTag(R.id.aura_exiting) != true) come(to, dy, delay, ms, Motion.MOVE, one)
+            }
+        }
+
+        override fun closing(from: View, under: View, done: () -> Unit) {
+            val home = (under as? PanelFrame)?.panel as? HomePanel
+            var left = 2
+            val one = { if (--left == 0) done() }
+            from.setTag(R.id.aura_exiting, true)
+            from.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+            if (home != null) home.returning(overMap, one) else one()
+            from.exit(dy = if (other == Screens.MUSIC) 0f else RISE_DP, dur = if (other == Screens.MAPS) Tokens2.MS_homeOut else CLOSE_MS, end = one)
+        }
+
+        private fun come(v: View, dy: Float, delay: Long, ms: Long, curve: TimeInterpolator, end: () -> Unit) {
+            v.animate().alpha(1f).translationY(0f).setDuration(ms).setStartDelay(delay).setInterpolator(curve).setUpdateListener(null).withEndAction(end).start()
+        }
     }
 
     /**
@@ -76,11 +121,8 @@ object PanelMotion {
     }
 
     /**
-     * To and from Maps, whose panel is nothing but cards over the map: what covered the map (Home's wall with all that is on it,
-     * Settings' room) fades away over it, as one texture with a hole where the card is, and the cards come in; the way back the
-     * same in reverse. The map itself knows nothing of this: its camera eases on the map's own frames, from the same moment
-     * ([com.abdllh.aura.nav.MapController]). Nothing pops at the end: what stays under a panel at rest is not drawn any more, and by
-     * then it is transparent. Layers: these two, for the move only.
+     * To and from Maps, from another panel than Home, whose panel is nothing but cards over the map: what covered the map (Settings' room) fades away over it, as one texture, and the cards come in; the way back the
+     * same in reverse. The map itself knows nothing of this. Nothing pops at the end: what stays under a panel at rest is not drawn any more, and by then it is transparent. Layers: these two, for the move only.
      */
     private object OverMap : Move {
         override fun opening(to: View, under: View, done: () -> Unit) {

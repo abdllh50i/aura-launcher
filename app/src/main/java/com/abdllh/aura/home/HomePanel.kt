@@ -1,78 +1,104 @@
 package com.abdllh.aura.home
 
 import android.content.BroadcastReceiver
-import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.PorterDuff
-import android.graphics.PorterDuffXfermode
+import android.graphics.BitmapFactory
 import android.graphics.Rect
-import android.graphics.RectF
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.view.PixelCopy
+import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
-import android.widget.LinearLayout
 import com.abdllh.aura.R
+import com.abdllh.aura.chrome.Chrome
+import com.abdllh.aura.chrome.Tweens
 import com.abdllh.aura.nav.CarLocation
+import com.abdllh.aura.nav.NavSession
+import com.abdllh.aura.phone.Calls
 import com.abdllh.aura.system.CarAudio
+import com.abdllh.aura.system.DriveState
 import com.abdllh.aura.system.NwdBridge
-import com.abdllh.aura.ui.CarFrames
+import com.abdllh.aura.ui.CarGlView
 import com.abdllh.aura.ui.CarStage
+import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.MATCH
+import com.abdllh.aura.ui.MapBackdropView
 import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
-import com.abdllh.aura.ui.Radius
 import com.abdllh.aura.ui.Snack
 import com.abdllh.aura.ui.Spring
-import com.abdllh.aura.ui.Theme
+import com.abdllh.aura.ui.ThemeSwap
+import com.abdllh.aura.ui.Tokens2
+import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.afterNextDraw
-import com.abdllh.aura.ui.enter
-import com.abdllh.aura.ui.fadeTo
-import com.abdllh.aura.ui.flp
-import com.abdllh.aura.ui.lp
+import com.abdllh.aura.ui.at
+import com.abdllh.aura.ui.box
+import com.abdllh.aura.ui.label
+import com.abdllh.aura.ui.look
+import com.abdllh.aura.ui.surfaceImage
 import com.abdllh.aura.update.UpdateManager
+import com.abdllh.aura.util.Fmt
 import com.abdllh.aura.util.Prefs
-import com.abdllh.aura.util.dp
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
- * The home screen, the panel at the bottom of the stack: the car on the start side, the map's card with the player on the end
- * side, and two sheets, inside what the chrome leaves (y 44..506). Its views are built on the activity itself ([shell]), as they always were (the car's GL
- * view asks its context for the window). The map is not its own: the one map lies under the window, and this panel is a wall
- * with a hole where the card is ([Wall]), once that map has drawn; its camera keeps the car in the hole ([MapController.setHomeRoom]).
- * Going to Maps the wall simply fades off it, with nothing of the map touched.
+ * The home screen, direction 4 of the design, at the bottom of the stack (SPEC.md sections 6.1, 6.7, 10): one picture of the wall with two holes in it, one over the one map (the map card's corners and
+ * its shadow are the wall's) and one the car's GL view stands in; the clock, the map card and the music widget over it, and the row in the chrome. Parked, moving and on a trip it is the same views:
+ * [HomeCard] and [HomeWidget] have faces in alpha, built and laid out once, and nothing moves by layout. A panel that recolours in place: nothing here is rebuilt for a theme.
+ *
+ * What goes between it and the other panels is here too, as [PanelMotion] asks ([leaving], [returning]): it knows its parts, and section 9 says what each does.
  */
 class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
-    private val room = FrameLayout(shell)
-    private lateinit var wall: Wall
-    /** The map has drawn: the wall opens where the card is, as soon as this card has a place. */
-    private var cardOpen = false
-    private lateinit var carPanel: CarPanel
-    private lateinit var mapPanel: MapPanel
-    private lateinit var controls: ControlsSheet
-    private lateinit var drawer: AppDrawer
-    private var introPlayed = false
-    /** Over the screen until its entrance starts, after a cold start on the light theme ([coverStart]). */
-    private var startCover: View? = null
-    private var builtAccent = 0
-    private var builtDark = true
-    private var restyling = false
-    private var resumedNow = false
-    private var startedNow = false
+    private val room = object : FrameLayout(shell) {
+        override fun hasOverlappingRendering() = false
 
-    override val root: View get() = room
-    override val opaque: Boolean get() = false // (the map shows in its card, so it stays awake)
-    override val solid: Boolean get() = true // (but no touch reaches it: a tap on the card opens Maps)
-    override val keep: Boolean get() = true
-    override val navBar: Int get() = Palette.dock
+        override fun dispatchTouchEvent(e: MotionEvent): Boolean {
+            if (e.actionMasked == MotionEvent.ACTION_DOWN) skipEntrance()
+            return super.dispatchTouchEvent(e)
+        }
+    }
+
+    /** What stands in the card's hole until the map has drawn: its kept picture, or the grid in place of a map that cannot run. */
+    private val backdrop = MapBackdropView(shell, if (shell.map.allowed) MapBackdropView.pictureFile(shell) else null, grid = !shell.map.allowed)
+    private val wall = shell.surfaceImage("wall-hole")
+    private val stage = CarStage(shell)
+
+    /** Clock, date, map card's pills, widget: the parts that go first. */
+    private val parts = object : FrameLayout(shell) {
+        override fun hasOverlappingRendering() = false
+    }
+    private val card = HomeCard(shell, this)
+    private val widget = HomeWidget(shell, this)
+    private val clock = HomeClock(shell)
+
+    private lateinit var controls: ControlsSheet
+    private var startLogo: ImageView? = null
+    private var introPlayed = false
+    private var resumedNow = false
+    private var shownNow = false
+    private var cardOpen = false
+    private var movingLook = false
+
+    // ---- section 9's laws, on one frame callback: a change turns back from where it is
+    private var moveDone: (() -> Unit)? = null
+    private val moves = Tweens(onRest = { val d = moveDone; moveDone = null; d?.invoke() })
+    private val partsA = moves.part(1f) { v -> parts.alpha = v; show(parts, v) }
+    private val wallA = moves.part(1f) { v -> wall.alpha = v; stage.gl?.alpha = v }
+    private val carK = moves.part(1f) { v -> stage.presence = v }
+    private var atRestUnder = false
+
+    private val dimFade = Tweens()
+    private val dimA = dimFade.part(1f) { v -> stage.dim = v }
+
+    private val entrance = Tweens(onRest = { entranceOver() })
+    private var entranceOn = false
+    private var chromeUp: View? = null
 
     private val volume = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
@@ -82,111 +108,121 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
     private val carAudio: () -> Unit = {
         if (::controls.isInitialized && controls.isOpen) controls.syncVolume()
     }
-    private val updateObserver: (UpdateManager.State) -> Unit = {
-        if (::carPanel.isInitialized) carPanel.refreshUpdate()
-    }
+    private val navListener: () -> Unit = { navChanged() }
+    private val driveListener: () -> Unit = { syncFace(canMove()) }
+    /** The step whose turn has been handed over to Maps. */
+    private var handedStep = -1
+
+    override val root: View get() = room
+    override val opaque: Boolean get() = false // (the map shows in its card, so it stays awake)
+    override val solid: Boolean get() = true // (but no touch reaches it)
+    override val keep: Boolean get() = true
+    override val recolours: Boolean get() = true
+    override val navBar: Int get() = Palette.dock
 
     init {
-        builtAccent = Prefs.accent
-        builtDark = Palette.dark
-        // (with the GPU's frame file there, the GPU draws the car from its first frame: see CarStage.playIntro)
-        if (CarStage.startsOnCpu(this, Palette.dark, Palette.bg)) CarFrames.warmUp(this, resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL)
+        current = this
         buildUi()
-        if (!processStarted) {
-            processStarted = true
-            if (!Palette.dark) coverStart()
-        }
-        if (Prefs.safeModeNotice) {
+        if (com.abdllh.aura.util.Prefs.safeModeNotice) {
             Prefs.safeModeNotice = false
             toast(getString(R.string.safe_mode_notice))
         }
+        // the theme's one path: ready first on a worker (the song's wash), the car's picture in the ghost
+        if (!stepAdded) {
+            stepAdded = true
+            ThemeSwap.readySteps.add { night, done ->
+                try { current?.widget?.prepareTheme(night) } catch (_: Throwable) { }
+                done()
+            }
+        }
+        ThemeSwap.ghostExtra = { c ->
+            if (isTop) stage.picture()?.let { b -> c.drawBitmap(b, CarGlView.RECT_X, CarGlView.RECT_Y, null) }
+        }
+        ThemeSwap.holdOff = {
+            val p = NavSession.progress
+            (NavSession.state == NavSession.State.NAVIGATING && p != null && p.toNext < ThemeSwap.NEAR_TURN_M) || Calls.state == Calls.State.RINGING
+        }
+    }
+
+    private fun buildUi() {
+        room.addView(backdrop, at(CARD_X, CARD_Y, CARD_W, CARD_H))
+        room.addView(wall, at(0, 0, 1024, 600))
+        room.addView(stage, at(CarGlView.RECT_X.toInt(), CarGlView.RECT_Y.toInt(), CarGlView.RECT_W.toInt(), CarGlView.RECT_H.toInt()))
+        room.addView(parts, MATCH_WINDOW())
+        parts.addView(clock, MATCH_WINDOW())
+        parts.addView(card, MATCH_WINDOW())
+        parts.addView(widget, MATCH_WINDOW())
+        shell.map.homeCard(false)
+        shell.map.setHomeRoom(Rect(CARD_X, CARD_Y, CARD_X + CARD_W, CARD_Y + CARD_H), 1024, 600)
+        // the map has drawn: the card opens on it, and the picture that stood in for it fades. With no map ever it simply stays
+        shell.map.whenDrawn {
+            cardOpen = true
+            shell.map.homeCard(true)
+            handOff()
+        }
+        room.look {
+            BootFlag.keep(this@HomePanel, Palette.dark)
+            stage.dim = dimFor(movingLook)
+            dimA.snap(stage.dim)
+        }
+        controls = ControlsSheet(shell, this)
+        shell.root.sheets.addView(controls, MATCH, MATCH)
     }
 
     /**
-     * The light theme's way out of the starting window. That window can only be drawn in the XML colours, the dark
-     * theme's, so every boot on the light theme (all day under "auto") opened on near-black and then cut to the white
-     * screen at once. The first frame now shows the same near-black over the built screen, and it fades off as the
-     * entrance starts ([animateIn]): a plain fill on top, which costs one translucent rectangle per frame while it
-     * fades (fading the whole screen in instead would draw it all through a layer). In the panel: should the window start
-     * on another panel, this waits under it for the home screen's entrance.
+     * The picture fades off the live map under it. On a spring, which steps at most a few frames' worth of time per frame: the map's first frames are the heaviest of the start, and a timed fade jumped to
+     * its end across them.
      */
-    private fun coverStart() {
-        // (one flat colour: faded as it is, not through an offscreen copy of the whole screen)
-        val c = object : View(shell) { override fun hasOverlappingRendering() = false }
-        c.setBackgroundColor(getColor(R.color.bg))
-        room.addView(c, MATCH, MATCH)
-        startCover = c
-    }
-
-    // (the panel's own room is the screen's one full-screen fill: the window has no background of its own, and a second
-    // view painting the same colour over the whole screen was a second fill in every frame of the map)
-    private fun buildUi() {
-        wall = Wall(Palette.bg, Radius.XL.dp.toInt())
-        room.background = wall
-        cardOpen = false
-        shell.map.homeCard(false)
-        val content = LinearLayout(shell).apply { orientation = LinearLayout.HORIZONTAL }
-        carPanel = CarPanel(shell, this)
-        content.addView(carPanel, lp(0, MATCH, 0.40f))
-        val card = MapPanel(shell, this)
-        mapPanel = card
-        content.addView(card, lp(0, MATCH, 0.60f).apply { topMargin = 12.dp; bottomMargin = 12.dp; marginEnd = 12.dp })
-        card.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> if (card === mapPanel) cardPlaced() }
-        // (the chrome's strip and bottom row lie over the rest of it: SPEC.md section 1)
-        room.addView(content, flp(MATCH, MATCH).apply { topMargin = CONTENT_TOP; bottomMargin = 600 - CONTENT_BOTTOM })
-
-        controls = ControlsSheet(shell, this)
-        shell.root.sheets.addView(controls, MATCH, MATCH)
-        drawer = AppDrawer(shell, this)
-        shell.root.sheets.addView(drawer, MATCH, MATCH)
-        // the map has drawn: the card opens on it, under the picture that has been standing in for it (none of it is seen until the
-        // picture fades, and with no map ever, the wall simply stays whole, as a plain room and an opaque window)
-        shell.map.whenDrawn {
-            if (card === mapPanel) {
-                cardOpen = true
-                cardPlaced()
-                card.mapDrawn()
-            }
+    private fun handOff() {
+        if (backdrop.visibility != View.VISIBLE) return
+        Spring(1f, HANDOFF_STIFFNESS, 1f, 0.01f) { backdrop.alpha = it }.apply {
+            onRest = { backdrop.visibility = View.GONE }
+            animateTo(0f)
         }
     }
 
-    /** Where the map's card is in this panel (its layout, whatever is moving it for the moment); null before there is one. */
-    private fun cardRect(): Rect? {
-        val c = mapPanel
-        if (c.width == 0 || c.height == 0) return null
-        var x = c.left
-        var y = c.top
-        var p = c.parent as? View
-        while (p != null && p !== room) {
-            x += p.left
-            y += p.top
-            p = p.parent as? View
-        }
-        return Rect(x, y, x + c.width, y + c.height)
+    private fun show(v: View, a: Float) {
+        val want = if (a > 0f) View.VISIBLE else View.INVISIBLE
+        if (v.visibility != want) v.visibility = want
     }
 
-    /** A layout pass has placed the card: the camera and the hole go there. */
-    private fun cardPlaced() {
-        val r = cardRect() ?: return
-        shell.map.setHomeRoom(r, room.width, room.height)
-        if (cardOpen && wall.hole != r) {
-            wall.hole = r
-            shell.map.homeCard(true)
-        }
-    }
+    private fun canMove() = shell.resumedNow && Prefs.screenAnimations && isTop
 
+    private fun dimFor(m: Boolean) = if (m && Palette.dark) DIM_NIGHT else 1f
+
+    // ------------------------------------------------------------------------------------------ the panel's life
     override fun onShow(args: Bundle?) {
+        shownNow = true
         NwdBridge.notifyHomeForeground(this)
         shell.map.toHome()
-        mapPanel.onStart()
-        startedNow = true
+        NavSession.addListener(navListener)
+        DriveState.addListener(driveListener)
+        card.listen(true)
+        widget.listen(true)
+        clock.refresh()
+        syncFace(false)
+        handedStep = -1
     }
 
     override fun onHide() {
-        mapPanel.onStop()
-        startedNow = false
+        shownNow = false
+        NavSession.removeListener(navListener)
+        DriveState.removeListener(driveListener)
+        card.listen(false)
+        widget.listen(false)
     }
 
+    /** The stack has come to rest: everything of this panel as it is at rest, wherever a move stopped. [top]: and it is what shows. */
+    override fun onSettle(top: Boolean) {
+        moves.stop()
+        moveDone = null
+        partsA.snap(1f)
+        wallA.snap(1f)
+        carK.snap(1f)
+        atRestUnder = !top
+        // (back on Home the map's words go, now that nothing but the card shows it)
+        if (top) shell.map.homeLabels()
+    }
 
     /** Asks once for the location (the home map shows the car; Maps needs it anyway). */
     private fun askLocationOnce() {
@@ -208,112 +244,178 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         } catch (_: Throwable) { }
         CarAudio.addListener(carAudio)
         resumedNow = true
-        refreshAll()
-        UpdateManager.observe(updateObserver)
+        clock.refresh()
+        card.refreshPlaces()
+        if (controls.isOpen) controls.refresh()
         UpdateManager.autoCheckIfDue()
         if (!introPlayed) {
             introPlayed = true
-            animateIn()
-            room.postDelayed({ if (!isGone) drawer.prewarm() }, PREWARM_AFTER_MS)
+            playEntrance()
             room.postDelayed({ if (!isGone) askLocationOnce() }, 2600)
         }
         // (not in the start's first seconds, and once it is there this is one look in a map)
         shell.panels.prepareWhenQuiet(Screens.MUSIC, PREPARE_MUSIC_AFTER_MS)
     }
 
-    override fun onTick() {
-        if (::carPanel.isInitialized) carPanel.refresh()
-        UpdateManager.autoCheckIfDue() // (also with no other screen ever opened: a drive spent on this one)
-    }
-
-    /**
-     * "Auto" reached sunrise or sunset, or the theme or accent changed in Settings; not while a sheet is in use or the map
-     * says it is no time for it (the next minute's tick retries). Coming out from under a panel that is leaving: built again
-     * there, before it goes, and no picture to take (it would be of that panel).
-     */
-    override fun onLook() {
-        if (Theme.isDarkNow() == builtDark && Prefs.accent == builtAccent) return
-        if (drawer.isOpen || controls.isOpen || !shell.map.lookMayChange) return
-        if (shell.panels.leaving != null) rebuild(null) else restyle()
-    }
-
-    private fun refreshAll() {
-        carPanel.refresh()
-        mapPanel.refresh()
-        if (controls.isOpen) controls.refresh()
-    }
-
-    /**
-     * Entrance, settled within about half a second (it kept the player out of reach for a second until 1.11): the header,
-     * the map's row and player one after the other while the car turns towards the screen. Each card fades through its own layer;
-     * the map panel only moves (it holds the live map's surface, which a fade would draw through a layer at every frame).
-     * Everything is put where it starts from at once, so the first frame shows that, and it all starts moving after
-     * that frame: on a cold start the first frame held the main thread for up to 650 ms, and an entrance started
-     * before it was over by the time it showed (the cards appeared all at once, with no stagger).
-     */
-    private fun animateIn() {
-        carPanel.stage.playIntro(100)
-        // (a part hidden for now, a place button while navigating, stays hidden)
-        val cards = ArrayList<Triple<View, Float, Long>>()
-        fun rise(v: View, dy: Float, delay: Long) {
-            if (v.visibility != View.VISIBLE) return
-            v.alpha = 0f
-            v.translationY = dy.dp
-            cards.add(Triple(v, dy, delay))
-        }
-        rise(carPanel.header, -8f, 0L)
-        // (each card on its own, so its own shadow stays outside the layer it fades in)
-        for (i in 0 until mapPanel.places.childCount) rise(mapPanel.places.getChildAt(i), -8f, 80L + 30L * i)
-        rise(mapPanel.media, 12f, 140L)
-        // (once the card is a hole, what shows in it is the map, which does not move: it can only come to this late, Maps opened first)
-        if (wall.hole == null) mapPanel.translationY = 16f.dp
-
-        val r = room
-        r.afterNextDraw {
-            if (isGone) return@afterNextDraw
-            for ((v, dy, delay) in cards) v.enter(dy = dy, delay = delay)
-            mapPanel.animate().translationY(0f).setStartDelay(0L).setDuration(Motion.LONG).setInterpolator(Motion.EMPHASIZED).start()
-
-            // (on a spring, which steps at most a few frames' worth per frame: the frames after the first are heavy
-            // too, and a timed fade jumped from black to white across them)
-            startCover?.let { c ->
-                Spring(1f, COVER_STIFFNESS, 1f, 0.01f) { c.alpha = it }.apply {
-                    onRest = { r.removeView(c) }
-                    animateTo(0f)
-                }
-            }
-            startCover = null
-            com.abdllh.aura.nav.MapLib.preload(this) // (the map below will want it: off the main thread, and not before this frame)
-            // (counted from here too: from onResume, the first frame's wait brought it into the middle of the entrance)
-            r.postDelayed({ if (!isGone) shell.map.startForHome() }, LIVE_MAP_AFTER_MS)
-            // (Maps' panel ahead of time, with no entrance going on and the map up: its first open then has nothing to build)
-            if (Prefs.builtInMaps) r.postDelayed({ if (!isGone) shell.panels.prepare(Screens.MAPS) }, MAPS_PANEL_AFTER_MS)
-        }
-    }
-
     override fun onPause() {
         try { unregisterReceiver(volume) } catch (_: Throwable) { }
         CarAudio.removeListener(carAudio)
         resumedNow = false
-        UpdateManager.unobserve(updateObserver)
         com.abdllh.aura.system.ZLinkGuard.onHomeHidden()
     }
 
-    override fun onTrimMemory(level: Int) {
-        if (level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
-            // keep only the resting views of the car while another app is in front
-            CarFrames.meta(this)?.let { m -> CarFrames.trim(listOf(m.defaultFrame, m.defaultFrameRtl)) }
+    override fun onTick() {
+        clock.refresh()
+        UpdateManager.autoCheckIfDue() // (also with no other screen ever opened: a drive spent on this one)
+    }
+
+    override fun onDestroy() {
+        if (current === this) current = null
+    }
+
+    // ------------------------------------------------------------------------------------------ parked, moving, on a trip
+    private fun navChanged() {
+        syncFace(canMove())
+        card.syncTrip()
+        handOver()
+    }
+
+    /** One source of Parked and Moving; a trip looks the same at a red light, with no strip speed, which the chrome knows. */
+    private fun syncFace(animate: Boolean) {
+        val trip = NavSession.state == NavSession.State.NAVIGATING
+        val moving = DriveState.moving
+        val look = trip || moving
+        card.setFace(if (trip) HomeCard.Face.TRIP else if (moving) HomeCard.Face.MOVING else HomeCard.Face.PARKED, animate)
+        widget.setMoving(look, animate)
+        clock.setMoving(look, animate)
+        stage.locked = look
+        if (look != movingLook) {
+            movingLook = look
+            val d = dimFor(look)
+            if (animate) dimA.to(d, 0L, DIM_MS, Motion.MOVE) else dimA.snap(d)
         }
     }
 
-    // ---- HomeHost
-    override fun openDrawer() {
-        if (controls.isOpen) controls.close()
-        drawer.open()
+    /** Under 1 km to the turn, moving: Home hands over to Maps by itself, the same surface and a camera blend. It does not come back by itself; pressed again, it stays for this turn. */
+    private fun handOver() {
+        if (!isTop || NavSession.state != NavSession.State.NAVIGATING || !DriveState.moving) return
+        val p = NavSession.progress ?: return
+        if (p.toNext < HAND_OVER_M && p.next != handedStep) {
+            handedStep = p.next
+            Screens.maps(this)
+        }
     }
 
+    // ------------------------------------------------------------------------------------------ the first start: section 6.7
+    /**
+     * The car's first frames stand on BootHome's wall: the same pixels with the logo over them, which fades. Then the car, when its GL view has come; then the map card, the widget, the clock and the row, 40
+     * ms apart. Everything is put where it starts from at once, so the first frame shows that, and it starts moving after that frame. Any tap skips to the end. Only at the process's first show.
+     */
+    private fun playEntrance() {
+        val first = !processStarted
+        processStarted = true
+        val r = room
+        if (!first) {
+            r.postDelayed({ if (!isGone) shell.map.startForHome() }, LIVE_MAP_AFTER_MS)
+            if (Prefs.builtInMaps) r.postDelayed({ if (!isGone) shell.panels.prepare(Screens.MAPS) }, MAPS_PANEL_AFTER_MS)
+            return
+        }
+        entranceOn = true
+        val logo = bootLogo(this, Palette.dark, Fonts.arabicUi)
+        if (logo != null) {
+            val h = logo.height
+            startLogo = ImageView(shell).apply { setImageBitmap(logo); scaleType = ImageView.ScaleType.FIT_XY }
+            r.addView(startLogo, at(LOGO_X, LOGO_CENTRE_Y - h / 2, LOGO_W, h))
+        }
+        carK.snap(0f)
+        fun rise(v: View, delay: Long): Tweens.Part {
+            val p = entrance.part(0f) { k -> v.alpha = k; v.translationY = RISE * (1f - k) }
+            pending.add(Runnable { p.to(1f, delay, ENTER_MS, Motion.ENTER) })
+            return p
+        }
+        rise(card, 160L)
+        rise(widget, 200L)
+        rise(clock, 240L)
+        Chrome.of(shell)?.let { c -> chromeUp = c; rise(c, 280L) }
+        val logoPart = startLogo?.let { l -> entrance.part(1f) { a -> l.alpha = a } }
+        var drawnAt = 0L
+        var glUp = false
+        fun carIn() {
+            val since = android.os.SystemClock.uptimeMillis() - drawnAt
+            carK.to(1f, (CAR_AT_MS - since).coerceAtLeast(0L), CAR_MS, Motion.ENTER)
+            if (entranceOn) stage.spinIn()
+        }
+        stage.onFirstFrame = { glUp = true; if (drawnAt != 0L) carIn() }
+        r.afterNextDraw {
+            if (isGone) return@afterNextDraw
+            drawnAt = android.os.SystemClock.uptimeMillis()
+            for (p in pending) p.run()
+            pending.clear()
+            logoPart?.to(0f, 0L, LOGO_MS, Motion.MOVE)
+            if (glUp) carIn()
+            com.abdllh.aura.nav.MapLib.preload(this) // (the map below will want it: off the main thread, and not before this frame)
+            r.postDelayed({ if (!isGone) shell.map.startForHome() }, LIVE_MAP_AFTER_MS)
+            if (Prefs.builtInMaps) r.postDelayed({ if (!isGone) shell.panels.prepare(Screens.MAPS) }, MAPS_PANEL_AFTER_MS)
+        }
+    }
+
+    private val pending = ArrayList<Runnable>()
+
+    private fun skipEntrance() {
+        if (!entranceOn) return
+        entrance.stop()
+        pending.clear()
+        for (v in listOf(card, widget, clock, chromeUp)) { v?.alpha = 1f; v?.translationY = 0f }
+        stage.onFirstFrame = null
+        stage.skipSpin()
+        carK.snap(1f)
+        entranceOver()
+    }
+
+    private fun entranceOver() {
+        if (!entranceOn) return
+        entranceOn = false
+        startLogo?.let { room.removeView(it) }
+        startLogo = null
+        chromeUp = null
+    }
+
+    // ------------------------------------------------------------------------------------------ between the panels: SPEC.md section 9
+    /**
+     * Home goes, [PanelMotion] has the other panel. Its texts and cards 120 `exit`. [overMap]: Maps comes with what lies on the map, so the wall goes off it too: the car inside the GL view at 40 for
+     * 100 `exit`, so no grey ghost hangs over the map, and the wall and the GL view together at 40 for 240 `move`. Otherwise the room coming over it hides them, and they stay as they are.
+     */
+    internal fun leaving(overMap: Boolean, done: () -> Unit) {
+        skipEntrance()
+        atRestUnder = false
+        moveDone = done
+        partsA.to(0f, 0L, Tokens2.MS_homeOut, Motion.EXIT)
+        if (overMap) {
+            carK.to(0f, WALL_DELAY_MS, CAR_OUT_MS, Motion.EXIT)
+            wallA.to(0f, WALL_DELAY_MS, WALL_MS, Motion.MOVE)
+        }
+    }
+
+    /**
+     * Home comes back, wherever its parts were (a change of mind turns back from there). The wall and the car 240 `enter` from t 0, the car's rest frame first, within one frame; its parts at 60 for 180 `enter`.
+     */
+    internal fun returning(overMap: Boolean, done: () -> Unit) {
+        moveDone = done
+        val fresh = atRestUnder
+        atRestUnder = false
+        if (fresh) partsA.snap(0f)
+        partsA.to(1f, Tokens2.MS_columnDelay, Tokens2.MS_cardIn, Motion.ENTER)
+        carK.snap(1f)
+        if (overMap) {
+            if (fresh) wallA.snap(0f)
+            wallA.to(1f, 0L, WALL_MS, Motion.ENTER)
+        } else {
+            wallA.snap(1f)
+        }
+    }
+
+    // ------------------------------------------------------------------------------------------ HomeHost
     override fun openControls() {
-        if (drawer.isOpen) drawer.close()
         controls.open()
     }
 
@@ -325,91 +427,170 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         Snack.show(this, msg, outlives = outlives)
     }
 
-    /**
-     * Applies a new theme or accent in place: the screen is captured, the views are rebuilt with the new colours,
-     * and the capture fades out on top of them (no activity restart, no flash).
-     */
+    /** A theme chosen in Controls: the one path of section 8. */
     override fun restyle() {
-        if (restyling) return
-        if (Theme.isDarkNow() == builtDark && Prefs.accent == builtAccent) return
-        val r = room
-        if (r.width == 0 || r.height == 0 || !r.isAttachedToWindow) { rebuild(null); return }
-        restyling = true
-        val snap = try { Bitmap.createBitmap(r.width, r.height, Bitmap.Config.ARGB_8888) } catch (_: Throwable) { null }
-        if (snap == null) { rebuild(null); return }
-        val at = IntArray(2)
-        r.getLocationInWindow(at)
-        val main = Handler(Looper.getMainLooper())
-        val fallback = Runnable { if (restyling) rebuild(null) } // the copy never answered
-        try {
-            PixelCopy.request(window, Rect(at[0], at[1], at[0] + r.width, at[1] + r.height), snap, { result ->
-                main.removeCallbacks(fallback)
-                if (restyling) rebuild(if (result == PixelCopy.SUCCESS) openCard(snap) else null)
-            }, main)
-            main.postDelayed(fallback, 600)
-        } catch (_: Throwable) {
-            rebuild(null)
-        }
+        ThemeSwap.run(shell)
     }
 
-    /**
-     * The window's picture holds no map, only what is drawn over it; the map is seen through the card in the fade if the copy kept the
-     * window's alpha there. A copy that came out solid there would fade a black card off the new screen: cut open in that case
-     * (the middle of the card's edge is open map, or it is not worth knowing). The card's own cards are lost from the picture then.
-     */
-    private fun openCard(snap: Bitmap): Bitmap {
-        val h = wall.hole ?: return snap
-        try {
-            if (Color.alpha(snap.getPixel(h.left + 2, h.centerY())) == 255) {
-                snap.setHasAlpha(true)
-                val rad = Radius.XL.dp.toFloat()
-                Canvas(snap).drawRoundRect(RectF(h), rad, rad, Paint(Paint.ANTI_ALIAS_FLAG).apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR) })
-            }
-        } catch (_: Throwable) {
-        }
-        return snap
-    }
+    // ------------------------------------------------------------------------------------------ debug builds: states as the mockups draw them (debug/HomeProbe.kt)
+    internal val debugCard: HomeCard get() = card
+    internal val debugWidget: HomeWidget get() = widget
+    internal val debugClock: HomeClock get() = clock
+    internal val debugStage: CarStage get() = stage
 
-    private fun rebuild(snap: Bitmap?) {
-        restyling = false
-        if (isGone) return
-        val reopen = ::controls.isInitialized && controls.isOpen
-        if (::mapPanel.isInitialized && startedNow) mapPanel.onStop()
-        Theme.refresh()
-        builtDark = Palette.dark
-        builtAccent = Prefs.accent
-        shell.windowLook(navBar)
-        room.removeAllViews()
-        shell.root.sheets.removeAllViews()
-        shell.map.lookChanged() // (the same map, with the style of now: the new card opens when that has drawn)
-        buildUi()
-        shell.map.startForHome() // (no entrance to wait for)
-        if (startedNow) mapPanel.onStart()
-        refreshAll()
-        if (reopen) controls.open(false)
-        room.postDelayed({ if (!isGone) drawer.prewarm() }, PREWARM_AFTER_MS)
-        if (snap != null) {
-            val cover = ImageView(shell).apply { setImageBitmap(snap); scaleType = ImageView.ScaleType.FIT_XY }
-            shell.root.addView(cover, MATCH, MATCH)
-            cover.fadeTo(0f, Motion.LONG) { shell.root.removeView(cover) }
-        }
+    internal fun debugFace(moving: Boolean, trip: Boolean) {
+        card.setFace(if (trip) HomeCard.Face.TRIP else if (moving) HomeCard.Face.MOVING else HomeCard.Face.PARKED, false)
+        val look = trip || moving
+        widget.setMoving(look, false)
+        clock.setMoving(look, false)
+        stage.locked = look
+        movingLook = look
+        dimA.snap(dimFor(look))
     }
 
     companion object {
-        /** The home screen has been built once in this process: later builds have no starting window before them. */
+        /** The home screen has been built once in this process: later builds have no entrance. */
         private var processStarted = false
-        /** The light theme's start cover fades on this spring: critically damped, mostly gone in about 0.4 s. */
-        private const val COVER_STIFFNESS = 100f
-        /** What the chrome leaves of the screen, y (SPEC.md section 1). */
-        private const val CONTENT_TOP = 44
-        private const val CONTENT_BOTTOM = 506
+        private var stepAdded = false
+        /** What the debug probe and the theme's one ready step talk to. */
+        internal var current: HomePanel? = null
+            private set
+
+        private const val CARD_X = 12
+        private const val CARD_Y = 44
+        private const val CARD_W = 364
+        private const val CARD_H = 268
+        private const val HANDOFF_STIFFNESS = 80f
+        private const val DIM_NIGHT = .55f
+        private const val DIM_MS = 300L
+        private const val HAND_OVER_M = 1000.0
+        private const val LOGO_X = 412
+        private const val LOGO_W = 200
+        private const val LOGO_CENTRE_Y = 296
+        private const val LOGO_MS = 200L
+        private const val CAR_AT_MS = 120L
+        private const val CAR_MS = 420L
+        private const val ENTER_MS = 240L
+        private const val RISE = 8f
+        private const val WALL_DELAY_MS = 40L
+        private const val WALL_MS = 240L
+        private const val CAR_OUT_MS = 100L
         /** The live map starts once the entrance has settled. */
         private const val LIVE_MAP_AFTER_MS = 700L
         /** Maps' panel is built ahead of time once that has come. */
         private const val MAPS_PANEL_AFTER_MS = 3000L
-        /** The app drawer's cells are built while nothing else happens. */
-        private const val PREWARM_AFTER_MS = 2500L
         /** The music screen is built ahead of time ([PanelStack.prepareWhenQuiet]). */
         private const val PREPARE_MUSIC_AFTER_MS = 6000L
+
+        /** BootHome's logo, 200 wide, for the frame that follows it. */
+        internal fun bootLogo(c: Context, night: Boolean, arabic: Boolean): Bitmap? = try {
+            val res = if (arabic) { if (night) R.drawable.logo_amri_ar else R.drawable.logo_amri_ar_ink } else { if (night) R.drawable.logo_amri_en else R.drawable.logo_amri_en_ink }
+            var b = BitmapFactory.decodeResource(c.resources, res, BitmapFactory.Options().apply { inScaled = false })
+            val h = b.height * LOGO_W / b.width
+            // (by halves: one bilinear step from 4 to 6 times the size skips most of its pixels)
+            while (b.width >= LOGO_W * 2) b = Bitmap.createScaledBitmap(b, b.width / 2, b.height / 2, true)
+            Bitmap.createScaledBitmap(b, LOGO_W, h, true)
+        } catch (_: Throwable) {
+            null
+        }
     }
+}
+
+/**
+ * The clock and the date, right edge at x 1000 in both languages (SPEC.md sections 3 and 6.1): the time with no suffix, in Western digits, and the date in both calendars, `الثلاثاء، 3 نوفمبر · 23 جمادى الأولى`,
+ * the Hijri by Umm al-Qura as the Kingdom counts it. Moving, the date stays, at 24 px: two labels in alpha, and the clock 2 px lower. A new minute is a new text in a fixed box.
+ */
+internal class HomeClock(ctx: Context) : FrameLayout(ctx) {
+    private val dateParked = ctx.label(Type.dateHome, { Palette.ink }).apply { rightEdge() }
+    private val dateMoving = ctx.label(Type.search, { Palette.ink2Move }, moving = true).apply { rightEdge() }
+    private val time = ctx.label(Type.clockHome, { Palette.ink }).apply {
+        rightEdge()
+        textDirection = TEXT_DIRECTION_LTR
+        digitSpacing(-1f)
+    }
+    private val faces = HomeFaces(listOf(dateParked, dateMoving), dateParked)
+    private var movingNow = false
+    private var debugHeld = false
+
+    init {
+        addView(dateParked, Type.dateHome.box(RIGHT - W, 40, W))
+        addView(dateMoving, Type.search.box(RIGHT - W, 40, W))
+        addView(time, Type.clockHome.box(RIGHT - W, 70, W))
+        refresh()
+    }
+
+    private fun com.abdllh.aura.ui.AText.rightEdge() {
+        gravity = Gravity.RIGHT or Gravity.TOP
+        textAlignment = TEXT_ALIGNMENT_GRAVITY
+        textDirection = TEXT_DIRECTION_LOCALE
+    }
+
+    override fun hasOverlappingRendering() = false
+
+    fun setMoving(on: Boolean, animate: Boolean) {
+        if (on == movingNow) return
+        movingNow = on
+        faces.show(if (on) dateMoving else dateParked, animate)
+        time.translationY = if (on) MOVING_DY else 0f
+    }
+
+    fun refresh() {
+        if (debugHeld) return
+        val now = Date()
+        set(Fmt.time(now, Prefs.clock24), line(now))
+    }
+
+    private fun set(t: String, d: String) {
+        if (t != time.text.toString()) time.text = t
+        if (d != dateParked.text.toString()) {
+            dateParked.text = d
+            dateMoving.text = d
+        }
+    }
+
+    private fun line(now: Date): String {
+        val arabic = Fonts.arabicUi
+        val day = if (arabic) SimpleDateFormat("EEEE، d MMMM", Fmt.locale()).format(now) else SimpleDateFormat("EEE, d MMM", Locale.ENGLISH).format(now)
+        return try {
+            val f = android.icu.text.SimpleDateFormat("d MMMM", android.icu.util.ULocale(if (arabic) "ar_SA@calendar=islamic-umalqura;numbers=latn" else "en@calendar=islamic-umalqura"))
+            "$day · ${f.format(now)}"
+        } catch (_: Throwable) {
+            day
+        }
+    }
+
+    internal fun debugHold(t: String, d: String) {
+        debugHeld = true
+        set(t, d)
+    }
+
+    private companion object {
+        const val RIGHT = 1000
+        const val W = 400
+        const val MOVING_DY = 2f
+    }
+}
+
+/**
+ * The look at the next start, for [BootHome], which runs before the user's storage is open and touches nothing stored but this: the night flag and the language, mirrored to device-protected storage at
+ * every theme change. With none: night, Arabic.
+ */
+internal object BootFlag {
+    private const val FILE = "boot_look"
+    private const val KEY_NIGHT = "night"
+    private const val KEY_ARABIC = "arabic"
+
+    fun keep(c: Context, night: Boolean) {
+        try {
+            val p = c.createDeviceProtectedStorageContext().getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            val arabic = Fonts.arabicUi
+            if (p.getBoolean(KEY_NIGHT, true) != night || p.getBoolean(KEY_ARABIC, true) != arabic || !p.contains(KEY_NIGHT)) {
+                p.edit().putBoolean(KEY_NIGHT, night).putBoolean(KEY_ARABIC, arabic).apply()
+            }
+        } catch (_: Throwable) { }
+    }
+
+    fun night(c: Context): Boolean = try { c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(KEY_NIGHT, true) } catch (_: Throwable) { true }
+
+    fun arabic(c: Context): Boolean = try { c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(KEY_ARABIC, true) } catch (_: Throwable) { true }
 }

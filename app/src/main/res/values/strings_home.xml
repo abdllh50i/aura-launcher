@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_chip_home">Home</string>
+    <string name="home_chip_work">Work</string>
+    <string name="home_end">End</string>
+    <string name="home_choose_source">Choose a source</string>
+    <string name="home_src_naghm">Naghm</string>
+    <string name="home_src_naghm_short">Naghm</string>
+    <string name="home_src_usb" translatable="false">USB</string>
+</resources>
