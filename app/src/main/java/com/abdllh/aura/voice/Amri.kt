@@ -239,7 +239,7 @@ object Amri {
                 when {
                     google && online(c) -> listen(c, s)
                     OfflineCommands.anyTaught(c) -> listenOffline(c, s)
-                    !google -> finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_no_recognizer), null, actions = settingsChip(c))
+                    !google -> finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_no_recognizer), null)
                     else -> finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_offline_none), null)
                 }
             }
@@ -341,7 +341,7 @@ object Amri {
 
     private fun listen(c: Context, s: Int) {
         val r = try { SpeechRecognizer.createSpeechRecognizer(c, recognizerService(c)) } catch (t: Throwable) {
-            finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_no_recognizer), null, actions = settingsChip(c)); return
+            finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_no_recognizer), null); return
         }
         recognizer = r
         r.setRecognitionListener(object : RecognitionListener {
@@ -394,7 +394,7 @@ object Amri {
         }
         try { r.startListening(i) } catch (t: Throwable) {
             release()
-            finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_no_recognizer), null, actions = settingsChip(c))
+            finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_no_recognizer), null)
             return
         }
         // a recogniser that never answers must not keep the assistant (and the music) waiting
