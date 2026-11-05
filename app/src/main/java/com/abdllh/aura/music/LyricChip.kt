@@ -48,6 +48,9 @@ internal class LyricChip(ctx: Context) : SurfaceCard(ctx, Surface.PILL) {
 
     var onTap: (() -> Unit)? = null
 
+    /** It came or went: the map's credit lies in its rect and must not lie over its words. */
+    var onShown: ((Boolean) -> Unit)? = null
+
     private fun line(ctx: Context) = ChipLine(ctx).also {
         it.setTextColor(Palette.ink)
         it.ink { Palette.ink }
@@ -78,6 +81,7 @@ internal class LyricChip(ctx: Context) : SurfaceCard(ctx, Surface.PILL) {
         val on = wanted && hasLine
         if (on == shown) return
         shown = on
+        onShown?.invoke(on)
         animate().cancel()
         if (on) {
             visibility = VISIBLE
