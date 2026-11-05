@@ -17,6 +17,7 @@ import android.widget.ImageView
 import com.abdllh.aura.R
 import com.abdllh.aura.media.AuraNotificationListener
 import com.abdllh.aura.system.DriveState
+import com.abdllh.aura.system.Gear
 import com.abdllh.aura.system.Notices
 import com.abdllh.aura.ui.ABtn
 import com.abdllh.aura.ui.AText
@@ -66,8 +67,9 @@ object MessageBanner {
         app = c
         if (!listening) {
             listening = true
-            // (a call came while one showed: the call has its place, and the message comes back after it)
-            Calls.addListener { main.post { if (Calls.state != Calls.State.IDLE) view?.let { v -> if (v.window.attached) { hold(v.message); hide() } } } }
+            // (a call came while one showed: the call has its place, and the message comes back after it; reverse the same, nothing lies over the camera)
+            Calls.addListener { main.post { if (Calls.state != Calls.State.IDLE) putBack() } }
+            Gear.addListener { main.post { if (Amri.reversing) putBack() } }
         }
         if (OverlayOrder.messageWaits()) { hold(m); return }
         if (!Settings.canDrawOverlays(c)) { Log.w(TAG, "no overlay permission"); return }
@@ -92,6 +94,11 @@ object MessageBanner {
     /** Debug builds: a message as if it had come, through the same door. */
     internal fun debugShow(ctx: Context, appName: String, from: String, text: String) {
         show(ctx, AuraNotificationListener.Message(ctx.packageName, appName, null, from, null, text, null))
+    }
+
+    private fun putBack() {
+        val v = view ?: return
+        if (v.window.attached) { hold(v.message); hide() }
     }
 
     private fun hold(m: AuraNotificationListener.Message?) {

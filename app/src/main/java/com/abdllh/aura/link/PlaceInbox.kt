@@ -340,7 +340,8 @@ internal object PlaceInbox {
         stage = Stage.CANCEL_WINDOW
         // (nothing over the camera or a call's card: then the trip just runs, with its End button on the Maps screen)
         val busy = blocker()
-        val shown = busy == null && TripCard.show(c, caption(c, x), line, where(x),
+        // (on the banner's two lines the words first and the place whole under them: the sentence in one line ran out before its place)
+        val shown = busy == null && TripCard.show(c, w.getString(R.string.link_started_short), x.place.name, where(x),
             listOf(TripCard.Action(w.getString(R.string.link_cancel), false) { if (current === x) cancelled(x, "card") }), CANCEL_MS, {
             if (current === x) current = null
         }, icon(x))

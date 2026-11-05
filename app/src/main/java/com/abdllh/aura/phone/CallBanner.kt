@@ -93,7 +93,8 @@ internal object CallBanner {
         private val rightSlot = TallHit(c, BUTTON_Y, BUTTON_H)
         private val answer = button(c, ABtn.Kind.ANSWER, R.drawable.ic_phone, 28, R.string.call_answer) { answerTapped() }
         private val mute = button(c, ABtn.Kind.TONAL, R.drawable.ic_mic_off, 26, R.string.call_mute) { muteTapped() }
-        private val hang = button(c, ABtn.Kind.DANGER_FILLED, R.drawable.ic_hang, 30, R.string.call_decline) { hangUpTapped() }
+        // (no side room and in English a smaller glyph: "Hang up" and its glyph only just fit in 138, and the group is centred anyway)
+        private val hang = button(c, ABtn.Kind.DANGER_FILLED, R.drawable.ic_hang, if (Fonts.arabicUi) 30 else 26, R.string.call_decline) { hangUpTapped() }.apply { sidePad = 0 }
         private val shrink = Runnable { shrink() }
         private var shrinkAsked = false
         private var ringingShown: Boolean? = null

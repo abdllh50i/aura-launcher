@@ -30,7 +30,7 @@
     <string name="link_note_not_started">not started</string>
     <string name="link_note_handed">handed to the navigation app</string>
     <!-- The card -->
-    <string name="link_from_phone">From the phone</string>
+    <string name="link_from_phone">From your iPhone</string>
     <string name="link_from_voice">You asked for</string>
     <string name="link_ask">A place from the phone: %1$s. Start?</string>
     <string name="link_start">Start</string>

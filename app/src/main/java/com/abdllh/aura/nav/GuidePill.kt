@@ -10,6 +10,7 @@ import android.widget.FrameLayout
 import com.abdllh.aura.R
 import com.abdllh.aura.home.Screens
 import com.abdllh.aura.system.Front
+import com.abdllh.aura.system.Gear
 import com.abdllh.aura.ui.AText
 import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.OverlayWindow
@@ -42,6 +43,7 @@ internal object GuidePill {
         app = ctx.applicationContext
         NavSession.addListener { main.post { sync() } }
         Front.addOwnListener { sync() }
+        Gear.addListener { main.post { sync() } } // (at once off the reversing camera, not at the next fix)
     }
 
     private fun wanted(c: Context) = NavSession.state == NavSession.State.NAVIGATING && !Front.ownResumed && !Amri.reversing && Settings.canDrawOverlays(c)

@@ -15,6 +15,7 @@ import com.abdllh.aura.system.Controls
 import com.abdllh.aura.system.DriveState
 import com.abdllh.aura.ui.AuraSlider
 import com.abdllh.aura.ui.Fonts
+import com.abdllh.aura.ui.Look
 import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.PressGesture
@@ -105,7 +106,8 @@ class ControlsSheet(ctx: Context, private val host: HomeHost) : Sheet(ctx, false
         when {
             top.recolours -> ThemeSwap.run(shell)
             top === host -> host.restyle()
-            else -> top.onLook()
+            // (an old panel's own restyle does not reach this sheet over it)
+            else -> { top.onLook(); Look.apply(this) }
         }
     }
 

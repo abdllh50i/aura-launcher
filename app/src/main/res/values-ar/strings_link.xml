@@ -30,13 +30,13 @@
     <string name="link_note_not_started">ما بدأت</string>
     <string name="link_note_handed">راحت لتطبيق الملاحة</string>
     <!-- البطاقة -->
-    <string name="link_from_phone">وصل من الجوال</string>
+    <string name="link_from_phone">وصل من الآيفون</string>
     <string name="link_from_voice">طلبت</string>
     <string name="link_ask">وصلني موقع من الجوال: %1$s. ابدأ؟</string>
     <string name="link_start">ابدأ</string>
     <string name="link_no">لا</string>
     <string name="link_replace_q">عندك رحلة الحين إلى %1$s. تبدلها؟</string>
-    <string name="link_replace">بدّلها</string>
+    <string name="link_replace">بدّل الطريق</string>
     <string name="link_keep">خلّ رحلتي</string>
     <string name="link_started">بدأت الاتجاهات إلى %1$s</string>
     <string name="link_cancel">إلغاء</string>
