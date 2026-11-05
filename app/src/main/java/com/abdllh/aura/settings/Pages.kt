@@ -226,13 +226,13 @@ class AmriPage(private val act: SettingsPanel) : Page(R.string.amri_name, R.draw
                 // on only with the microphone and the owner's voice
                 act.withMic {
                     if (VoiceSetup.enrolled(ctx)) { Amri.enabled = true; act.rebuild() }
-                    else ctx.parked { VoiceSetup.enroll(act.shell) { ok -> if (ok) Amri.enabled = true; act.rebuild() } }
+                    else VoiceSetup.enroll(act.shell) { ok -> if (ok) Amri.enabled = true; act.rebuild() }
                 }
             },
             ctx.switchRow(null, ctx.getString(R.string.st_speak), null, Amri.spoken) { Amri.spoken = it },
             ctx.settingRow(null, ctx.getString(R.string.voice_enroll), null, ctx.valueChevron(ctx.getString(if (enrolled) R.string.st_enrolled else R.string.st_six_times))) {
                 // (set even when it already was: the setter starts the listener with the new recordings)
-                ctx.parked { act.withMic { VoiceSetup.enroll(act.shell) { ok -> if (ok) Amri.enabled = true; act.rebuild() } } }
+                act.withMic { VoiceSetup.enroll(act.shell) { ok -> if (ok) Amri.enabled = true; act.rebuild() } }
             },
             if (!needGoogle) null else ctx.settingRow(null, ctx.getString(R.string.voice_get_google), null, ctx.chevron()) { VoiceSetup.openStore(ctx, VoiceSetup.GOOGLE_APP) },
             if (!needVoice) null else ctx.settingRow(null, ctx.getString(R.string.voice_get_tts), null, ctx.chevron()) { VoiceSetup.openStore(ctx, VoiceSetup.GOOGLE_TTS) },
@@ -376,18 +376,6 @@ class AboutPage(private val act: SettingsPanel) : Page(R.string.st_about, R.draw
             },
             fill = act.fillH
         )
-    }
-}
-
-/** On a trip: back from a page, the seven as a list. A row opens one, with back to here. */
-class TripListPage(private val act: SettingsPanel) : Page(R.string.set_title) {
-    override val scrolls: Boolean get() = false
-
-    override fun build(ctx: Context): View {
-        val rows = act.pagesForList().mapIndexed { i, p ->
-            ctx.settingRow(p.iconRes, ctx.getString(p.titleRes), null, ctx.chevron()) { act.show(i, true) }.apply { minimumHeight = 0 }
-        }
-        return ctx.rows(*rows.toTypedArray(), fill = act.fillH)
     }
 }
 

@@ -12,7 +12,6 @@ import com.abdllh.aura.BuildConfig
 import com.abdllh.aura.R
 import com.abdllh.aura.music.MusicPanel
 import com.abdllh.aura.nav.MapsPanel
-import com.abdllh.aura.nav.NavSession
 import com.abdllh.aura.settings.SettingsPanel
 import com.abdllh.aura.system.Front
 import com.abdllh.aura.system.IdleGc
@@ -64,16 +63,9 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
     var leaving: Panel? = null
         private set
 
-    /** A trip is on ([tripChanged]). */
-    private var tripOn = NavSession.state != NavSession.State.IDLE
-    /** Maps, drawn under a panel that lies beside the column ([Panel.besideColumn]). */
-    private var beside: Panel? = null
-    private val navListener: () -> Unit = { tripChanged() }
-
     init {
         attach(home)
         applyTo(home)
-        NavSession.addListener(navListener)
     }
 
     // ------------------------------------------------------------------------------------------ opening and closing
@@ -95,7 +87,6 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
         val p = built[name] ?: make(name)
         if (p == null) { Snack.show(shell, R.string.panel_failed); return }
         val under = top
-        val wasUnder = beside === p // (Maps, drawn under the panel on top: that one simply goes off it)
         closeWindows()
         under.frame.live = false
         leave(under)
@@ -106,12 +97,8 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
         if (!p.opaque) root.mapHost.covered = false // ("wake first")
         place(p)
         if (!arrive(p, args)) { failed(p); return }
-        setBeside(besideFor(p))
         val ready = SystemClock.uptimeMillis() - t0
-        move { done ->
-            if (wasUnder) PanelMotion.between(under.name, p.name, true).closing(under.frame, p.frame, done)
-            else PanelMotion.between(under.name, p.name, beside != null).opening(p.frame, under.frame, done)
-        }
+        move { done -> PanelMotion.between(under.name, p.name).opening(p.frame, under.frame, done) }
         if (shell.resumedNow) p.frame.afterNextDraw {
             val ms = SystemClock.uptimeMillis() - t0
             val first = firstOpen.getOrPut(name) { ms }
@@ -224,7 +211,7 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
         if (!under.opaque) root.mapHost.covered = false // ("wake first")
         if (!arrive(under, null)) { failed(under); return }
         val ready = SystemClock.uptimeMillis() - t0
-        move { done -> PanelMotion.between(off.name, under.name, beside != null).closing(off.frame, under.frame, done) }
+        move { done -> PanelMotion.between(off.name, under.name).closing(off.frame, under.frame, done) }
         if (shell.resumedNow) under.frame.afterNextDraw {
             Log.i(TAG, "back to ${under.name}: ${SystemClock.uptimeMillis() - t0} ms to its first frame ($ready ms before it)")
         }
@@ -348,54 +335,6 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
         }
     }
 
-    // ------------------------------------------------------------------------------------------ beside the column, on a trip
-    private fun besideFor(t: Panel): Panel? =
-        if ((t.overMaps || tripOn && t.besideColumn) && t.name != Screens.MAPS) built[Screens.MAPS] ?: make(Screens.MAPS) else null
-
-    /** Maps under the panels from now on, drawn and taking the touches they leave (End, pause, next; the map under it), or not. Only alpha and order: no layout of its own. */
-    private fun setBeside(want: Panel?) {
-        val was = beside
-        if (was === want) return
-        beside = want
-        if (was != null && was !== top) {
-            was.frame.live = false
-            was.frame.visibility = View.INVISIBLE
-            call(was, "onBeside") { was.onBeside(false) }
-        }
-        if (want == null) return
-        val f = want.frame
-        com.abdllh.aura.ui.Look.catchUp(f) // (a theme changed while it was hidden: this way back is not [arrive]'s)
-        f.visibility = View.VISIBLE
-        f.live = true
-        val layer = root.panelLayer
-        if (layer.getChildAt(0) !== f) for (c in List(layer.childCount) { layer.getChildAt(it) }) if (c !== f) c.bringToFront()
-        call(want, "onBeside") { want.onBeside(true) }
-    }
-
-    /** Told when the top panel says it is another thing now. */
-    var onTopChanged: (() -> Unit)? = null
-
-    /** The top panel [p] says it is another thing now ([Panel.opaque], [Panel.overMaps]): the map and what lies under it follow, at once. */
-    fun panelChanged(p: Panel) {
-        if (p !== top) return
-        onTopChanged?.invoke()
-        if (leaving != null) return
-        setBeside(besideFor(p))
-        root.mapHost.covered = p.opaque
-    }
-
-    private fun tripChanged() {
-        val on = NavSession.state != NavSession.State.IDLE
-        if (on == tripOn) return
-        tripOn = on
-        val t = top
-        call(t, "onTrip") { t.onTrip(on) }
-        if (leaving == null) {
-            setBeside(besideFor(t))
-            root.mapHost.covered = t.opaque
-        }
-    }
-
     fun started() {
         val a = firstArgs
         firstArgs = null
@@ -432,7 +371,6 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
 
     /** The window ends. */
     fun destroyed() {
-        NavSession.removeListener(navListener)
         main.removeCallbacks(overdue)
         main.removeCallbacks(whenQuiet)
         for (p in built.values.toList()) {
@@ -458,7 +396,7 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
         windows.add(Owned(isOpen, close))
     }
 
-    private fun closeWindows() {
+    internal fun closeWindows() {
         for (o in windows) try { if (o.isOpen()) o.close() } catch (_: Throwable) { } // (its window may be gone meanwhile)
         windows.clear()
         val f = shell.currentFocus ?: return
@@ -492,17 +430,15 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
         leaving = null
         if (shell.isDestroyed) return
         val t = top
-        val b = besideFor(t)
         for (p in built.values.toList()) {
             rest(p.frame)
             when {
-                p === t || p === b -> p.frame.visibility = View.VISIBLE
+                p === t -> p.frame.visibility = View.VISIBLE
                 p in stack -> p.frame.visibility = View.INVISIBLE
                 else -> gone(p)
             }
             call(p, "onSettle") { p.onSettle(p === t) }
         }
-        setBeside(b)
         root.mapHost.covered = t.opaque
     }
 

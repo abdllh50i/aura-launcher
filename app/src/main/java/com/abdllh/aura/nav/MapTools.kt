@@ -194,7 +194,7 @@ internal class MapTools(panel: MapsPanel) : MapsPart(panel) {
         tool(overview, all && !whole && NavSession.state == NavSession.State.NAVIGATING, animate)
         tool(zoom, (all && !whole) || browseTools, animate)
         tool(locate, all || (onTrip && whole) || browseTools, animate)
-        attribution.visibility = if (browsing && !chipUp) View.VISIBLE else View.INVISIBLE
+        attribution.visibility = if (browsing) View.VISIBLE else View.INVISIBLE
         val want = if (free || whole) ACCENT else ICON
         if (want != locateTint) {
             locateTint = want
@@ -203,14 +203,6 @@ internal class MapTools(panel: MapsPanel) : MapsPart(panel) {
     }
 
     private var locateTint = ICON
-
-    /** The lyric chip lies where the credit does: Music lying collapsed, the car stopped, is browse's face under the chip. */
-    private var chipUp = false
-
-    fun chipShown(on: Boolean) {
-        chipUp = on
-        syncTools(false)
-    }
 
     /** Beside the column on a trip, at the driver's edge with none. A translation, and at once: they fade in the place they belong to. */
     private fun placeZoomAndLocate() {

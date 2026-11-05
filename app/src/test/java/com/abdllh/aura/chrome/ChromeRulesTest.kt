@@ -9,15 +9,13 @@ import org.junit.Test
 class ChromeRulesTest {
     @Test fun theMiniOnEveryScreenWithASong() {
         for (p in listOf(Screens.HOME, Screens.MAPS, Screens.PHONE, Screens.APPS, Screens.SETTINGS)) {
-            assertTrue(p, ChromeRules.mini(p, song = true, musicLies = false))
-            assertFalse("$p, no song", ChromeRules.mini(p, song = false, musicLies = false))
+            assertTrue(p, ChromeRules.mini(p, song = true))
+            assertFalse("$p, no song", ChromeRules.mini(p, song = false))
         }
     }
 
-    @Test fun onTheMusicPanelOnlyWhenItLiesCollapsed() {
-        assertFalse("in full: the song is the whole screen", ChromeRules.mini(Screens.MUSIC, song = true, musicLies = false))
-        assertTrue("lying over the map", ChromeRules.mini(Screens.MUSIC, song = true, musicLies = true))
-        assertFalse("no song", ChromeRules.mini(Screens.MUSIC, song = false, musicLies = true))
+    @Test fun notOnTheMusicPanel() {
+        assertFalse("the song is the whole screen", ChromeRules.mini(Screens.MUSIC, song = true))
     }
 
     @Test fun stripSpeedByTheTable() {
@@ -29,10 +27,9 @@ class ChromeRulesTest {
         assertFalse("Home with no trip: the search's slot", ChromeRules.stripSpeed(Screens.HOME, true, false, false))
         assertFalse("Maps: its card", ChromeRules.stripSpeed(Screens.MAPS, true, true, false))
         assertTrue("Maps: a search or a place card over it", ChromeRules.stripSpeed(Screens.MAPS, true, false, true))
-        assertFalse("Music: its card", ChromeRules.stripSpeed(Screens.MUSIC, true, false, false))
-        for (p in listOf(Screens.PHONE, Screens.APPS, Screens.SETTINGS)) {
+        for (p in listOf(Screens.MUSIC, Screens.PHONE, Screens.APPS, Screens.SETTINGS)) {
             assertTrue(p, ChromeRules.stripSpeed(p, true, false, false))
-            assertFalse("$p beside the column", ChromeRules.stripSpeed(p, true, true, false))
+            assertTrue("$p on a trip: the whole screen", ChromeRules.stripSpeed(p, true, true, false))
         }
     }
 

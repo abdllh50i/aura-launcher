@@ -157,8 +157,7 @@ object Screens {
         putBoolean(MapsActivity.EXTRA_KEEP, keep)
     })
 
-    /** (With arguments, if empty: asked for again while it lies collapsed, it hears it, [Panel.onArgs].) */
-    fun music(c: Context) = open(c, MUSIC, Bundle())
+    fun music(c: Context) = open(c, MUSIC)
 
     /** Music on that source and playing, in place of the stock Bluetooth music screen ([bt]) or the stock music player. */
     fun musicOn(c: Context, bt: Boolean) = open(c, MUSIC, Bundle().apply { putString(MusicActivity.EXTRA_SOURCE, if (bt) "bt" else "local") })

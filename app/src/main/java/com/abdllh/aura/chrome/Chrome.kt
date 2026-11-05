@@ -22,7 +22,6 @@ import com.abdllh.aura.home.Screens
 import com.abdllh.aura.media.MediaMonitor
 import com.abdllh.aura.media.NowPlaying
 import com.abdllh.aura.music.BtMusic
-import com.abdllh.aura.music.MusicPanel
 import com.abdllh.aura.music.PhoneLink
 import com.abdllh.aura.nav.CarLocation
 import com.abdllh.aura.nav.MapExtras
@@ -38,7 +37,6 @@ import com.abdllh.aura.system.Prayer
 import com.abdllh.aura.system.PrayerTimes
 import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.Look
-import com.abdllh.aura.ui.Modal
 import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Recolours
@@ -106,7 +104,7 @@ class Chrome private constructor(private val shell: HomeActivity) : FrameLayout(
         addView(volume, at(0, 516, 204, 84))
         addView(voice, at(186, 502, VoiceButton.SIZE, VoiceButton.SIZE))
         strip.speed.visibility = INVISIBLE
-        rowDock.glance.onOpen = { if (!MusicPanel.moreWhileLying()) Screens.music(context) }
+        rowDock.glance.onOpen = { Screens.music(context) }
         panel = shell.topPanel.ifEmpty { Screens.HOME }
         onHome = panel == Screens.HOME
         snapRows()
@@ -180,7 +178,7 @@ class Chrome private constructor(private val shell: HomeActivity) : FrameLayout(
 
     private fun refreshFaces(animate: Boolean, mini: Boolean = animate && !onHome) {
         val moving = DriveState.moving
-        rowDock.glance.show(ChromeRules.mini(panel, song != null, shell.panels.top.overMaps), mini)
+        rowDock.glance.show(ChromeRules.mini(panel, song != null), mini)
         strip.setGear(if (Gear.canReports) Gear.current else null, Gear.sure)
         val want = ChromeRules.stripSpeed(panel, moving, trip, speedCardHidden)
         if (want != speedShown && !debugSpeedHeld) {
@@ -276,11 +274,7 @@ class Chrome private constructor(private val shell: HomeActivity) : FrameLayout(
 
     private val onGear: () -> Unit = { refreshFaces(canMove()) }
 
-    private val onDrive: () -> Unit = {
-        // (the car starts moving: a dialog goes as Cancel, section 6.0's event table)
-        if (DriveState.moving) Modal.dismissAll()
-        refreshFaces(canMove())
-    }
+    private val onDrive: () -> Unit = { refreshFaces(canMove()) }
 
     private val onNav: () -> Unit = {
         val t = NavSession.state != NavSession.State.IDLE
@@ -369,7 +363,6 @@ class Chrome private constructor(private val shell: HomeActivity) : FrameLayout(
         val top = shell.topPanel
         if (top.isNotEmpty() && top != panel && !debugHeld) show(top, false)
         Front.addPanelListener(onPanel)
-        shell.panels.onTopChanged = { refreshFaces(canMove()) }
         DriveState.addListener(onDrive)
         Gear.addListener(onGear)
         NavSession.addListener(onNav)
@@ -387,7 +380,6 @@ class Chrome private constructor(private val shell: HomeActivity) : FrameLayout(
 
     override fun onDetachedFromWindow() {
         Front.removePanelListener(onPanel)
-        shell.panels.onTopChanged = null
         DriveState.removeListener(onDrive)
         Gear.removeListener(onGear)
         NavSession.removeListener(onNav)

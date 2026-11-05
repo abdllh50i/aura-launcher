@@ -10,7 +10,6 @@ import com.abdllh.aura.R
 import com.abdllh.aura.home.HomeActivity
 import com.abdllh.aura.home.Panel
 import com.abdllh.aura.home.Screens
-import com.abdllh.aura.nav.NavSession
 import com.abdllh.aura.ui.AText
 import com.abdllh.aura.ui.IconButton
 import com.abdllh.aura.ui.Look
@@ -24,7 +23,6 @@ import com.abdllh.aura.ui.SurfaceCard
 import com.abdllh.aura.ui.Tint
 import com.abdllh.aura.ui.Tokens2
 import com.abdllh.aura.ui.Tones
-import com.abdllh.aura.ui.TurnAway
 import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.at
 import com.abdllh.aura.ui.box
@@ -39,18 +37,15 @@ import com.abdllh.aura.update.UpdateManager
 import kotlin.math.abs
 
 /**
- * Settings (SPEC.md section 6.6): the room, a side list of seven pages on the reading side, one card 666 x 414 that holds the page, or a sub-page with back at its reading edge. On a
- * trip a card beside the column, x 392..1008, one page at a time; back goes to the list of pages. The panel stays built, each page with it, and a theme comes by [Look]: no picture, nothing
- * is built again. A trip beginning or ending builds the frame anew, since what lies in the card has other widths (a page is rare there, and a trip's start rarer).
+ * Settings (SPEC.md section 6.6): the room, a side list of seven pages on the reading side, one card 666 x 414 that holds the page, or a sub-page with back at its reading edge. The panel
+ * stays built, each page with it, and a theme comes by [Look]: no picture, nothing is built again.
  * (A class name is left for whoever starts it from outside: [SettingsActivity], which also has the page numbers.)
  */
 class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
     override val root = FrameLayout(this)
-    override val opaque: Boolean get() = NavSession.state == NavSession.State.IDLE
-    override val solid: Boolean get() = opaque
+    override val opaque: Boolean get() = true
     override val keep: Boolean get() = true
     override val recolours: Boolean get() = true
-    override val besideColumn: Boolean get() = true
 
     /** Goes on once the microphone permission is given (the voice page asked for it on the owner's way somewhere). */
     var afterMic: (() -> Unit)? = null
@@ -74,19 +69,14 @@ class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
 
     val rtl = resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL
 
-    /** What a page's rows share, in this frame: the room's card, or the trip's. */
-    var onTripNow = false
-        private set
-    val fillH: Int get() = if (onTripNow) TRIP_FILL else CARD_H
-    val controlW: Int get() = if (onTripNow) 400 else 440
+    /** What a page's rows share. */
+    val fillH: Int get() = CARD_H
+    val controlW: Int get() = 440
 
     private val pages: List<Page> = listOf(DisplayPage(this), MapsPage(this), MusicPage(this), AmriPage(this), PhonePage(this), CarPage(this), AboutPage(this))
-    private val listPage = TripListPage(this)
     private var current = 0
     /** Sub-pages over the current page. */
     private val subs = ArrayList<Page>()
-    /** On a trip: the list of pages is what shows. */
-    private var onList = false
     private var shownPage: Page? = null
     private var shownView: View? = null
     private var live = false
@@ -101,19 +91,15 @@ class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
     private var indicator: View? = null
     private var indicatorSpring: Spring? = null
     private var indicatorPlaced = false
-    private var turnAway: TurnAway? = null
     private var updateDot: View? = null
 
     // ------------------------------------------------------------------------------------------ the panel's life
     override fun onShow(args: Bundle?) {
-        val trip = NavSession.state != NavSession.State.IDLE
-        if (!built || trip != onTripNow) buildFrame(trip)
+        if (!built) buildFrame()
         catchUp()
-        turnAway?.on()
         if (resetDue) {
             resetDue = false
             subs.clear()
-            onList = false
             go(current, false)
         }
         when {
@@ -133,21 +119,11 @@ class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
 
     override fun onHide() {
         goQuiet()
-        turnAway?.off()
     }
 
     /** A visit is over: the next one opens on the last page, not on a sub-page. */
     override fun onOff() {
-        resetDue = subs.isNotEmpty() || onList
-    }
-
-    override fun onTrip(on: Boolean) {
-        goQuiet()
-        buildFrame(on)
-        turnAway?.on()
-        subs.clear()
-        onList = false
-        go(current, false)
+        resetDue = subs.isNotEmpty()
     }
 
     override fun onResume() {
@@ -160,7 +136,6 @@ class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
 
     override fun onBack(): Boolean {
         if (subs.isNotEmpty()) { pop(); return true }
-        if (onTripNow && !onList) { showList(); return true }
         return false
     }
 
@@ -176,7 +151,6 @@ class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
 
     override fun onDestroy() {
         goQuiet()
-        turnAway?.off()
     }
 
     private val dotObserver: (UpdateManager.State) -> Unit = {
@@ -184,28 +158,9 @@ class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
     }
 
     // ------------------------------------------------------------------------------------------ the frame
-    private fun buildFrame(trip: Boolean) {
+    private fun buildFrame() {
         built = true
-        onTripNow = trip
         builtDark = Palette.dark
-        root.removeAllViews()
-        holders.clear()
-        shownPage = null
-        shownView = null
-        pageTitle = null
-        navItems = emptyList()
-        indicator = null
-        indicatorSpring = null
-        indicatorPlaced = false
-        updateDot = null
-        turnAway?.off()
-        turnAway = null
-        if (trip) {
-            card = SurfaceCard(this, Surface.OVERLAY)
-            root.addView(card, Surface.OVERLAY.at(TRIP_X, TRIP_Y, TRIP_W, TRIP_H))
-            turnAway = TurnAway(card, STEP)
-            return
-        }
         root.addView(surfaceImage("room"), at(0, 0, 1024, 516))
         val side = label(Type.pageTitle, { Palette.ink }).apply { setText(R.string.set_title) }
         root.addView(side, Type.pageTitle.box(if (rtl) 704 else 24, 46, 296))
@@ -314,7 +269,6 @@ class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
         val dir = if (animate && index < current) -1 else 1
         current = index
         subs.clear()
-        onList = false
         moveIndicator(index, animate)
         val page = pages[index]
         if (page === shownPage) { goLive(); return }
@@ -331,27 +285,19 @@ class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
 
     private fun pop() {
         subs.removeAt(subs.lastIndex)
-        val page = subs.lastOrNull() ?: if (onList) listPage else pages[current]
+        val page = subs.lastOrNull() ?: pages[current]
         present(page, -1, shell.resumedNow, sub = subs.isNotEmpty())
     }
 
-    /** On a trip: the seven pages as a list. */
-    fun showList() {
-        subs.clear()
-        onList = true
-        present(listPage, -1, shell.resumedNow, sub = false)
-    }
-
-    /** The page's view, built now or kept: on a trip and for a sub-page with its head, in the room the page's rows alone. */
+    /** The page's view, built now or kept: for a sub-page with its head, in the room the page's rows alone. */
     private fun holderFor(page: Page, sub: Boolean): View {
         holders[page]?.takeIf { page.keep }?.let { return it }
-        val w = if (onTripNow) TRIP_W else CARD_W
-        val h = if (onTripNow) TRIP_H else CARD_H
-        val surface = if (onTripNow) Surface.OVERLAY else Surface.CARD
+        val w = CARD_W
+        val h = CARD_H
+        val surface = Surface.CARD
         val hold = FrameLayout(this)
-        val head = onTripNow || sub
-        val top = if (head) HEAD else 0
-        if (head) {
+        val top = if (sub) HEAD else 0
+        if (sub) {
             val back = IconButton(this, R.drawable.ic_chev_left, 30, 56, 56, press = PressGesture.ICON, token = { Palette.ink2 }).apply {
                 contentDescription = getString(R.string.set_title)
                 setOnClickListener { Tones.tick(context); backTapped() }
@@ -366,7 +312,7 @@ class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
             s.addView(content, FrameLayout.LayoutParams(MATCH, FrameLayout.LayoutParams.WRAP_CONTENT))
             // (the bottom fade stands clear of the card's round corners, and what scrolls ends where it ends)
             hold.addView(s, at(0, top, w, h - top - FADE_INSET))
-            val up = if (head) fadeUnderHead(surface) else scrollFade(surface, true)
+            val up = if (sub) fadeUnderHead(surface) else scrollFade(surface, true)
             val down = scrollFade(surface, false)
             hold.addView(up, at(FADE_INSET, top, w - 2 * FADE_INSET, FADE))
             hold.addView(down, at(FADE_INSET, h - FADE - FADE_INSET, w - 2 * FADE_INSET, FADE))
@@ -393,9 +339,7 @@ class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
     }
 
     private fun backTapped() {
-        if (subs.isNotEmpty()) pop()
-        else if (onTripNow && !onList) showList()
-        else finish()
+        if (subs.isNotEmpty()) pop() else finish()
     }
 
     private fun present(page: Page, dir: Int, animate: Boolean, sub: Boolean) {
@@ -408,7 +352,7 @@ class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
         if (old !== v && old != null) {
             // A page that comes back stays in the card, hidden. Added to a parent again a view forgets its direction until its next measure, and a kept page is not measured again: a switch
             // showed its thumb at the wrong end and a theme missed it, not being in the tree.
-            val stays = oldPage != null && oldPage.keep && (oldPage === listPage || oldPage in pages || oldPage in subs)
+            val stays = oldPage != null && oldPage.keep && (oldPage in pages || oldPage in subs)
             if (!stays && oldPage != null) holders.remove(oldPage)
             val off = { if (shownView !== old) { if (stays) old.visibility = View.INVISIBLE else card.removeView(old) } }
             if (animate) old.exit(dur = Tokens2.MS_pageSwap) { off() }
@@ -469,9 +413,6 @@ class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
         shell.languageChanged(Bundle().apply { putInt(SettingsActivity.EXTRA_PAGE, current) })
     }
 
-    /** The seven, for the trip's list of pages. */
-    internal fun pagesForList(): List<Page> = pages
-
     private companion object {
         const val CARD_Y = 96
         const val CARD_W = 676
@@ -479,12 +420,7 @@ class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
         const val NAV_W = 304
         const val NAV_H = 58
         const val NAV_PITCH = 60
-        const val TRIP_X = 392
-        const val TRIP_Y = 48
-        const val TRIP_W = 616
-        const val TRIP_H = 456
         const val HEAD = 64
-        const val TRIP_FILL = TRIP_H - HEAD
         const val FADE = 28
         const val FADE_INSET = 8
         const val STEP = 12f

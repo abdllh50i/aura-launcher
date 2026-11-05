@@ -24,9 +24,8 @@ import kotlin.math.min
  *
  * [side] false: the old bottom sheet, dimmed scrim, rounded panel sliding up on a spring, a fling carries its speed into the motion.
  *
- * [side] true (SPEC.md section 5, "Side sheet"): the `overlay` 9-patch 440 wide, height to fit and at most 456, at y 48; at x 16 with
- * no trip and at x 392, beside the column, while a trip runs ([placeOnTrip]), so the turn card is never covered. No scrim over a
- * moving map: a tap outside only closes it. A drag toward the screen's left edge closes it, in both languages, since cards do not
+ * [side] true (SPEC.md section 5, "Side sheet"): the `overlay` 9-patch 440 wide, height to fit and at most 456, at (16, 48). No scrim
+ * over a moving map: a tap outside only closes it. A drag toward the screen's left edge closes it, in both languages, since cards do not
  * swap sides. In: alpha and x -32 to 0, 240 `enter`; out: alpha and x to -24, 160 `exit`; turned back from where it is. [sideHead]
  * adds the title and the close button.
  */
@@ -66,7 +65,7 @@ open class Sheet(ctx: Context, fullHeight: Boolean = false, private val side: Bo
         if (side) {
             panel.visibility = INVISIBLE
             addView(panel, flp(SIDE_W + 2 * Surface.OVERLAY.outset, WRAP, Gravity.LEFT or Gravity.TOP).apply {
-                leftMargin = X_NO_TRIP - Surface.OVERLAY.outset
+                leftMargin = SIDE_X - Surface.OVERLAY.outset
                 topMargin = Tokens2.CONTENT_TOP - Surface.OVERLAY.outset
             })
         } else {
@@ -98,18 +97,11 @@ open class Sheet(ctx: Context, fullHeight: Boolean = false, private val side: Bo
         }
     }
 
-    /** It stands at its full height whatever is in it ([placeOnTrip]). */
-    protected var tall = false
-        private set
-
-    /** A side sheet at x 392, beside the column, while a trip runs; at x 16 with none. [high]: at its full height, so that nothing of a panel shows under it. */
-    fun placeOnTrip(onTrip: Boolean, high: Boolean = false) {
-        if (!side) return
-        tall = high
+    /** A side sheet at its full height, whatever is in it, so that nothing of a panel shows under it. */
+    protected fun standTall() {
         val lp = panel.layoutParams as LayoutParams
-        val want = (if (onTrip) X_ON_TRIP else X_NO_TRIP) - Surface.OVERLAY.outset
-        val h = if (high) SIDE_MAX_H + 2 * Surface.OVERLAY.outset else WRAP
-        if (lp.leftMargin != want || lp.height != h) { lp.leftMargin = want; lp.height = h; panel.layoutParams = lp }
+        lp.height = SIDE_MAX_H + 2 * Surface.OVERLAY.outset
+        panel.layoutParams = lp
     }
 
     /**
@@ -381,8 +373,7 @@ open class Sheet(ctx: Context, fullHeight: Boolean = false, private val side: Bo
     private companion object {
         const val SIDE_W = 440
         const val SIDE_MAX_H = 456
-        const val X_NO_TRIP = 16
-        const val X_ON_TRIP = 392
+        const val SIDE_X = 16
         const val SIDE_IN = -32f
         const val SIDE_OUT = -24f
         const val SIDE_IN_MS = 240L

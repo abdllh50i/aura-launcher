@@ -90,9 +90,6 @@ object DriveState {
     val moving: Boolean get() = rule.moving
     val parked: Boolean get() = !rule.moving
 
-    /** Gear P known: Music's full panel on a trip asks for this (section 6.0's table). */
-    val parkKnown: Boolean get() = Gear.known == Gear.Pos.P
-
     fun addListener(l: () -> Unit) { listeners.add(l) }
     fun removeListener(l: () -> Unit) { listeners.remove(l) }
 

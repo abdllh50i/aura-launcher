@@ -213,13 +213,14 @@ internal class SourceRowView(ctx: Context, val row: SourceRow, private val chevr
 }
 
 /**
- * "From where": the source sheet (SPEC.md section 5, "Side sheet"; `music-sources`, `sources-on-trip`). A row is a choice, or what starts one: the panel knows ([MusicPanel.chooseRow]).
+ * "From where": the source sheet (SPEC.md section 5, "Side sheet"; `music-sources`). A row is a choice, or what starts one: the panel knows ([MusicPanel.chooseRow]).
  * It opens from the More sheet.
  */
 internal class SourceSheet(ctx: Context, private val music: MusicPanel) : Sheet(ctx, false, true) {
     private val rows: List<SourceRowView>
 
     init {
+        standTall()
         sideHead(ctx.getString(R.string.music_sources_title))
         val col = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; setPadding(8, 4, 8, 8) }
         rows = SourceRow.values().mapIndexed { i, r ->
@@ -297,6 +298,7 @@ internal class MoreSheet(ctx: Context, private val music: MusicPanel) : Sheet(ct
 
     init {
         off.layoutParams = lp(AuraSwitch.TRACK_W + 2 * AuraSwitch.OUTSET, AuraSwitch.TRACK_H + 2 * AuraSwitch.OUTSET).apply { marginEnd = -AuraSwitch.OUTSET }
+        standTall()
         sideHead(ctx.getString(R.string.music_more_title))
         val col = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; setPadding(8, 4, 8, 0) }
         for (r in listOf(source, queue, full, lyricsOff)) col.addView(r, lp(MATCH, MoreRow.HEIGHT))
@@ -318,7 +320,7 @@ internal class MoreSheet(ctx: Context, private val music: MusicPanel) : Sheet(ct
 }
 
 /**
- * "Up next": the queue sheet (`music-queue`, `queue-on-trip`). The unit's own player: its songs from the one playing on, shuffle and repeat in the head. A source whose list is on the phone or
+ * "Up next": the queue sheet (`music-queue`). The unit's own player: its songs from the one playing on, shuffle and repeat in the head. A source whose list is on the phone or
  * in the app: the one song, and a line that says where the list is; no shuffle and repeat, which steer the unit's own player.
  */
 internal class QueueSheet(ctx: Context, private val music: MusicPanel) : Sheet(ctx, false, true) {
@@ -356,6 +358,7 @@ internal class QueueSheet(ctx: Context, private val music: MusicPanel) : Sheet(c
         repeat.setOnClickListener { Player.cycleRepeat(); paintTools() }
         shuffle.contentDescription = ctx.getString(R.string.music_shuffle)
         repeat.contentDescription = ctx.getString(R.string.music_repeat)
+        standTall()
         // (repeat beside the close button, shuffle after it, as drawn)
         sideHead(ctx.getString(R.string.music_queue_title), repeat, shuffle)
         list.selector = ColorDrawable(0)
@@ -377,11 +380,9 @@ internal class QueueSheet(ctx: Context, private val music: MusicPanel) : Sheet(c
         val local = music.queueIsLocal
         items = if (local) Player.upcoming() else emptyList()
         adapter.notifyDataSetChanged()
-        // (at the sheet's full height on the panel there is room for one more)
-        val rows = if (tall) ROWS + 1 else ROWS
-        val shown = if (local) items.size.coerceIn(1, rows) else 1
+        val shown = if (local) items.size.coerceIn(1, ROWS) else 1
         body.layoutParams = (body.layoutParams as LinearLayout.LayoutParams).apply { height = shown * SongRowView.HEIGHT + 12 }
-        fade.visibility = if (local && items.size > rows) VISIBLE else GONE
+        fade.visibility = if (local && items.size > ROWS) VISIBLE else GONE
         shuffle.visibility = if (local) VISIBLE else INVISIBLE
         repeat.visibility = if (local) VISIBLE else INVISIBLE
         note.visibility = if (local) GONE else VISIBLE
@@ -404,6 +405,6 @@ internal class QueueSheet(ctx: Context, private val music: MusicPanel) : Sheet(c
     }
 
     private companion object {
-        const val ROWS = 4
+        const val ROWS = 5
     }
 }

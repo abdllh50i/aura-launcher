@@ -9,10 +9,8 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import com.abdllh.aura.R
 import com.abdllh.aura.music.BtMusic
-import com.abdllh.aura.nav.NavSession
 import com.abdllh.aura.settings.sliderControl
 import com.abdllh.aura.system.Controls
-import com.abdllh.aura.system.DriveState
 import com.abdllh.aura.ui.AuraSlider
 import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.Look
@@ -34,8 +32,7 @@ import com.abdllh.aura.ui.lp
 import com.abdllh.aura.util.Prefs
 
 /**
- * Controls, the side sheet from the strip's left end (SPEC.md section 5, `controls`, `controls-on-trip`): brightness, the theme, and four tiles: Wi-Fi, Bluetooth, the hotspot, screen off. At x 16 with no trip
- * and at x 392 beside the column on one. Volume and mute are in the row now, the camera and the car's settings in Apps, the update note in Settings. A tile that opens another app leaves the sheet
+ * Controls, the side sheet from the strip's left end (SPEC.md section 5, `controls`): brightness, the theme, and four tiles: Wi-Fi, Bluetooth, the hotspot, screen off. Volume and mute are in the row now, the camera and the car's settings in Apps, the update note in Settings. A tile that opens another app leaves the sheet
  * open under it: it goes when the window stops ([HomeActivity]), so its closing does not compete with the app's opening. A panel closes it at once ([PanelStack.show]).
  */
 class ControlsSheet(ctx: Context, private val host: HomeHost) : Sheet(ctx, false, side = true) {
@@ -111,10 +108,10 @@ class ControlsSheet(ctx: Context, private val host: HomeHost) : Sheet(ctx, false
         }
     }
 
-    /** Moving: the Night Panel. Parked: the backlight off, as the stock launcher's icon does it, until a touch wakes it. */
+    /** The backlight off, as the stock launcher's icon does it, until a touch wakes it. A firmware with no way to do that: the Night Panel. */
     private fun screenOffTapped() {
         close()
-        if (DriveState.moving || !Actions.hasScreenOff(context)) HomeActivity.current?.root?.night?.show()
+        if (!Actions.hasScreenOff(context)) HomeActivity.current?.root?.night?.show()
         else Actions.screenOff(context)
     }
 
@@ -122,7 +119,6 @@ class ControlsSheet(ctx: Context, private val host: HomeHost) : Sheet(ctx, false
     fun syncVolume() = Unit
 
     fun refresh() {
-        placeOnTrip(NavSession.state != NavSession.State.IDLE)
         val b = Controls.brightnessPercent(context)
         brightness.setProgress(b, false)
         brightSent = b

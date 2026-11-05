@@ -30,9 +30,6 @@ object Asked {
     /** The centre x of Home's tile at [index], with no home cell: the map's cell is the one fixed point, and they spread over the capsule from it, 121 px apart. */
     fun tileX(index: Int): Int = Tokens2.X_map + 121 * index
 
-    /** The word being sung lit on its pill while the car moves. As the spec says: parked only. */
-    const val LYRIC_WORD_MOVING = false
-
     /** A message's text shown while the car moves. As the spec says: `رسالة جديدة`, the text only when parked. */
     const val MESSAGE_TEXT_MOVING = false
 }

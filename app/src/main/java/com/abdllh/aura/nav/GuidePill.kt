@@ -30,8 +30,8 @@ import com.abdllh.aura.util.Prefs
 import com.abdllh.aura.voice.Amri
 
 /**
- * A trip keeps its guidance over another app (SPEC.md section 6.5): at the turn card's place, 364 x 96: the tile with the arrow, the distance, the road. Only with a trip and with AMRI's window not in front; a
- * touch goes back to Maps. Its numbers change with the fix, the only thing it redraws. Not over the reversing camera.
+ * A trip keeps its guidance when he leaves Maps (SPEC.md section 6.5): at the turn card's place, 364 x 96: the tile with the arrow, the distance, the road. Only with a trip, over another app and over AMRI's panels
+ * that have no road of their own: Home has its pills, Maps its column. A touch goes back to Maps. Its numbers change with the fix, the only thing it redraws. Not over the reversing camera.
  */
 internal object GuidePill {
     private val main = Handler(Looper.getMainLooper())
@@ -43,10 +43,11 @@ internal object GuidePill {
         app = ctx.applicationContext
         NavSession.addListener { main.post { sync() } }
         Front.addOwnListener { sync() }
+        Front.addPanelListener { sync() }
         Gear.addListener { main.post { sync() } } // (at once off the reversing camera, not at the next fix)
     }
 
-    private fun wanted(c: Context) = NavSession.state == NavSession.State.NAVIGATING && !Front.ownResumed && !Amri.reversing && Settings.canDrawOverlays(c)
+    private fun wanted(c: Context) = NavSession.state == NavSession.State.NAVIGATING && (!Front.ownResumed || Front.panel in NO_ROAD) && !Amri.reversing && Settings.canDrawOverlays(c)
 
     private val showNow = Runnable {
         val c = app ?: return@Runnable
@@ -133,6 +134,8 @@ internal object GuidePill {
             stage.exit(dur = overlayMs(Tokens2.MS_bannerOut), end = done)
         }
     }
+
+    private val NO_ROAD = setOf(Screens.MUSIC, Screens.APPS, Screens.SETTINGS)
 
     /** The card: x 16..380, y 48..144 on the screen, which is this window's own coordinates. */
     private const val X = 16

@@ -129,7 +129,7 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
     private fun build() {
         open?.let { shell.root.sheets.removeView(it) }
         open = null
-        Modal.dismissAll()
+        shell.panels.closeWindows()
         menuUp?.dismiss()
         menuUp = null
         root.removeAllViews()
@@ -151,8 +151,7 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
             "bars" -> bars(s)
             "running" -> running(s)
             "rows" -> rows(s)
-            "sheet" -> sideSheet(s, 16)
-            "sheet-trip" -> sideSheet(s, 392)
+            "sheet" -> sideSheet(s)
             "modal" -> modal(s)
             "modal-ime" -> modal(s, ime = true)
             "confirm" -> confirm(s)
@@ -566,9 +565,8 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
     }
 
     // ------------------------------------------------------------------------------------------ sheets
-    private inner class DemoSheet(trip: Boolean) : Sheet(ctx, side = true) {
+    private inner class DemoSheet : Sheet(ctx, side = true) {
         init {
-            placeOnTrip(trip)
             sideHead("التحكم")
             panel.addView(FrameLayout(ctx).apply {
                 addView(ctx.sliderControl(sliderAt(70),
@@ -584,9 +582,9 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
         }
     }
 
-    private fun sideSheet(s: FrameLayout, x: Int) {
+    private fun sideSheet(s: FrameLayout) {
         s.mapPlate("browse")
-        val sheet = DemoSheet(x != 12)
+        val sheet = DemoSheet()
         shell.root.sheets.addView(sheet, flp(MATCH, MATCH))
         open = sheet
         sheet.onClosed = { shell.root.sheets.removeView(sheet) }
