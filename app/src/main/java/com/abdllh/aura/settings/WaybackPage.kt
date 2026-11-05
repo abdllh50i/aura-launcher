@@ -50,7 +50,7 @@ class WaybackPage(private val act: SettingsPanel) : Page(R.string.wayback_title)
         else -> ctx.getString(R.string.wayback_why_looking)
     }
 
-    private fun ask(ctx: Context, version: String) = ctx.parked {
+    private fun ask(ctx: Context, version: String) {
         Confirm.show(act, ctx.getString(R.string.wayback_confirm_title, version), ctx.getString(R.string.wayback_confirm_text, version), ctx.getString(R.string.wayback_back_btn), danger = true) {
             Snack.show(ctx, R.string.wayback_going, long = true, outlives = true)
             Rollback.goBack(ctx, false) { why, fellBack ->

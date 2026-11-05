@@ -119,11 +119,9 @@ class MapsPage(private val act: SettingsPanel) : Page(R.string.st_maps, R.drawab
                 kind = ABtn.Kind.TONAL
                 setText(R.string.set_my_cameras_clear)
                 setOnClickListener {
-                    ctx.parked {
-                        Confirm.show(ctx, ctx.getString(R.string.set_my_cameras_clear_title), ctx.getString(R.string.set_my_cameras_clear_text), ctx.getString(R.string.set_my_cameras_clear)) {
-                            MapExtras.clearMine()
-                            act.rebuild()
-                        }
+                    Confirm.show(ctx, ctx.getString(R.string.set_my_cameras_clear_title), ctx.getString(R.string.set_my_cameras_clear_text), ctx.getString(R.string.set_my_cameras_clear)) {
+                        MapExtras.clearMine()
+                        act.rebuild()
                     }
                 }
             }),
@@ -188,12 +186,12 @@ class AmriPage(private val act: SettingsPanel) : Page(R.string.amri_name, R.draw
                 // on only with the microphone and the owner's voice
                 act.withMic {
                     if (VoiceSetup.enrolled(ctx)) { Amri.enabled = true; act.rebuild() }
-                    else ctx.parked { VoiceSetup.enroll(act.shell) { ok -> if (ok) Amri.enabled = true; act.rebuild() } }
+                    else VoiceSetup.enroll(act.shell) { ok -> if (ok) Amri.enabled = true; act.rebuild() }
                 }
             },
             ctx.settingRow(null, ctx.getString(R.string.voice_enroll), null, ctx.valueChevron(ctx.getString(if (enrolled) R.string.st_enrolled else R.string.st_six_times))) {
                 // (set even when it already was: the setter starts the listener with the new recordings)
-                ctx.parked { act.withMic { VoiceSetup.enroll(act.shell) { ok -> if (ok) Amri.enabled = true; act.rebuild() } } }
+                act.withMic { VoiceSetup.enroll(act.shell) { ok -> if (ok) Amri.enabled = true; act.rebuild() } }
             },
             ctx.settingRow(null, ctx.getString(R.string.voice_try), null, ctx.chevron()) { act.withMic { Amri.wake(ctx) } },
             ctx.controlRow(ctx.getString(R.string.voice_sens), sens, act.controlW),
@@ -296,7 +294,7 @@ private fun updateWord(c: Context, s: UpdateManager.State): String = when (s) {
     else -> BuildConfig.VERSION_NAME
 }
 
-/** On a trip: back from a page, the six as a list. A row opens one, with back to here. */
+/** On a trip: back from a page, the seven as a list. A row opens one, with back to here. */
 class TripListPage(private val act: SettingsPanel) : Page(R.string.set_title) {
     override val scrolls: Boolean get() = false
 

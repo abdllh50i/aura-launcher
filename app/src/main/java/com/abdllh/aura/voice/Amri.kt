@@ -240,7 +240,7 @@ object Amri {
                     google && online(c) -> listen(c, s)
                     OfflineCommands.anyTaught(c) -> listenOffline(c, s)
                     !google -> finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_no_recognizer), null, actions = settingsChip(c))
-                    else -> finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_offline_none), null, actions = settingsChip(c))
+                    else -> finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_offline_none), null)
                 }
             }
         }

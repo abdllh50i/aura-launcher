@@ -31,19 +31,15 @@ class LyricsServerPage : Page(R.string.lyr_srv_title) {
         val col = ctx.pageColumn()
         col.addView(ctx.rows(
             ctx.settingRow(null, ctx.getString(R.string.lyr_srv_address), null, address) {
-                ctx.parked {
-                    InputDialog.show(ctx, ctx.getString(R.string.lyr_srv_address), ctx.getString(R.string.lyr_srv_address_hint), LyricsServer.address, uri = true) {
-                        LyricsServer.address = it
-                        ask()
-                    }
+                InputDialog.show(ctx, ctx.getString(R.string.lyr_srv_address), ctx.getString(R.string.lyr_srv_address_hint), LyricsServer.address, uri = true) {
+                    LyricsServer.address = it
+                    ask()
                 }
             },
             ctx.settingRow(null, ctx.getString(R.string.lyr_srv_key), null, key) {
-                ctx.parked {
-                    InputDialog.show(ctx, ctx.getString(R.string.lyr_srv_key), ctx.getString(R.string.lyr_srv_key_hint), LyricsServer.key, uri = false) {
-                        LyricsServer.key = it
-                        ask()
-                    }
+                InputDialog.show(ctx, ctx.getString(R.string.lyr_srv_key), ctx.getString(R.string.lyr_srv_key_hint), LyricsServer.key, uri = false) {
+                    LyricsServer.key = it
+                    ask()
                 }
             }
         ))
