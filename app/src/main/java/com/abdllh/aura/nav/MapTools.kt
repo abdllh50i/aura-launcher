@@ -4,148 +4,139 @@ import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
-import android.widget.LinearLayout
 import com.abdllh.aura.R
 import com.abdllh.aura.ui.AText
-import com.abdllh.aura.ui.Elev
-import com.abdllh.aura.ui.Fonts
+import com.abdllh.aura.ui.IconButton
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
-import com.abdllh.aura.ui.Radius
-import com.abdllh.aura.ui.Shapes
-import com.abdllh.aura.ui.Space
-import com.abdllh.aura.ui.Touch
+import com.abdllh.aura.ui.PressGesture
+import com.abdllh.aura.ui.Surface
+import com.abdllh.aura.ui.SurfaceCard
+import com.abdllh.aura.ui.Tokens2
 import com.abdllh.aura.ui.Type
-import com.abdllh.aura.ui.WRAP
 import com.abdllh.aura.ui.anim
-import com.abdllh.aura.ui.fadeTo
-import com.abdllh.aura.ui.flp
-import com.abdllh.aura.ui.iconView
+import com.abdllh.aura.ui.at
+import com.abdllh.aura.ui.box
+import com.abdllh.aura.ui.glyph
 import com.abdllh.aura.ui.label
-import com.abdllh.aura.ui.lift
-import com.abdllh.aura.ui.lp
+import com.abdllh.aura.ui.look
 import com.abdllh.aura.ui.pressScale
-import com.abdllh.aura.util.dp
 import kotlin.math.abs
 
 /**
- * What belongs to the map itself over [MapsPanel]: zoom, the compass, the way back to the car, the attribution, and what the camera does after a touch. Today's look, for
- * the driving column's builder to replace (the tools of `map-browse` and `drive-map-touched`, SPEC.md sections 1, 6.2, 6.3). Browse only ever calls [forSearch], [recenter], [hideRecenter].
+ * What belongs to the map itself over [MapsPanel], at x 384 beside the column in both languages (SPEC.md sections 1, 5): the compass at y 138, the zoom stack at y 330, locate at y 450, and what
+ * the camera does after a touch. Browse only ever calls [forSearch], [recenter], [hideRecenter].
  */
 internal class MapTools(panel: MapsPanel) : MapsPart(panel) {
-    /** The map's own controls at the end side, faded away together while the keyboard is up. */
+    /** The whole layer's own, which the old speed cluster of the column still lies in, until the column is rebuilt. */
     lateinit var controls: FrameLayout
         private set
-    private lateinit var recenterHolder: FrameLayout
-    private lateinit var recenterBtn: LinearLayout
-    private lateinit var recenterText: AText
-    private lateinit var compassIcon: ImageView
-    private lateinit var zoom: LinearLayout
+    /** The tools, faded together: their alpha goes straight into what they draw, no layer. */
+    private lateinit var group: FrameLayout
+    private lateinit var zoom: SurfaceCard
+    private lateinit var locate: IconButton
+    private lateinit var compass: SurfaceCard
+    private lateinit var compassGlyph: ImageView
+    private lateinit var attribution: AText
 
     private var bearingWatched = false
     private var compassAt = Float.NaN
-    /** The recenter pill stands above whichever card is at the bottom (glides when that one comes or goes). */
-    private var recenterLift = 0f
-
-    init {
-        root.viewTreeObserver.addOnGlobalLayoutListener { if (panel.shown) liftRecenter() }
-    }
+    private var searchOpen = false
 
     override fun build() {
-        recenterLift = 0f
         compassAt = Float.NaN
-        // ---- end side: the map's controls (one layer, faded away while typing)
         controls = FrameLayout(this)
         panel.toolsLayer.addView(controls, MATCH, MATCH)
-        val attribution = label(Type.ATTRIBUTION_SP, Palette.text3, Fonts.REGULAR).apply {
-            text = MapStyle.attribution(CarLocation.lastKnown())
-            setPadding(Space.S.dp, Space.XXS.dp, Space.S.dp, Space.XXS.dp)
-            background = Shapes.rect(Palette.withAlpha(Palette.glass, 0.7f), Radius.XS)
+        group = object : FrameLayout(this) {
+            override fun hasOverlappingRendering() = false
         }
-        controls.addView(attribution, flp(WRAP, WRAP, Gravity.BOTTOM or Gravity.END).apply { setMargins(0, 0, Space.M.dp, MapsPanel.BOTTOM_EDGE.dp); marginEnd = Space.M.dp })
+        panel.toolsLayer.addView(group, MATCH, MATCH)
+
+        attribution = label(Type.attribution, { Palette.ink3 }, gravity = Gravity.RIGHT).apply {
+            textDirection = View.TEXT_DIRECTION_LTR
+            text = MapStyle.attribution(CarLocation.lastKnown())
+        }
+        panel.toolsLayer.addView(attribution, Type.attribution.box(512, 492, 500))
         // (the credit follows what is drawn: the pack inside the Kingdom, OpenFreeMap's tiles outside it)
         map.onCameraIdle = { at -> MapStyle.attribution(at).let { if (attribution.text != it) attribution.text = it } }
 
-        // compass, and + / − as one capsule (six round buttons on one edge were a wall of controls)
-        val btns = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
-        compassIcon = ImageView(this)
-        btns.addView(mapButton(R.drawable.ic_compass, compassIcon, R.string.maps_north) {
-            if (NavSession.state == NavSession.State.NAVIGATING) recenter() else map.northUp()
-        })
-        zoom = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            background = Shapes.pill(Palette.glass, Palette.glassStroke)
-            lift(Elev.FLOAT, overMap = true)
-        }
-        zoom.addView(zoomHalf(R.drawable.ic_plus, R.string.maps_zoom_in) { map.zoomBy(1.0) }, lp(MAP_BTN.dp, 64.dp))
-        zoom.addView(View(this).apply { setBackgroundColor(Palette.divider) }, lp(28.dp, 1.dp))
-        zoom.addView(zoomHalf(R.drawable.ic_minus, R.string.maps_zoom_out) { map.zoomBy(-1.0) }, lp(MAP_BTN.dp, 64.dp))
-        btns.addView(zoom, lp(MAP_BTN.dp, WRAP).apply { topMargin = Space.M.dp })
-        controls.addView(btns, flp(WRAP, WRAP, Gravity.END or Gravity.TOP).apply { setMargins(0, MapsPanel.TOP_EDGE.dp + Space.S.dp, Space.L.dp, 0); marginEnd = Space.L.dp })
+        compass = pillCard()
+        compassGlyph = ImageView(this).apply { setImageResource(R.drawable.ic_compass); scaleType = ImageView.ScaleType.FIT_CENTER }.glyph { Palette.icon }
+        compass.addView(compassGlyph, at(13, 13, GLYPH, GLYPH))
+        compass.contentDescription = getString(R.string.maps_north)
+        compass.pressScale(PressGesture.CONTROL)
+        compass.setOnClickListener { if (NavSession.state == NavSession.State.NAVIGATING) recenter() else map.northUp() }
+        compass.visibility = View.GONE
+        group.addView(compass, Surface.PILL.at(TOOL_X, COMPASS_Y, BTN, BTN))
 
-        // ---- the way back to the car: on the driver's side, above the card at the bottom
-        recenterHolder = FrameLayout(this).apply { clipChildren = false }
-        recenterBtn = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPaddingRelative(Space.L.dp, 0, Space.XL.dp, 0)
-            background = Shapes.glassPressable(Radius.PILL)
-            lift(Elev.FLOAT, overMap = true)
-            isClickable = true
-            pressScale(Motion.PRESS_CONTROL)
+        // + and − as one stack with a hairline, one surface
+        zoom = pillCard()
+        zoom.addView(IconButton(this, R.drawable.ic_plus, ZOOM_GLYPH, BTN, BTN, press = PressGesture.CONTROL).apply {
+            contentDescription = getString(R.string.maps_zoom_in)
+            setOnClickListener { map.zoomBy(1.0) }
+        }, at(0, 0, BTN, BTN))
+        zoom.addView(View(this).look { setBackgroundColor(Palette.line) }, at(12, BTN, BTN - 24, 1))
+        zoom.addView(IconButton(this, R.drawable.ic_minus, ZOOM_GLYPH, BTN, BTN, press = PressGesture.CONTROL).apply {
+            contentDescription = getString(R.string.maps_zoom_out)
+            setOnClickListener { map.zoomBy(-1.0) }
+        }, at(0, BTN, BTN, BTN))
+        group.addView(zoom, Surface.PILL.at(TOOL_X, ZOOM_Y, BTN, 2 * BTN))
+
+        locate = IconButton(this, R.drawable.ic_locate, GLYPH, BTN, BTN, IconButton.Kind.PILL, PressGesture.CONTROL).apply {
+            contentDescription = getString(R.string.maps_my_location)
             setOnClickListener { recenter() }
-            visibility = View.GONE
-            addView(iconView(R.drawable.ic_nav, 22, Palette.accentFg), lp(22.dp, 22.dp))
         }
-        recenterText = label(Type.BUTTON, Palette.text)
-        recenterBtn.addView(recenterText, lp(WRAP, WRAP).apply { marginStart = Space.M.dp })
-        recenterHolder.addView(recenterBtn, flp(WRAP, Touch.MIN.dp))
-        panel.toolsLayer.addView(recenterHolder, flp(WRAP, WRAP, Gravity.BOTTOM or Gravity.START).apply { setMargins(Space.L.dp, 0, Space.L.dp, MapsPanel.BOTTOM_EDGE.dp); marginStart = Space.L.dp })
+        group.addView(locate, Surface.PILL.at(TOOL_X, LOCATE_Y, BTN, BTN))
     }
 
-    override fun sync() = syncZoom()
+    private fun pillCard() = object : SurfaceCard(this@MapTools, Surface.PILL) {
+        override fun hasOverlappingRendering() = false
+    }
+
+    override fun sync() = syncTools()
 
     override fun tripChanged(on: Boolean) {
         if (on) return
         root.removeCallbacks(autoRecenter) // the trip has just ended (Done, End, or by itself after arriving): back to browsing
-        hideRecenter()
+        syncTools()
     }
 
     override fun listen(on: Boolean) {
         if (!on) root.removeCallbacks(autoRecenter)
     }
 
+    override fun onFace(face: MapsPanel.Face) = syncTools()
+
     /** The panel as it was built, at rest. */
     fun fresh() {
-        recenterBtn.reveal(false, 12f, animate = false)
-        recenterHolder.translationY = 0f
-        recenterLift = 0f
-        controls.animate().cancel()
-        controls.alpha = 1f
+        searchOpen = false
+        group.animate().cancel()
+        group.alpha = 1f
+        group.visibility = View.VISIBLE
         controls.visibility = View.VISIBLE
+        syncTools()
     }
 
-    /**
-     * The map's buttons go while the keyboard is up: the screen shrinks to the strip above it, where they would
-     * pile onto each other and onto the attribution; nothing in them is needed while typing.
-     */
+    /** A search or a place card is up, or not: the tools go while it is (`search`, `place-routes`), 180 `exit`, and come back in 140 `move`. */
     fun forSearch(open: Boolean) {
+        if (open == searchOpen) return
+        searchOpen = open
+        syncTools()
+        // (the old speed cluster goes with them: it would lie over the card)
+        controls.visibility = if (open) View.INVISIBLE else View.VISIBLE
         if (!open) {
-            if (controls.visibility == View.VISIBLE && controls.alpha == 1f) return
-            controls.visibility = View.VISIBLE
-            controls.fadeTo(1f, Motion.MEDIUM, Motion.EMPHASIZED)
-        } else if (controls.visibility == View.VISIBLE) {
-            controls.fadeTo(0f, Motion.XSHORT, Motion.EXIT) { if (controls.alpha == 0f) controls.visibility = View.INVISIBLE }
+            group.visibility = View.VISIBLE
+            group.anim(Tokens2.MS_mapToolsIn, Motion.MOVE).alpha(1f).start()
+        } else if (group.visibility == View.VISIBLE) {
+            group.anim(Tokens2.MS_mapToolsOut, Motion.EXIT).alpha(0f).withEndAction { if (searchOpen) group.visibility = View.INVISIBLE }.start()
         }
     }
 
     // ------------------------------------------------------------------------------------------ camera
     /** The driver moved the map: a way back, and while driving the map goes back to the car by itself after a while. */
     fun onUserMoved() {
-        showRecenter()
-        syncZoom()
+        syncTools()
         if (NavSession.state == NavSession.State.NAVIGATING) {
             root.removeCallbacks(autoRecenter)
             root.postDelayed(autoRecenter, AUTO_RECENTER_MS)
@@ -159,24 +150,18 @@ internal class MapTools(panel: MapsPanel) : MapsPart(panel) {
 
     fun recenter() {
         root.removeCallbacks(autoRecenter)
-        hideRecenter()
         map.setCamera(if (NavSession.state == NavSession.State.NAVIGATING) AuraMap.Camera.NAVIGATE else AuraMap.Camera.FOLLOW)
-        syncZoom()
+        syncTools()
     }
 
-    fun hideRecenter() = recenterBtn.reveal(false, 12f, scaleFrom = 0.92f)
-
-    private fun showRecenter() {
-        recenterText.setIfChanged(getString(if (NavSession.state == NavSession.State.NAVIGATING) R.string.maps_recenter else R.string.maps_my_location))
-        recenterBtn.reveal(true, 12f, scaleFrom = 0.92f)
-    }
+    /** The way back has nothing to go back to any more: a trip has just taken the camera. */
+    fun hideRecenter() = syncTools()
 
     /** The trip being driven, whole, for a while: a look at it lasts longer than a brush of the screen. */
     fun overviewOfTrip() {
         NavSession.route?.let { r ->
             panel.overview(r.line.points)
-            showRecenter()
-            syncZoom()
+            syncTools()
             root.removeCallbacks(autoRecenter)
             root.postDelayed(autoRecenter, AUTO_RECENTER_OVERVIEW_MS)
         }
@@ -185,16 +170,24 @@ internal class MapTools(panel: MapsPanel) : MapsPart(panel) {
     /** End pressed: the way back has nothing to go back to. */
     fun tripEnded() {
         root.removeCallbacks(autoRecenter)
-        hideRecenter()
+        syncTools()
     }
 
-    /** + and − while the map is the driver's to move; while it follows the drive, pinching still zooms. */
-    private fun syncZoom() {
+    /**
+     * On browse always; on a trip only while the camera is the driver's. Locate says the camera is free in `accentInk`, for as long as it is (section 5). No tools in `drive-free`:
+     * the column is there.
+     */
+    private fun syncTools() {
         val nav = NavSession.state == NavSession.State.NAVIGATING
-        zoom.reveal(!nav || map.camera == AuraMap.Camera.FREE || map.camera == AuraMap.Camera.OVERVIEW, 0f, scaleFrom = 0.9f)
+        val free = map.camera == AuraMap.Camera.FREE || map.camera == AuraMap.Camera.OVERVIEW
+        val show = panel.face != MapsPanel.Face.DRIVE_FREE && (!nav || free)
+        val v = if (show) View.VISIBLE else View.INVISIBLE
+        if (zoom.visibility != v) { zoom.visibility = v; locate.visibility = v }
+        locate.setGlyphToken(if (free) ({ Palette.accentInk }) else ({ Palette.icon }))
+        attribution.visibility = if (NavSession.state == NavSession.State.IDLE && !searchOpen && panel.face == MapsPanel.Face.BROWSE) View.VISIBLE else View.INVISIBLE
     }
 
-    /** The compass shows where north is on the turned map (a transform, set only when it moved a degree or more). */
+    /** The compass shows where north is on the turned map (a transform, set only when it moved a degree or more), and only when it is turned. */
     fun watchBearing() {
         val m = map.map?.map ?: return
         turnCompass(m.cameraPosition.bearing.toFloat())
@@ -208,44 +201,10 @@ internal class MapTools(panel: MapsPanel) : MapsPart(panel) {
         if (!panel.shown) return // (the map goes on moving under the home screen: a change to a hidden view would still ask for a frame)
         if (!compassAt.isNaN() && abs(Geo.angleDiff(compassAt.toDouble(), bearing.toDouble())) < 1) return
         compassAt = bearing
-        compassIcon.rotation = -bearing
-        // north up already, browsing: the button has nothing to do, and says so by stepping back
-        val north = abs(Geo.angleDiff(0.0, bearing.toDouble())) < 1 && NavSession.state != NavSession.State.NAVIGATING
-        compassIcon.alpha = if (north) 0.55f else 1f
-    }
-
-    private fun liftRecenter() {
-        val card = panel.bottomCard()
-        val lift = if (card == null || card.height == 0) 0f else -(card.height + Space.M.dp).toFloat()
-        if (lift == recenterLift) return
-        recenterLift = lift
-        if (recenterBtn.isOn) recenterHolder.anim(Motion.MEDIUM, Motion.STANDARD).translationY(lift).start()
-        else recenterHolder.translationY = lift
-    }
-
-    // ------------------------------------------------------------------------------------------ old buttons
-    private fun mapButton(icon: Int, img: ImageView, desc: Int, onClick: () -> Unit): View = FrameLayout(this).apply {
-        background = Shapes.pressable(Shapes.oval(Palette.glass, Palette.glassStroke), Shapes.oval(Palette.mix(Palette.glass, Palette.text, 0.08f), Palette.glassStroke))
-        lift(Elev.FLOAT, overMap = true)
-        isClickable = true
-        contentDescription = getString(desc)
-        pressScale(Motion.PRESS_ICON)
-        setOnClickListener { onClick() }
-        img.setImageResource(icon)
-        img.setColorFilter(Palette.text)
-        img.scaleType = ImageView.ScaleType.FIT_CENTER
-        addView(img, flp(28.dp, 28.dp, Gravity.CENTER))
-        layoutParams = lp(MAP_BTN.dp, MAP_BTN.dp)
-    }
-
-    /** One half of the zoom capsule: its own press, inside the capsule's surface. */
-    private fun zoomHalf(icon: Int, desc: Int, onClick: () -> Unit): View = FrameLayout(this).apply {
-        background = Shapes.ghost(Radius.PILL)
-        isClickable = true
-        contentDescription = getString(desc)
-        pressScale(Motion.PRESS_ICON)
-        setOnClickListener { onClick() }
-        addView(iconView(icon, 26, Palette.text), flp(26.dp, 26.dp, Gravity.CENTER))
+        compassGlyph.rotation = -bearing
+        val turned = abs(Geo.angleDiff(0.0, bearing.toDouble())) >= 1 && NavSession.state != NavSession.State.NAVIGATING
+        val v = if (turned) View.VISIBLE else View.GONE
+        if (compass.visibility != v) compass.visibility = v
     }
 
     private companion object {
@@ -253,7 +212,12 @@ internal class MapTools(panel: MapsPanel) : MapsPart(panel) {
         private const val AUTO_RECENTER_MS = 12_000L
         /** and after a look at the whole route, this long. */
         private const val AUTO_RECENTER_OVERVIEW_MS = 20_000L
-        /** The map's round buttons. */
-        private const val MAP_BTN = 66
+        const val TOOL_X = 384
+        const val COMPASS_Y = 138
+        const val ZOOM_Y = 330
+        const val LOCATE_Y = 450
+        const val BTN = 56
+        const val GLYPH = 30
+        const val ZOOM_GLYPH = 28
     }
 }

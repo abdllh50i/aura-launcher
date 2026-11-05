@@ -7,6 +7,7 @@ import android.os.SystemClock
 import android.util.Log
 import android.view.View
 import com.abdllh.aura.BuildConfig
+import com.abdllh.aura.R
 import com.abdllh.aura.home.HomeActivity
 import com.abdllh.aura.system.SystemProps
 import com.abdllh.aura.ui.MapBackdropView
@@ -58,7 +59,9 @@ class MapController(private val shell: HomeActivity) {
 
     /** What a panel shows on the map when no trip is on it: the place chosen, the route to it. */
     private var previewRoute: List<LatLon>? = null
+    private var previewAlt: List<LatLon>? = null
     private var previewDest: LatLon? = null
+    private var previewName: String? = null
     /** A trip is on the map. */
     private var tripShown = false
     /** The turn whose arrow is on the map (the route and the step's index). */
@@ -81,6 +84,15 @@ class MapController(private val shell: HomeActivity) {
     /** Its camera has come to rest there. */
     var onCameraIdle: ((LatLon) -> Unit)? = null
         set(v) { field = v; map?.onCameraIdle = v }
+    /** The row in places.db of the place about to be told to [onPoiTap]. */
+    var onPlaceRow: ((Long) -> Unit)? = null
+        set(v) { field = v; map?.onPlaceRow = v }
+    var onResultTap: ((Int) -> Unit)? = null
+        set(v) { field = v; map?.onResultTap = v }
+    var onRouteAltTap: (() -> Unit)? = null
+        set(v) { field = v; map?.onRouteAltTap = v }
+    var onMapTap: (() -> Unit)? = null
+        set(v) { field = v; map?.onMapTap = v }
     /** Its style has come (also again after [lookChanged]). */
     var onReady: (() -> Unit)? = null
     /** It has drawn (the home screen's card opens then): at once when it has already. */
@@ -180,6 +192,10 @@ class MapController(private val shell: HomeActivity) {
         m.onLongPress = onLongPress
         m.onPoiTap = onPoiTap
         m.onCameraIdle = onCameraIdle
+        m.onPlaceRow = onPlaceRow
+        m.onResultTap = onResultTap
+        m.onRouteAltTap = onRouteAltTap
+        m.onMapTap = onMapTap
         m.setFrozen(host.covered)
         m.onReady = {
             safely("ready") { sync() }
@@ -322,8 +338,8 @@ class MapController(private val shell: HomeActivity) {
                 m.setInteractive(true)
                 m.pictureFile = null
                 m.flatNav = false
-                val rtl = shell.resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL
-                m.setRoom(if (rtl) 0 else mapsSide, 0, if (rtl) mapsSide else 0, 0, MAPS_NAV_TOP)
+                // (the column is on the left in both languages: seat, not language)
+                m.setRoom(mapsSide, MAPS_TOP, 0, MAPS_BOTTOM, MAPS_NAV_TOP)
             }
         }
         sync()
@@ -378,7 +394,8 @@ class MapController(private val shell: HomeActivity) {
             if (tripShown) { // the trip has just ended (Done, End, or by itself after arriving): back to browsing
                 tripShown = false
                 m.setRoute(previewRoute)
-                m.setDestination(previewDest)
+                m.setRouteAlt(previewAlt)
+                m.setDestination(previewDest, previewName)
                 m.setCamera(AuraMap.Camera.FOLLOW)
             } else if (!onMaps && m.camera != AuraMap.Camera.FOLLOW) m.setCamera(AuraMap.Camera.FOLLOW)
             return
@@ -386,7 +403,9 @@ class MapController(private val shell: HomeActivity) {
         tripShown = true
         val r = NavSession.route ?: return
         val p = NavSession.progress
-        m.setDestination(NavSession.destination?.pos)
+        m.setRouteAlt(null)
+        m.setResults(emptyList())
+        m.setDestination(NavSession.destination?.pos, NavSession.destination?.name?.takeIf { it != shell.getString(R.string.maps_dropped_pin) })
         val c = m.camera
         if (c != AuraMap.Camera.NAVIGATE && (!onMaps || (c != AuraMap.Camera.FREE && c != AuraMap.Camera.OVERVIEW))) m.setCamera(AuraMap.Camera.NAVIGATE)
         // only the part still ahead shows, from under the arrow on: the map cuts the line at the car as it draws it
@@ -412,15 +431,28 @@ class MapController(private val shell: HomeActivity) {
         if (!tripShown) map?.setRoute(points)
     }
 
-    /** The place shown; while a trip is on the map it waits for the trip's end. */
-    fun setDestination(p: LatLon?) {
+    /** The place shown, with its name over the pin; while a trip is on the map it waits for the trip's end. */
+    fun setDestination(p: LatLon?, name: String? = null) {
         previewDest = p
-        if (!tripShown) map?.setDestination(p)
+        previewName = name
+        if (!tripShown) map?.setDestination(p, name)
     }
+
+    /** The second route of a preview, drawn under it. */
+    fun setRouteAlt(points: List<LatLon>?) {
+        previewAlt = points
+        if (!tripShown) map?.setRouteAlt(points)
+    }
+
+    /** The rows of a search, a numbered pin each. */
+    fun setResults(points: List<LatLon>) { if (!tripShown) map?.setResults(points) }
 
     fun setCamera(c: AuraMap.Camera) { map?.setCamera(c) }
     val camera: AuraMap.Camera get() = map?.camera ?: AuraMap.Camera.FOLLOW
-    fun overview(points: List<LatLon>, padStart: Int, padTop: Int, padEnd: Int, padBottom: Int) { map?.overview(points, padStart, padTop, padEnd, padBottom) }
+    /** [padLeft] is the left in both languages: the cards do not swap sides. */
+    fun overview(points: List<LatLon>, padLeft: Int, padTop: Int, padRight: Int, padBottom: Int, maxZoom: Double = 16.0) { map?.overview(points, padLeft, padTop, padRight, padBottom, maxZoom) }
+    fun cameraNow() = map?.cameraNow()
+    fun cameraBack(was: com.mapbox.mapboxsdk.camera.CameraPosition?, mode: AuraMap.Camera) { map?.cameraBack(was, mode) }
     fun zoomBy(d: Double) { map?.zoomBy(d) }
     fun northUp() { map?.northUp() }
 
@@ -442,6 +474,9 @@ class MapController(private val shell: HomeActivity) {
         private const val CAR_HOME_TRIP_PX = 40
         private const val CAR_MAPS_PX = 64
         private const val MAPS_NAV_TOP = 0.42
+        /** map-*.json `camera.browse`: what the strip and the row leave, so the car stands at (701, 280). The driving camera's top is [AuraMap]'s table. */
+        private const val MAPS_TOP = 40
+        private const val MAPS_BOTTOM = 80
         /** The turn's arrow is on the map from this far before it (its size is the map's: [AuraMap.setTurn]). */
         private const val TURN_ARROW_FROM_M = 900.0
         /** At this speed and above the car moves on a trip: a new theme or accent waits ([lookMayChange]). */

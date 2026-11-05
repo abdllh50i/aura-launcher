@@ -31,7 +31,6 @@ import com.abdllh.aura.ui.flp
 import com.abdllh.aura.ui.pressScale
 import com.abdllh.aura.util.Prefs
 import com.abdllh.aura.util.dp
-import java.util.Locale
 
 /**
  * Aura's own maps: search a place, see the route, drive with turn-by-turn guidance, over the one map under the window. The map and what is on
@@ -51,6 +50,8 @@ class MapsPanel(shell: HomeActivity) : Panel(shell, Screens.MAPS) {
         }
     }
     override val keep: Boolean get() = true
+    // (a theme change recolours what shows in place: section 8. Every part reads its tokens at [com.abdllh.aura.ui.Look.apply])
+    override val recolours: Boolean get() = true
     // (the map's slot does not follow the keyboard, and the field is at the top, above it: this window never pans. See DEV.md, "One window")
     override val softInput: Int get() = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN
 
@@ -94,7 +95,7 @@ class MapsPanel(shell: HomeActivity) : Panel(shell, Screens.MAPS) {
     }
 
     /** The whole of [points] in what the cards and the chrome leave of the map. */
-    internal fun overview(points: List<LatLon>) = map.overview(points, cardW + 40.dp, OVERVIEW_TOP.dp, OVERVIEW_END.dp, OVERVIEW_BOTTOM.dp)
+    internal fun overview(points: List<LatLon>) = map.overview(points, OVERVIEW_LEFT, OVERVIEW_TOP, OVERVIEW_RIGHT, OVERVIEW_BOTTOM)
 
     /** The old cards' lift for the locate button; goes with them. */
     internal fun bottomCard(): View? = drive.bottomCard ?: browse.bottomCard
@@ -298,16 +299,19 @@ class MapsPanel(shell: HomeActivity) : Panel(shell, Screens.MAPS) {
     }
 
     internal companion object {
-        /** The old cards' width, and what the camera leaves free for them at the start side. */
+        /** The old cards' width. */
         const val CARD_W = 460
-        const val SIDE = CARD_W + 32
+        /** What the camera leaves free at the left in both languages, for the column: map-*.json `camera`, so the car stands at x 701. */
+        const val SIDE = 378
         /** What the chrome's strip and bottom row leave of the screen, from the top and from the bottom (SPEC.md section 1). */
         const val TOP_EDGE = 44
         const val BOTTOM_EDGE = 94
         /** Moving with no trip, this long after the last touch: `drive-free`. */
         const val FREE_AFTER_TOUCH_MS = 10_000L
-        private const val OVERVIEW_TOP = 90
-        private const val OVERVIEW_END = 150
+        // map-*.json `camera.overview`, in px of the surface
+        private const val OVERVIEW_LEFT = 410
+        private const val OVERVIEW_TOP = 120
+        private const val OVERVIEW_RIGHT = 44
         private const val OVERVIEW_BOTTOM = 110
     }
 }
@@ -319,7 +323,8 @@ class MapsPanel(shell: HomeActivity) : Panel(shell, Screens.MAPS) {
 internal abstract class MapsPart(@JvmField val panel: MapsPanel) : ContextWrapper(panel) {
     protected val map: MapController get() = panel.map
     protected val root: FrameLayout get() = panel.root
-    protected val arabic: Boolean get() = Locale.getDefault().language == "ar"
+    // (the window's own language: the process's default Locale can go back to the system's at a change of configuration, and a list then came out in English in an Arabic window)
+    protected val arabic: Boolean get() = resources.configuration.locales[0].language == "ar"
     protected val rtl: Boolean get() = resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL
 
     /** Its views, into its layer. Once; and again after the panel's rebuildLook emptied the layer, until the panel has `recolours` true. */

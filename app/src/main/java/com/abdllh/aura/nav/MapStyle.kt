@@ -46,6 +46,13 @@ object MapStyle {
      * map has drawn and trailed it by a frame during every flight and pan.
      */
     const val SRC_DEST = "aura-dest"
+    /** The second route a place's card offers ([AuraMap.setRouteAlt]), under the chosen one. */
+    const val SRC_ROUTE_ALT = "aura-route-alt"
+    /** The search's rows on the map, a point each with its number `n` ([AuraMap.setResults]). */
+    const val SRC_RESULTS = "aura-results"
+    /** What a tap looks in for the second route, and for a row's pin. */
+    val ROUTE_ALT_LAYERS = arrayOf("route-alt-casing", "route-alt")
+    val RESULT_LAYERS = arrayOf("result-pin")
     /** The two seas' names: no tile holds them ([SEAS]). */
     private const val SRC_SEAS = "aura-seas"
     /** The pack's places (places.mbtiles, layer `places`), a source of its own: fields name, name:en, kind, cat, rank, id. */
@@ -66,6 +73,9 @@ object MapStyle {
 
     /** The image of a place's dot ([poiDot]), drawn in each kind's colour. */
     const val POI_DOT = "poi-dot"
+
+    /** The destination's pin ([destPin]). */
+    const val DEST_PIN = "dest-pin"
 
     /**
      * The pack's map fonts, IBM Plex Sans Arabic as glyphs (a modified form of it, so under a name without the reserved "Plex": tools/mapbuild/NOTICE-PACK.md): make_glyphs.py's --family, with
@@ -142,6 +152,55 @@ object MapStyle {
         }
         return Bitmap.createBitmap(px, size, size, Bitmap.Config.ARGB_8888).apply { density = DisplayMetrics.DENSITY_DEFAULT }
     }
+
+    /**
+     * The destination's pin, 40 x 52, as a signed distance field like [poiDot]: the map tints it and rings it with a halo, and icons in colours once drew black on the unit's tilted map.
+     * The boundary as a polygon, 3,808 pixels against 63 sides, once.
+     */
+    fun destPin(): Bitmap = pin ?: run {
+        val buffer = 8
+        val w = 40 + 2 * buffer
+        val h = 52 + 2 * buffer
+        val cx = w / 2.0
+        val r = 20.0
+        val cy = buffer + r
+        val tipY = buffer + 52.0
+        // the circle, from where the tip's tangents touch it round over the top, then the tip
+        val alpha = Math.acos(r / (tipY - cy))
+        val n = 62
+        val xs = DoubleArray(n + 1)
+        val ys = DoubleArray(n + 1)
+        for (i in 0 until n) {
+            val a = Math.PI / 2 + alpha + (2 * Math.PI - 2 * alpha) * i / (n - 1)
+            xs[i] = cx + r * Math.cos(a)
+            ys[i] = cy + r * Math.sin(a)
+        }
+        xs[n] = cx
+        ys[n] = tipY
+        val px = IntArray(w * h)
+        for (y in 0 until h) for (x in 0 until w) {
+            val mx = x + 0.5
+            val my = y + 0.5
+            var best = Double.MAX_VALUE
+            var inside = false
+            var j = n
+            for (i in 0..n) {
+                val ax = xs[j]; val ay = ys[j]; val bx = xs[i]; val by = ys[i]
+                val dx = bx - ax; val dy = by - ay
+                val t = (((mx - ax) * dx + (my - ay) * dy) / (dx * dx + dy * dy)).coerceIn(0.0, 1.0)
+                val d = hypot(mx - (ax + t * dx), my - (ay + t * dy))
+                if (d < best) best = d
+                if ((ay > my) != (by > my) && mx < ax + (my - ay) / dy * dx) inside = !inside
+                j = i
+            }
+            val signed = if (inside) -best else best
+            val a = (1.0 - (signed / buffer + 0.25)).coerceIn(0.0, 1.0)
+            px[y * w + x] = ((a * 255).toInt() shl 24) or 0xFFFFFF
+        }
+        Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888).apply { density = DisplayMetrics.DENSITY_DEFAULT }.also { pin = it }
+    }
+
+    private var pin: Bitmap? = null
 
     /** 3D buildings when zoomed in (fill-extrusion). */
     @JvmField var buildings3d = true
@@ -387,6 +446,11 @@ object MapStyle {
                "paint":{"line-color":"${c.rail}","line-width":${width(12 to 0.6, 18 to 2.5)},"line-dasharray":[4,3]}}""",
             building3d,
             // our route, under the labels (the arrow of the next turn is over them, further down the list)
+            // (the second route, quieter and under the chosen one, a little narrower: where they share a road only the chosen one shows)
+            """{"id":"route-alt-casing","type":"line","source":"$SRC_ROUTE_ALT","layout":{"line-cap":"round","line-join":"round"},
+               "paint":{"line-color":"${c.routeAltCasing}","line-width":${width(wRoute, 2.5)}}}""",
+            """{"id":"route-alt","type":"line","source":"$SRC_ROUTE_ALT","layout":{"line-cap":"round","line-join":"round"},
+               "paint":{"line-color":"${c.routeAlt}","line-width":${width(wRoute, -1.0)}}}""",
             // (both casings under both lines: the two parts join without a seam)
             """{"id":"route-casing","type":"line","source":"$SRC_ROUTE","layout":{"line-cap":"round","line-join":"round"},
                "paint":{"line-color":"$routeCasing","line-width":${width(wRoute, 4.5)}}}""",
@@ -467,7 +531,7 @@ object MapStyle {
                "paint":{"line-color":"${c.turn}","line-width":${width(wTurn)}}}""",
             """{"id":"turn-head","type":"fill","source":"$SRC_TURN","filter":["==","${'$'}type","Polygon"],
                "paint":{"fill-color":"${c.turn}"}}"""
-        ) + dest(route, c.destRing)
+        ) + dest(route, c.destRing, regular, c.place, c.placeHalo) + resultPins(bold, route)
         val empty ="""{"type":"geojson","data":{"type":"FeatureCollection","features":[]}}"""
         val source = if (local) """"tiles":["${TileServer.tilesUrl}"],"minzoom":0,"maxzoom":14"""
             else """"url":"$TILES""""
@@ -478,7 +542,7 @@ object MapStyle {
         return """{"version":8,"name":"Aura","glyphs":"$glyphs",
           "light":{"anchor":"viewport","intensity":${c.light}},
           "sources":{"omt":{"type":"vector",$source,"attribution":"$credit"},$places
-            "$SRC_ROUTE":$empty,"$SRC_ROUTE_NEAR":$empty,"$SRC_TURN":$empty,"$SRC_EXTRAS":$empty,"$SRC_DEST":$empty,"$SRC_SEAS":${seas(arabic)}},
+            "$SRC_ROUTE":$empty,"$SRC_ROUTE_NEAR":$empty,"$SRC_ROUTE_ALT":$empty,"$SRC_RESULTS":$empty,"$SRC_TURN":$empty,"$SRC_EXTRAS":$empty,"$SRC_DEST":$empty,"$SRC_SEAS":${seas(arabic)}},
           "layers":[${layers.joinToString(",")}]}"""
     }
 
@@ -498,19 +562,29 @@ object MapStyle {
     }
 
     /**
-     * The destination over everything else: a ringed dot in the route's colour with a soft halo, lying on the ground
-     * like the route it ends (an ellipse on the tilted map), so it reads as a place, not as a button.
+     * The destination over everything else (SPEC.md section 11): a plain pin, 40 x 52, in the route's colour with a ring, its tip on the place, a white eye in it, and the place's name
+     * at 22 px above it, ignoring collisions, so the name stays on screen wherever the car is.
      */
-    private fun dest(route: String, ring: String): List<String> {
-        fun circle(id: String, color: String, r: String, opacity: Double = 1.0) =
-            """{"id":"$id","type":"circle","source":"$SRC_DEST",
-               "paint":{"circle-color":"$color","circle-radius":$r,"circle-opacity":$opacity,"circle-pitch-alignment":"map"}}"""
-        return listOf(
-            circle("dest-halo", route, """["interpolate",["linear"],["zoom"],10,11,16,18]""", 0.22),
-            circle("dest-ring", ring, """["interpolate",["linear"],["zoom"],10,8,16,12]"""),
-            circle("dest-core", route, """["interpolate",["linear"],["zoom"],10,5.5,16,8.5]""")
-        )
-    }
+    private fun dest(route: String, ring: String, font: String, name: String, halo: String): List<String> = listOf(
+        """{"id":"dest-pin","type":"symbol","source":"$SRC_DEST",
+           "layout":{"icon-image":"$DEST_PIN","icon-anchor":"bottom","icon-offset":[0,8],"icon-allow-overlap":true,"icon-ignore-placement":true,"icon-pitch-alignment":"viewport","icon-rotation-alignment":"viewport",
+           "text-field":["coalesce",["get","name"],""],"text-font":$font,"text-size":22,"text-anchor":"bottom","text-offset":[0,-2.5],"text-allow-overlap":true,"text-ignore-placement":true,"text-max-width":14},
+           "paint":{"icon-color":"$route","icon-halo-color":"$ring","icon-halo-width":1.6,"text-color":"$name","text-halo-color":"$halo","text-halo-width":2.2}}""",
+        """{"id":"dest-eye","type":"symbol","source":"$SRC_DEST",
+           "layout":{"icon-image":"$POI_DOT","icon-anchor":"center","icon-offset":[0,-32],"icon-size":1.0,"icon-allow-overlap":true,"icon-ignore-placement":true,"icon-pitch-alignment":"viewport","icon-rotation-alignment":"viewport"},
+           "paint":{"icon-color":"#FFFFFF"}}"""
+    )
+
+    /**
+     * The rows of a search on the map, as symbols so that labels dodge them (SPEC.md section 6.3): the disc of [poiDot] at the size of the
+     * mockup's pin, ringed by its halo, and the row's number on it. `resultPin` is the route's colour in both palettes, its ring and number white in both.
+     */
+    private fun resultPins(bold: String, pin: String): List<String> = listOf(
+        """{"id":"result-pin","type":"symbol","source":"$SRC_RESULTS",
+           "layout":{"icon-image":"$POI_DOT","icon-size":2.5,"icon-allow-overlap":true,"icon-ignore-placement":true,
+             "text-field":["get","n"],"text-font":$bold,"text-size":18,"text-allow-overlap":true,"text-ignore-placement":true},
+           "paint":{"icon-color":"$pin","icon-halo-color":"#FFFFFF","icon-halo-width":2.5,"text-color":"#FFFFFF"}}"""
+    )
 
     /**
      * The owner's additions, drawn without icons like the places (icon images once drew black on the unit's tilted

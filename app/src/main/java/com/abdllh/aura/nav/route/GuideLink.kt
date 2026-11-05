@@ -22,6 +22,9 @@ internal object GuideLink {
     private const val TAG = "AuraGuideLink"
     private val main = Handler(Looper.getMainLooper())
 
+    /** A route has its [Route.guide] now, on the main thread: what a place's card shows of its warnings. */
+    var landed: ((Route) -> Unit)? = null
+
     fun attach(route: Route, answer: RouteAnswer, raw: String, rows: List<RouteLimits.Row>?, req: RouteRequest) {
         val parsed = GuideAnswer.parse(raw)
         if (parsed == null) { Log.i(TAG, "the answer could not be read for guidance"); return }
@@ -31,8 +34,16 @@ internal object GuideLink {
         PlaceSearch.guidance(chosen, req.arabic, parsed.endSnapMetres, req.to) { g ->
             main.post {
                 route.guide = g
+                landed?.invoke(route)
                 Log.i(TAG, "guidance on the route: ${g?.told?.size ?: 0} told, ${g?.spots?.size ?: 0} spots, warnings ${g?.warnings?.map { it.kind }}, facts ${chosen.facts?.stretches?.size ?: 0}")
             }
+        }
+        // (the others a card may offer: their words and warnings too, by the same answer; the limits' walk was of the first alone, so no facts)
+        for (i in 1 until answer.routes.size) {
+            val alt = answer.routes[i]
+            val own = pick(parsed, alt, answer.rawSeconds.getOrNull(i)) ?: continue
+            if (own === chosen) continue
+            PlaceSearch.guidance(own, req.arabic, parsed.endSnapMetres, req.to) { g -> main.post { alt.guide = g; landed?.invoke(alt) } }
         }
     }
 

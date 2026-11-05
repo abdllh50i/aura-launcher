@@ -8,6 +8,7 @@ import android.util.Log
 import com.abdllh.aura.R
 import com.abdllh.aura.home.Actions
 import com.abdllh.aura.home.AppRepo
+import com.abdllh.aura.home.HomeActivity
 import com.abdllh.aura.home.Screens
 import com.abdllh.aura.nav.CarLocation
 import com.abdllh.aura.nav.Geo
@@ -27,10 +28,12 @@ import java.util.Locale
 
 /**
  * What the unit does with a place that comes from outside the Maps screen (companion.md 5.5). Idle, from a paired phone:
- * Maps comes forward, the route starts, and for [CANCEL_MS] the card offers to cancel. Unpaired, or a place that is only
- * a guess: the card asks first. On a trip: the card asks, and if nobody answers in [REPLACE_MS] the trip goes on; a
- * route never changes silently. In a call or in reverse: it waits, then the card asks. No route: the place stays on the
- * map with its retry and Go. Without a fix: the route's start waits for the first one.
+ * Maps comes forward with its card, and once the route is there the trip starts after [COUNTDOWN_MS] unless he cancels (SPEC.md
+ * section 6.3: the card is [com.abdllh.aura.nav.BrowseCards]'s, the count [Trips]'). Unpaired, a place that is only a guess, or another
+ * app in front: the banner asks first. On a trip: the banner asks, and if nobody answers in [REPLACE_MS] the trip goes on; a
+ * route never changes silently. In a call or in reverse: it waits, then the banner asks. No route: the place stays on the
+ * map with its retry and Go. Without a fix: the route's start waits for the first one. The voice's place starts at once, with the
+ * banner's Cancel for [CANCEL_MS] after it.
  *
  * The phone hears each step as it really happens ([tell], the "nav" events), "started" only once [NavSession] runs. Only
  * one place at a time: a newer one replaces one still waiting. The voice's "ودني ..." comes through here too. Main
@@ -40,6 +43,8 @@ internal object PlaceInbox {
     private const val TAG = "AuraPlaceInbox"
     private const val CANCEL_MS = 5_000L
     private const val VOICE_GO_MS = 5_000L
+    /** "يبدأ بعد 5 ثوان". */
+    private const val COUNTDOWN_MS = 5_000L
     private const val REPLACE_MS = 30_000L
     private const val ASK_MS = 30_000L
     private const val FAILED_MS = 6_000L
@@ -143,9 +148,11 @@ internal object PlaceInbox {
         when {
             busy != null -> hold(x, busy)
             NavSession.state == NavSession.State.NAVIGATING -> replaceCard(c, x)
-            afterHold || !x.paired || x.ask -> askCard(c, x)
+            // (another app in front: a banner over it, and a touch brings AMRI to Maps: section 6.0's table)
+            afterHold || !x.paired || x.ask || (!x.voice && HomeActivity.current?.resumedNow != true) -> askCard(c, x)
             x.voice -> voiceGo(c, x)
-            else -> begin(c, x)
+            // (nobody has said yes yet: the card counts down)
+            else -> begin(c, x, countdownMs)
         }
     }
 
@@ -167,6 +174,10 @@ internal object PlaceInbox {
         main.removeCallbacks(tick)
         main.postDelayed(tick, 1000L)
     }
+
+    /** Debug builds: setprop debug.aura.phonehold <ms>, for a look at the card. */
+    private val countdownMs: Long
+        get() = (if (com.abdllh.aura.BuildConfig.DEBUG) com.abdllh.aura.system.SystemProps.get("debug.aura.phonehold").toLongOrNull() else null) ?: COUNTDOWN_MS
 
     // ------------------------------------------------------------------------------------------ waiting
     private fun hold(x: Incoming, why: String) {
@@ -238,7 +249,7 @@ internal object PlaceInbox {
 
     private fun replaceCard(c: Context, x: Incoming) {
         val w = words(c)
-        val replace ={ if (current === x) begin(c, x) }
+        val replace = { if (current === x) begin(c, x) }
         val keep = { if (current === x) { tell(x, "ignored", JSONObject().put("kept", true)); note(x, "ignored"); finishWith(x) } }
         // nobody answered: the trip goes on
         val nobody = { if (current === x) { tell(x, "ignored", JSONObject().put("kept", true).put("by", "timeout")); note(x, "ignored"); finishWith(x) } }
@@ -275,7 +286,12 @@ internal object PlaceInbox {
         Screens.mapsPlace(c, x.place.pos.lat, x.place.pos.lon, x.place.name, x.place.detail, mayKeep(x))
     }
 
+    /**
+     * The route of a place he has said yes to is being found. With no trip Maps shows that on its own card, which has the Cancel ([com.abdllh.aura.nav.BrowseCards.syncAttempt]);
+     * only a trip being replaced has no card, its column stays: the banner says it here.
+     */
     private fun progressCard(c: Context, x: Incoming, phase: Trips.Phase) {
+        if (NavSession.state != NavSession.State.NAVIGATING) { TripCard.hide(); return }
         if (blocker() != null) { cardAway = true; return }
         val w = words(c)
         TripCard.show(c, caption(c, x), x.place.name,
@@ -284,14 +300,15 @@ internal object PlaceInbox {
     }
 
     // ------------------------------------------------------------------------------------------ going
-    private fun begin(c: Context, x: Incoming) {
+    /** [holdMs]: nobody has said yes to it: once its route is there it counts down that long on its card ([Trips.Phase.READY]). */
+    private fun begin(c: Context, x: Incoming, holdMs: Long = 0L) {
         if (handedOver(c, x)) return
         stage = Stage.TRIP
         cardAway = false
         main.removeCallbacks(tick)
         main.postDelayed(tick, 1000L)
         shownPhase = null // ([tripsListener] tells each phase, the first one too, and shows the card)
-        Trips.goTo(c, x.place, x.from, if (x.voice) Trips.VOICE else Trips.PHONE, waitForFix = true, remember = mayKeep(x)) { outcome, why ->
+        Trips.goTo(c, x.place, x.from, if (x.voice) Trips.VOICE else Trips.PHONE, waitForFix = true, remember = mayKeep(x), holdMs = holdMs) { outcome, why ->
             if (current === x) when (outcome) {
                 Trips.Outcome.STARTED -> started(c, x)
                 Trips.Outcome.FAILED, Trips.Outcome.NO_FIX -> failed(c, x, if (outcome == Trips.Outcome.NO_FIX) "no_fix" else if (why == "timeout") "timeout" else "no_route")
@@ -305,8 +322,10 @@ internal object PlaceInbox {
     /** Apple's terms keep its place data off the unit's lists (companion.md 2.6). */
     private fun mayKeep(x: Incoming) = !x.src.contains("apple", ignoreCase = true)
 
-    private fun tellPhase(x: Incoming, phase: Trips.Phase) =
-        tell(x, if (phase == Trips.Phase.WAITING_FIX) "waiting_fix" else "routing", JSONObject().put("place", x.place.toJson()))
+    private fun tellPhase(x: Incoming, phase: Trips.Phase) {
+        if (phase == Trips.Phase.READY) tell(x, "card", JSONObject().put("kind", "countdown").put("ms", countdownMs))
+        else tell(x, if (phase == Trips.Phase.WAITING_FIX) "waiting_fix" else "routing", JSONObject().put("place", x.place.toJson()))
+    }
 
     /** The navigation app chosen in Settings, when it is not AMRI Maps. It says nothing back: told "handed", not "started". */
     private fun handedOver(c: Context, x: Incoming): Boolean {
@@ -336,6 +355,10 @@ internal object PlaceInbox {
         if (!x.voice) {
             note(x, "started")
             NavSession.announce(line)
+            // (its card counted down, or he said yes on the banner: there is nothing to take back but the trip, and End is there)
+            current = null
+            TripCard.hide()
+            return
         }
         stage = Stage.CANCEL_WINDOW
         // (nothing over the camera or a call's card: then the trip just runs, with its End button on the Maps screen)
@@ -378,9 +401,9 @@ internal object PlaceInbox {
             TripCard.show(c, caption(c, x), w.getString(R.string.link_failed_kept, x.place.name), null, emptyList(), FAILED_MS, null)
             return
         }
+        // (the place's own card says it: no route, and try again)
         openOnMap(c, x)
         onMap = x
-        TripCard.show(c, caption(c, x), w.getString(R.string.link_failed, x.place.name), null, emptyList(), FAILED_MS, null)
     }
 
     // ------------------------------------------------------------------------------------------ stopping

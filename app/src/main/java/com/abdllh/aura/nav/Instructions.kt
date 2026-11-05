@@ -239,10 +239,15 @@ object Units {
         return if (whole == 1) "كيلومتر ونصف" else "$base ونصف"
     }
 
-    /** "12 دقيقة", "5 دقائق", "1 س 20 د" / "12 min", "1 h 20 min". */
+    /** "دقيقة", "دقيقتين", "5 دقائق", "12 دقيقة", "1 س 20 د" / "12 min", "1 h 20 min". */
     fun duration(sec: Double, arabic: Boolean): String {
         val min = (sec / 60).roundToInt().coerceAtLeast(1)
-        if (min < 60) return if (arabic) "$min ${if (min in 3..10) "دقائق" else "دقيقة"}" else "$min min"
+        if (min < 60) return if (!arabic) "$min min" else when (min) {
+            1 -> "دقيقة"
+            2 -> "دقيقتين"
+            in 3..10 -> "$min دقائق"
+            else -> "$min دقيقة"
+        }
         val h = min / 60
         val m = min % 60
         return if (arabic) "$h س" + (if (m > 0) " $m د" else "") else "$h h" + (if (m > 0) " $m min" else "")

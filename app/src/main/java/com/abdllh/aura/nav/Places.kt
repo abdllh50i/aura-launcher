@@ -70,6 +70,17 @@ object Places {
     }
 
     /**
+     * [search] while a driver types: the search under way stops at once, and this one waits for the next letter ([PlaceSearch.typing]). The text as typed.
+     * [done]: the list so far, null when there is no answer at all, and whether it is the last one; it may run twice, as [search]'s does.
+     */
+    fun typing(query: String, near: LatLon?, arabic: Boolean, done: (List<Place>?, Boolean) -> Unit) {
+        val gen = generation.incrementAndGet()
+        val current = { gen == generation.get() }
+        if (!PlaceSearch.swapOn) { find(query, near, arabic, io, current, done); return }
+        PlaceSearch.typing(query, near) { a -> if (current()) afterEngine(a, query, near, arabic, io, current, done) }
+    }
+
+    /**
      * The same search for someone other than the Maps screen's search field (the voice, the phone): it cancels nothing
      * and nothing cancels it, and a stalled hotspot under it does not hold up what the driver types there. [done]: the
      * list so far, and whether it is the last one.
