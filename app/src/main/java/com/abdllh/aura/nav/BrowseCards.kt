@@ -458,7 +458,7 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
         placeCard.hideCard()
         phoneCard.hideCard()
         if (input.text.trim().length < 2) showSuggestions()
-        if (keyboard) {
+        if (keyboard && !DriveState.moving) {
             input.requestFocus()
             input.post { (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(input, 0) }
         }
@@ -586,7 +586,7 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
 
     private fun syncChoiceLines() {
         val r = preview ?: return
-        placeCard.setArrival("${getString(R.string.maps_arrival)} ${Units.arrival(r.duration, Prefs.clock24, arabic)}")
+        placeCard.setArrival("${getString(R.string.browse_arrive)} ${Units.arrival(r.duration, Prefs.clock24, arabic)}")
         placeCard.warn(warningOf(r))
     }
 

@@ -31,8 +31,22 @@ import com.abdllh.aura.util.Dp
 import com.abdllh.aura.util.Prefs
 
 class AuraApp : Application() {
-    override fun attachBaseContext(base: android.content.Context) {
-        super.attachBaseContext(com.abdllh.aura.util.LocaleHelper.forApp(base))
+    private var langRes: android.content.res.Resources? = null
+    private var langCode = ""
+
+    /**
+     * In the app's own language. At every update of the configuration, also one with nothing new in it that no callback hears, the framework sets the process's default Locale from this
+     * context's resources (ActivityThread.updateLocaleListFromAppContext), and a label's TEXT_DIRECTION_LOCALE, [com.abdllh.aura.nav.Units] and all the "is it Arabic" of the app read that default: in a
+     * window whose language was not the system's the lines turned around after a while, "25 دقيقة" with its number on the wrong side, AM in an Arabic line. (Prefs are not up in a process's first moments.)
+     */
+    override fun getResources(): android.content.res.Resources {
+        val code = try { Prefs.lang } catch (_: Throwable) { return super.getResources() }
+        if (code == "system") return super.getResources()
+        if (code != langCode || langRes == null) {
+            langCode = code
+            langRes = com.abdllh.aura.util.LocaleHelper.wrap(baseContext).resources
+        }
+        return langRes ?: super.getResources()
     }
 
     override fun onCreate() {
