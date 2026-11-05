@@ -19,14 +19,12 @@ internal object ChromeRules {
 
     /**
      * The strip's speed: whenever the car is Moving and no speed card is on screen. Home on a trip; Home with no trip has it in the search's
-     * slot. Maps and Music have the column's card, unless a search or place card lies over it there ([mapsCardHidden]). Phone, Apps and
-     * Settings with no trip; on a trip they lie beside the column.
+     * slot. Maps has the column's card, unless a search or place card lies over it there ([mapsCardHidden]). Every other panel covers the whole screen, on a trip too.
      */
     fun stripSpeed(panel: String, moving: Boolean, trip: Boolean, mapsCardHidden: Boolean): Boolean = when {
         !moving -> false
         panel == Screens.HOME -> trip
         panel == Screens.MAPS -> mapsCardHidden
-        panel == Screens.MUSIC -> false
-        else -> !trip
+        else -> true
     }
 }

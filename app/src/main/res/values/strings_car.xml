@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="car_turn_wait">One moment, getting the car ready to turn (%1$s%%)</string>
-    <string name="car_turn_moving">You can turn it when parked</string>
     <string name="car_turn_failed">Couldn\'t get the car ready to turn</string>
 </resources>

@@ -15,9 +15,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
 import com.abdllh.aura.R
-import com.abdllh.aura.nav.NavSession
 import com.abdllh.aura.system.AppRemover
-import com.abdllh.aura.system.DriveState
 import com.abdllh.aura.system.IdleGc
 import com.abdllh.aura.ui.Confirm
 import com.abdllh.aura.ui.Menu
@@ -26,12 +24,9 @@ import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.PressGesture
 import com.abdllh.aura.ui.Snack
 import com.abdllh.aura.ui.SnapScroll
-import com.abdllh.aura.ui.Surface
-import com.abdllh.aura.ui.SurfaceCard
 import com.abdllh.aura.ui.Surfaces
 import com.abdllh.aura.ui.Tokens2
 import com.abdllh.aura.ui.Tones
-import com.abdllh.aura.ui.TurnAway
 import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.anim
 import com.abdllh.aura.ui.at
@@ -42,34 +37,37 @@ import com.abdllh.aura.ui.surfaceImage
 import kotlin.math.ceil
 
 /**
- * Apps (SPEC.md section 6.6): six by two a page, on the colour tiles of Home, in a room of its own; on a trip four by three in a card beside the column, which
- * stays. A known app of the firmware has its own glyph on its tile and AMRI's word for it, any other its own icon on the dark tile. A long press: its Android
- * page, and removing it where the root shell can (as the old drawer did; a pin is gone with the old dock). The list and the icons are read when it opens; the
- * frame answers in the first frame, what is in it follows.
+ * Apps (SPEC.md section 6.6): six by two a page, on the colour tiles of Home, in a room of its own. A known app of the firmware has its own glyph on its tile and AMRI's word for it, any other
+ * its own icon on the dark tile. A long press: its Android page, and removing it where the root shell can (as the old drawer did; a pin is gone with the old dock). The list and the icons are
+ * read when it opens; the frame answers in the first frame, what is in it follows.
  */
 class AppsPanel(shell: HomeActivity) : Panel(shell, Screens.APPS) {
     override val root = FrameLayout(this)
-    override val opaque: Boolean get() = NavSession.state == NavSession.State.IDLE
-    override val solid: Boolean get() = opaque
+    override val opaque: Boolean get() = true
     override val keep: Boolean get() = true
     override val recolours: Boolean get() = true
-    override val besideColumn: Boolean get() = true
 
     private val rtl = resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL
     private var builtDark = Palette.dark
-    private var builtOnTrip: Boolean? = null
     private var list: List<AppInfo> = emptyList()
     private var entries: List<AppEntry> = emptyList()
-    private var scroll: SnapScroll? = null
-    private var grid: FrameLayout? = null
-    private var dots: PageDots? = null
-    private var turnAway: TurnAway? = null
+    private val grid = FrameLayout(this)
+    private val scroll = SnapScroll(this)
+    private val dots = PageDots(this)
+
+    init {
+        root.addView(surfaceImage("room"), at(0, 0, 1024, 600))
+        val title = label(Type.pageTitle, { Palette.ink }).apply { setText(R.string.dock_apps) }
+        root.addView(title, Type.pageTitle.box(24, 46, 976))
+        scroll.addView(grid, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
+        root.addView(scroll, at(GRID_X, GRID_Y, GRID_W, 2 * ROW + WINDOW_MORE))
+        root.addView(dots, at(GRID_X + GRID_W + 2, GRID_Y, 8, 2 * ROW))
+        scroll.onMoved = { y -> dots.at(y, scroll.most) }
+    }
 
     override fun onShow(args: Bundle?) {
         // (a theme set meanwhile by an old path, or by a debug hook)
         if (Palette.dark != builtDark) { com.abdllh.aura.ui.Look.apply(root); builtDark = Palette.dark }
-        frameFor(!opaque)
-        turnAway?.on()
         AppRepo.cached?.let { fill(it, false) }
         AppRepo.loadAsync(this) { fresh ->
             if (isGone || fresh.isEmpty()) return@loadAsync
@@ -78,87 +76,37 @@ class AppsPanel(shell: HomeActivity) : Panel(shell, Screens.APPS) {
         }
     }
 
-    override fun onHide() { turnAway?.off() }
-
-    override fun onTrip(on: Boolean) {
-        frameFor(on)
-        turnAway?.on()
-    }
-
     override fun onLook() {
         if (Palette.dark != builtDark) { com.abdllh.aura.ui.Look.apply(root); builtDark = Palette.dark }
     }
 
-    /** The room and the title, or the card and the title: at once. */
-    private fun frameFor(onTrip: Boolean) {
-        if (builtOnTrip == onTrip) return
-        turnAway?.off()
-        builtOnTrip = onTrip
-        root.removeAllViews()
-        entries = emptyList()
-        grid = null
-        val host: FrameLayout
-        if (onTrip) {
-            host = SurfaceCard(this, Surface.OVERLAY)
-            root.addView(host, Surface.OVERLAY.at(CARD_X, CARD_Y, CARD_W, CARD_H))
-            turnAway = TurnAway(host, 12f)
-            val title = label(Type.pageTitle, { Palette.ink }).apply { setText(R.string.dock_apps) }
-            host.addView(title, Type.pageTitle.box(22, 10, CARD_W - 44))
-        } else {
-            host = root
-            turnAway = null
-            root.addView(surfaceImage("room"), at(0, 0, 1024, 600))
-            val title = label(Type.pageTitle, { Palette.ink }).apply { setText(R.string.dock_apps) }
-            root.addView(title, Type.pageTitle.box(24, 46, 976))
-        }
-        val g = FrameLayout(this)
-        val s = SnapScroll(this)
-        s.addView(g, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
-        if (onTrip) host.addView(s, at(GRID_TRIP_X - CARD_X, GRID_TRIP_Y - CARD_Y, GRID_TRIP_W, 3 * ROW_TRIP))
-        else host.addView(s, at(GRID_X, GRID_Y, GRID_W, 2 * ROW + WINDOW_MORE))
-        val d = PageDots(this)
-        if (onTrip) host.addView(d, at(CARD_W - 8, GRID_TRIP_Y - CARD_Y, 8, 3 * ROW_TRIP))
-        else host.addView(d, at(GRID_X + GRID_W + 2, GRID_Y, 8, 2 * ROW))
-        s.onMoved = { y -> d.at(y, s.most) }
-        scroll = s
-        grid = g
-        dots = d
-        if (list.isNotEmpty()) fill(list, false, force = true)
-    }
-
     /** What is on the grid. An unchanged list binds nothing. */
-    private fun fill(fresh: List<AppInfo>, reveal: Boolean, force: Boolean = false) {
-        if (!force && fresh == list && entries.isNotEmpty()) return
+    private fun fill(fresh: List<AppInfo>, reveal: Boolean) {
+        if (fresh == list && entries.isNotEmpty()) return
         list = fresh
-        val g = grid ?: return
-        val onTrip = builtOnTrip == true
         val hadNone = entries.isEmpty()
         entries = order(this, fresh)
         // (an emulator has ten apps and a unit more than a page: setprop debug.aura.appsmany 3 shows each that many times)
         if (com.abdllh.aura.BuildConfig.DEBUG) com.abdllh.aura.system.SystemProps.get("debug.aura.appsmany").toIntOrNull()?.let { n -> entries = (1..n).flatMap { entries } }
-        val cols = if (onTrip) 4 else 6
-        val cellW = (if (onTrip) GRID_TRIP_W else GRID_W) / cols.toFloat()
-        val rowH = if (onTrip) ROW_TRIP else ROW
-        val cellH = if (onTrip) ROW_TRIP else CELL_H
-        g.removeAllViews()
+        val cellW = GRID_W / COLS.toFloat()
+        grid.removeAllViews()
         for ((i, e) in entries.withIndex()) {
-            val col = i % cols
-            val left = Math.round((if (rtl) cols - 1 - col else col) * cellW)
-            val right = Math.round(((if (rtl) cols - 1 - col else col) + 1) * cellW)
-            g.addView(AppCell(this, e, onTrip), at(left, (i / cols) * rowH, right - left, cellH))
+            val col = i % COLS
+            val left = Math.round((if (rtl) COLS - 1 - col else col) * cellW)
+            val right = Math.round(((if (rtl) COLS - 1 - col else col) + 1) * cellW)
+            grid.addView(AppCell(this, e), at(left, (i / COLS) * ROW, right - left, CELL_H))
         }
-        val rows = ceil(entries.size / cols.toDouble()).toInt()
+        val rows = ceil(entries.size / COLS.toDouble()).toInt()
         // (as tall as the window on its rows, so the last stop is a row's as well: the first page and the last stand on the same line)
-        g.minimumHeight = rows * rowH + if (onTrip) 0 else WINDOW_MORE
-        val s = scroll ?: return
-        s.pitch = rowH
-        dots?.set(ceil(rows / (if (onTrip) 3.0 else 2.0)).toInt())
-        if (s.scrollY > g.minimumHeight - s.height) s.scrollTo(0, 0)
+        grid.minimumHeight = rows * ROW + WINDOW_MORE
+        scroll.pitch = ROW
+        dots.set(ceil(rows / 2.0).toInt())
+        if (scroll.scrollY > grid.minimumHeight - scroll.height) scroll.scrollTo(0, 0)
         // (read for the first time: it comes up as one; a list that was there just stands)
         if (reveal && hadNone) {
-            s.alpha = 0f
-            s.translationY = RISE
-            s.anim(Tokens2.MS_cardIn, Motion.ENTER).alpha(1f).translationY(0f).start()
+            scroll.alpha = 0f
+            scroll.translationY = RISE
+            scroll.anim(Tokens2.MS_cardIn, Motion.ENTER).alpha(1f).translationY(0f).start()
         }
     }
 
@@ -179,8 +127,6 @@ class AppsPanel(shell: HomeActivity) : Panel(shell, Screens.APPS) {
     }
 
     private fun remove(pkg: String, name: String) {
-        // (a dialog never while the car moves: section 5)
-        if (DriveState.moving) { Snack.show(this, R.string.st_parked_only); return }
         Confirm.show(this, getString(R.string.uninstall_title, name), getString(R.string.uninstall_text), getString(R.string.drawer_uninstall), true) {
             AppRemover.uninstall(this, pkg) { ok ->
                 Snack.show(this, getString(if (ok) R.string.uninstall_done else R.string.uninstall_failed, name))
@@ -193,20 +139,17 @@ class AppsPanel(shell: HomeActivity) : Panel(shell, Screens.APPS) {
     }
 
     /** One cell: the tile, which sinks under the finger, and its word. A click and a long press belong to the whole cell. */
-    private inner class AppCell(ctx: Context, private val e: AppEntry, onTrip: Boolean) : FrameLayout(ctx) {
-        private val size = if (onTrip) TILE_TRIP else TILE
-        private val tile = TileView(ctx, e, size, if (onTrip) GLYPH_TRIP else GLYPH, if (onTrip) ICON_TRIP else ICON)
+    private inner class AppCell(ctx: Context, private val e: AppEntry) : FrameLayout(ctx) {
+        private val tile = TileView(ctx, e, TILE, GLYPH, ICON)
         private val gesture = PressGesture(tile, PressGesture.ICON)
 
         init {
-            // (the two heights of section 5: tile, gap and line box, centred in the cell)
-            val role = if (onTrip) Type.rowValue else Type.gridLabel
-            val gap = if (onTrip) 4 else 12
-            val cellH = if (onTrip) ROW_TRIP else CELL_H
-            val top = (cellH - size - gap - role.line) / 2
-            addView(tile, FrameLayout.LayoutParams(size, size, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = top })
+            // (tile, gap and line box, centred in the cell)
+            val role = Type.gridLabel
+            val top = (CELL_H - TILE - GAP - role.line) / 2
+            addView(tile, FrameLayout.LayoutParams(TILE, TILE, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = top })
             val word = label(role, { Palette.ink }, gravity = Gravity.CENTER).apply { text = e.label }
-            addView(word, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, role.viewH, Gravity.TOP).apply { topMargin = top + size + gap + role.viewTop })
+            addView(word, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, role.viewH, Gravity.TOP).apply { topMargin = top + TILE + GAP + role.viewTop })
             isClickable = true
             setOnClickListener {
                 Tones.tick(context)
@@ -236,23 +179,14 @@ class AppsPanel(shell: HomeActivity) : Panel(shell, Screens.APPS) {
         const val GRID_X = 16
         const val GRID_Y = 96
         const val GRID_W = 992
+        const val COLS = 6
         const val CELL_H = 196
         const val ROW = 204
         const val WINDOW_MORE = 2
         const val TILE = 104
+        const val GAP = 12
         const val GLYPH = 56
         const val ICON = 72
-        const val CARD_X = 392
-        const val CARD_Y = 48
-        const val CARD_W = 616
-        const val CARD_H = 456
-        const val GRID_TRIP_X = 400
-        const val GRID_TRIP_Y = 108
-        const val GRID_TRIP_W = 600
-        const val ROW_TRIP = 132
-        const val TILE_TRIP = 84
-        const val GLYPH_TRIP = 46
-        const val ICON_TRIP = 58
         const val RISE = 8f
         const val GC_AFTER_MS = 3000L
     }

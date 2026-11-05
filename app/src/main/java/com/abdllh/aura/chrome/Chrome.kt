@@ -38,7 +38,6 @@ import com.abdllh.aura.system.Prayer
 import com.abdllh.aura.system.PrayerTimes
 import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.Look
-import com.abdllh.aura.ui.Modal
 import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Recolours
@@ -218,11 +217,7 @@ class Chrome private constructor(private val shell: HomeActivity) : FrameLayout(
 
     private val onGear: () -> Unit = { refreshFaces(canMove()) }
 
-    private val onDrive: () -> Unit = {
-        // (the car starts moving: a dialog goes as Cancel, section 6.0's event table)
-        if (DriveState.moving) Modal.dismissAll()
-        refreshFaces(canMove())
-    }
+    private val onDrive: () -> Unit = { refreshFaces(canMove()) }
 
     private val onNav: () -> Unit = {
         val t = NavSession.state != NavSession.State.IDLE

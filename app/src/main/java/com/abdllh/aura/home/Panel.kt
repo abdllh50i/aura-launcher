@@ -50,27 +50,11 @@ abstract class Panel(val shell: HomeActivity, val name: String) : ContextWrapper
     open val navBar: Int get() = Palette.bg
 
     /**
-     * On a trip it is a card beside the driving column, x 392..1008, y 48..504 (SPEC.md section 6.0): Maps stays drawn under it, its column
-     * and the map going on ([PanelStack]), with no [onShow] of its own. Such a panel says [opaque] by the trip too (`NavSession.state ==
-     * IDLE`): its room with no trip, and [solid] the same. Apps, Settings, Phone.
-     */
-    open val besideColumn: Boolean get() = false
-
-    /**
      * Its cover, where Home's cover flies to and from it (SPEC.md section 9): one bitmap on one layer, this view hidden until it lands, and at the same rect in the end. It is rounded by [flightRadius]. Null: no flight, the panel simply fades.
      */
     open val flightCover: View? get() = null
 
     open val flightRadius: Int get() = com.abdllh.aura.ui.Tokens2.R_coverBig
-
-    /** Maps stays drawn under it just now, trip or not, as under [besideColumn]: Music lying collapsed while the car moves. It tells the stack when this changes ([PanelStack.panelChanged]). */
-    open val overMaps: Boolean get() = false
-
-    /** A trip began or ended while this panel is on top ([besideColumn]: from its room to its card, and back). */
-    open fun onTrip(on: Boolean) {}
-
-    /** Maps only: it is drawn under the top panel from now on, or not any more ([besideColumn]). Not [onShow] and [onHide]: it is not on top. */
-    open fun onBeside(on: Boolean) {}
 
     /**
      * It came to the top with what the caller of [PanelStack.show] gave, or the window started with it on top, or what

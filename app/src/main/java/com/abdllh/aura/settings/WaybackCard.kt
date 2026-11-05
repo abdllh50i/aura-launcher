@@ -77,7 +77,7 @@ internal object WaybackCard {
         else -> ctx.getString(R.string.wayback_why_looking)
     }
 
-    private fun ask(ctx: Context, act: SettingsPanel, version: String, test: Boolean) = ctx.parked {
+    private fun ask(ctx: Context, act: SettingsPanel, version: String, test: Boolean) {
         val title = if (test) ctx.getString(R.string.wayback_test_title) else ctx.getString(R.string.wayback_confirm_title, version)
         val text = if (test) ctx.getString(R.string.wayback_test_text, version, BuildConfig.VERSION_NAME) else ctx.getString(R.string.wayback_confirm_text, version)
         val go = ctx.getString(if (test) R.string.wayback_test_btn else R.string.wayback_back_btn)

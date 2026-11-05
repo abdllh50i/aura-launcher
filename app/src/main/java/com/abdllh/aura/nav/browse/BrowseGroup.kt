@@ -102,7 +102,7 @@ internal class NoGpsCard(ctx: Context) : SurfaceCard(ctx, Surface.CARD) {
 }
 
 /**
- * Browse's one search pill over the map (simple/CHANGES.md section 5, `map-browse`): 364 x 52 at (16, 48). Moving, its glyph is the mic. His places are the search panel's first rows now, not chips.
+ * Browse's one search pill over the map (simple/CHANGES.md section 5, `map-browse`): 364 x 52 at (16, 48). His places are the search panel's first rows now, not chips.
  * Comes in by alpha, and goes at once: a card that takes its place is on its way in the same frame.
  */
 internal class BrowseGroup(ctx: Context, layer: FrameLayout) {
@@ -110,7 +110,6 @@ internal class BrowseGroup(ctx: Context, layer: FrameLayout) {
     private val pill = object : SurfaceCard(ctx, Surface.PILL) { override fun hasOverlappingRendering() = false }
     private val pillGlyph = ImageView(ctx).apply { setImageResource(R.drawable.ic_search); scaleType = ImageView.ScaleType.FIT_CENTER }.glyph { Palette.ink2 }
     private val pillText: AText = ctx.label(Type.search, { Palette.ink2 })
-    private var moving = false
     private var shown = true
 
     var onPill: (() -> Unit)? = null
@@ -126,13 +125,6 @@ internal class BrowseGroup(ctx: Context, layer: FrameLayout) {
 
     /** The field's words: where to, or what Home or Work being chosen asks for. */
     fun hint(text: String) { if (pillText.text != text) pillText.text = text }
-
-    /** Moving ([com.abdllh.aura.system.DriveState]): the mic. */
-    fun setMoving(on: Boolean) {
-        if (on == moving) return
-        moving = on
-        pillGlyph.setImageResource(if (on) R.drawable.ic_mic else R.drawable.ic_search)
-    }
 
     fun show(on: Boolean) {
         if (on == shown) return

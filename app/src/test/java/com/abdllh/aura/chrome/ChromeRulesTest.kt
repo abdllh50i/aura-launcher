@@ -29,10 +29,9 @@ class ChromeRulesTest {
         assertFalse("Home with no trip: the search's slot", ChromeRules.stripSpeed(Screens.HOME, true, false, false))
         assertFalse("Maps: its card", ChromeRules.stripSpeed(Screens.MAPS, true, true, false))
         assertTrue("Maps: a search or a place card over it", ChromeRules.stripSpeed(Screens.MAPS, true, false, true))
-        assertFalse("Music: its card", ChromeRules.stripSpeed(Screens.MUSIC, true, false, false))
-        for (p in listOf(Screens.PHONE, Screens.APPS, Screens.SETTINGS)) {
+        for (p in listOf(Screens.MUSIC, Screens.PHONE, Screens.APPS, Screens.SETTINGS)) {
             assertTrue(p, ChromeRules.stripSpeed(p, true, false, false))
-            assertFalse("$p beside the column", ChromeRules.stripSpeed(p, true, true, false))
+            assertTrue("$p on a trip: the whole screen", ChromeRules.stripSpeed(p, true, true, false))
         }
     }
 }

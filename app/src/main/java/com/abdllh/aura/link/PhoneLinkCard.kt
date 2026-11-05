@@ -7,7 +7,6 @@ import android.view.View
 import android.widget.LinearLayout
 import com.abdllh.aura.R
 import com.abdllh.aura.settings.block
-import com.abdllh.aura.settings.parked
 import com.abdllh.aura.settings.rows
 import com.abdllh.aura.settings.switchRow
 import com.abdllh.aura.ui.ABtn
@@ -73,11 +72,9 @@ class PhoneLinkCard(private val ctx: Context) {
         showBtn.setOnClickListener { setShowing(!showing) }
         actions.addView(showBtn, lp(WRAP, WRAP))
         forgetBtn.setOnClickListener {
-            ctx.parked {
-                com.abdllh.aura.ui.Confirm.show(ctx, ctx.getString(R.string.link_forget_title), ctx.getString(R.string.link_forget_text), ctx.getString(R.string.link_forget)) {
-                    Pairing.forgetAll()
-                    refresh()
-                }
+            com.abdllh.aura.ui.Confirm.show(ctx, ctx.getString(R.string.link_forget_title), ctx.getString(R.string.link_forget_text), ctx.getString(R.string.link_forget)) {
+                Pairing.forgetAll()
+                refresh()
             }
         }
         actions.addView(forgetBtn, lp(WRAP, WRAP).apply { marginStart = Space.S })

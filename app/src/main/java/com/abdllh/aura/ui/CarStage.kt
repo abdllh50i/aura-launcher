@@ -20,7 +20,6 @@ import android.view.animation.PathInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import com.abdllh.aura.R
-import com.abdllh.aura.system.DriveState
 import org.json.JSONObject
 import java.lang.ref.WeakReference
 import kotlin.math.abs
@@ -33,7 +32,7 @@ import kotlin.math.sign
  * The user's car on a turntable, on the wall (SPEC.md section 10): drawn by [CarGlView] in its rect, the wall's own pixels under it until its first frame. Drag sideways to turn it, flick to spin it;
  * it comes to rest with inertia and, after a few idle seconds, swings back to its showroom angle, frame 108, in both languages. Adjacent frames blend while it moves; at rest the
  * crisp copy of the frame fades in, in one step. The first run bakes the frames ([CarEtc]): from its first few it turns on what is in, coarsely, and says how far it has come; before them a drag has that
- * word alone, and nothing shows at rest. While the car moves the turntable is locked ([locked]), and a drag hears that too. No frame goes to the GPU when nobody can take it: under another panel its thread
+ * word alone, and nothing shows at rest. It turns whatever the car is doing: a passenger turns it. No frame goes to the GPU when nobody can take it: under another panel its thread
  * would hang in the swap two frames later.
  */
 class CarStage(context: Context) : FrameLayout(context) {
@@ -83,22 +82,6 @@ class CarStage(context: Context) : FrameLayout(context) {
             if (v == field) return
             field = v
             redraw()
-        }
-
-    /** The car moves ([DriveState.moving], and no guess of a gear or a trip standing at a light is that): nobody turns it, and it goes back to its angle. */
-    var locked = false
-        set(v) {
-            if (v == field) return
-            field = v
-            if (v) {
-                lockedTimes++
-                lockedAt = SystemClock.elapsedRealtime()
-                removeCallbacks(goHome)
-                dragging = false
-                moved = false
-                vel = 0f
-                settleHome()
-            }
         }
 
     /** The wall's own pixels under the GL view until its first frame: the hole never shows the void. */
@@ -331,13 +314,8 @@ class CarStage(context: Context) : FrameLayout(context) {
 
     /** A drag while it cannot turn has its answer too, once. */
     private fun refuse() {
-        if (locked) {
-            noteDrag("locked")
-            Snack.show(context, R.string.car_turn_moving)
-        } else {
-            noteDrag(if (gl == null || gl.broken || CarEtc.failed(Palette.dark)) "failed" else "wait")
-            sayNotReady()
-        }
+        noteDrag(if (gl == null || gl.broken || CarEtc.failed(Palette.dark)) "failed" else "wait")
+        sayNotReady()
     }
 
     private fun noteDrag(how: String) {
@@ -356,7 +334,7 @@ class CarStage(context: Context) : FrameLayout(context) {
                 moved = false
                 answered = false
                 downX = e.x; downY = e.y; lastX = e.x
-                if (locked || !turnable()) {
+                if (!turnable()) {
                     dragging = false
                     return true
                 }
@@ -492,8 +470,6 @@ class CarStage(context: Context) : FrameLayout(context) {
         @Volatile private var lastDragAt = 0L
         @Volatile private var lastDragHow = ""
         @Volatile private var lastDragFrames = 0
-        @Volatile private var lockedTimes = 0
-        @Volatile private var lockedAt = 0L
         private val dragCounts = HashMap<String, Int>()
 
         /** A finger came down on the window, from its root, before anything took it: on the car, with the car on screen, it should reach the stage ([stageDowns] in the report). */
@@ -521,10 +497,6 @@ class CarStage(context: Context) : FrameLayout(context) {
                 .put("glDrawing", g?.drawing == true)
                 .put("glBroken", g?.broken == true)
                 .put("frameNow", s?.let { Math.floorMod(it.pos.roundToInt(), it.n) } ?: JSONObject.NULL)
-                .put("locked", s?.locked == true)
-                .put("moving", DriveState.moving)
-                .put("lockedTimes", lockedTimes)
-                .put("lockedSecAgo", ago(lockedAt))
                 .put("windowDownsOnCar", windowDowns)
                 .put("stageDowns", stageDowns)
                 .put("lastDownSecAgo", ago(lastDownAt))

@@ -64,7 +64,7 @@ open class AText @JvmOverloads constructor(
         if (Build.VERSION.SDK_INT >= 28) isFallbackLineSpacing = false
     }
 
-    /** Text that wraps (only Settings' hints, the no-phone text, parked lyric lines): the role's line box, no multiplier. */
+    /** Text that wraps (only Settings' hints, the no-phone text, lyric lines): the role's line box, no multiplier. */
     fun wrapping(role: Type.Role, lines: Int = 0, moving: Boolean = false) {
         textDirection = TEXT_DIRECTION_LOCALE
         setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, role.sp)

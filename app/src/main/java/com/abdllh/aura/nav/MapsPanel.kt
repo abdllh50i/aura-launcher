@@ -169,7 +169,7 @@ class MapsPanel(shell: HomeActivity) : Panel(shell, Screens.MAPS) {
     private val tripsListener: () -> Unit = { browse.syncAttempt() }
     private val driveListener: () -> Unit = { syncFace() }
 
-    /** What the panel hears, on top or under a panel beside the column. */
+    /** What the panel hears, on top. */
     private fun listen(on: Boolean) {
         if (on == listening) return
         listening = on
@@ -217,18 +217,6 @@ class MapsPanel(shell: HomeActivity) : Panel(shell, Screens.MAPS) {
         listen(false)
         // (off the stack: gone from the map at once, as the home screen comes back over it)
         if (isOff) forgetVisit()
-    }
-
-    /** Under a panel beside the column: the trip's camera and the column go on, with nothing of a visit in it. */
-    override fun onBeside(on: Boolean) {
-        listen(on)
-        if (on) {
-            takeLook()
-            map.toMaps(SIDE.dp)
-            // (no hand on this panel: under Music lying collapsed, the car moving, it is `drive-free` at once, with no browse's tools over the chip for 10 s)
-            lastTouch = 0L
-            syncNav()
-        }
     }
 
     /** Back or the Home key took it off the stack: what the visit chose. An activity forgot this at its destroy. */
@@ -297,7 +285,6 @@ class MapsPanel(shell: HomeActivity) : Panel(shell, Screens.MAPS) {
         builtDark = Palette.dark
         builtAccent = Prefs.accent
         root.addView(columnLayer, MATCH, MATCH)
-        root.addView(com.abdllh.aura.music.LyricChip(this).also { it.onShown = { on -> tools.chipShown(on) } }, com.abdllh.aura.music.LyricChip.place())
         root.addView(browseLayer, MATCH, MATCH)
         root.addView(toolsLayer, MATCH, MATCH)
         for (p in parts) p.build()

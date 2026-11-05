@@ -425,7 +425,7 @@ class MapController(private val shell: HomeActivity) {
         m.setAhead(TurnWords.isLeft(step) && p.toNext <= LEFT_SHIFT_FROM_M, if (Instructions.entersRoundabout(step)) step.span else Double.NaN, st == NavSession.State.ARRIVED)
         // the turn ahead, as an arrow on the route itself (not the start or the arrival, nor a turn still far off);
         // through a roundabout it runs on to the exit taken, so its head shows the way out, not the ring
-        // (on the home screen's card, the route ahead and no arrow: Home hands over to Maps before the turn)
+        // (on the home screen's card, the route ahead and no arrow: its pill says the turn)
         val turn = if (!onMaps || step.type == "arrive" || step.type == "depart" || p.toNext > TURN_ARROW_FROM_M || NavSession.rerouting) null else r to p.next
         if (turn != turnShown) {
             turnShown = turn

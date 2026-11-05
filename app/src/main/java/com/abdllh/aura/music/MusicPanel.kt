@@ -34,8 +34,6 @@ import com.abdllh.aura.home.HomeActivity
 import com.abdllh.aura.home.Panel
 import com.abdllh.aura.home.Screens
 import com.abdllh.aura.media.MediaMonitor
-import com.abdllh.aura.nav.NavSession
-import com.abdllh.aura.system.DriveState
 import com.abdllh.aura.ui.ABtn
 import com.abdllh.aura.ui.AText
 import com.abdllh.aura.ui.Fonts
@@ -75,10 +73,9 @@ import com.abdllh.aura.util.Prefs
 import kotlin.math.abs
 
 /**
- * AMRI Music, a panel of the one window (SPEC.md section 6.4, CHANGES.md sections 6 and 7). Parked, with lyrics: the song's wash, the cover 232, the title, seek and transport on the left, three lines of lyrics on the right, or the library
- * when the source is USB and files; the map FROZEN under it. Parked with nothing to read: the cover 400 on the driver's side and the song large beside it ([bigOn]). What used to stand round the cover is behind one
- * quiet button ([MoreSheet]). Moving, or parked on a trip: the panel lies collapsed ([collapsed], `music-driving`, `music-driving-free`): nothing of it shows, Maps with its column lies
- * under it ([overMaps]), the dock's music cell stays selected and one lyric line shows under the car ([LyricChip]). A second tap on that cell, or Back, is the panel he came from. Its pixels are the spec's, from the left
+ * AMRI Music, a panel of the one window (SPEC.md section 6.4, CHANGES.md sections 6 and 7), the same whatever the car and a trip are doing. With lyrics: the song's wash, the cover 232, the title, seek and transport on the left, three lines of lyrics on the right, or the library
+ * when the source is USB and files; the map FROZEN under it. With nothing to read: the cover 400 on the driver's side and the song large beside it ([bigOn]). What used to stand round the cover is behind one
+ * quiet button ([MoreSheet]). A second tap on the row's music cell, or Back, is the panel he came from. Its pixels are the spec's, from the left
  * in both languages (section 7); text inside goes the language's way.
  *
  * Built ahead of time when the home screen is quiet ([PanelStack.prepareWhenQuiet]) and kept from then on: what the owner left stays (source, tab, open group, where each list was, the lyrics), and an open has
@@ -87,23 +84,10 @@ import kotlin.math.abs
  */
 class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
     override val keep: Boolean get() = true
-    // (lying collapsed nothing shows: no flight)
-    override val flightCover: View? get() = if (::coverSmall.isInitialized && !lyingCollapsed) (if (bigOn) coverBig else coverSmall) else null
+    override val flightCover: View? get() = if (::coverSmall.isInitialized) (if (bigOn) coverBig else coverSmall) else null
     override val flightRadius: Int get() = if (bigOn) COVER_BIG_R else COVER_R
     override val recolours: Boolean get() = true
-    override val opaque: Boolean get() = !lyingCollapsed
-    override val solid: Boolean get() = !lyingCollapsed
-    override val overMaps: Boolean get() = lyingCollapsed
-
-    /** Nothing of the panel shows (section 6.0's row for Music): moving, or a trip. Only [expand] brings it up, and what it asks for: parked, and on a trip gear P known. */
-    private var collapsed = false
-    /** (Before it comes up, what it will be when it does: the stack asks first.) */
-    private val lyingCollapsed: Boolean get() = if (showing) collapsed else !opensFull()
-    private fun onTripNow() = NavSession.state != NavSession.State.IDLE
-    /** How it opens: the full panel only parked with no trip. */
-    private fun opensFull() = DriveState.parked && !onTripNow()
-    /** What a tap on the chip or the mini may bring up: on a red light with a trip only with gear P known. */
-    private fun fullAllowed() = DriveState.parked && (!onTripNow() || DriveState.parkKnown)
+    override val opaque: Boolean get() = true
 
     private enum class Tab { SONGS, ALBUMS, ARTISTS, FOLDERS }
 
@@ -185,8 +169,6 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
     /** A line just tapped on Naghm's song stays lit until its sound, which comes the delay later, catches up. */
     private var tapLitMs = 0L
     private var tapLitUntil = 0L
-    /** The chip was tapped off for this song ("off for this song", section 5). */
-    private var chipOffFor: String? = null
 
     /**
      * A song as its lyrics are asked for: its key on this screen, its names, the length the lookup used, and where it
@@ -251,11 +233,7 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         }
     }
 
-    override fun onArgs(args: Bundle) {
-        handle(args)
-        // (the mini's title, the widget, the key, with the panel lying collapsed: it comes up if it may)
-        if (collapsed && fullAllowed()) expand()
-    }
+    override fun onArgs(args: Bundle) = handle(args)
 
     private fun askPermission() = requestPermissions(arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE), 3)
 
@@ -272,9 +250,6 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
     override fun onShow(args: Bundle?) {
         debugFail("show")
         catchUpLook()
-        collapsed = !opensFull()
-        root.animate().cancel()
-        root.alpha = if (collapsed) 0f else 1f
         root.visibility = View.INVISIBLE
         root.removeCallbacks(letGo)
         showing = true
@@ -290,7 +265,6 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         BtMusic.addListener(btListener)
         PhoneLink.addListener(phoneListener)
         MediaMonitor.observe(appListener)
-        DriveState.addListener(driveListener)
         Lyrics.onTimed = timedListener
         LyricsSync.onStatus = syncStatus
         // (the setting may have changed in Settings meanwhile)
@@ -302,10 +276,8 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         // (at once: the first frame shows where the song is now, and the lit line stands in its slot with no glide)
         root.removeCallbacks(progressTick)
         progressTick.run()
-        if (collapsed && lyricsFull) showFull(false, animate = false, remember = false)
         (if (lyricsFull) lyricsBig else lyricsView).settle()
-        root.visibility = if (collapsed) View.INVISIBLE else View.VISIBLE
-        syncChip()
+        root.visibility = View.VISIBLE
     }
 
     /**
@@ -318,7 +290,6 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         BtMusic.removeListener(btListener)
         PhoneLink.removeListener(phoneListener)
         MediaMonitor.unobserve(appListener)
-        DriveState.removeListener(driveListener)
         root.removeCallbacks(progressTick)
         // (listening for the lyrics' timing is the screen's: it stops with it, and starts again when it comes back)
         if (Lyrics.onTimed === timedListener) Lyrics.onTimed = null
@@ -332,7 +303,6 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         // a cover still waiting for its successor (Bluetooth): the screen comes back with whatever there is by then
         cancelArtWait()
         showing = false
-        LyricChip.current?.want(false)
         // (not now: it is on the screen until the move away has ended)
         root.removeCallbacks(letGo)
         root.postDelayed(letGo, LET_GO_AFTER_MS)
@@ -340,7 +310,6 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
 
     override fun onOff() {
         libraryAsked = false
-        chipOffFor = null
     }
 
     private val letGo = Runnable { if (!showing && !isGone) letGoOfPictures() }
@@ -364,7 +333,6 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         root.removeCallbacks(letGo)
         onBluetooth = null
         ThemeSwap.readySteps.remove(readyStep)
-        if (current === this) current = null
     }
 
     /**
@@ -418,70 +386,6 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         if (shownCover == null) { coverSmall.show(noArtSmall()); coverBig.show(noArtBig()) }
         if (::listView.isInitialized) (listView.adapter as? BaseAdapter)?.notifyDataSetChanged()
     }
-
-    // ------------------------------------------------------------------------------------------ collapsed, the full panel
-    private val driveListener: () -> Unit = {
-        // (the car stopping changes nothing by itself: it only allows more, section 6.0)
-        if (DriveState.moving && !collapsed) collapse()
-        syncChip()
-    }
-
-    /** A trip began under the full panel. */
-    override fun onTrip(on: Boolean) {
-        if (on && !collapsed && showing) collapse()
-        // (one at x 16 would lie over the column, which is never covered on a trip; it opens beside it next time)
-        if (on) { moreSheet?.close(); sourceSheet?.close(); queueSheet?.close() }
-        syncChip()
-    }
-
-    /** The car moves, or a trip began: the full lyrics and the library go with the panel, 180, and the map and the column are simply there under it. */
-    private fun collapse() {
-        collapsed = true
-        fullWaits = false
-        if (lyricsFull) showFull(false, animate = false, remember = false)
-        shell.panels.panelChanged(this) // ("wake first": the map and Maps' frame under it, before anything fades)
-        syncChip()
-        moreSheet?.takeIf { it.isOpen }?.refresh()
-        if (root.isShown && Prefs.screenAnimations) root.anim(Tokens2.MS_cardIn, Motion.MOVE).alpha(0f).withEndAction { if (collapsed) root.visibility = View.INVISIBLE }.start()
-        else { root.animate().cancel(); root.alpha = 0f; root.visibility = View.INVISIBLE }
-    }
-
-    /** Back up: the chip goes, the panel fades in over the map, and only when it is opaque does the map freeze and Maps' frame go. */
-    private fun expand() {
-        collapsed = false
-        syncChip()
-        (if (lyricsFull) lyricsBig else lyricsView).settle()
-        root.animate().cancel()
-        root.visibility = View.VISIBLE
-        if (Prefs.screenAnimations && shell.resumedNow) {
-            root.alpha = 0f
-            root.anim(Tokens2.MS_roomIn, Motion.MOVE).alpha(1f).withEndAction { if (!collapsed) shell.panels.panelChanged(this) }.start()
-        } else {
-            root.alpha = 1f
-            shell.panels.panelChanged(this)
-        }
-    }
-
-    /** The chip follows what is lying collapsed, song by song. */
-    private fun syncChip() {
-        val c = LyricChip.current ?: return
-        c.onTap = chipTapped
-        val on = showing && collapsed && (chipOffFor == null || chipOffFor != lyricsKey)
-        c.want(on)
-        if (on) {
-            var at = positionNow() + lyricsShift
-            if (SystemClock.uptimeMillis() < tapLitUntil) at = maxOf(at, tapLitMs)
-            c.at(chipRows(), at)
-        }
-    }
-
-    /** Parked, on a red light with gear P known or with no trip: the full panel. Otherwise: off for this song. */
-    private val chipTapped: () -> Unit = {
-        if (fullAllowed()) expand() else { chipOffFor = lyricsKey; syncChip() }
-    }
-
-    /** What the chip can follow: timed lines, with a known place in the song. */
-    private fun chipRows(): List<Lyrics.Line>? = lyricsResult?.takeIf { it.synced && lyricsShown == lyricsKey && lyricsKey != null && !positionUnknown }?.lines
 
     // ------------------------------------------------------------------------------------------ the listeners
     private val playerListener: () -> Unit = {
@@ -565,8 +469,6 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
             if (SystemClock.uptimeMillis() < tapLitUntil) lyricAt = maxOf(lyricAt, tapLitMs)
             val unknown = positionUnknown
             lyrics { it.needSync = unknown; it.at(lyricAt, playing) }
-            val chip = if (collapsed) LyricChip.current else null
-            if (chip != null) syncChip()
             // (each side is told: the one out of sight draws nothing for it, and is right the moment it is shown)
             when (src) {
                 // YouTube's app tells its song's length and where it is (the real position)
@@ -591,7 +493,7 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
                 }
             }
             // the lyrics follow the song closely: the next tick comes when the next line is due, not up to a tick late
-            val next = if (playing) minOf(lyricsView.msToNext(lyricAt), chip?.msToNext(lyricAt) ?: Long.MAX_VALUE) else Long.MAX_VALUE
+            val next = if (playing) lyricsView.msToNext(lyricAt) else Long.MAX_VALUE
             root.postDelayed(this, minOf(TICK_MS, next).coerceAtLeast(16L))
         }
     }
@@ -640,11 +542,11 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
     /** Both ways of showing the song are told the same things. */
     private inline fun sides(f: (SongSide) -> Unit) { f(sideSmall); f(sideBig) }
 
-    /** The lyrics alone on the screen ([on]) or back beside the song: one fades over the other, the left column stays laid out. Parked only. */
+    /** The lyrics alone on the screen ([on]) or back beside the song: one fades over the other, the left column stays laid out. */
     private fun showFull(on: Boolean, animate: Boolean = true, remember: Boolean = true) {
         val moving = animate && root.isShown && Prefs.screenAnimations
         lyricsFull = on
-        // ([remember]: the owner's own press, not the car starting to move)
+        // ([remember]: the owner's own press, not a song with nothing to read)
         if (remember) Prefs.raw.edit().putBoolean("musicLyricsFull", on).apply()
         (if (on) lyricsBig else lyricsView).settle()
         if (!moving) {
@@ -674,7 +576,7 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
     private var noLyrics = false
     /** "No lyrics for this song" is on for the one playing. */
     private var lyricsOff = false
-    /** The full lyrics closed for a song with none: they come back with the next that has some. Not after the car moved. */
+    /** The full lyrics closed for a song with none: they come back with the next that has some. */
     private var fullWaits = false
     /** The big cover is what shows, or what it is on its way to. */
     private var bigOn = false
@@ -868,7 +770,6 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         }
         syncBig()
         moreSheet?.takeIf { it.isOpen }?.refresh()
-        syncChip()
     }
 
     /**
@@ -1195,8 +1096,6 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         val sheets = shell.root.sheets
         if (s.parent == null) sheets.addView(s, FrameLayout.LayoutParams(MATCH, MATCH))
         shell.root.closeSheets()
-        // (on the panel at its full height, so that nothing of the panel shows under it)
-        s.placeOnTrip(onTripNow(), high = showing && !collapsed && !onTripNow())
         s.open()
     }
 
@@ -1210,8 +1109,8 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
     internal val sourceGlyph: Int get() = rowNow().icon
     internal val sourceName: String get() = rowTitle(rowNow(), full = false)
     internal val nextName: String get() = if (queueIsLocal) Player.upcoming().getOrNull(1)?.title.orEmpty() else getString(queueElsewhere)
-    /** The lyrics on the whole screen need the panel up, and something to read. */
-    internal val fullLyricsOk: Boolean get() = !collapsed && lyricsResult != null && lyricsShown != null && lyricsShown == lyricsKey
+    /** The lyrics on the whole screen need something to read. */
+    internal val fullLyricsOk: Boolean get() = lyricsResult != null && lyricsShown != null && lyricsShown == lyricsKey
     internal val lyricsAreOff: Boolean get() = lyricsOff
     /** Off is for a song, and with none to be had for this one there is nothing to turn off. */
     internal val lyricsCanGoOff: Boolean get() = lyricsSong != null && (lyricsOff || lyricsResult != null)
@@ -1317,7 +1216,7 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
 
     /**
      * The cover breathes out a little while the music is paused, and back in when it plays, on a spring: the largest thing on the
-     * screen says at a glance whether music plays. The group with its shadow is scaled, one transform over two bitmaps. Parked only: the panel is.
+     * screen says at a glance whether music plays. The group with its shadow is scaled, one transform over two bitmaps.
      */
     private val breath = Spring(1f, 380f, 0.78f) { poseCover() }
     private var breathSet = false
@@ -1336,7 +1235,6 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         if (key == shownSong) return
         shownSong = key
         seekTarget = -1L
-        chipOffFor = null
         if (first) return
         songMovesUntil = SystemClock.uptimeMillis() + Motion.MEDIUM
         // (only what is on the screen: the other sets of names are out of sight)
@@ -1473,7 +1371,6 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         val had = washNow != null
         washNow = w
         lyrics { it.wordColours(w.wordPill, w.wordPillInk) }
-        LyricChip.current?.wordColours(w.wordPill, w.wordPillInk)
         wash.animate().cancel()
         if (!animate || !had) {
             wash.alpha = 1f
@@ -2078,14 +1975,12 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         src = sourceNow()
         lyricsFull = src != Src.LOCAL && Prefs.raw.getBoolean("musicLyricsFull", false)
         buildUi()
-        collapsed = false
         if (lyricsFull) showFull(true, animate = false, remember = false)
         showNowPlaying()
         showList()
         btCover = null
         ytCover = null
         ThemeSwap.readySteps.add(readyStep)
-        current = this
         // Asked for only where the music files are wanted (the library's own button, or choosing its source): the
         // screen opened for the phone's music used to start with a system dialog over the song.
         if (Library.hasPermission(this) && !Library.loaded) Library.load(this)
@@ -2095,23 +1990,6 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         /** The source the screen is on while there is one (null: none), for [com.abdllh.aura.system.MusicKeys]. */
         @Volatile var onBluetooth: Boolean? = null
             private set
-
-        /** The one there is, built ahead or asked for. */
-        private var current: MusicPanel? = null
-
-        /**
-         * A tap on the mini with the panel lying collapsed and not allowed up: moving, or a trip with no gear P, which is every trip on his car. Its More sheet, beside the column on a trip, as the panel's
-         * one button is not there: with no way to it the source and the queue could not be reached on a trip. True: taken. False: the tap opens Music, as anywhere else.
-         */
-        fun moreWhileLying(): Boolean {
-            val m = current?.takeIf { it.showing && it.collapsed && !it.fullAllowed() } ?: return false
-            // (the touch that closed one of the sheets goes on to the mini: that one is no new request)
-            val now = SystemClock.uptimeMillis()
-            if (listOfNotNull(m.moreSheet, m.sourceSheet, m.queueSheet).none { now - it.closedByTouchAt < SAME_TOUCH_MS }) m.showMore()
-            return true
-        }
-
-        private const val SAME_TOUCH_MS = 700L
 
         // art keys for "no cover" states (album ids are >= 0)
         private const val BT_ART = Long.MIN_VALUE + 1

@@ -40,13 +40,9 @@ object PanelMotion {
         fun closing(from: View, under: View, done: () -> Unit)
     }
 
-    /**
-     * The move between panels [from] and [to], whichever way it is going. [beside]: on a trip, one of them lies beside the column ([Panel.besideColumn]), which stays
-     * where it is under them: Maps does not go, so its side is a card rising; Home's wall fades off it and back.
-     */
-    fun between(from: String, to: String, beside: Boolean = false): Move = when {
-        from == Screens.HOME || to == Screens.HOME -> WithHome(if (from == Screens.HOME) to else from, beside)
-        beside -> if (from == Screens.MAPS || to == Screens.MAPS) Rise else OverMap
+    /** The move between panels [from] and [to], whichever way it is going. */
+    fun between(from: String, to: String): Move = when {
+        from == Screens.HOME || to == Screens.HOME -> WithHome(if (from == Screens.HOME) to else from)
         from == Screens.MAPS || to == Screens.MAPS -> OverMap
         else -> Rise
     }
@@ -56,8 +52,8 @@ object PanelMotion {
      * once, and each move starts after the frame that holds that cost: Maps at 60 for 200 `move` with its cards rising 8 (its scrims rise with them, at an alpha where it cannot be seen), and out in 120 `exit`; Music's wash
      * and all on it at 0 for 240 `move`, out in 180 `exit`; a room at 0 for 200 `move`, rising 8, out in 180 `exit`. Home's own texts have gone by 120 and the rows have changed by 160, whatever the other panel's first frame costs.
      */
-    private class WithHome(private val other: String, private val beside: Boolean) : Move {
-        private val overMap get() = beside || other == Screens.MAPS
+    private class WithHome(private val other: String) : Move {
+        private val overMap get() = other == Screens.MAPS
 
         override fun opening(to: View, under: View, done: () -> Unit) {
             val home = (under as? PanelFrame)?.panel as? HomePanel

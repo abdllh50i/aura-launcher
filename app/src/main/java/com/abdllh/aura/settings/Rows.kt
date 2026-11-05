@@ -326,11 +326,6 @@ fun LinearLayout.addPart(title: CharSequence) {
     addView(t, lp(MATCH, Type.sectionHead.viewH).apply { topMargin = Space.L; bottomMargin = Space.XS })
 }
 
-/** A dialog never while the car moves (SPEC.md section 5): [then] now, or a word that it waits. */
-fun Context.parked(then: () -> Unit) {
-    if (com.abdllh.aura.system.DriveState.moving) com.abdllh.aura.ui.Snack.show(this, R.string.st_parked_only) else then()
-}
-
 fun Context.hint(text: CharSequence): AText = label(Type.rowHint, { Palette.ink2 }, lines = 0).apply {
     this.text = text
     setPaddingRelative(INSET, 0, INSET, 0)

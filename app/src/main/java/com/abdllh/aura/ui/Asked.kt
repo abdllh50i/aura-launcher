@@ -11,9 +11,6 @@ object Asked {
     /** The row's tiles (home/Screens' names), left to right, nearest the driver first, the most used nearest him. Nothing else names the order. */
     @JvmField val ORDER_NEAREST = listOf("home", "maps", "music", "phone", "apps", "settings")
 
-    /** The word being sung lit on its pill while the car moves. As the spec says: parked only. */
-    const val LYRIC_WORD_MOVING = false
-
     /** A message's text shown while the car moves. As the spec says: `رسالة جديدة`, the text only when parked. */
     const val MESSAGE_TEXT_MOVING = false
 }

@@ -39,8 +39,6 @@ class ProbePanel(shell: HomeActivity) : Panel(shell, "probe") {
     override val root = FrameLayout(this)
     override val keep: Boolean get() = SystemProps.get("debug.aura.probekeep") == "1"
     override val softInput: Int get() = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN
-    // (setprop debug.aura.probebeside 1: it lies beside the column on a trip, as Apps, Settings and Phone will)
-    override val besideColumn: Boolean = SystemProps.get("debug.aura.probebeside") == "1"
 
     init {
         if (failAt == "build") throw IllegalStateException("probe: build")
@@ -59,7 +57,7 @@ class ProbePanel(shell: HomeActivity) : Panel(shell, "probe") {
         Log.i("AuraProbe", "onShow ${args?.keySet()?.joinToString()}")
         if (failAt == "show") throw IllegalStateException("probe: show")
         if (SystemProps.get("debug.aura.probesurface") == "1") surfaceInSlot(shell)
-        else if (!besideColumn) shell.root.mapHost.addView(slot,FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        else shell.root.mapHost.addView(slot,FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
     }
 
     override fun onArgs(args: Bundle) {
