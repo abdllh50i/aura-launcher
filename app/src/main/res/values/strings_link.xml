@@ -37,7 +37,7 @@
     <string name="link_no">No</string>
     <string name="link_replace_q">You are on a trip to %1$s. Replace it?</string>
     <string name="link_replace">Replace</string>
-    <string name="link_keep">Keep my trip</string>
+    <string name="link_keep">Keep trip</string>
     <string name="link_started">Directions started to %1$s</string>
     <string name="link_cancel">Cancel</string>
     <string name="link_failed">Found no route to %1$s. You can try again on the map.</string>
