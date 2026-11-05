@@ -14,7 +14,6 @@ import android.util.Log
 import android.widget.FrameLayout
 import com.abdllh.aura.R
 import com.abdllh.aura.home.Actions
-import com.abdllh.aura.home.AppDrawer
 import com.abdllh.aura.home.AppRepo
 import com.abdllh.aura.home.ControlsSheet
 import com.abdllh.aura.home.HomeActivity
@@ -367,8 +366,8 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
             Screens.MAPS -> if (!Actions.nav(context)) Snack.show(context, R.string.err_no_nav)
             Screens.MUSIC -> Screens.music(context)
             Screens.SETTINGS -> Screens.settings(context)
-            // the two panels that the next stage builds: until then what opens them today
-            Screens.APPS -> sheet<AppDrawer>()?.open()
+            Screens.APPS -> Screens.apps(context)
+            // (no panel in this version: the firmware's own dial pad, the design's fallback, section 6.0's table)
             Screens.PHONE -> if (!AppRepo.launch(context, Known.PHONE)) Snack.show(context, R.string.err_app_missing)
         }
     }
@@ -514,8 +513,6 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
 
     companion object {
         private const val TAG = "AuraChrome"
-        private const val FILE = "aura_chrome"
-        private const val KEY_ON = "on"
         private const val HOLDER = "chrome"
         private const val FIX_MAX_AGE_MS = 5000L
         private const val FIX_MS = 1000L
@@ -524,12 +521,9 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
         private const val STREAM_MUTE_CHANGED = "android.media.STREAM_MUTE_CHANGED_ACTION"
         private const val DEBUG_OTHER = Screens.MAPS
 
-        /** The switch, default off while the old Dock and Home cards are in their places: a debug broadcast turns it on (debug/ChromeProbe.kt). */
-        fun isOn(c: Context): Boolean = try { c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(KEY_ON, false) } catch (_: Throwable) { false }
-
-        fun setOn(shell: HomeActivity, on: Boolean) {
-            shell.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putBoolean(KEY_ON, on).apply()
-            if (on) attachIfOn(shell) else shell.root.chrome.removeAllViews()
+        /** Debug builds, until the window's next start: off for the gallery's pages, which draw their own (debug/GalleryPanel.kt, debug/ChromeProbe.kt). */
+        internal fun debugOn(shell: HomeActivity, on: Boolean) {
+            if (on) attach(shell) else shell.root.chrome.removeAllViews()
         }
 
         /**
@@ -550,8 +544,8 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
         }
 
         /** From the window's start, before its first frame. */
-        fun attachIfOn(shell: HomeActivity) {
-            if (!isOn(shell) || of(shell) != null) return
+        fun attach(shell: HomeActivity) {
+            if (of(shell) != null) return
             val t0 = SystemClock.uptimeMillis()
             shell.root.chrome.addView(Chrome(shell, Asked.DOCK), FrameLayout.LayoutParams(1024, 600))
             Log.i(TAG, "built in ${SystemClock.uptimeMillis() - t0} ms")

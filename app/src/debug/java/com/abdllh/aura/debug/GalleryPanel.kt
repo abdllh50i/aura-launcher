@@ -988,6 +988,7 @@ class GalleryReceiver : BroadcastReceiver() {
         // (no page: a theme alone. What is open stays open, to be seen changing; a panel's show closes the sheets)
         val top = s.panels.top
         if (top is GalleryPanel && !i.hasExtra("page") && !i.hasExtra("lang")) { top.onArgs(args); return }
+        com.abdllh.aura.chrome.Chrome.debugOn(s, false) // (its pages are the mockups': what they want of the chrome they draw, or ChromeProbe --ez on true puts back)
         s.panels.show("gallery", args)
         i.getStringExtra("lang")?.let { l ->
             if (Prefs.lang != l) {

@@ -78,6 +78,9 @@ class MapController(private val shell: HomeActivity) {
         set(v) { field = v; map?.onLongPress = v }
     var onPoiTap: ((name: String, kind: String, at: LatLon) -> Unit)? = null
         set(v) { field = v; map?.onPoiTap = v }
+    /** Its camera has come to rest there. */
+    var onCameraIdle: ((LatLon) -> Unit)? = null
+        set(v) { field = v; map?.onCameraIdle = v }
     /** Its style has come (also again after [lookChanged]). */
     var onReady: (() -> Unit)? = null
     /** It has drawn (the home screen's card opens then): at once when it has already. */
@@ -86,6 +89,8 @@ class MapController(private val shell: HomeActivity) {
     init {
         host.onCovered = onCovered
         if (!allowed) note = MapGuard.whyNot(shell)
+        // (the theme's one path gets the map's colours here; by a new style until MapStyle has paints that change in place, as SPEC.md section 8 wants)
+        com.abdllh.aura.ui.ThemeSwap.map = { lookChanged() }
     }
 
     // ------------------------------------------------------------------------------------------ the window's lifecycle
@@ -127,6 +132,7 @@ class MapController(private val shell: HomeActivity) {
     fun destroyed() {
         destroyed = true
         host.onCovered = null
+        com.abdllh.aura.ui.ThemeSwap.map = null
         map?.onDestroy()
         map = null
     }
@@ -173,6 +179,7 @@ class MapController(private val shell: HomeActivity) {
         m.onUserMoved = onUserMoved
         m.onLongPress = onLongPress
         m.onPoiTap = onPoiTap
+        m.onCameraIdle = onCameraIdle
         m.setFrozen(host.covered)
         m.onReady = {
             safely("ready") { sync() }

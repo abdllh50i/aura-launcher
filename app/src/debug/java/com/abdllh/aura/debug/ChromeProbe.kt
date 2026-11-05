@@ -47,7 +47,7 @@ import java.util.Locale
 class ChromeProbe : BroadcastReceiver() {
     override fun onReceive(c: Context, i: Intent) {
         val s = HomeActivity.current ?: return
-        if (i.hasExtra("on")) Chrome.setOn(s, i.getBooleanExtra("on", false))
+        if (i.hasExtra("on")) Chrome.debugOn(s, i.getBooleanExtra("on", false))
         i.getStringExtra("order")?.let { Chrome.debugOrder(s, if (it == "spec") Asked.ORDER_SPEC else Asked.ORDER_NEAREST) }
         val ch = Chrome.of(s)
         if (i.hasExtra("status")) ch?.debugStatus = i.getBooleanExtra("status", false)

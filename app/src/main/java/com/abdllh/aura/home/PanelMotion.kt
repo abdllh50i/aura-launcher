@@ -37,8 +37,15 @@ object PanelMotion {
         fun closing(from: View, under: View, done: () -> Unit)
     }
 
-    /** The move between panels [from] and [to], whichever way it is going. */
-    fun between(from: String, to: String): Move = if (from == Screens.MAPS || to == Screens.MAPS) OverMap else Rise
+    /**
+     * The move between panels [from] and [to], whichever way it is going. [beside]: on a trip, one of them lies beside the column ([Panel.besideColumn]), which stays
+     * where it is under them: Maps does not go, so its side is a card rising; Home's wall fades off it and back.
+     */
+    fun between(from: String, to: String, beside: Boolean = false): Move = when {
+        beside -> if (from == Screens.MAPS || to == Screens.MAPS) Rise else OverMap
+        from == Screens.MAPS || to == Screens.MAPS -> OverMap
+        else -> Rise
+    }
 
     /**
      * Alpha and a small rise, as one texture. Each starts after the frame that holds its cost: a panel's first frame

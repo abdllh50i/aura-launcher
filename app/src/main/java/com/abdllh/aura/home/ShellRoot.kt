@@ -13,7 +13,7 @@ import com.abdllh.aura.ui.Sheet
 
 /**
  * The content of the one window, in layers, bottom to top: [mapHost] (the map's slot), [panelLayer] (Home, Maps, Settings...:
- * [PanelStack]), [chrome] (what stays over every panel in the new design: empty until then), [sheets] (Controls, the
+ * [PanelStack]), [chrome] (what stays over every panel: [com.abdllh.aura.chrome.Chrome]), [sheets] (Controls, the
  * app drawer). Snack adds itself to android.R.id.content, above all of this. Set once and never replaced: a new theme
  * rebuilds what is in the layers, so the surface in [mapHost] is never detached.
  */
@@ -22,7 +22,7 @@ class ShellRoot(ctx: Context) : FrameLayout(ctx) {
     val panelLayer = FrameLayout(ctx)
     val chrome = FrameLayout(ctx)
     val sheets = FrameLayout(ctx)
-    // the slots of SPEC.md section 6.0, over all of that and not drawn at rest. [chrome] is com.abdllh.aura.chrome.Chrome, behind its switch
+    // the slots of SPEC.md section 6.0, over all of that and not drawn at rest
     val snack = com.abdllh.aura.ui.SnackHost(ctx)
     val night = com.abdllh.aura.chrome.NightPanel(ctx)
     val flyer = com.abdllh.aura.chrome.Flyer(ctx)

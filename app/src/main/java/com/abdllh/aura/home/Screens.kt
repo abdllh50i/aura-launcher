@@ -46,7 +46,7 @@ object Screens {
     const val APPS = "apps"
 
     /** The screens that are panels of the home activity. */
-    private val PANELS = setOf(SETTINGS, MAPS, MUSIC)
+    private val PANELS = setOf(SETTINGS, MAPS, MUSIC, APPS)
 
     /** Which screen a home intent is for. */
     const val EXTRA_PANEL = "panel"
@@ -161,6 +161,8 @@ object Screens {
 
     /** Music on that source and playing, in place of the stock Bluetooth music screen ([bt]) or the stock music player. */
     fun musicOn(c: Context, bt: Boolean) = open(c, MUSIC, Bundle().apply { putString(MusicActivity.EXTRA_SOURCE, if (bt) "bt" else "local") })
+
+    fun apps(c: Context) = open(c, APPS)
 
     fun settings(c: Context, page: Int = SettingsActivity.PAGE_GENERAL) =
         open(c, SETTINGS, Bundle().apply { putInt(SettingsActivity.EXTRA_PAGE, page) })

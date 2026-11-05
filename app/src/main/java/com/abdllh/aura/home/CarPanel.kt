@@ -8,13 +8,11 @@ import com.abdllh.aura.R
 import com.abdllh.aura.settings.SettingsActivity
 import com.abdllh.aura.ui.AText
 import com.abdllh.aura.ui.CarStage
-import com.abdllh.aura.ui.Elev
 import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Radius
-import com.abdllh.aura.ui.IconButton
 import com.abdllh.aura.ui.Shapes
 import com.abdllh.aura.ui.Space
 import com.abdllh.aura.ui.Touch
@@ -22,7 +20,6 @@ import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.WRAP
 import com.abdllh.aura.ui.iconView
 import com.abdllh.aura.ui.label
-import com.abdllh.aura.ui.lift
 import com.abdllh.aura.ui.lp
 import com.abdllh.aura.ui.pressScale
 import com.abdllh.aura.update.UpdateManager
@@ -33,7 +30,7 @@ import java.util.Calendar
 import java.util.Date
 
 /**
- * Start side of the home screen: clock, the user's car on its turntable, and quick buttons. The car stands directly
+ * Start side of the home screen: clock and the user's car on its turntable. The car stands directly
  * on the screen's background (its frames are composed over that colour, see CarEtc): no card may go under it.
  */
 class CarPanel(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
@@ -47,14 +44,6 @@ class CarPanel(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
     private val updateChip: LinearLayout
     val stage = CarStage(ctx)
     val header: LinearLayout
-    /** The quick buttons' capsule. */
-    val quick: LinearLayout
-
-    private val wifi = IconButton(ctx, R.drawable.ic_wifi, 30, BTN, BTN)
-    private val link = IconButton(ctx, R.drawable.ic_smartphone, 30, BTN, BTN)
-    private val screenOff = IconButton(ctx, R.drawable.ic_power, 30, BTN, BTN)
-    private val car = IconButton(ctx, R.drawable.ic_car, 30, BTN, BTN)
-    private val voice = IconButton(ctx, R.drawable.ic_mic, 30, BTN, BTN)
 
     init {
         orientation = VERTICAL
@@ -91,36 +80,6 @@ class CarPanel(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
 
         stage.onTap = { host.openControls() }
         addView(stage, lp(MATCH, 0, 1f))
-
-        // the quick buttons share one capsule (a strip, like a car's switch bank) under the car
-        val row = LinearLayout(ctx).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER }
-        quick = LinearLayout(ctx).apply {
-            orientation = HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(6.dp, 6.dp, 6.dp, 6.dp)
-            background = Shapes.pill(Palette.card, if (Palette.dark) Palette.stroke else 0)
-            lift(Elev.REST)
-        }
-        for ((i, b) in listOf(voice, wifi, link, screenOff, car).withIndex()) {
-            quick.addView(b, lp(BTN.dp, BTN.dp).apply { if (i > 0) marginStart = 6.dp })
-        }
-        row.addView(quick, lp(WRAP, WRAP))
-        addView(row, lp(MATCH, WRAP))
-
-        wifi.contentDescription = ctx.getString(R.string.ctl_wifi)
-        link.contentDescription = ctx.getString(R.string.dock_link)
-        screenOff.contentDescription = ctx.getString(R.string.ctl_screen_off)
-        car.contentDescription = ctx.getString(R.string.ctl_car)
-        wifi.setOnClickListener { Actions.wifi(context) }
-        link.setOnClickListener { if (!Actions.phoneLink(context)) host.toast(context.getString(R.string.err_app_missing)) }
-        screenOff.setOnClickListener { Actions.screenOff(context) }
-        car.setOnClickListener { if (!Actions.car(context)) host.toast(context.getString(R.string.err_app_missing)) }
-        // "عمري" without its name: listens for a request right away (its settings until the microphone is allowed)
-        voice.contentDescription = ctx.getString(R.string.set_voice)
-        voice.setOnClickListener {
-            if (com.abdllh.aura.voice.Amri.hasMicPermission(context)) com.abdllh.aura.voice.Amri.wake(context)
-            else host.openSettings(SettingsActivity.PAGE_VOICE)
-        }
         refresh()
     }
 
@@ -137,8 +96,6 @@ class CarPanel(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
                 else -> R.string.greet_night
             }
         )
-        wifi.active = Actions.wifiConnected(context)
-        screenOff.visibility = if (Actions.hasScreenOff(context)) VISIBLE else GONE
         refreshUpdate()
     }
 
@@ -148,7 +105,4 @@ class CarPanel(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
         if (has) updateText.text = context.getString(R.string.ctl_update_available, Prefs.availableTag.removePrefix("v"))
     }
 
-    companion object {
-        private const val BTN = 58 // quick buttons, dp
-    }
 }

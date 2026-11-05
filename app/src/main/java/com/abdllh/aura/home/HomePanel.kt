@@ -25,8 +25,8 @@ import com.abdllh.aura.R
 import com.abdllh.aura.nav.CarLocation
 import com.abdllh.aura.system.CarAudio
 import com.abdllh.aura.system.NwdBridge
-import com.abdllh.aura.ui.CarEtc
 import com.abdllh.aura.ui.CarFrames
+import com.abdllh.aura.ui.CarStage
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
@@ -37,6 +37,7 @@ import com.abdllh.aura.ui.Theme
 import com.abdllh.aura.ui.afterNextDraw
 import com.abdllh.aura.ui.enter
 import com.abdllh.aura.ui.fadeTo
+import com.abdllh.aura.ui.flp
 import com.abdllh.aura.ui.lp
 import com.abdllh.aura.update.UpdateManager
 import com.abdllh.aura.util.Prefs
@@ -44,7 +45,7 @@ import com.abdllh.aura.util.dp
 
 /**
  * The home screen, the panel at the bottom of the stack: the car on the start side, the map's card with the player on the end
- * side, the dock, and two sheets. Its views are built on the activity itself ([shell]), as they always were (the car's GL
+ * side, and two sheets, inside what the chrome leaves (y 44..506). Its views are built on the activity itself ([shell]), as they always were (the car's GL
  * view asks its context for the window). The map is not its own: the one map lies under the window, and this panel is a wall
  * with a hole where the card is ([Wall]), once that map has drawn; its camera keeps the car in the hole ([MapController.setHomeRoom]).
  * Going to Maps the wall simply fades off it, with nothing of the map touched.
@@ -56,7 +57,6 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
     private var cardOpen = false
     private lateinit var carPanel: CarPanel
     private lateinit var mapPanel: MapPanel
-    private lateinit var dock: Dock
     private lateinit var controls: ControlsSheet
     private lateinit var drawer: AppDrawer
     private var introPlayed = false
@@ -67,7 +67,6 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
     private var restyling = false
     private var resumedNow = false
     private var startedNow = false
-    private var packagesWatched = false
 
     override val root: View get() = room
     override val opaque: Boolean get() = false // (the map shows in its card, so it stays awake)
@@ -77,51 +76,26 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
 
     private val volume = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
-            if (!::dock.isInitialized) return
-            dock.syncVolume()
-            if (controls.isOpen) controls.syncVolume()
-        }
-    }
-    // A pinned app installed or removed anywhere (the system's app manager, an update): the dock follows at once,
-    // also while the home screen is in the background, since it no longer rebuilds itself on every return.
-    private val packages = object : BroadcastReceiver() {
-        override fun onReceive(c: Context, i: Intent) {
-            if (i.getBooleanExtra(Intent.EXTRA_REPLACING, false)) return // an update: the app stays
-            val pkg = i.data?.schemeSpecificPart ?: return
-            if (::dock.isInitialized && DockPins.contains(pkg)) dock.rebuild()
+            if (::controls.isInitialized && controls.isOpen) controls.syncVolume()
         }
     }
     private val carAudio: () -> Unit = {
-        if (::dock.isInitialized) {
-            dock.syncVolume()
-            if (controls.isOpen) controls.syncVolume()
-        }
+        if (::controls.isInitialized && controls.isOpen) controls.syncVolume()
     }
     private val updateObserver: (UpdateManager.State) -> Unit = {
-        if (::dock.isInitialized) {
-            dock.refreshBadge()
-            carPanel.refreshUpdate()
-        }
+        if (::carPanel.isInitialized) carPanel.refreshUpdate()
     }
 
     init {
         builtAccent = Prefs.accent
         builtDark = Palette.dark
         // (with the GPU's frame file there, the GPU draws the car from its first frame: see CarStage.playIntro)
-        if (!CarEtc.readyNow(this, Palette.dark, Palette.bg)) CarFrames.warmUp(this, resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL)
+        if (CarStage.startsOnCpu(this, Palette.dark, Palette.bg)) CarFrames.warmUp(this, resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL)
         buildUi()
         if (!processStarted) {
             processStarted = true
             if (!Palette.dark) coverStart()
         }
-        try {
-            registerReceiver(packages, IntentFilter().apply {
-                addAction(Intent.ACTION_PACKAGE_ADDED)
-                addAction(Intent.ACTION_PACKAGE_REMOVED)
-                addDataScheme("package")
-            })
-            packagesWatched = true
-        } catch (_: Throwable) { }
         if (Prefs.safeModeNotice) {
             Prefs.safeModeNotice = false
             toast(getString(R.string.safe_mode_notice))
@@ -151,7 +125,6 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         room.background = wall
         cardOpen = false
         shell.map.homeCard(false)
-        val col = LinearLayout(shell).apply { orientation = LinearLayout.VERTICAL }
         val content = LinearLayout(shell).apply { orientation = LinearLayout.HORIZONTAL }
         carPanel = CarPanel(shell, this)
         content.addView(carPanel, lp(0, MATCH, 0.40f))
@@ -159,10 +132,8 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         mapPanel = card
         content.addView(card, lp(0, MATCH, 0.60f).apply { topMargin = 12.dp; bottomMargin = 12.dp; marginEnd = 12.dp })
         card.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> if (card === mapPanel) cardPlaced() }
-        col.addView(content, lp(MATCH, 0, 1f))
-        dock = Dock(shell, this)
-        col.addView(dock, lp(MATCH, DOCK_DP.dp))
-        room.addView(col, MATCH, MATCH)
+        // (the chrome's strip and bottom row lie over the rest of it: SPEC.md section 1)
+        room.addView(content, flp(MATCH, MATCH).apply { topMargin = CONTENT_TOP; bottomMargin = 600 - CONTENT_BOTTOM })
 
         controls = ControlsSheet(shell, this)
         shell.root.sheets.addView(controls, MATCH, MATCH)
@@ -216,9 +187,6 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         startedNow = false
     }
 
-    override fun onDestroy() {
-        if (packagesWatched) try { unregisterReceiver(packages) } catch (_: Throwable) { }
-    }
 
     /** Asks once for the location (the home map shows the car; Maps needs it anyway). */
     private fun askLocationOnce() {
@@ -272,16 +240,13 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
     private fun refreshAll() {
         carPanel.refresh()
         mapPanel.refresh()
-        dock.refresh()
         if (controls.isOpen) controls.refresh()
     }
 
     /**
-     * Entrance, settled within about half a second (it kept the player and the quick buttons out of reach for a
-     * second until 1.11): the header, the map's row and player, the quick buttons and the dock's tiles one after the
-     * other while the car turns towards the screen. Each card fades through its own layer; the map panel only moves
-     * (it holds the live map's surface, which a fade would draw through a layer at every frame) and the dock's tiles
-     * only rise with the dock.
+     * Entrance, settled within about half a second (it kept the player out of reach for a second until 1.11): the header,
+     * the map's row and player one after the other while the car turns towards the screen. Each card fades through its own layer;
+     * the map panel only moves (it holds the live map's surface, which a fade would draw through a layer at every frame).
      * Everything is put where it starts from at once, so the first frame shows that, and it all starts moving after
      * that frame: on a cold start the first frame held the main thread for up to 650 ms, and an entrance started
      * before it was over by the time it showed (the cards appeared all at once, with no stagger).
@@ -300,22 +265,15 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         // (each card on its own, so its own shadow stays outside the layer it fades in)
         for (i in 0 until mapPanel.places.childCount) rise(mapPanel.places.getChildAt(i), -8f, 80L + 30L * i)
         rise(mapPanel.media, 12f, 140L)
-        rise(carPanel.quick, 12f, 160L)
         // (once the card is a hole, what shows in it is the map, which does not move: it can only come to this late, Maps opened first)
         if (wall.hole == null) mapPanel.translationY = 16f.dp
-        dock.translationY = DOCK_DP.dp.toFloat()
-        for (i in 0 until dock.apps.childCount) dock.apps.getChildAt(i).translationY = 18.dp.toFloat()
 
         val r = room
         r.afterNextDraw {
             if (isGone) return@afterNextDraw
             for ((v, dy, delay) in cards) v.enter(dy = dy, delay = delay)
             mapPanel.animate().translationY(0f).setStartDelay(0L).setDuration(Motion.LONG).setInterpolator(Motion.EMPHASIZED).start()
-            dock.animate().translationY(0f).setStartDelay(0L).setDuration(Motion.LONG).setInterpolator(Motion.EMPHASIZED).start()
-            for (i in 0 until dock.apps.childCount) {
-                dock.apps.getChildAt(i).animate().translationY(0f).setStartDelay(60L + 25L * i).setDuration(Motion.MEDIUM)
-                    .setInterpolator(Motion.EMPHASIZED).start()
-            }
+
             // (on a spring, which steps at most a few frames' worth per frame: the frames after the first are heavy
             // too, and a timed fade jumped from black to white across them)
             startCover?.let { c ->
@@ -364,7 +322,7 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
     }
 
     override fun toast(msg: String, outlives: Boolean) {
-        Snack.show(this, msg, aboveDp = DOCK_DP + 16, outlives = outlives)
+        Snack.show(this, msg, outlives = outlives)
     }
 
     /**
@@ -442,8 +400,9 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         private var processStarted = false
         /** The light theme's start cover fades on this spring: critically damped, mostly gone in about 0.4 s. */
         private const val COVER_STIFFNESS = 100f
-        /** Height of the dock (big touch targets: the unit's 1024x600 panel is about 120 dpi, 1 dp = 1 px). */
-        const val DOCK_DP = 92
+        /** What the chrome leaves of the screen, y (SPEC.md section 1). */
+        private const val CONTENT_TOP = 44
+        private const val CONTENT_BOTTOM = 506
         /** The live map starts once the entrance has settled. */
         private const val LIVE_MAP_AFTER_MS = 700L
         /** Maps' panel is built ahead of time once that has come. */
