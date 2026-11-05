@@ -15,6 +15,9 @@ import android.util.Log
  * an ordinary activity, the first half of the trap in [Screens]. This always goes through the home intent.
  */
 abstract class Entry(private val panel: String) : Activity() {
+    // (starting any activity puts the system's language back as Java's default, and nothing else in the one window would set it again: the strip's ص, every label's direction. See LocaleHelper.holdDefault)
+    override fun attachBaseContext(base: android.content.Context) = super.attachBaseContext(com.abdllh.aura.util.LocaleHelper.wrap(base))
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         try {

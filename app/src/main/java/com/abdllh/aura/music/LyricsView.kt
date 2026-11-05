@@ -134,6 +134,8 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
         set(v) {
             if (v == field) return
             field = v
+            // (the five again, from the top or round the line just tapped: a hand may have let them all out)
+            windowOn = true
             if (v) {
                 views.getOrNull(current)?.karaoke = false
                 current = -1
@@ -467,8 +469,8 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
         if (vs.isEmpty()) return
         val dimA = Color.alpha(Palette.lyricDim) / 255f
         val pastA = Color.alpha(Palette.lyricPast) / 255f
-        val following = synced && !needSync && windowOn
-        val top = if (following) targetOf(current) else 0
+        // (with no line lit, untimed or the place unknown, it is the first five until a hand brings out the rest: no sixth line cut by the dock)
+        val top = if (synced && !needSync && windowOn) targetOf(current) else 0
         val extra = if (current in vs.indices && list.laidFor(vs.size)) extraOf(current) else 0f
         val laid = list.laidFor(vs.size)
         for ((k, v) in vs.withIndex()) {
@@ -478,7 +480,7 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
             val y = if (lit) 0f else smallDy + if (after) extra else 0f
             val a = when {
                 lit -> 1f
-                following && laid && !inWindow(k, top, after, extra) -> 0f
+                windowOn && laid && !inWindow(k, top, after, extra) -> 0f
                 !synced || needSync || current < 0 -> dimA
                 k < current -> pastA
                 else -> dimA
@@ -538,10 +540,11 @@ internal class LyricsView(c: Context, private val big: Boolean = false) : FrameL
     }
 
     private val followAgain = Runnable {
-        if (!isShown) return@Runnable
+        // (nothing to follow: the lines stay where his hand left them, all of them, to be read and tapped)
+        if (!isShown || !synced || needSync) return@Runnable
         windowOn = true
         paint(animate = true)
-        if (synced && !needSync) glide()
+        glide()
     }
 
     override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {

@@ -121,6 +121,11 @@ class AuraApp : Application() {
         }
     }
 
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        com.abdllh.aura.util.LocaleHelper.holdDefault()
+    }
+
     /** Emulator tests: the root shell through scripts/fake_adbd.py  (setprop debug.aura.adb 10.0.2.2:15555). */
     private fun testShell() {
         SystemProps.get("debug.aura.adb").split(":").takeIf { it.size == 2 }?.let { (h, p) ->

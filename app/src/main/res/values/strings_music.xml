@@ -33,4 +33,8 @@
     <string name="music_tab_artists">Artists</string>
     <string name="music_shuffle">Shuffle</string>
     <string name="music_repeat">Repeat</string>
+    <plurals name="music_songs">
+        <item quantity="one">%1$d song</item>
+        <item quantity="other">%1$d songs</item>
+    </plurals>
 </resources>

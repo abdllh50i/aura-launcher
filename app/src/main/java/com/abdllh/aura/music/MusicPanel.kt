@@ -262,6 +262,7 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
      */
     override fun onShow(args: Bundle?) {
         debugFail("show")
+        catchUpLook()
         collapsed = !opensFull()
         root.animate().cancel()
         root.alpha = if (collapsed) 0f else 1f
@@ -380,11 +381,25 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
     }
 
     // ------------------------------------------------------------------------------------------ the theme
+    /**
+     * The theme it last recoloured in. [ThemeSwap] marks a hidden panel and the stack catches it up; a theme that came another way (`Theme.refresh`: old Settings, old Controls, a test hook) marks nothing, and
+     * half the panel, what reads [Palette] as it draws, would have gone with it and half not. So it looks for itself when it comes back.
+     */
+    private var lookedDark = Palette.dark
+
+    private fun catchUpLook() {
+        if (lookedDark == Palette.dark) return
+        Look.apply(root)
+        sourceSheet?.let { Look.apply(it) }
+        queueSheet?.let { Look.apply(it) }
+    }
+
     /** Before a flip, on the worker: the song's wash for that theme, so the swap decodes nothing. [Backdrop] keeps it by the cover. */
     private val readyStep: (Boolean, () -> Unit) -> Unit = { night, done -> Backdrop.washAsync(this, shownCover, night) { done() } }
 
     /** At the swap, or as the panel catches up when it comes back: what is a bitmap of one theme, and the rows that are off the list. */
     private fun takeTheme() {
+        lookedDark = Palette.dark
         if (washNow?.night != Palette.dark) {
             val g = artGen
             Backdrop.washAsync(this, shownCover, Palette.dark) { w -> if (g == artGen && !isGone && w.night == Palette.dark) applyWash(w, animate = false) }
@@ -403,6 +418,8 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
     /** A trip began under the full panel. */
     override fun onTrip(on: Boolean) {
         if (on && !collapsed && showing) collapse()
+        // (one at x 12 would lie over the column, which is never covered on a trip; it opens beside it next time)
+        if (on) { sourceSheet?.close(); queueSheet?.close() }
         syncChip()
     }
 
@@ -1012,7 +1029,7 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
     internal fun rowChosen(r: SourceRow): Boolean = r == rowNow()
 
     /** Western digits in both languages (SPEC.md section 3): a `%d` would follow the locale's. */
-    private fun songCount(n: Int) = String.format(java.util.Locale.ROOT, getString(R.string.music_tracks_count), n)
+    private fun songCount(n: Int) = String.format(java.util.Locale.ROOT, resources.getQuantityString(R.plurals.music_songs, n), n)
 
     /** A row tapped, in the sheet or on the empty panel. */
     internal fun chooseRow(r: SourceRow) {
@@ -1051,6 +1068,7 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
     }
 
     private fun sheet(s: com.abdllh.aura.ui.Sheet) {
+        catchUpLook()
         val sheets = shell.root.sheets
         if (s.parent == null) sheets.addView(s, FrameLayout.LayoutParams(MATCH, MATCH))
         shell.root.closeSheets()

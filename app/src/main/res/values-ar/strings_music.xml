@@ -33,4 +33,11 @@
     <string name="music_tab_artists">الفنانين</string>
     <string name="music_shuffle">عشوائي</string>
     <string name="music_repeat">إعادة</string>
+    <plurals name="music_songs">
+        <item quantity="one">أغنية وحدة</item>
+        <item quantity="two">أغنيتين</item>
+        <item quantity="few">%1$d أغاني</item>
+        <item quantity="many">%1$d أغنية</item>
+        <item quantity="other">%1$d أغنية</item>
+    </plurals>
 </resources>
