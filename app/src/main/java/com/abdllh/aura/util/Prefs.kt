@@ -41,9 +41,6 @@ object Prefs {
     val homeAddress: String get() = sp.getString("homeAddress", "") ?: ""
     val workAddress: String get() = sp.getString("workAddress", "") ?: ""
 
-    /** Screen changes animate. Its switch went in 2.0.0-beta.3 and a stored "off" must not hold with no way back: on, whatever the file says (system/Animations). */
-    val screenAnimations: Boolean get() = true
-
     // ---- updater
     var updateRepo: String
         get() = sp.getString("updateRepo", BuildConfig.UPDATE_REPO) ?: BuildConfig.UPDATE_REPO

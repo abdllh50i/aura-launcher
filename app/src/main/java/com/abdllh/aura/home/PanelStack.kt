@@ -18,7 +18,6 @@ import com.abdllh.aura.system.IdleGc
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Snack
 import com.abdllh.aura.ui.afterNextDraw
-import com.abdllh.aura.util.Prefs
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -408,7 +407,7 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
     private fun move(run: (() -> Unit) -> Unit) {
         // (nobody to see it: a panel chosen while the window is stopped is just there. The owner's switch, Settings →
         // Display & sound, was about the window animation of activities: screens change in a cut, as the firmware has them)
-        if (!shell.resumedNow || !Prefs.screenAnimations) { settle(); return }
+        if (!shell.resumedNow) { settle(); return }
         val id = ++lastMove
         main.removeCallbacks(overdue)
         main.postDelayed(overdue, MOVE_LIMIT_MS)

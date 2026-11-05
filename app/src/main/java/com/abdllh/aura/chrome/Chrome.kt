@@ -111,7 +111,7 @@ class Chrome private constructor(private val shell: HomeActivity) : FrameLayout(
         refreshFaces(animate)
     }
 
-    private fun canMove() = shell.resumedNow && Prefs.screenAnimations && isShown
+    private fun canMove() = shell.resumedNow && isShown
 
     /** In or out in place; what is out is not drawn and takes no touch. */
     private fun View.fade(on: Boolean, animate: Boolean) {

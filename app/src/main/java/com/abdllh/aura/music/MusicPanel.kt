@@ -544,7 +544,7 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
 
     /** The lyrics alone on the screen ([on]) or back beside the song: one fades over the other, the left column stays laid out. */
     private fun showFull(on: Boolean, animate: Boolean = true, remember: Boolean = true) {
-        val moving = animate && root.isShown && Prefs.screenAnimations
+        val moving = animate && root.isShown
         lyricsFull = on
         // ([remember]: the owner's own press, not a song with nothing to read)
         if (remember) Prefs.raw.edit().putBoolean("musicLyricsFull", on).apply()
@@ -595,7 +595,7 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
             if (on && bigMove == null) beside.visibility = View.INVISIBLE
             return
         }
-        val live = coverGroup.isShown && Prefs.screenAnimations && SystemClock.uptimeMillis() - shownAt > ARRIVING_MS
+        val live = coverGroup.isShown && SystemClock.uptimeMillis() - shownAt > ARRIVING_MS
         if (!on && live && !linesLaid && !noSong && src != Src.LOCAL) {
             beside.alpha = 0f
             beside.visibility = View.VISIBLE

@@ -191,7 +191,7 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         if (v.visibility != want) v.visibility = want
     }
 
-    private fun canMove() = shell.resumedNow && Prefs.screenAnimations && isTop
+    private fun canMove() = shell.resumedNow && isTop
 
     private fun dimFor(m: Boolean) = if (m && Palette.dark) DIM_NIGHT else 1f
 
@@ -315,7 +315,7 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
      * ms apart. Everything is put where it starts from at once, so the first frame shows that, and it starts moving after that frame. Any tap skips to the end. Only at the process's first show.
      */
     private fun playEntrance() {
-        val first = !processStarted && Prefs.screenAnimations
+        val first = !processStarted
         processStarted = true
         val r = room
         if (!first) {

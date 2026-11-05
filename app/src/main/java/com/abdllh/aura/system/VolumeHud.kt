@@ -52,11 +52,10 @@ import java.util.concurrent.Executors
  *
  * The stock bar is turned off by disabling its service component through the unit's root shell (once; it stays off
  * across restarts) — only when Aura may draw over other apps, which the same shell allows; otherwise the stock bar
- * stays. Turning the option off, the ROM's restore and Aura's kill switch ([release]) enable it again.
+ * stays. The ROM's restore and Aura's kill switch ([release]) enable it again.
  */
 object VolumeHud {
     private const val TAG = "AuraVolumeHud"
-    private const val KEY = "volumeHud"
     private const val APPLIED = "volumeHudStockOff"        // "on" while the stock bar is off because of Aura
     private const val STOCK_PKG = "com.android.launcher"
     private const val STOCK_CLS = "com.launcher.FloatBar"
@@ -73,11 +72,6 @@ object VolumeHud {
     private var lastVolume = -1
     private var lastMute = false
     private var hud: HudView? = null
-
-    /** The user's switch (on by default). */
-    var enabled: Boolean
-        get() = Prefs.raw.getBoolean(KEY, true)
-        set(v) { Prefs.raw.edit().putBoolean(KEY, v).apply() }
 
     enum class Kind { MEDIA, NAV, PHONE }
 
@@ -111,7 +105,7 @@ object VolumeHud {
                         val k = (i.extras?.get("extra_key_value") as? Number)?.toInt() ?: return
                         if (k == 14 || k == 15 || k == 2) keyAt = SystemClock.elapsedRealtime()
                     }
-                    "com.nwd.ACTION_REQUEST_VLOUME_DISPLAY" -> if (enabled) show(Kind.MEDIA, CarAudio.volume(), CarAudio.muted())
+                    "com.nwd.ACTION_REQUEST_VLOUME_DISPLAY" -> show(Kind.MEDIA, CarAudio.volume(), CarAudio.muted())
                     DEBUG_KEY -> { // what the firmware does for a wheel button, on the emulator
                         keyAt = SystemClock.elapsedRealtime()
                         when (i.getStringExtra("key")) {
@@ -136,32 +130,30 @@ object VolumeHud {
         if (v != lastVolume || m != lastMute) {
             val now = SystemClock.elapsedRealtime()
             val asked = now - keyAt < KEY_WINDOW_MS || CarAudio.changedByAura()
-            if (enabled && (asked || (v != lastVolume && now - startedAt > QUIET_AFTER_START_MS))) show(Kind.MEDIA, v, m)
+            if (asked || (v != lastVolume && now - startedAt > QUIET_AFTER_START_MS)) show(Kind.MEDIA, v, m)
             lastVolume = v
             lastMute = m
         }
     }
 
     private val onParam: (Int, Int) -> Unit = { type, value ->
-        if (enabled && (type == 15 || type == 16) && SystemClock.elapsedRealtime() - keyAt < KEY_WINDOW_MS) {
+        if ((type == 15 || type == 16) && SystemClock.elapsedRealtime() - keyAt < KEY_WINDOW_MS) {
             show(if (type == 16) Kind.PHONE else Kind.NAV, value, false)
         }
     }
 
     // ------------------------------------------------------------------------------------------ the stock bar
-    /** Brings the unit in line with the switch; [done] gets true when it worked (on a worker thread). */
-    fun apply(ctx: Context, done: ((Boolean) -> Unit)? = null) {
-        if (!Device.isNwd) { done?.invoke(true); return }
+    /** Brings the unit in line, on a worker thread. */
+    fun apply(ctx: Context) {
+        if (!Device.isNwd) return
         val c = ctx.applicationContext
         worker.execute {
-            val ok = try {
+            try {
                 // decided here, in order with release(): the kill switch may have been set meanwhile
-                if (enabled && !auraOff()) takeOver(c) else giveBack(c)
+                if (auraOff()) giveBack(c) else takeOver(c)
             } catch (t: Throwable) {
                 Log.w(TAG, "apply: $t")
-                false
             }
-            done?.invoke(ok)
         }
     }
 
@@ -172,28 +164,26 @@ object VolumeHud {
         worker.execute { try { giveBack(c) } catch (t: Throwable) { Log.w(TAG, "release: $t") } }
     }
 
-    private fun takeOver(c: Context): Boolean {
+    private fun takeOver(c: Context) {
         if (!Settings.canDrawOverlays(c)) LocalAdb.run("appops set ${c.packageName} SYSTEM_ALERT_WINDOW allow")
-        if (!Settings.canDrawOverlays(c)) return false // no window of its own: the stock bar stays
-        if (stockOn(c) != true) return true
+        if (!Settings.canDrawOverlays(c)) return // no window of its own: the stock bar stays
+        if (stockOn(c) != true) return
         Prefs.raw.edit().putString(APPLIED, "on").apply()
         val r = LocalAdb.run("pm disable $STOCK")
         Log.i(TAG, "stock bar off: ${r.ok} ${r.output}")
-        if (stockOn(c) == true) return false
+        if (stockOn(c) == true) return
         restartStockHelpers(c)
-        return true
     }
 
-    private fun giveBack(c: Context): Boolean {
-        if (Prefs.raw.getString(APPLIED, "") != "on") return true // never touched
+    private fun giveBack(c: Context) {
+        if (Prefs.raw.getString(APPLIED, "") != "on") return // never touched
         if (stockOn(c) == false) {
             val r = LocalAdb.run("pm enable $STOCK && am startservice -n $STOCK")
             Log.i(TAG, "stock bar back: ${r.ok} ${r.output}")
-            if (stockOn(c) == false) return false
+            if (stockOn(c) == false) return
             restartStockHelpers(c)
         }
         Prefs.raw.edit().putString(APPLIED, "off").apply()
-        return true
     }
 
     /**
