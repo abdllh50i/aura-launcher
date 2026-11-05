@@ -11,6 +11,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import android.view.FrameMetrics
+import android.view.ViewTreeObserver
 import android.view.Window
 import com.abdllh.aura.chrome.Chrome
 import com.abdllh.aura.home.HomeActivity
@@ -175,16 +176,20 @@ class ChromeProbe : BroadcastReceiver() {
         private val swap = ArrayList<Double>()
         private val thread = HandlerThread("chrome-frames").apply { start() }
         private var dropped = 0
+        private var layouts = 0
+        private val layoutSeen = ViewTreeObserver.OnGlobalLayoutListener { layouts++ }
 
         fun start(w: Window) {
             w.addOnFrameMetricsAvailableListener(this, Handler(thread.looper))
+            w.decorView.viewTreeObserver.addOnGlobalLayoutListener(layoutSeen)
             Log.i(TAG, "$name: started")
         }
 
         fun stop(w: Window) {
             w.removeOnFrameMetricsAvailableListener(this)
+            w.decorView.viewTreeObserver.removeOnGlobalLayoutListener(layoutSeen)
             Handler(thread.looper).post {
-                Log.i(TAG, "$name: frames ${own.size}, dropped reports $dropped")
+                Log.i(TAG, "$name: frames ${own.size}, dropped reports $dropped, layout passes $layouts")
                 Log.i(TAG, "$name: own   ${line(own)}")
                 Log.i(TAG, "$name: ui    ${line(ui)}")
                 Log.i(TAG, "$name: rend  ${line(render)}")

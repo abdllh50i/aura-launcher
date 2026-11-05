@@ -259,7 +259,7 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
     }
 
     /** The bottom row in the mockups' places. [cells]: in order, from the first centre. [active]: its panel's name. */
-    private fun FrameLayout.dockRow(active: String?, cells: List<Asked.Cell> = SPEC_ORDER, prayer: Boolean = true) {
+    private fun FrameLayout.dockRow(active: String?, cells: List<Asked.Cell> = Asked.ORDER_SPEC, prayer: Boolean = true) {
         addView(ctx.surfaceImage("dock"), at(0, 500, 1024, 100))
         addView(plateView(18) { Palette.fill }, at(12, 526, 188, 60))
         addView(IconButton(ctx, R.drawable.ic_minus, 34, 86, 84, centerDy = -2, centerDx = 7, token = { Palette.ink }), at(0, 516, 86, 84))
@@ -934,13 +934,6 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
         s.dockRow("maps")
     }
 
-    private companion object {
-        /** The spec's order of the dock, which the mockups draw: only so the replicas compare; the real one is [Asked.DOCK]. */
-        val SPEC_ORDER = listOf(
-            Asked.Cell("settings", R.drawable.ic_gear), Asked.Cell("apps", R.drawable.ic_apps), Asked.Cell("phone", R.drawable.ic_phone),
-            Asked.Cell("music", R.drawable.ic_music), Asked.Cell("maps", R.drawable.ic_nav), Asked.Cell("home", R.drawable.ic_home)
-        )
-    }
 }
 
 /** The lists the pages walk. */
