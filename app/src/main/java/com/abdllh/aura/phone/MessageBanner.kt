@@ -2,97 +2,86 @@ package com.abdllh.aura.phone
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.graphics.PixelFormat
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
-import android.text.TextUtils
+import android.text.BidiFormatter
 import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
-import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageView
-import android.widget.LinearLayout
 import com.abdllh.aura.R
 import com.abdllh.aura.media.AuraNotificationListener
+import com.abdllh.aura.system.DriveState
+import com.abdllh.aura.system.Gear
 import com.abdllh.aura.system.Notices
+import com.abdllh.aura.ui.ABtn
 import com.abdllh.aura.ui.AText
-import com.abdllh.aura.ui.Elev
-import com.abdllh.aura.ui.MATCH
+import com.abdllh.aura.ui.Asked
+import com.abdllh.aura.ui.Fonts
+import com.abdllh.aura.ui.IconButton
 import com.abdllh.aura.ui.Motion
+import com.abdllh.aura.ui.OverlayWindow
 import com.abdllh.aura.ui.Palette
-import com.abdllh.aura.ui.Radius
-import com.abdllh.aura.ui.Shapes
-import com.abdllh.aura.ui.Space
-import com.abdllh.aura.ui.Touch
+import com.abdllh.aura.ui.Surface
+import com.abdllh.aura.ui.SurfaceCard
+import com.abdllh.aura.ui.TallHit
+import com.abdllh.aura.ui.Tint
+import com.abdllh.aura.ui.Tokens2
 import com.abdllh.aura.ui.Type
-import com.abdllh.aura.ui.WRAP
+import com.abdllh.aura.ui.at
+import com.abdllh.aura.ui.box
 import com.abdllh.aura.ui.enter
 import com.abdllh.aura.ui.exit
 import com.abdllh.aura.ui.fadeTo
-import com.abdllh.aura.ui.flp
-import com.abdllh.aura.ui.iconView
+import com.abdllh.aura.ui.glyph
 import com.abdllh.aura.ui.label
-import com.abdllh.aura.ui.lift
-import com.abdllh.aura.ui.lp
-import com.abdllh.aura.ui.roundedClip
+import com.abdllh.aura.ui.look
+import com.abdllh.aura.ui.overlayMs
 import com.abdllh.aura.util.LocaleHelper
 import com.abdllh.aura.util.Prefs
-import com.abdllh.aura.util.dp
-import java.util.Locale
+import com.abdllh.aura.voice.Amri
 
 /**
- * A message from the phone on screen, over any app: a card at the top with the app, who wrote and what (one or two
- * lines), gone again by itself after a few seconds. A tap opens the conversation in its app; a flick upwards or the
- * close button puts it away. A newer message replaces the one showing. During a call the call card has the top of the
- * screen: a message that comes then waits and is shown when the call is over (if it is still recent).
+ * A message from the phone on screen, over any app (SPEC.md sections 5 and 6.5): a banner in the call's place, 628 x 98, gone by itself. The app and who wrote; under it `رسالة جديدة` while the car
+ * moves, the message itself only when it is parked and the switch allows, so there is nothing to read while driving ([Asked.MESSAGE_TEXT_MOVING] is the owner's answer). `اسمعها` at x 397: Amri reads
+ * it. A flick upwards or the close button puts it away; parked, a tap on the card opens the conversation in its app. A newer message replaces the one showing, in place. [OverlayOrder] holds a message
+ * back: it waits, and comes when that is over if it is still recent.
  */
 object MessageBanner {
     private const val TAG = "AuraMessageBanner"
     private val main = Handler(Looper.getMainLooper())
     private var view: Card? = null
-    private var attached = false
-    /** A message that came during a call, and when (elapsed realtime). */
+    private var app: Context? = null
+    /** A message held back, and since when (elapsed realtime). */
     private var waiting: AuraNotificationListener.Message? = null
     private var waitingAt = 0L
     private var listening = false
 
     fun show(ctx: Context, m: AuraNotificationListener.Message) {
         val c = ctx.applicationContext
-        if (!listening) { listening = true; Calls.addListener { main.post { afterCall(c) } } }
-        if (Calls.state != Calls.State.IDLE) {
-            waiting = m
-            waitingAt = SystemClock.elapsedRealtime()
-            return
+        app = c
+        if (!listening) {
+            listening = true
+            // (a call came while one showed: the call has its place, and the message comes back after it; reverse the same, nothing lies over the camera)
+            Calls.addListener { main.post { if (Calls.state != Calls.State.IDLE) putBack() } }
+            Gear.addListener { main.post { if (Amri.reversing) putBack() } }
         }
+        if (OverlayOrder.messageWaits()) { hold(m); return }
         if (!Settings.canDrawOverlays(c)) { Log.w(TAG, "no overlay permission"); return }
         var v = view
-        if (v == null || v.dark != Palette.dark || v.accent != Palette.accent || v.lang != Prefs.lang) {
+        if (v == null || v.lang != Prefs.lang) {
             remove()
             v = Card(LocaleHelper.wrap(c)).also { view = it }
         }
-        v.bind(m, replacing = attached)
-        if (attached) { v.stay(); return }
-        val lp = WindowManager.LayoutParams(
-            WRAP, WRAP, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            title = "AuraMessage"
-        }
-        try {
-            (c.getSystemService(Context.WINDOW_SERVICE) as WindowManager).addView(v, lp)
-            attached = true
-            v.enter()
-        } catch (t: Throwable) {
-            Log.w(TAG, "show: $t")
-        }
+        val replacing = v.window.attached
+        v.bind(m, replacing)
+        if (replacing) { v.stay(); return }
+        if (v.window.add()) v.enter() else view = null
     }
 
     /** Settings' "show me how it looks": a made-up message from AMRI itself. */
@@ -102,137 +91,163 @@ object MessageBanner {
             c.getString(R.string.notices_preview_sender), null, c.getString(R.string.notices_preview_text), null))
     }
 
-    /** The call is over: the message that waited for it comes now, unless it is old news. */
-    private fun afterCall(c: Context) {
-        if (Calls.state != Calls.State.IDLE) {
-            // (a call came while a message showed: the call card has the top)
-            if (attached) hide()
-            return
-        }
-        val m = waiting ?: return
-        waiting = null
-        if (SystemClock.elapsedRealtime() - waitingAt < WAIT_MS) main.postDelayed({ show(c, m) }, 800L)
+    /** Debug builds: a message as if it had come, through the same door. */
+    internal fun debugShow(ctx: Context, appName: String, from: String, text: String) {
+        show(ctx, AuraNotificationListener.Message(ctx.packageName, appName, null, from, null, text, null))
+    }
+
+    private fun putBack() {
+        val v = view ?: return
+        if (v.window.attached) { hold(v.message); hide() }
+    }
+
+    private fun hold(m: AuraNotificationListener.Message?) {
+        waiting = m ?: return
+        waitingAt = SystemClock.elapsedRealtime()
+        main.removeCallbacks(again)
+        main.postDelayed(again, AGAIN_MS)
+    }
+
+    /** Once a second while one waits: over or not. Old news is dropped. */
+    private val again: Runnable = Runnable {
+        val m = waiting
+        val c = app
+        if (m != null && c != null && SystemClock.elapsedRealtime() - waitingAt < WAIT_MS) {
+            if (OverlayOrder.messageWaits()) main.postDelayed(again, AGAIN_MS)
+            else { waiting = null; show(c, m) }
+        } else waiting = null
     }
 
     fun hide() {
         val v = view ?: return
-        if (!attached) return
+        if (!v.window.attached) return
         v.leave { if (view === v) remove() }
     }
 
     private fun remove() {
         val v = view ?: return
         v.stop()
-        if (attached) {
-            try { (v.context.applicationContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager).removeView(v) } catch (_: Throwable) { }
-        }
-        attached = false
+        v.window.remove()
         view = null
     }
 
-    /** The card, with a little room around it for its shadow and its entrance (the window is no larger than that). */
-    @SuppressLint("ViewConstructor")
-    private class Card(c: Context) : FrameLayout(c) {
-        val dark = Palette.dark
-        val accent = Palette.accent
+    /** The card in its window, with room round it for its shadow and its entrance. */
+    @SuppressLint("ClickableViewAccessibility")
+    private class Card(c: Context) {
         val lang = Prefs.lang
-        private val card = LinearLayout(c)
-        private val icon = ImageView(c)
-        private val from: AText = c.label(Type.CAPTION, Palette.text3)
-        private val who: AText = c.label(Type.TITLE, Palette.text)
-        private val what: AText = c.label(Type.BODY, Palette.text2, lines = 2).apply { ellipsize = TextUtils.TruncateAt.END }
-        private var message: AuraNotificationListener.Message? = null
+        val window = OverlayWindow(c, "AuraMessage", WINDOW_X, 0, 1024 - WINDOW_X, WINDOW_H)
+        private val stage = FrameLayout(c)
+        private val card = SurfaceCard(c, Surface.OVERLAY)
+        private val from: AText = c.label(Type.msgFrom, { Palette.ink2Move }, gravity = Gravity.RIGHT or Gravity.CENTER_VERTICAL)
+        private val what: AText = c.label(Type.msgTitle, { Palette.ink }, gravity = Gravity.RIGHT or Gravity.CENTER_VERTICAL)
+        private val listen = TallHit(c, BUTTON_Y, BUTTON_H)
+        var message: AuraNotificationListener.Message? = null
+            private set
         private var leaving = false
         private val timeout = Runnable { hide() }
+        private val onDrive: () -> Unit = { message?.let { setWords(it) } }
 
         init {
-            layoutDirection = TextUtils.getLayoutDirectionFromLocale(Locale.getDefault())
-            clipChildren = false
-            card.orientation = LinearLayout.HORIZONTAL
-            card.gravity = Gravity.CENTER_VERTICAL
-            card.setPaddingRelative(Space.L.dp, Space.M.dp, Space.XS.dp, Space.M.dp)
-            card.background = Shapes.overlay()
-            card.lift(Elev.OVERLAY, overMap = true)
-            card.isClickable = true
-
-            icon.scaleType = ImageView.ScaleType.FIT_CENTER
-            icon.roundedClip(Radius.S)
-            card.addView(icon, lp(48.dp, 48.dp))
-
-            val texts = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
-            texts.addView(from, lp(MATCH, WRAP))
-            texts.addView(who, lp(MATCH, WRAP))
-            texts.addView(what, lp(MATCH, WRAP).apply { topMargin = Space.XXS.dp })
-            card.addView(texts, lp(0, WRAP, 1f).apply { marginStart = Space.L.dp; marginEnd = Space.S.dp })
-
-            val close = FrameLayout(c).apply {
-                background = Shapes.pressable(Shapes.oval(0), Shapes.oval(Palette.press))
-                isClickable = true
+            stage.addView(card, Surface.OVERLAY.at(ROOM, ROOM, CARD_W, CARD_H))
+            val plate = ImageView(c).apply {
+                val t = Tint(c, R.drawable.plate_18) { Palette.fill2 }
+                background = t.drawable
+                setPadding(13, 13, 13, 13)
+                setImageResource(R.drawable.ic_message)
+                look { t.recolour() }
+                glyph { Palette.ink }
+            }
+            stage.addView(plate, at(ROOM + 558, ROOM + 21, 56, 56))
+            stage.addView(from, Type.msgFrom.box(ROOM + TEXT_END - TEXT_W, ROOM + 14, TEXT_W))
+            stage.addView(what, Type.msgTitle.box(ROOM + TEXT_END - TEXT_W, ROOM + 50, TEXT_W))
+            val button = ABtn(c).apply {
+                layoutDirection = if (Fonts.arabicUi) View.LAYOUT_DIRECTION_RTL else View.LAYOUT_DIRECTION_LTR
+                sidePad = BUTTON_SIDE
+                kind = ABtn.Kind.TONAL
+                size = ABtn.Size.CALL
+                setText(R.string.msg_listen)
+                icon(R.drawable.ic_vol, 28)
+                setOnClickListener { listenTapped() }
+            }
+            listen.addView(button, at(0, BUTTON_Y, BUTTON_W, BUTTON_H))
+            stage.addView(listen, at(ROOM + 13, ROOM, BUTTON_W, CARD_H))
+            val close = IconButton(c, R.drawable.ic_close, 28, 76, 84, token = { Palette.ink2 }).apply {
                 contentDescription = c.getString(R.string.notices_close)
-                addView(c.iconView(R.drawable.ic_close, 22, Palette.text2).apply { layoutParams = flp(22.dp, 22.dp, Gravity.CENTER) })
                 setOnClickListener { hide() }
             }
-            card.addView(close, lp(Touch.MIN.dp, Touch.MIN.dp))
-
-            val w = minOf(600.dp, resources.displayMetrics.widthPixels - 2 * SIDE_DP.dp)
-            addView(card, flp(w, WRAP).apply { setMargins(SIDE_DP.dp, TOP_DP.dp, SIDE_DP.dp, BOTTOM_DP.dp) })
+            stage.addView(close, at(ROOM + 159, ROOM + 7, 76, 84))
             card.setOnTouchListener(Drag())
+            window.root.addView(stage, FrameLayout.LayoutParams(CARD_W + 2 * ROOM, WINDOW_H))
+            window.visible(ROOM, ROOM, ROOM + CARD_W, ROOM + CARD_H)
+            DriveState.addListener(onDrive)
         }
 
         fun bind(m: AuraNotificationListener.Message, replacing: Boolean) {
+            window.syncLook()
             message = m
-            val names = if (m.group.isNullOrBlank()) m.app else "${m.app}  ·  ${m.group}"
-            val text = if (Notices.showText) m.text.ifBlank { context.getString(R.string.notices_new_message) }
-                else context.getString(R.string.notices_new_message)
             if (replacing) {
                 // (the newer one replaces it in place: the words change, the card stays)
-                for (t in listOf(from, who, what)) { t.alpha = 0.2f; t.fadeTo(1f, Motion.MEDIUM) }
+                for (t in arrayOf(from, what)) { t.alpha = 0.2f; t.fadeTo(1f, Tokens2.MS_cardIn) }
             }
-            from.text = names
-            who.text = m.sender.ifBlank { m.app }
-            what.text = text
-            what.visibility = if (text.isBlank()) View.GONE else View.VISIBLE
-            if (m.icon != null) icon.setImageDrawable(m.icon) else icon.setImageResource(R.mipmap.ic_launcher)
-            removeCallbacks(timeout)
-            postDelayed(timeout, (SHOW_MS + 45L * text.length).coerceAtMost(MAX_SHOW_MS))
+            val bidi = BidiFormatter.getInstance(Fonts.arabicUi)
+            from.text = listOf(m.app, m.group, m.sender).filter { !it.isNullOrBlank() }.distinct().joinToString(" · ") { bidi.unicodeWrap(it) }
+            setWords(m)
+            val moving = DriveState.moving
+            removeTimer()
+            stage.postDelayed(timeout, if (moving) MOVING_MS else (SHOW_MS + 45L * m.text.length).coerceAtMost(MAX_SHOW_MS))
+        }
+
+        /** The message itself only with the car parked; the car starting to move takes it off the card at once. */
+        private fun setWords(m: AuraNotificationListener.Message) {
+            val body = Notices.showText && m.text.isNotBlank() && (!DriveState.moving || Asked.MESSAGE_TEXT_MOVING)
+            what.text = if (body) m.text else what.context.getString(R.string.notices_new_message)
+        }
+
+        private fun removeTimer() = stage.removeCallbacks(timeout)
+
+        private fun listenTapped() {
+            val m = message ?: return
+            val c = what.context
+            val who = m.sender.ifBlank { m.app }
+            Amri.readOut(c, if (m.text.isBlank()) c.getString(R.string.notices_new_message) else c.getString(R.string.amri_read_message, who, m.text))
+            hide()
         }
 
         private fun open() {
-            val m = message
-            try { m?.open?.send() } catch (t: Throwable) { Log.w(TAG, "open: $t") }
+            // (only parked: a conversation over the map is no thing to open while driving)
+            if (DriveState.moving) return
+            try { message?.open?.send() } catch (t: Throwable) { Log.w(TAG, "open: $t") }
             hide()
         }
 
         fun enter() {
             leaving = false
-            card.enter(dy = -16f, scaleFrom = 0.96f)
+            stage.enter(dy = -ENTER_DY, dur = overlayMs(Tokens2.MS_banner))
         }
 
         /** Shown again while it was leaving: it turns round from where it is. */
         fun stay() {
             if (!leaving) return
             leaving = false
-            card.enter(dy = -16f, scaleFrom = 0.96f, dur = Motion.SHORT)
+            stage.enter(dy = -ENTER_DY, dur = overlayMs(Tokens2.MS_banner))
         }
 
         fun leave(done: () -> Unit) {
-            removeCallbacks(timeout)
+            if (leaving) return
             leaving = true
-            card.exit(dy = -10f, end = done)
+            removeTimer()
+            stage.exit(dur = overlayMs(Tokens2.MS_bannerOut), end = done)
         }
 
         fun stop() {
-            removeCallbacks(timeout)
-            card.animate().cancel()
+            removeTimer()
+            DriveState.removeListener(onDrive)
+            stage.animate().cancel()
         }
 
-        /**
-         * The card under the finger: it sinks a little when pressed, follows a drag upwards (not downwards: there is
-         * nothing below to pull it to) and goes when flicked or pulled up far enough, else springs back; a touch that did
-         * not move is a tap. The timer waits while the finger is on it.
-         */
-        private inner class Drag : OnTouchListener {
-            private val slop = ViewConfiguration.get(context).scaledTouchSlop
+        /** The card under the finger: it follows a drag upwards and goes when flicked or pulled up far enough, else comes back; a touch that did not move is a tap. The timer waits while the finger is on it. */
+        private inner class Drag : View.OnTouchListener {
+            private val slop = ViewConfiguration.get(card.context).scaledTouchSlop
             private var downY = 0f
             private var downAt = 0L
             private var dragging = false
@@ -240,44 +255,57 @@ object MessageBanner {
             override fun onTouch(v: View, e: MotionEvent): Boolean {
                 when (e.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
-                        downY = e.rawY; downAt = SystemClock.uptimeMillis(); dragging = false
-                        removeCallbacks(timeout)
-                        card.animate().scaleX(0.985f).scaleY(0.985f).setDuration(Motion.XSHORT).setInterpolator(Motion.STANDARD).start()
+                        downY = e.rawY
+                        downAt = SystemClock.uptimeMillis()
+                        dragging = false
+                        removeTimer()
                     }
                     MotionEvent.ACTION_MOVE -> {
                         val dy = e.rawY - downY
                         if (!dragging && dy < -slop) dragging = true
-                        if (dragging) card.translationY = dy.coerceAtMost(0f)
+                        if (dragging) stage.translationY = dy.coerceAtMost(0f)
                     }
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                         val dy = e.rawY - downY
                         val ms = (SystemClock.uptimeMillis() - downAt).coerceAtLeast(1L)
-                        card.animate().scaleX(1f).scaleY(1f).setDuration(Motion.SHORT).setInterpolator(Motion.STANDARD).start()
                         when {
-                            dragging && (dy < -36.dp || -dy / ms > 0.6f) -> hide()
+                            dragging && (dy < -FLICK_PX || -dy / ms > 0.6f) -> hide()
                             dragging -> {
-                                card.animate().translationY(0f).setDuration(Motion.MEDIUM).setInterpolator(Motion.EMPHASIZED).start()
-                                postDelayed(timeout, SHOW_MS)
+                                stage.animate().translationY(0f).setDuration(Tokens2.MS_banner).setInterpolator(Motion.ENTER).start()
+                                stage.postDelayed(timeout, SHOW_MS)
                             }
-                            e.actionMasked == MotionEvent.ACTION_UP -> open()
-                            else -> postDelayed(timeout, SHOW_MS)
+                            e.actionMasked == MotionEvent.ACTION_UP -> {
+                                open()
+                                if (window.attached && !leaving) stage.postDelayed(timeout, MOVING_MS)
+                            }
+                            else -> stage.postDelayed(timeout, SHOW_MS)
                         }
                     }
                 }
                 return true
             }
         }
-
-        companion object {
-            const val SIDE_DP = 12
-            const val TOP_DP = 16
-            const val BOTTOM_DP = 18
-            /** On screen this long, plus a little per letter to read it (ms). */
-            const val SHOW_MS = 6000L
-            const val MAX_SHOW_MS = 12_000L
-        }
     }
 
-    /** A message that came during a call is still shown after it when the call was shorter than this (ms). */
+    /** The visible rect from the window's left and top: the overlay's outset. */
+    private const val ROOM = 44
+    private const val WINDOW_X = 340
+    private const val WINDOW_H = 186
+    private const val CARD_W = 628
+    private const val CARD_H = 98
+    private const val BUTTON_W = 138
+    private const val BUTTON_H = 72
+    private const val BUTTON_Y = 13
+    private const val BUTTON_SIDE = 6
+    private const val TEXT_END = 544
+    private const val TEXT_W = 300
+    private const val ENTER_DY = 24f
+    private const val FLICK_PX = 36
+    /** Parked, on screen this long plus a little per letter to read it, and no longer than the most; moving, a fixed 6 s: there is nothing to read (ms). */
+    private const val SHOW_MS = 6000L
+    private const val MAX_SHOW_MS = 12_000L
+    private const val MOVING_MS = 6000L
+    /** A message that waited is still shown after this long, not later (ms). */
     private const val WAIT_MS = 120_000L
+    private const val AGAIN_MS = 1000L
 }

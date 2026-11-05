@@ -21,6 +21,7 @@ import com.abdllh.aura.ui.Snack
 import com.abdllh.aura.util.LocaleHelper
 import com.abdllh.aura.util.Prefs
 import com.abdllh.aura.voice.Amri
+import com.abdllh.aura.voice.AmriOverlay
 import org.json.JSONObject
 import java.util.Locale
 
@@ -38,7 +39,8 @@ import java.util.Locale
 internal object PlaceInbox {
     private const val TAG = "AuraPlaceInbox"
     private const val CANCEL_MS = 5_000L
-    private const val REPLACE_MS = 20_000L
+    private const val VOICE_GO_MS = 5_000L
+    private const val REPLACE_MS = 30_000L
     private const val ASK_MS = 30_000L
     private const val FAILED_MS = 6_000L
     /** A place held for a call or for reverse is old news after this. */
@@ -127,6 +129,7 @@ internal object PlaceInbox {
         if (current === x) current = null
         main.removeCallbacks(tick)
         TripCard.hide()
+        AmriOverlay.endAsk()
     }
 
     private fun blocker(): String? = when {
@@ -141,8 +144,28 @@ internal object PlaceInbox {
             busy != null -> hold(x, busy)
             NavSession.state == NavSession.State.NAVIGATING -> replaceCard(c, x)
             afterHold || !x.paired || x.ask -> askCard(c, x)
+            x.voice -> voiceGo(c, x)
             else -> begin(c, x)
         }
+    }
+
+    /**
+     * "ودني ...": the place on the voice card with Go (SPEC.md section 5, `voice-answer`). Hands-free as it has always been: the trip starts by itself after [VOICE_GO_MS] if nobody said otherwise, and
+     * Go only spares the wait; the card's Cancel is what the 5 s of the old cancel card were.
+     */
+    private fun voiceGo(c: Context, x: Incoming) {
+        val arabic = Locale.getDefault().language == "ar"
+        val bidi = android.text.BidiFormatter.getInstance(arabic)
+        val far = CarLocation.lastKnown()?.let { Units.distance(Geo.distance(it, x.place.pos), arabic) }
+        val line = listOfNotNull(x.place.name, far).joinToString(" · ") { bidi.unicodeWrap(it) }
+        val shown = AmriOverlay.ask(c, line, listOf(AmriOverlay.Action(words(c).getString(R.string.amri_go), R.drawable.ic_nav) { if (current === x) begin(c, x) }), VOICE_GO_MS) {
+            if (current === x) begin(c, x)
+        }
+        if (!shown) { begin(c, x); return }
+        stage = Stage.ASKING
+        tell(x, "chosen", null)
+        main.removeCallbacks(tick)
+        main.postDelayed(tick, 1000L)
     }
 
     // ------------------------------------------------------------------------------------------ waiting
@@ -166,7 +189,7 @@ internal object PlaceInbox {
                         if (busy == null) { decide(c, x, afterHold = true); return }
                         if (SystemClock.elapsedRealtime() - heldSince > HOLD_MS) { tell(x, "expired", null); note(x, "expired"); finishWith(x); return }
                     }
-                    Stage.ASKING, Stage.REPLACING -> if (busy != null) { TripCard.hide(); hold(x, busy); return }
+                    Stage.ASKING, Stage.REPLACING -> if (busy != null) { TripCard.hide(); AmriOverlay.endAsk(); hold(x, busy); return }
                     // (the route goes on being found underneath; only its card makes way)
                     Stage.TRIP -> {
                         val a = Trips.attempt?.takeIf { it.place === x.place } ?: return
@@ -187,6 +210,8 @@ internal object PlaceInbox {
     // ------------------------------------------------------------------------------------------ the cards
     private fun caption(c: Context, x: Incoming) = words(c).getString(if (x.voice) R.string.link_from_voice else R.string.link_from_phone)
 
+    private fun icon(x: Incoming) = if (x.voice) R.drawable.ic_mic else R.drawable.ic_iphone
+
     /** The place's detail and how far it is from the car, whatever is known of them. */
     private fun where(x: Incoming): String {
         val arabic = Locale.getDefault().language == "ar"
@@ -198,12 +223,12 @@ internal object PlaceInbox {
 
     private fun askCard(c: Context, x: Incoming) {
         val w = words(c)
-        val shown = TripCard.show(c, caption(c, x), w.getString(R.string.link_ask, x.place.name), where(x), listOf(
+        val shown = TripCard.show(c, caption(c, x), x.place.name, where(x), listOf(
             TripCard.Action(w.getString(R.string.link_start), true) { if (current === x) begin(c, x) },
             TripCard.Action(w.getString(R.string.link_no), false) { if (current === x) { tell(x, "ignored", null); note(x, "ignored"); finishWith(x) } }
-        ), ASK_MS) {
+        ), ASK_MS, {
             if (current === x) { tell(x, "expired", null); note(x, "expired"); finishWith(x) }
-        }
+        }, icon(x))
         if (!shown) { onTheMap(c, x); return }
         stage = Stage.ASKING
         tell(x, "card", JSONObject().put("kind", "ask"))
@@ -213,14 +238,19 @@ internal object PlaceInbox {
 
     private fun replaceCard(c: Context, x: Incoming) {
         val w = words(c)
-        val now = NavSession.destination?.name.orEmpty()
-        val shown = TripCard.show(c, caption(c, x), x.place.name, w.getString(R.string.link_replace_q, now), listOf(
-            TripCard.Action(w.getString(R.string.link_replace), true) { if (current === x) begin(c, x) },
-            TripCard.Action(w.getString(R.string.link_keep), false) { if (current === x) { tell(x, "ignored", JSONObject().put("kept", true)); note(x, "ignored"); finishWith(x) } }
-        ), REPLACE_MS) {
-            // nobody answered: the trip goes on
-            if (current === x) { tell(x, "ignored", JSONObject().put("kept", true).put("by", "timeout")); note(x, "ignored"); finishWith(x) }
-        }
+        val replace ={ if (current === x) begin(c, x) }
+        val keep = { if (current === x) { tell(x, "ignored", JSONObject().put("kept", true)); note(x, "ignored"); finishWith(x) } }
+        // nobody answered: the trip goes on
+        val nobody = { if (current === x) { tell(x, "ignored", JSONObject().put("kept", true).put("by", "timeout")); note(x, "ignored"); finishWith(x) } }
+        // (asked for by voice: the voice card's yes or no; from the phone: the banner)
+        val shown = if (x.voice) AmriOverlay.ask(c, w.getString(R.string.amri_replace_q, x.place.name), listOf(
+            AmriOverlay.Action(w.getString(R.string.link_replace)) { replace() },
+            AmriOverlay.Action(w.getString(R.string.link_keep), primary = false) { keep() }
+        ), REPLACE_MS) { nobody() }
+        else TripCard.show(c, caption(c, x), x.place.name, null, listOf(
+            TripCard.Action(w.getString(R.string.link_replace), true) { replace() },
+            TripCard.Action(w.getString(R.string.link_keep), false) { keep() }
+        ), REPLACE_MS, { nobody() }, icon(x))
         if (!shown) { // no card can ask: the trip goes on
             tell(x, "ignored", JSONObject().put("kept", true).put("reason", "no_card"))
             note(x, "ignored")
@@ -250,7 +280,7 @@ internal object PlaceInbox {
         val w = words(c)
         TripCard.show(c, caption(c, x), x.place.name,
             w.getString(if (phase == Trips.Phase.WAITING_FIX) R.string.maps_waiting_gps else R.string.maps_routing),
-            listOf(TripCard.Action(w.getString(R.string.link_cancel), false) { if (current === x) cancelled(x, "card") }), 0L, null)
+            listOf(TripCard.Action(w.getString(R.string.link_cancel), false) { if (current === x) cancelled(x, "card") }), 0L, null, icon(x))
     }
 
     // ------------------------------------------------------------------------------------------ going
@@ -310,10 +340,11 @@ internal object PlaceInbox {
         stage = Stage.CANCEL_WINDOW
         // (nothing over the camera or a call's card: then the trip just runs, with its End button on the Maps screen)
         val busy = blocker()
-        val shown = busy == null && TripCard.show(c, caption(c, x), line, where(x),
-            listOf(TripCard.Action(w.getString(R.string.link_cancel), false) { if (current === x) cancelled(x, "card") }), CANCEL_MS) {
+        // (on the banner's two lines the words first and the place whole under them: the sentence in one line ran out before its place)
+        val shown = busy == null && TripCard.show(c, w.getString(R.string.link_started_short), x.place.name, where(x),
+            listOf(TripCard.Action(w.getString(R.string.link_cancel), false) { if (current === x) cancelled(x, "card") }), CANCEL_MS, {
             if (current === x) current = null
-        }
+        }, icon(x))
         if (shown) {
             main.removeCallbacks(tick)
             main.postDelayed(tick, 1000L)

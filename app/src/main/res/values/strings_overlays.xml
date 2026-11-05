@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The call, the message and the voice card (SPEC.md section 6.5), and Controls -->
+    <string name="call_sub_incoming">Mobile · incoming</string>
+    <string name="call_sub_talking">In call</string>
+    <string name="call_hang">Hang up</string>
+    <string name="call_mute">Mute</string>
+    <string name="msg_listen">Listen</string>
+    <string name="amri_read_message">Message from %1$s: %2$s</string>
+    <string name="amri_go">Go</string>
+    <string name="amri_replace_q">%1$s: change your trip?</string>
+    <string name="controls_day">Day</string>
+    <string name="controls_night">Night</string>
+    <string name="controls_hotspot">Hotspot</string>
+    <string name="guide_pill_back">Back to the map</string>
+    <string name="link_started_short">Directions started</string>
+</resources>
