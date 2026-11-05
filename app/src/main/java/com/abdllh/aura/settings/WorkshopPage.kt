@@ -102,10 +102,8 @@ class WorkshopPage(private val act: SettingsPanel) : Page(R.string.st_workshop) 
             if (learned == 0) ctx.getString(R.string.voice_learned_none)
             else ctx.resources.getQuantityString(R.plurals.voice_learned_some, learned, learned),
             if (learned == 0) null else ctx.chevron(), onClick = if (learned == 0) null else { {
-                ctx.parked {
-                    Confirm.show(ctx, ctx.getString(R.string.voice_learned_forget_title), ctx.getString(R.string.voice_learned_forget_text),
-                        ctx.getString(R.string.voice_learned_forget)) { Amri.forgetLearnedSounds(ctx); act.rebuild() }
-                }
+                Confirm.show(ctx, ctx.getString(R.string.voice_learned_forget_title), ctx.getString(R.string.voice_learned_forget_text),
+                    ctx.getString(R.string.voice_learned_forget)) { Amri.forgetLearnedSounds(ctx); act.rebuild() }
             } })
         // the microphone: the system's choice or one of the inputs, picked from a menu (the one in use ticked)
         val inputs = try {
@@ -245,12 +243,10 @@ class WorkshopPage(private val act: SettingsPanel) : Page(R.string.st_workshop) 
                 com.abdllh.aura.nav.CameraMark.enabled) { on -> com.abdllh.aura.nav.CameraMark.enabled = on },
             ctx.settingRow(null, ctx.getString(R.string.set_my_cameras_clear), null, count) {
                 if (MapExtras.mine.isEmpty()) return@settingRow
-                ctx.parked {
-                    Confirm.show(ctx, ctx.getString(R.string.set_my_cameras_clear_title), ctx.getString(R.string.set_my_cameras_clear_text),
-                        ctx.getString(R.string.set_my_cameras_clear)) {
-                        MapExtras.clearMine()
-                        refresh()
-                    }
+                Confirm.show(ctx, ctx.getString(R.string.set_my_cameras_clear_title), ctx.getString(R.string.set_my_cameras_clear_text),
+                    ctx.getString(R.string.set_my_cameras_clear)) {
+                    MapExtras.clearMine()
+                    refresh()
                 }
             }
         ))
@@ -293,10 +289,8 @@ class WorkshopPage(private val act: SettingsPanel) : Page(R.string.st_workshop) 
         col.addView(ctx.rows(
             if (!can) null
             else ctx.settingRow(null, ctx.getString(R.string.set_off_now), ctx.getString(R.string.set_off_now_sub), ctx.chevron()) {
-                ctx.parked {
-                    Confirm.show(act, ctx.getString(R.string.off_now_title), ctx.getString(R.string.off_now_text), ctx.getString(R.string.off_now_action)) {
-                        com.abdllh.aura.system.Power.powerOffNow(ctx) { Snack.show(ctx, R.string.off_now_not_taken, long = true) }
-                    }
+                Confirm.show(act, ctx.getString(R.string.off_now_title), ctx.getString(R.string.off_now_text), ctx.getString(R.string.off_now_action)) {
+                    com.abdllh.aura.system.Power.powerOffNow(ctx) { Snack.show(ctx, R.string.off_now_not_taken, long = true) }
                 }
             },
             if (!stock) null
@@ -428,7 +422,7 @@ class OfflineRequestsPage(private val act: SettingsPanel) : Page(R.string.voice_
             val tick = if (taught) ctx.iconView(R.drawable.ic_check, 24) { Palette.accentInk } else ctx.chevron()
             ctx.settingRow(null, ctx.getString(R.string.voice_cmd_quoted, ctx.getString(item.label)),
                 ctx.getString(if (taught) R.string.voice_cmd_taught else R.string.voice_cmd_untaught), tick) {
-                ctx.parked { act.withMic { VoiceSetup.teach(act.shell, item) { act.rebuild() } } }
+                act.withMic { VoiceSetup.teach(act.shell, item) { act.rebuild() } }
             }
         }
         col.addView(ctx.rows(*rows.toTypedArray()))

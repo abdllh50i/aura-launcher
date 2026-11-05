@@ -49,7 +49,7 @@ import com.abdllh.aura.voice.Amri
 /**
  * A message from the phone on screen, over any app (SPEC.md sections 5 and 6.5): a banner in the call's place, 616 x 98, gone by itself. The app and who wrote; under it `رسالة جديدة` while the car
  * moves, the message itself only when it is parked and the switch allows, so there is nothing to read while driving ([Asked.MESSAGE_TEXT_MOVING] is the owner's answer). `اسمعها` at x 405: Amri reads
- * it. A flick upwards or the close button puts it away; parked, a tap on the card opens the conversation in its app. A newer message replaces the one showing, in place. [OverlayOrder] holds a message
+ * it. A flick upwards or the close button puts it away; a tap on the card opens the conversation in its app. A newer message replaces the one showing, in place. [OverlayOrder] holds a message
  * back: it waits, and comes when that is over if it is still recent.
  */
 object MessageBanner {
@@ -215,8 +215,6 @@ object MessageBanner {
         }
 
         private fun open() {
-            // (only parked: a conversation over the map is no thing to open while driving)
-            if (DriveState.moving) return
             try { message?.open?.send() } catch (t: Throwable) { Log.w(TAG, "open: $t") }
             hide()
         }

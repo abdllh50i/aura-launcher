@@ -21,7 +21,7 @@ import android.widget.LinearLayout
  * 200 `enter`; out alpha, 140 `exit`. Back and a tap on the scrim close it through the same animation (while [cancelable]); the
  * dialog's dismiss listener still runs, at the end of it.
  * 560 wide, height to fit and at most 400, the `overlay` 9-patch centred in y 48..504; with a field ([followKeyboard]) its bottom
- * sits above the keyboard. Never while the car moves: [dismissAll] is what the car's starting to move calls, as Cancel.
+ * sits above the keyboard.
  * Build the card with [card], fill it, then `Modal(ctx, card).show()`.
  */
 class Modal(private val ctx: Context, private val card: View, widthDp: Int = WIDTH) {
@@ -68,13 +68,12 @@ class Modal(private val ctx: Context, private val card: View, widthDp: Int = WID
             if (code != KeyEvent.KEYCODE_BACK) false
             else { if (e.action == KeyEvent.ACTION_UP && cancelable) close(); true }
         }
-        dialog.setOnDismissListener { Look.closed(root); open.remove(this) }
+        dialog.setOnDismissListener { Look.closed(root) }
     }
 
     fun show(): Modal {
         dialog.show()
         Look.opened(root)
-        open.add(this)
         // (its window is on top of every panel: it goes when the panel under it does)
         com.abdllh.aura.home.Panel.own(ctx, { dialog.isShowing }, { dialog.dismiss() })
         scrim.alpha = 0f
@@ -124,12 +123,6 @@ class Modal(private val ctx: Context, private val card: View, widthDp: Int = WID
         private const val OUT_MS = Tokens2.MS_bannerOut
         private const val KEYBOARD_MIN = 100
         private const val KEYBOARD_GAP = 8
-        private val open = ArrayList<Modal>()
-
-        /** The car started moving: every dialog goes as Cancel (section 6.0). */
-        fun dismissAll() {
-            for (m in open.toList()) m.close()
-        }
 
         /** The modal card: the `overlay` surface, the dialogs' padding; children go in one column. Give it a title and a body with [title], [body]. */
         fun card(ctx: Context): LinearLayout = SurfaceColumn(ctx, Surface.OVERLAY, MAX_H).apply {

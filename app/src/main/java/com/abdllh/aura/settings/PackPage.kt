@@ -174,16 +174,14 @@ class PackPage(private val act: SettingsPanel) : Page(R.string.off_section) {
 
     private fun free(): Long = try { ctx.filesDir.usableSpace } catch (_: Throwable) { 0L }
 
-    private fun cancel() = ctx.parked {
+    private fun cancel() {
         Confirm.show(act, ctx.getString(R.string.st_pack_cancel_title), ctx.getString(R.string.st_pack_cancel_text), ctx.getString(R.string.st_pack_cancel_btn)) { PackManager.cancel() }
     }
 
     private fun delete(trip: Boolean) {
         if (trip) { Snack.show(ctx, R.string.pack_err_trip); return }
-        ctx.parked {
-            Confirm.show(act, ctx.getString(R.string.st_pack_delete_title), ctx.getString(R.string.st_pack_delete_text), ctx.getString(R.string.st_pack_delete)) {
-                if (!PackManager.deleteCurrent()) Snack.show(ctx, R.string.pack_err_trip)
-            }
+        Confirm.show(act, ctx.getString(R.string.st_pack_delete_title), ctx.getString(R.string.st_pack_delete_text), ctx.getString(R.string.st_pack_delete)) {
+            if (!PackManager.deleteCurrent()) Snack.show(ctx, R.string.pack_err_trip)
         }
     }
 

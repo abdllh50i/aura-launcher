@@ -53,20 +53,16 @@ class LyricsCard(private val act: SettingsPanel, private val ctx: Context) {
     }, live = status)
 
     val addressRow: SettingRow = ctx.settingRow(null, ctx.getString(R.string.lyr_srv_address), null, address) {
-        ctx.parked {
-            ask(ctx.getString(R.string.lyr_srv_address), ctx.getString(R.string.lyr_srv_address_hint), LyricsServer.address, uri = true) {
-                LyricsServer.address = it
-                refresh(null)
-            }
+        ask(ctx.getString(R.string.lyr_srv_address), ctx.getString(R.string.lyr_srv_address_hint), LyricsServer.address, uri = true) {
+            LyricsServer.address = it
+            refresh(null)
         }
     }
 
     val keyRow: SettingRow = ctx.settingRow(null, ctx.getString(R.string.st_lyrics_key), null, key) {
-        ctx.parked {
-            ask(ctx.getString(R.string.st_lyrics_key), ctx.getString(R.string.lyr_srv_key_hint), LyricsServer.key, uri = false) {
-                LyricsServer.key = it
-                refresh(null)
-            }
+        ask(ctx.getString(R.string.st_lyrics_key), ctx.getString(R.string.lyr_srv_key_hint), LyricsServer.key, uri = false) {
+            LyricsServer.key = it
+            refresh(null)
         }
     }
 

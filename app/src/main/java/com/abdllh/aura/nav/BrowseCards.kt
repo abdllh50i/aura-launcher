@@ -12,7 +12,6 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import com.abdllh.aura.BuildConfig
 import com.abdllh.aura.R
-import com.abdllh.aura.home.Screens
 import com.abdllh.aura.nav.browse.BrowseGroup
 import com.abdllh.aura.nav.browse.FromPhoneCard
 import com.abdllh.aura.nav.browse.NoGpsCard
@@ -26,7 +25,6 @@ import com.abdllh.aura.nav.route.GuideLink
 import com.abdllh.aura.nav.route.RouteAnswer
 import com.abdllh.aura.nav.route.RouteChain
 import com.abdllh.aura.nav.route.RouteRequest
-import com.abdllh.aura.settings.SettingsActivity
 import com.abdllh.aura.system.DriveState
 import com.abdllh.aura.ui.AText
 import com.abdllh.aura.ui.Menu
@@ -41,7 +39,6 @@ import com.abdllh.aura.ui.enter
 import com.abdllh.aura.ui.exit
 import com.abdllh.aura.ui.label
 import com.abdllh.aura.util.Prefs
-import com.abdllh.aura.voice.Amri
 
 /**
  * Maps with no trip (SPEC.md section 6.3, simple/CHANGES.md section 5): the one search pill, the search panel with his places, the place's card, the card of a place from the phone, the credit on the map; with the visit's
@@ -112,12 +109,8 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
     private fun syncGroup() {
         val trip = NavSession.state != NavSession.State.IDLE
         val cardOn = search.isOn || placeCard.isOn || phoneCard.isOn
-        val moving = DriveState.moving
-        group.setMoving(moving)
         group.show(!trip && !cardOn)
         credit.visibility = if (!trip && search.isOn) View.VISIBLE else View.INVISIBLE
-        // (moving, a touch on the field is voice's and brings no keyboard: section 6.3)
-        input.showSoftInputOnFocus = !moving
         syncGps()
     }
 
@@ -268,7 +261,6 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
             map.onRouteAltTap = { if (options.size > 1) choose(1 - chosen) }
             map.onMapTap = { if (search.isOn) closeSearch() }
             GuideLink.landed = guideLanded
-            DriveState.addListener(driveListener)
             root.viewTreeObserver.addOnGlobalLayoutListener(keyboardWatch)
             syncGroup()
         } else {
@@ -277,17 +269,10 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
             map.onRouteAltTap = null
             map.onMapTap = null
             GuideLink.landed = null
-            DriveState.removeListener(driveListener)
             root.viewTreeObserver.removeOnGlobalLayoutListener(keyboardWatch)
             root.removeCallbacks(countdown)
             root.removeCallbacks(gpsCheck)
         }
-    }
-
-    // (the car starting to move closes the keyboard: section 6.0; while moving the field opens voice)
-    private val driveListener: () -> Unit = {
-        if (DriveState.moving && input.hasFocus()) { hideKeyboard(); input.clearFocus() }
-        syncGroup()
     }
 
     // ------------------------------------------------------------------------------------------ the map's own hooks
@@ -451,15 +436,6 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
         else -> getString(R.string.browse_starts_in_n, s.toString()) // (Western digits, whatever the language: a %d would not be)
     }
 
-    private fun pillTapped() {
-        if (DriveState.moving) {
-            // moving: no typing, the field is voice (section 6.3)
-            if (Amri.hasMicPermission(this)) Amri.wake(this) else Screens.settings(this, SettingsActivity.PAGE_VOICE)
-            return
-        }
-        openSearch()
-    }
-
     private fun openSearch(keyboard: Boolean = true) {
         if (NavSession.state != NavSession.State.IDLE) return
         if (!search.isOn) {
@@ -473,7 +449,7 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
         placeCard.hideCard()
         phoneCard.hideCard()
         if (input.text.trim().length < 2) showSuggestions()
-        if (keyboard && !DriveState.moving) {
+        if (keyboard) {
             input.requestFocus()
             input.post { (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(input, 0) }
         }
@@ -789,7 +765,7 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
         layer.addView(credit, Type.attribution.box(508, 490, 500))
         group = BrowseGroup(this, layer)
         group.hint(getString(R.string.home_where_to))
-        group.onPill = { pillTapped() }
+        group.onPill = { openSearch() }
 
         noGps = NoGpsCard(this).apply { visibility = View.GONE }
         layer.addView(noGps, Surface.CARD.at(16, 112, 364, 92))
@@ -800,7 +776,7 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
             panel.shell.panels.softInputChanged(panel) // (before the keyboard)
             if (f) openSearch()
         }
-        input.setOnClickListener { if (DriveState.moving) pillTapped() else openSearch() }
+        input.setOnClickListener { openSearch() }
         input.addTextChangedListener(object : TextWatcher {
             override fun afterTextChanged(s: Editable?) {
                 if (input.hasFocus()) onQuery(s?.toString().orEmpty())

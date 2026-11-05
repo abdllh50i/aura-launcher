@@ -12,7 +12,6 @@
     <string name="st_phone">الجوال</string>
     <string name="st_car">السيارة والنظام</string>
     <string name="st_about">عن النظام</string>
-    <string name="st_parked_only">هذا وأنت واقف</string>
 
     <string name="st_theme_auto">تلقائي</string>
     <string name="st_theme_day">نهار</string>

@@ -61,11 +61,9 @@ class UpdatePage(private val act: SettingsPanel) : Page(R.string.st_update) {
                 act.rebuild()
             },
             ctx.settingRow(null, ctx.getString(R.string.upd_source), Prefs.updateRepo, ctx.iconView(R.drawable.ic_edit, 22) { Palette.ink3 }) {
-                ctx.parked {
-                    InputDialog.show(ctx, ctx.getString(R.string.upd_source), "owner/repo", Prefs.updateRepo) { v ->
-                        if (GitHub.isValidRepo(v)) { Prefs.updateRepo = v.trim(); UpdateManager.forget(); act.rebuild() }
-                        else com.abdllh.aura.ui.Snack.show(ctx, R.string.upd_err_repo, long = true)
-                    }
+                InputDialog.show(ctx, ctx.getString(R.string.upd_source), "owner/repo", Prefs.updateRepo) { v ->
+                    if (GitHub.isValidRepo(v)) { Prefs.updateRepo = v.trim(); UpdateManager.forget(); act.rebuild() }
+                    else com.abdllh.aura.ui.Snack.show(ctx, R.string.upd_err_repo, long = true)
                 }
             }
         ))
