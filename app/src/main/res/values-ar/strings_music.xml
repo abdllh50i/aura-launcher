@@ -3,7 +3,6 @@
 <resources>
     <string name="music_back">رجوع</string>
     <string name="music_loading">أجهّز أغانيك…</string>
-    <string name="lyrics_retry">جرّب مرة ثانية</string>
     <string name="yt_clear">امسح البحث</string>
     <string name="music_src_naghm">من نغم</string>
     <string name="music_src_naghm_short">نغم</string>
@@ -26,8 +25,9 @@
     <string name="music_yt_opens">يفتح التطبيق</string>
     <string name="music_yt_missing">التطبيق مو موجود</string>
     <string name="music_tap_line">اضغط السطر اللي يتغنى الحين</string>
-    <string name="music_no_lyrics">ما فيه كلمات لهالأغنية</string>
-    <string name="music_lyrics_failed">تعذر جلب الكلمات</string>
+    <string name="music_more_title">المزيد</string>
+    <string name="music_full_lyrics">الكلمات كاملة</string>
+    <string name="music_lyrics_off">بدون كلمات لهالأغنية</string>
     <string name="music_synced">تم الضبط</string>
     <string name="music_bt_lost">انقطع البلوتوث</string>
     <string name="music_tab_artists">الفنانين</string>

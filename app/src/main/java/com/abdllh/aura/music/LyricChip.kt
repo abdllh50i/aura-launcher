@@ -24,7 +24,7 @@ import com.abdllh.aura.system.DriveState
 
 /**
  * One line of the lyrics under the car, while the Music panel lies collapsed over the map (SPEC.md section 5, "Lyric chip"; `music-driving`, `music-driving-free`): the `pill`
- * surface at (384, 456), 628 x 50, `lyricChip` at the reading edge. It steps with the song by its own time, a crossfade of 140, no travel and no scrolling, and redraws one label when it does.
+ * surface at (392, 454), 616 x 50, `lyricChip` at the reading edge. It steps with the song by its own time, a crossfade of 140, no travel and no scrolling, and redraws one label when it does.
  * Never two lines: a long line shows the part that holds the current word, cut at word boundaries with an ellipsis ([partsOf]). The word's pill is parked only ([Asked.LYRIC_WORD_MOVING]), and
  * only with real word times.
  *
@@ -54,7 +54,7 @@ internal class LyricChip(ctx: Context) : SurfaceCard(ctx, Surface.PILL) {
         it.oneLine(Type.lyricChip)
         it.alignStart = true
         it.alpha = 0f
-        // (room for the word's pill at the line's ends: the text keeps its 592)
+        // (room for the word's pill at the line's ends: the text keeps its 580)
         it.setPadding(PILL_ROOM, 0, PILL_ROOM, 0)
         addView(it, Type.lyricChip.box(SIDE - PILL_ROOM, 0, TEXT_W + 2 * PILL_ROOM))
     }
@@ -291,14 +291,14 @@ internal class LyricChip(ctx: Context) : SurfaceCard(ctx, Surface.PILL) {
 
     companion object {
         private const val SIDE = 18
-        private const val TEXT_W = 592
+        private const val TEXT_W = 580
         private const val PILL_ROOM = 10
         private const val ELLIPSIS = "…"
         /** The last line has no next one to say how long it lasts. */
         private const val NO_NEXT_MS = 6000L
 
         /** Where it lies in Maps' panel: its rect (SPEC.md section 6.4). */
-        fun place(): FrameLayout.LayoutParams = Surface.PILL.at(384, 456, 628, 50)
+        fun place(): FrameLayout.LayoutParams = Surface.PILL.at(392, 454, 616, 50)
 
         /** The one there is, in Maps' panel. */
         var current: LyricChip? = null

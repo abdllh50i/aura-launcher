@@ -162,8 +162,8 @@ abstract class TypeRoles {
     @JvmField val musicTitle = Type.Role("musicTitle", 30, 500, 40, 28, 500)
     @JvmField val musicSub = Type.Role("musicSub", 24, 400, 32, 24, 400)
     @JvmField val musicTime = Type.Role("musicTime", 24, 400, 30, 24, 400)
-    @JvmField val lyric = Type.Role("lyric", 31, 500, 44, 28, 500)
-    @JvmField val lyricNow = Type.Role("lyricNow", 38, 500, 58, 34, 500)
+    @JvmField val lyric = Type.Role("lyric", 36, 500, 52, 32, 500)
+    @JvmField val lyricNow = Type.Role("lyricNow", 46, 500, 66, 42, 500)
     @JvmField val lyricFull = Type.Role("lyricFull", 36, 500, 52, 32, 500)
     @JvmField val lyricFullNow = Type.Role("lyricFullNow", 46, 500, 66, 42, 500)
     @JvmField val lyricDrive = Type.Role("lyricDrive", 26, 500, 34, 24, 500)
@@ -213,6 +213,9 @@ abstract class TypeRoles {
     @JvmField val tabLabel = Type.Role("tabLabel", 24, 500, 32, 22, 500)
     @JvmField val nightPanel = Type.Role("nightPanel", 96, 500, 110, 96, 500)
     @JvmField val nightDist = Type.Role("nightDist", 64, 500, 80, 64, 500)
+    @JvmField val prayerHome = Type.Role("prayerHome", 24, 400, 32, 22, 400)
+    @JvmField val musicTitleBig = Type.Role("musicTitleBig", 44, 500, 66, 40, 500)
+    @JvmField val musicSubBig = Type.Role("musicSubBig", 28, 400, 38, 26, 400)
 }
 
 object Tokens2 {

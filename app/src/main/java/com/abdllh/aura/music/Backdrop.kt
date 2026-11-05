@@ -328,8 +328,8 @@ internal object Backdrop {
     }
 
     /**
-     * A cover rounded once, at its displayed size, so no cover uses clipToOutline: `DST_IN` with the plate drawn at that size. Big 204 r
-     * 20, widget 84 r 16, moving widget 72 r 14, mini 52 r 12, glance 44 r 12, row 56 r 12, album 120 r 16. Only on a worker.
+     * A cover rounded once, at its displayed size, so no cover uses clipToOutline: `DST_IN` with the plate drawn at that size. Music 232 r
+     * 23 and 400 r 26, widget 84 r 16, moving widget 72 r 14, mini 52 r 12, glance 44 r 12, row 56 r 12, album 120 r 16. Only on a worker.
      */
     fun round(ctx: Context, cover: Bitmap, size: Int, radius: Int): Bitmap {
         var b = if (Build.VERSION.SDK_INT >= 26 && cover.config == Bitmap.Config.HARDWARE) cover.copy(Bitmap.Config.ARGB_8888, false) else cover
@@ -363,11 +363,11 @@ internal object Backdrop {
         return out
     }
 
-    /** A song with no cover, at any size: a `fill2` plate at the cover's rect with the `music` glyph in `ink2` at 45 % of its size. */
-    fun noArt(ctx: Context, size: Int, radius: Int): Drawable {
+    /** A song with no cover, at any size: a `fill2` plate at the cover's rect with the `music` glyph in `ink2`, at 45 % of its size unless told [glyphPx] (at 400, 150). */
+    fun noArt(ctx: Context, size: Int, radius: Int, glyphPx: Int = size * 45 / 100): Drawable {
         val plate = Tint(ctx, Plates.res(radius)) { Palette.fill2 }
         val glyph = Tint(ctx, R.drawable.ic_music) { Palette.ink2 }
-        val inset = (size - size * 45 / 100) / 2
+        val inset = (size - glyphPx) / 2
         return LayerDrawable(arrayOf(plate.drawable, InsetDrawable(glyph.drawable, inset)))
     }
 }

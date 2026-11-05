@@ -167,7 +167,6 @@
     <string name="lyrics_loading">Looking for the lyrics…</string>
     <string name="lyrics_none">No lyrics found for this song</string>
     <string name="lyrics_failed">Couldn\'t get the lyrics (internet?). Trying again shortly</string>
-    <string name="lyrics_instrumental">Instrumental</string>
     <string name="lyrics_nothing">Play a song to see its lyrics here</string>
     <string name="lyrics_tap_sync">Tap the line being sung to sync</string>
     <string name="lyrics_synced">Lyrics synced ✓</string>

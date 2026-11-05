@@ -16,6 +16,7 @@ import android.widget.LinearLayout
 import android.widget.ListView
 import com.abdllh.aura.R
 import com.abdllh.aura.ui.AText
+import com.abdllh.aura.ui.AuraSwitch
 import com.abdllh.aura.ui.EqGlyph
 import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.IconButton
@@ -213,7 +214,7 @@ internal class SourceRowView(ctx: Context, val row: SourceRow, private val chevr
 
 /**
  * "From where": the source sheet (SPEC.md section 5, "Side sheet"; `music-sources`, `sources-on-trip`). A row is a choice, or what starts one: the panel knows ([MusicPanel.chooseRow]).
- * It opens from the panel's source tile, and from the mini's cover anywhere ([MusicPanel.openSources]).
+ * It opens from the More sheet, and from the mini's cover anywhere ([MusicPanel.openSources]).
  */
 internal class SourceSheet(ctx: Context, private val music: MusicPanel) : Sheet(ctx, false, true) {
     private val rows: List<SourceRowView>
@@ -231,6 +232,88 @@ internal class SourceSheet(ctx: Context, private val music: MusicPanel) : Sheet(
 
     fun refresh() {
         for (r in rows) r.set(music.rowTitle(r.row, full = true), music.rowState(r.row), music.rowChosen(r.row))
+    }
+}
+
+/** One row of the More sheet: 96 high, plate 52 with its glyph, `resultTitle` over `sourceSub` or the title alone, at the far end [far]. A hairline above all but the first. */
+internal class MoreRow(ctx: Context, title: Int, first: Boolean, far: View, onTap: () -> Unit) : FrameLayout(ctx) {
+    private val glyphView = ctx.iconView(R.drawable.ic_music, 28) { Palette.ink }
+    private val titleView: AText = ctx.label(Type.resultTitle, { Palette.ink }).apply { setText(title) }
+    private val subView: AText = ctx.label(Type.sourceSub, { Palette.ink2 })
+
+    init {
+        isClickable = true
+        pressScale(PressGesture.SURFACE)
+        setOnClickListener { onTap() }
+        if (!first) addView(object : View(ctx) { override fun hasOverlappingRendering() = false }.look { setBackgroundColor(Palette.line) }, flp(MATCH, 1, Gravity.TOP).apply { setMargins(14, 0, 14, 0) })
+        val inner = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPaddingRelative(14, 0, 14, 0)
+        }
+        val box = FrameLayout(ctx)
+        box.addView(ctx.plateView(Tokens2.R_mid) { Palette.fill2 }, flp(MATCH, MATCH))
+        box.addView(glyphView, flp(28, 28, Gravity.CENTER))
+        inner.addView(box, lp(52, 52))
+        val col = FrameLayout(ctx)
+        col.addView(titleView, flp(MATCH, Type.resultTitle.viewH))
+        col.addView(subView, flp(MATCH, Type.sourceSub.viewH).apply { topMargin = 47 })
+        inner.addView(col, lp(0, HEIGHT, 1f).apply { marginStart = 14; marginEnd = 14 })
+        inner.addView(far)
+        addView(inner, flp(MATCH, MATCH))
+    }
+
+    fun set(glyph: Int, sub: CharSequence) {
+        glyphView.setImageResource(glyph)
+        subView.text = sub
+        subView.visibility = if (sub.isEmpty()) GONE else VISIBLE
+        titleView.translationY = if (sub.isEmpty()) (HEIGHT - Type.resultTitle.viewH) / 2f else 11f
+    }
+
+    /** Nothing to do now: dimmed, and no taps. */
+    fun on(on: Boolean) {
+        isEnabled = on
+        isClickable = on
+        alpha = if (on) 1f else 0.4f
+    }
+
+    companion object {
+        const val HEIGHT = 96
+    }
+}
+
+/**
+ * "More" (`music-more`): what left the Music panel, behind its one quiet button: where he listens from, what comes next, the lyrics on the whole screen, and no lyrics for this song. The first two are their own
+ * sheets, as before; the switch stays open under his finger while the panel moves behind it.
+ */
+internal class MoreSheet(ctx: Context, private val music: MusicPanel) : Sheet(ctx, false, true) {
+    private val off = AuraSwitch(ctx).apply { onToggle = { music.setLyricsOff(it) } }
+    private val source = MoreRow(ctx, R.string.music_sources_title, true, chevron(ctx)) { music.showSources() }
+    private val queue = MoreRow(ctx, R.string.music_queue_title, false, chevron(ctx)) { music.showQueue() }
+    private val full = MoreRow(ctx, R.string.music_full_lyrics, false, chevron(ctx)) { music.openFull() }
+    private val lyricsOff = MoreRow(ctx, R.string.music_lyrics_off, false, off) { off.setChecked(!off.checked, true, true) }
+
+    private fun chevron(ctx: Context) = ctx.iconView(R.drawable.ic_chev_right, 24) { Palette.ink3 }
+
+    init {
+        off.layoutParams = lp(AuraSwitch.TRACK_W + 2 * AuraSwitch.OUTSET, AuraSwitch.TRACK_H + 2 * AuraSwitch.OUTSET).apply { marginEnd = -AuraSwitch.OUTSET }
+        sideHead(ctx.getString(R.string.music_more_title))
+        val col = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; setPadding(8, 4, 8, 0) }
+        for (r in listOf(source, queue, full, lyricsOff)) col.addView(r, lp(MATCH, MoreRow.HEIGHT))
+        panel.addView(col, lp(MATCH, WRAP))
+    }
+
+    override fun onOpen() = refresh()
+
+    /** What the rows say of what plays now. */
+    fun refresh() {
+        source.set(music.sourceGlyph, music.sourceName)
+        queue.set(R.drawable.ic_queue, music.nextName)
+        full.set(R.drawable.ic_expand, "")
+        full.on(music.hasLyrics)
+        lyricsOff.set(R.drawable.ic_music, "")
+        lyricsOff.on(music.lyricsCanGoOff)
+        off.setChecked(music.lyricsAreOff, animate = isShown)
     }
 }
 
@@ -294,9 +377,11 @@ internal class QueueSheet(ctx: Context, private val music: MusicPanel) : Sheet(c
         val local = music.queueIsLocal
         items = if (local) Player.upcoming() else emptyList()
         adapter.notifyDataSetChanged()
-        val shown = if (local) items.size.coerceIn(1, ROWS) else 1
+        // (at the sheet's full height on the panel there is room for one more)
+        val rows = if (tall) ROWS + 1 else ROWS
+        val shown = if (local) items.size.coerceIn(1, rows) else 1
         body.layoutParams = (body.layoutParams as LinearLayout.LayoutParams).apply { height = shown * SongRowView.HEIGHT + 12 }
-        fade.visibility = if (local && items.size > ROWS) VISIBLE else GONE
+        fade.visibility = if (local && items.size > rows) VISIBLE else GONE
         shuffle.visibility = if (local) VISIBLE else INVISIBLE
         repeat.visibility = if (local) VISIBLE else INVISIBLE
         note.visibility = if (local) GONE else VISIBLE

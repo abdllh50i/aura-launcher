@@ -24,8 +24,8 @@ import kotlin.math.min
  *
  * [side] false: the old bottom sheet, dimmed scrim, rounded panel sliding up on a spring, a fling carries its speed into the motion.
  *
- * [side] true (SPEC.md section 5, "Side sheet"): the `overlay` 9-patch 440 wide, height to fit and at most 462, at y 44; at x 12 with
- * no trip and at x 384, beside the column, while a trip runs ([placeOnTrip]), so the turn card is never covered. No scrim over a
+ * [side] true (SPEC.md section 5, "Side sheet"): the `overlay` 9-patch 440 wide, height to fit and at most 456, at y 48; at x 16 with
+ * no trip and at x 392, beside the column, while a trip runs ([placeOnTrip]), so the turn card is never covered. No scrim over a
  * moving map: a tap outside only closes it. A drag toward the screen's left edge closes it, in both languages, since cards do not
  * swap sides. In: alpha and x -32 to 0, 240 `enter`; out: alpha and x to -24, 160 `exit`; turned back from where it is. [sideHead]
  * adds the title and the close button.
@@ -98,12 +98,18 @@ open class Sheet(ctx: Context, fullHeight: Boolean = false, private val side: Bo
         }
     }
 
-    /** A side sheet at x 384, beside the column, while a trip runs; at x 12 with none. */
-    fun placeOnTrip(onTrip: Boolean) {
+    /** It stands at its full height whatever is in it ([placeOnTrip]). */
+    protected var tall = false
+        private set
+
+    /** A side sheet at x 392, beside the column, while a trip runs; at x 16 with none. [high]: at its full height, so that nothing of a panel shows under it. */
+    fun placeOnTrip(onTrip: Boolean, high: Boolean = false) {
         if (!side) return
+        tall = high
         val lp = panel.layoutParams as LayoutParams
         val want = (if (onTrip) X_ON_TRIP else X_NO_TRIP) - Surface.OVERLAY.outset
-        if (lp.leftMargin != want) { lp.leftMargin = want; panel.layoutParams = lp }
+        val h = if (high) SIDE_MAX_H + 2 * Surface.OVERLAY.outset else WRAP
+        if (lp.leftMargin != want || lp.height != h) { lp.leftMargin = want; lp.height = h; panel.layoutParams = lp }
     }
 
     /**
@@ -374,9 +380,9 @@ open class Sheet(ctx: Context, fullHeight: Boolean = false, private val side: Bo
 
     private companion object {
         const val SIDE_W = 440
-        const val SIDE_MAX_H = 462
-        const val X_NO_TRIP = 12
-        const val X_ON_TRIP = 384
+        const val SIDE_MAX_H = 456
+        const val X_NO_TRIP = 16
+        const val X_ON_TRIP = 392
         const val SIDE_IN = -32f
         const val SIDE_OUT = -24f
         const val SIDE_IN_MS = 240L
