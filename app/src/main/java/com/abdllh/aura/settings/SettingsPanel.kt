@@ -120,6 +120,8 @@ class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
         when {
             args != null && args.containsKey(SettingsActivity.EXTRA_PAGE) -> go(args.getInt(SettingsActivity.EXTRA_PAGE), false)
             shownPage == null -> go(current, false)
+            // (back from another screen: a place picked on the map, Android's settings, the Play Store; what a page read at its build may be old)
+            shownPage?.keep == false -> rebuild()
             else -> goLive()
         }
     }

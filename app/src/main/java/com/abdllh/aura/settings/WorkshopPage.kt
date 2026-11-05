@@ -198,6 +198,7 @@ class WorkshopPage(private val act: SettingsPanel) : Page(R.string.st_workshop) 
         col.addPart(ctx.getString(R.string.st_display))
         val stock = AppRepo.isInstalled(ctx, Known.STOCK_LAUNCHER)
         col.addView(ctx.rows(
+            ctx.switchRow(null, ctx.getString(R.string.st_tick), ctx.getString(R.string.st_tick_sub), com.abdllh.aura.util.Prefs.pressTick) { com.abdllh.aura.util.Prefs.pressTick = it },
             ctx.switchRow(null, ctx.getString(R.string.set_volume_hud), ctx.getString(R.string.set_volume_hud_sub),
                 com.abdllh.aura.system.VolumeHud.enabled) { on ->
                 com.abdllh.aura.system.VolumeHud.enabled = on

@@ -83,6 +83,8 @@
     <string name="st_msg_text">عرض نص الرسالة وأنت واقف</string>
     <string name="st_ring">نغمة الاتصال من عمري</string>
 
+    <string name="st_tick">صوت الضغط</string>
+    <string name="st_tick_sub">نقرة خفيفة لما تضغط صف أو زر في الشريط</string>
     <string name="st_full_off">إطفاء كامل مع السيارة</string>
     <string name="st_update">التحديث</string>
     <string name="st_up_to_date">آخر نسخة</string>

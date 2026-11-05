@@ -41,7 +41,7 @@ class UpdatePage(private val act: SettingsPanel) : Page(R.string.st_update) {
         val col = ctx.pageColumn()
 
         // this version
-        col.addView(ctx.settingRow(null, "${ctx.getString(R.string.app_name)} ${BuildConfig.VERSION_NAME}",
+        col.addView(ctx.settingRow(null, "${ctx.getString(R.string.app_name)} ⁦${BuildConfig.VERSION_NAME}⁩",
             ctx.getString(R.string.upd_build_line, BuildConfig.VERSION_CODE.toString(), ctx.getString(if (Prefs.updateBeta) R.string.upd_channel_beta else R.string.upd_channel_stable))))
 
         // what is going on now

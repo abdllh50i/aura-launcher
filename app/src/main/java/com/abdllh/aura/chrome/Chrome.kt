@@ -354,6 +354,9 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
         refreshPrayer()
     }
 
+    /** The clock's form changed in Settings: now, not at the next minute. */
+    fun clockChanged() = minute()
+
     // ------------------------------------------------------------------------------------------ opening what the row names
     private fun open(name: String) {
         if (name == panel) {

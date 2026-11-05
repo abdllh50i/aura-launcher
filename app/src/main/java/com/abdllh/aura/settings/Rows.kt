@@ -233,7 +233,7 @@ class ValueChevron(ctx: Context, text: CharSequence?) : LinearLayout(ctx) {
 fun Context.valueChevron(text: CharSequence?): ValueChevron = ValueChevron(this, text)
 
 /** The state at a row's far end: a dot 12, `green` when on and `ink3` when not, and its word in `rowValue`. [set] changes it in place. */
-class StateDot(ctx: Context, text: CharSequence, private var on: Boolean) : LinearLayout(ctx) {
+class StateDot(ctx: Context, text: CharSequence, private var on: Boolean, opens: Boolean = false) : LinearLayout(ctx) {
     private val dot = View(ctx)
     private val word = ctx.label(Type.rowValue, { Palette.ink2 }).apply { this.text = text }
 
@@ -243,6 +243,7 @@ class StateDot(ctx: Context, text: CharSequence, private var on: Boolean) : Line
         dot.look { paint() }
         addView(dot, lp(12, 12))
         addView(word, lp(WRAP, Type.rowValue.viewH).apply { marginStart = Space.S })
+        if (opens) addView(ctx.chevron(), lp(24, 24).apply { marginStart = Space.M })
     }
 
     private fun paint() {
@@ -259,7 +260,7 @@ class StateDot(ctx: Context, text: CharSequence, private var on: Boolean) : Line
     }
 }
 
-fun Context.stateDot(text: CharSequence, on: Boolean): StateDot = StateDot(this, text, on)
+fun Context.stateDot(text: CharSequence, on: Boolean, opens: Boolean = false): StateDot = StateDot(this, text, on, opens)
 
 /**
  * A row with a switch. The whole row is the switch's target: a tap anywhere on it flips it, and the switch shows the
@@ -312,7 +313,7 @@ fun LinearLayout.addNote(text: CharSequence) {
 
 /** A section inside the panel's one card: its title in `sectionHead`, with a hairline over it when there is something above. */
 fun LinearLayout.addPart(title: CharSequence) {
-    if (childCount > 0) addView(View(context).apply { look { setBackgroundColor(Palette.line) } }, lp(MATCH, 1).apply { topMargin = Space.M })
+    if (childCount > 0) addView(View(context).apply { look { setBackgroundColor(Palette.line) } }, lp(MATCH, 1).apply { topMargin = Space.M; leftMargin = INSET; rightMargin = INSET })
     val t = context.label(Type.sectionHead, { Palette.ink2 }).apply { text = title }
     t.setPaddingRelative(INSET, 0, INSET, 0)
     addView(t, lp(MATCH, Type.sectionHead.viewH).apply { topMargin = Space.L; bottomMargin = Space.XS })

@@ -83,6 +83,8 @@
     <string name="st_msg_text">Show a message\'s text while parked</string>
     <string name="st_ring">Amri\'s ringtone</string>
 
+    <string name="st_tick">Press sound</string>
+    <string name="st_tick_sub">A soft tick when you press a row or a dock cell</string>
     <string name="st_full_off">Full off with the car</string>
     <string name="st_update">Update</string>
     <string name="st_up_to_date">Up to date</string>

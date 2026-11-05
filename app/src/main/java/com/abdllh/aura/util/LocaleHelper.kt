@@ -24,5 +24,14 @@ object LocaleHelper {
         return base.createConfigurationContext(cfg)
     }
 
+    /**
+     * Android puts the process's default locale back to the system's at a configuration change. With an AMRI language other than the system's, every label's direction
+     * (TEXT_DIRECTION_LOCALE), every "ص" and "م" and what the map and the voice ask of the default would then be the system's, until the next start.
+     */
+    fun reassert() {
+        val code = try { Prefs.lang } catch (_: Throwable) { return }
+        if (code == "ar" || code == "en") Locale.setDefault(Locale(code))
+    }
+
     val isArabic: Boolean get() = Locale.getDefault().language == "ar"
 }

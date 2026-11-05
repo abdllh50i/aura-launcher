@@ -102,7 +102,8 @@ internal object WaybackCard {
         val lines = GuardLog.tail(ctx, GUARD_LINES)
         val body = ctx.label(Type.rowHint, { Palette.ink2 }, lines = 0).apply {
             text = if (lines.isEmpty()) ctx.getString(R.string.guard_empty) else lines.joinToString("\n")
-            textDirection = View.TEXT_DIRECTION_LTR
+            textDirection = View.TEXT_DIRECTION_FIRST_STRONG
+            textAlignment = View.TEXT_ALIGNMENT_TEXT_START
         }
         col.addView(ctx.rows(ctx.block(null, null, null, body)))
         if (BuildConfig.VERSION_CODE < GuardService.ACTS_FROM_CODE) col.addNote(ctx.getString(R.string.guard_watching))

@@ -105,7 +105,8 @@ class PackPage(private val act: SettingsPanel) : Page(R.string.off_section) {
         val s = PackManager.status
         val trip = NavSession.state != NavSession.State.IDLE
         val offer = s.offer ?: s.usbOffer
-        title.text = PackManager.line(s)
+        // (no speed yet to tell: the first report of a chunk says 0)
+        title.text = if (s.state == State.FETCHING && s.bytesPerSec <= 0) ctx.getString(R.string.st_pack_going, "${s.percent}") else PackManager.line(s)
         spinner.visibility = if (s.state == State.CHECKING) View.VISIBLE else View.GONE
         val moving = s.state == State.FETCHING || s.state == State.WAITING || s.state == State.TRIP_HOLD || s.state == State.PAUSED || s.state == State.VERIFYING ||
             (s.state == State.FAILED && s.stagingId != null)

@@ -75,7 +75,10 @@ class DisplayPage(private val act: SettingsPanel) : Page(R.string.st_display, R.
             ctx.controlRow(ctx.getString(R.string.ctl_brightness), ctx.sliderControl(bright, dim, sun), act.controlW),
             ctx.controlRow(ctx.getString(R.string.set_theme), theme, act.controlW),
             ctx.controlRow(ctx.getString(R.string.st_map_view), view, act.controlW),
-            ctx.switchRow(null, ctx.getString(R.string.set_clock24), null, Prefs.clock24) { Prefs.clock24 = it },
+            ctx.switchRow(null, ctx.getString(R.string.set_clock24), null, Prefs.clock24) {
+                Prefs.clock24 = it
+                com.abdllh.aura.chrome.Chrome.of(act.shell)?.clockChanged()
+            },
             fill = act.fillH
         )
     }
@@ -261,7 +264,7 @@ class PhonePage(private val act: SettingsPanel) : Page(R.string.st_phone, R.draw
     }
 
     override fun build(ctx: Context): View {
-        val l = ctx.stateDot(ctx.getString(R.string.st_unlinked), false)
+        val l = ctx.stateDot(ctx.getString(R.string.st_unlinked), false, opens = true)
         val n = ctx.stateDot(ctx.getString(R.string.st_naghm_off), false)
         link = l
         naghm = n
