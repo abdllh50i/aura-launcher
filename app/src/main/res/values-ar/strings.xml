@@ -279,7 +279,7 @@
     <!-- المساعد الصوتي -->
     <string name="amri_name">عمري</string>
     <string name="amri_notification">قل «عمري» واطلب اللي تبي</string>
-    <string name="amri_listening">تفضّل…</string>
+    <string name="amri_listening">أسمعك…</string>
     <string name="amri_no_permission">عمري يحتاج إذن الميكروفون: الإعدادات ← المساعد الصوتي</string>
     <string name="amri_no_recognizer">عشان أفهم طلبك: نزّل تطبيق «Google» من متجر Play</string>
     <string name="amri_recognizer_no_mic">تطبيق Google (اللي يفهم الكلام) ما عنده إذن الميكروفون</string>

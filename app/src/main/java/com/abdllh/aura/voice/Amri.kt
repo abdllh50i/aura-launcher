@@ -49,6 +49,11 @@ object Amri {
     /** "ودني ...": how long the internet's answer is waited for once the offline map has given one, and at most. */
     private const val PLACE_WAIT_MS = 2500L
     private const val PLACE_LIMIT_MS = 10_000L
+    /** A fault the card offers a way out of stays up for this long (ms). */
+    private const val FAULT_MS = 6000
+    /** How long a message read out may take, at most (ms). */
+    private const val READ_MS = 6000L
+    private const val READ_MS_PER_LETTER = 120L
 
     enum class State { IDLE, LISTENING, ANSWERING }
 
@@ -142,6 +147,7 @@ object Amri {
             ctx.applicationContext.registerReceiver(object : BroadcastReceiver() {
                 override fun onReceive(c: Context, i: Intent) {
                     i.getStringExtra("say")?.let { heard(LocaleHelper.wrap(c.applicationContext), listOf(it), simulated = true); return }
+                    i.getStringExtra("card")?.let { debugCard(LocaleHelper.wrap(c.applicationContext), it, i.getStringExtra("text")); return }
                     if (i.getBooleanExtra("wake", false)) wake(c)
                     // a wake by voice listening, with no recogniser to do it (the emulator has none): --ez wakevoice true,
                     // then --ez speech true (he speaks), --ez endwake true
@@ -215,7 +221,7 @@ object Amri {
         val c = LocaleHelper.wrap(ctx.applicationContext) // the app's language, also for the answers
         if (state != State.IDLE || inCall || reversing) return
         if (!hasMicPermission(c)) {
-            AmriOverlay.show(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_no_permission), 3500)
+            AmriOverlay.show(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_no_permission), FAULT_MS, actions = settingsChip(c))
             return
         }
         state = State.LISTENING
@@ -237,8 +243,8 @@ object Amri {
                 when {
                     google && online(c) -> listen(c, s)
                     OfflineCommands.anyTaught(c) -> listenOffline(c, s)
-                    !google -> finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_no_recognizer), null)
-                    else -> finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_offline_none), null)
+                    !google -> finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_no_recognizer), null, actions = settingsChip(c))
+                    else -> finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_offline_none), null, actions = settingsChip(c))
                 }
             }
         }
@@ -339,7 +345,7 @@ object Amri {
 
     private fun listen(c: Context, s: Int) {
         val r = try { SpeechRecognizer.createSpeechRecognizer(c, recognizerService(c)) } catch (t: Throwable) {
-            finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_no_recognizer), null); return
+            finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_no_recognizer), null, actions = settingsChip(c)); return
         }
         recognizer = r
         r.setRecognitionListener(object : RecognitionListener {
@@ -379,7 +385,7 @@ object Amri {
                     SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> R.string.amri_recognizer_no_mic
                     else -> R.string.amri_not_heard
                 }
-                finish(c, AmriOverlay.Mode.ERROR, c.getString(msg), null)
+                finish(c, AmriOverlay.Mode.ERROR, c.getString(msg), null, actions = if (msg == R.string.amri_recognizer_no_mic) settingsChip(c) else emptyList())
             }
         })
         val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -392,7 +398,7 @@ object Amri {
         }
         try { r.startListening(i) } catch (t: Throwable) {
             release()
-            finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_no_recognizer), null)
+            finish(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_no_recognizer), null, actions = settingsChip(c))
             return
         }
         // a recogniser that never answers must not keep the assistant (and the music) waiting
@@ -425,7 +431,54 @@ object Amri {
             finish(c, AmriOverlay.Mode.DONE, c.getString(R.string.amri_cancel), null, speak = false, cmd = Command.Cancel)
         } else {
             com.abdllh.aura.link.PlaceInbox.dropVoice()
+            AmriOverlay.endAsk()
             AmriOverlay.hide()
+        }
+    }
+
+    /**
+     * `اسمعها` on a message: said in Amri's voice, the music waiting for it as for any answer. Nothing shows on the voice card: a moving car shows no message's words. Not while it is busy with a
+     * request, nor in a call.
+     */
+    fun readOut(ctx: Context, text: String) {
+        val c = LocaleHelper.wrap(ctx.applicationContext)
+        if (state != State.IDLE || inCall) return
+        state = State.ANSWERING
+        val s = ++session
+        heardBy = null
+        wokenByVoice = false
+        AmriService.pauseMic() // (the wake word must not hear it)
+        paused = MediaMonitor.pauseNow(c)
+        var ended = false
+        val done = {
+            if (!ended && session == s) {
+                ended = true
+                requestOver(c, null)
+            }
+        }
+        val limit = READ_MS + READ_MS_PER_LETTER * text.length
+        VoiceTurn.whenFree(VoiceTurn.Who.AMRI) { if (session == s && state == State.ANSWERING) say(c, text, limit, done) else done() }
+        main.postDelayed({ done() }, limit + 2_000L) // (a voice that never finishes must not leave it deaf)
+    }
+
+    /** What the card offers when the microphone or the recogniser is the fault. */
+    private fun settingsChip(c: Context) = listOf(AmriOverlay.Action(c.getString(R.string.dock_settings), primary = false) {
+        com.abdllh.aura.home.Screens.settings(c, com.abdllh.aura.settings.SettingsActivity.PAGE_VOICE)
+    })
+
+    /** Debug builds: a state of the card in the mockups' words, --es card listen|hear|look|answer|go|yesno|error|long [--es text "..."]. */
+    private fun debugCard(c: Context, what: String, text: String?) {
+        fun words(ar: String, en: String) = text ?: if (arabic) ar else en
+        when (what) {
+            "listen" -> AmriOverlay.show(c, AmriOverlay.Mode.LISTEN, c.getString(R.string.amri_listening))
+            "hear" -> AmriOverlay.show(c, AmriOverlay.Mode.LISTEN, words("ودني كورنيش الدمام", "Take me to Dammam Corniche"))
+            "look" -> AmriOverlay.show(c, AmriOverlay.Mode.DONE, c.getString(R.string.amri_song_looking, words("كورنيش الدمام", "Dammam Corniche")))
+            "answer" -> AmriOverlay.show(c, AmriOverlay.Mode.DONE, words("الساعة 7:20", "It is 7:20"), 6000)
+            "go" -> AmriOverlay.ask(c, words("كورنيش الدمام · 21.8 كم", "Dammam Corniche · 21.8 km"), listOf(AmriOverlay.Action(c.getString(R.string.amri_go), R.drawable.ic_nav) { }), 20_000L, null)
+            "yesno" -> AmriOverlay.ask(c, words("تبدّل رحلتك؟", "Change your trip?"), listOf(AmriOverlay.Action(c.getString(R.string.link_replace)) { }, AmriOverlay.Action(c.getString(R.string.link_keep), primary = false) { }), 20_000L, null)
+            "error" -> AmriOverlay.show(c, AmriOverlay.Mode.ERROR, c.getString(R.string.amri_recognizer_no_mic), 20_000, actions = settingsChip(c))
+            "long" -> AmriOverlay.show(c, AmriOverlay.Mode.DONE, c.getString(R.string.amri_offline_none), 20_000)
+            else -> { AmriOverlay.endAsk(); AmriOverlay.hide() }
         }
     }
 
@@ -712,7 +765,7 @@ object Amri {
                     com.abdllh.aura.link.PlaceInbox.receive(c, com.abdllh.aura.link.PlaceInbox.Incoming(
                         "voice-$ask", winner, com.abdllh.aura.nav.Trips.VOICE, null, true, "", ask = false, voice = true) { step ->
                         when (step) {
-                            "routing", "waiting_fix" -> give(Answer(c.getString(R.string.amri_place_chosen, winner.name, far)))
+                            "chosen", "routing", "waiting_fix" -> give(Answer(c.getString(R.string.amri_place_chosen, winner.name, far)))
                             "card", "held" -> give(Answer(c.getString(R.string.amri_place_card, winner.name)))
                             "failed" -> give(Answer(c.getString(R.string.link_failed, winner.name), error = true))
                         }
@@ -829,10 +882,10 @@ object Amri {
     }
 
     /** Shows (and says) the outcome, then lets the music play on and listens for the wake word again. */
-    private fun finish(c: Context, mode: AmriOverlay.Mode, text: String, said: String?, speak: Boolean = true, cmd: Command? = null) {
+    private fun finish(c: Context, mode: AmriOverlay.Mode, text: String, said: String?, speak: Boolean = true, cmd: Command? = null, actions: List<AmriOverlay.Action> = emptyList()) {
         state = State.ANSWERING
         val s = session
-        AmriOverlay.show(c, mode, text, sub = said, hideAfterMs = if (mode == AmriOverlay.Mode.DONE) 2600 else 3200)
+        AmriOverlay.show(c, mode, text, sub = said, hideAfterMs = if (actions.isNotEmpty()) FAULT_MS else if (mode == AmriOverlay.Mode.DONE) 2600 else 3200, actions = actions)
         var ended = false
         val done = {
             if (!ended && session == s) {
@@ -840,7 +893,7 @@ object Amri {
                 requestOver(c, cmd)
             }
         }
-        if (speak && spoken && mode == AmriOverlay.Mode.DONE) say(c, text, done) else main.postDelayed({ done() }, 900)
+        if (speak && spoken && mode == AmriOverlay.Mode.DONE) say(c, text, then = done) else main.postDelayed({ done() }, 900)
         main.postDelayed({ done() }, 8000) // a voice that never finishes must not leave it deaf
     }
 
@@ -880,7 +933,7 @@ object Amri {
      * Says [text] in the app's language (an Arabic voice for Arabic, when the device has one: Speech Services by Google),
      * then [then] on the main thread. Without a voice for it the answer is only shown.
      */
-    private fun say(c: Context, text: String, then: () -> Unit) {
+    private fun say(c: Context, text: String, limitMs: Long = 6000L, then: () -> Unit) {
         val t = tts
         if (t == null) {
             if (ttsStarting) { main.postDelayed(then, 900); return } // still starting: this answer is only shown
@@ -894,7 +947,7 @@ object Amri {
                     if (status == TextToSpeech.SUCCESS && e != null) {
                         e.setAudioAttributes(speechAttrs)
                         tts = e
-                        say(c, text, then)
+                        say(c, text, limitMs, then)
                     } else {
                         try { e?.shutdown() } catch (_: Throwable) { }
                         then() // without a voice this time (tried again with the next answer)
@@ -917,7 +970,7 @@ object Amri {
             override fun onError(utteranceId: String?) { if (utteranceId == id) once() }
         })
         if (t.speak(text, TextToSpeech.QUEUE_FLUSH, null, id) != TextToSpeech.SUCCESS) once()
-        main.postDelayed({ once() }, 6000) // whatever happens, never stay silent and deaf
+        main.postDelayed({ once() }, limitMs) // whatever happens, never stay silent and deaf
     }
 }
 

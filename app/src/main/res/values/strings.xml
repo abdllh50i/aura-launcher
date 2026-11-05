@@ -279,7 +279,7 @@
     <!-- the voice assistant -->
     <string name="amri_name">Amri</string>
     <string name="amri_notification">Say “Amri” and ask</string>
-    <string name="amri_listening">Go ahead…</string>
+    <string name="amri_listening">Listening…</string>
     <string name="amri_no_permission">Amri needs the microphone: Settings → Voice assistant</string>
     <string name="amri_no_recognizer">To understand requests: install the “Google” app from the Play Store</string>
     <string name="amri_recognizer_no_mic">The Google app (which understands speech) has no microphone permission</string>

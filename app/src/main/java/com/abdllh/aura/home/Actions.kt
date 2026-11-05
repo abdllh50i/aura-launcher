@@ -21,6 +21,20 @@ object Actions {
 
     fun bluetooth(ctx: Context): Boolean = start(ctx, Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
 
+    /** Android's page for the unit's own hotspot: hidden from apps by name, so by its class, and the wireless page where that is not there. */
+    fun hotspot(ctx: Context): Boolean =
+        start(ctx, Intent(Intent.ACTION_MAIN).setClassName("com.android.settings", "com.android.settings.TetherSettings")) ||
+            start(ctx, Intent(Intent.ACTION_MAIN).setClassName("com.android.settings", "com.android.settings.Settings\$TetherSettingsActivity")) ||
+            start(ctx, Intent(Settings.ACTION_WIRELESS_SETTINGS))
+
+    /** The unit's own hotspot is on: `WifiManager.isWifiApEnabled`, hidden, greylisted on Android 10. */
+    fun hotspotOn(ctx: Context): Boolean = try {
+        val wm = ctx.applicationContext.getSystemService(Context.WIFI_SERVICE)
+        wm.javaClass.getMethod("isWifiApEnabled").invoke(wm) == true
+    } catch (_: Throwable) {
+        false
+    }
+
     fun hasScreenOff(ctx: Context) = AppRepo.isInstalled(ctx, Known.STOCK_LAUNCHER)
 
     /**

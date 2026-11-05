@@ -242,10 +242,20 @@ open class Sheet(ctx: Context, fullHeight: Boolean = false, private val side: Bo
     // [close]), so the control under the finger hears it end: a slider let go, a tile's press undone, no long-press.
     override fun dispatchTouchEvent(e: MotionEvent): Boolean {
         when (e.actionMasked) {
-            MotionEvent.ACTION_DOWN -> { if (!isOpen) return false; touching = true }
+            MotionEvent.ACTION_DOWN -> {
+                if (!isOpen) return false
+                // (no scrim on a side sheet: a touch outside closes it and goes on to what it landed on, so volume, End, next and the voice stay one touch away: SPEC.md section 1)
+                if (side && outsidePanel(e)) { close(); return false }
+                touching = true
+            }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> touching = false
         }
         return if (!isOpen && !dragging) false else super.dispatchTouchEvent(e)
+    }
+
+    private fun outsidePanel(e: MotionEvent): Boolean {
+        val o = Surface.OVERLAY.outset
+        return e.x < panel.left + o || e.x >= panel.right - o || e.y < panel.top + o || e.y >= panel.bottom - o
     }
 
     /** Whether a view under ([x], [y]) (in this sheet's coordinates) can still scroll up. */

@@ -8,7 +8,6 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.graphics.PixelFormat
 import android.graphics.RectF
 import android.os.Handler
 import android.os.Looper
@@ -17,30 +16,28 @@ import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
 import android.view.View
-import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageView
-import android.widget.LinearLayout
 import com.abdllh.aura.BuildConfig
 import com.abdllh.aura.R
 import com.abdllh.aura.ui.AText
-import com.abdllh.aura.ui.Elev
-import com.abdllh.aura.ui.Motion
+import com.abdllh.aura.ui.OverlayWindow
 import com.abdllh.aura.ui.Palette
-import com.abdllh.aura.ui.Shapes
-import com.abdllh.aura.ui.Space
+import com.abdllh.aura.ui.Recolours
 import com.abdllh.aura.ui.Spring
+import com.abdllh.aura.ui.Surface
+import com.abdllh.aura.ui.SurfaceCard
+import com.abdllh.aura.ui.Tokens2
 import com.abdllh.aura.ui.Type
+import com.abdllh.aura.ui.at
+import com.abdllh.aura.ui.box
 import com.abdllh.aura.ui.enter
 import com.abdllh.aura.ui.exit
-import com.abdllh.aura.ui.flp
 import com.abdllh.aura.ui.label
-import com.abdllh.aura.ui.lift
-import com.abdllh.aura.ui.lp
-import com.abdllh.aura.ui.textRole
+import com.abdllh.aura.ui.look
+import com.abdllh.aura.ui.overlayMs
 import com.abdllh.aura.util.LocaleHelper
 import com.abdllh.aura.util.Prefs
-import com.abdllh.aura.util.dp
 import java.util.concurrent.Executors
 
 /**
@@ -64,7 +61,6 @@ object VolumeHud {
     private const val STOCK_CLS = "com.launcher.FloatBar"
     private const val STOCK = "$STOCK_PKG/$STOCK_CLS"
     private const val KEY_WINDOW_MS = 1500L
-    private const val SHOW_MS = 2200L
     private const val QUIET_AFTER_START_MS = 10_000L     // the first reports after a start are not changes
     const val DEBUG_KEY = "com.abdllh.aura.debug.VOLUME_KEY" // emulator: a wheel button (up / down / mute)
 
@@ -76,8 +72,6 @@ object VolumeHud {
     private var lastVolume = -1
     private var lastMute = false
     private var hud: HudView? = null
-    private var attached = false
-    private var params: WindowManager.LayoutParams? = null
 
     /** The user's switch (on by default). */
     var enabled: Boolean
@@ -225,162 +219,105 @@ object VolumeHud {
         if (auraOff() || !Settings.canDrawOverlays(c)) return
         // (the row is on screen and shows it itself, with no overlay over what he is handling: SPEC.md, "Volume")
         if (kind == Kind.MEDIA && com.abdllh.aura.chrome.Chrome.rowOnScreen()) return
+        if (com.abdllh.aura.phone.OverlayOrder.volumeWaits()) return
         var v = hud
-        if (v == null || v.dark != Palette.dark || v.accent != Palette.accent || v.lang != Prefs.lang) {
-            if (v != null && attached) { v.stay(); detach() } // theme or language changed: built again
+        if (v == null || v.lang != Prefs.lang) {
+            v?.window?.remove() // (the language changed: built again)
             v = HudView(LocaleHelper.wrap(c)).also { hud = it }
         }
         v.bind(kind, value, CarAudio.max(), muted)
-        if (attached) v.stay() // pressed again while it was fading out
-        if (!attached) {
-            val lp = WindowManager.LayoutParams(
-                WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-                PixelFormat.TRANSLUCENT
-            ).apply {
-                gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                y = top()
-                title = "AuraVolume"
-            }
-            try {
-                (c.getSystemService(Context.WINDOW_SERVICE) as WindowManager).addView(v, lp)
-                attached = true
-                params = lp
-                v.enter()
-            } catch (t: Throwable) {
-                Log.w(TAG, "show: $t")
-                return
-            }
-        }
+        if (v.window.attached) v.stay() // pressed again while it was fading out
+        else if (v.window.add()) v.enter() else return
         main.removeCallbacks(hide)
-        main.postDelayed(hide, SHOW_MS)
+        main.postDelayed(hide, Tokens2.MS_volumeHold)
     }
+
+    // only the view that faded out is removed (a language change may have replaced it meanwhile)
+    private val hide = Runnable { val v = hud; v?.leave { if (hud === v) v?.window?.remove() } }
 
     /**
-     * Where the display goes: at the top, or under the call card while there is one. The phone's volume is changed
-     * exactly while a call is up, and over the card it hid the caller's name and buttons (with taps going through it
-     * to a card that could not be seen).
+     * Over another app, where there is no row: 364 x 80 at (12, 426), the speaker, a level bar and the car's own step number (the one its buttons and the dock show), left to right in every
+     * language, not touchable (SPEC.md section 5). A window of its own with room for the shadow, cut at the screen's left edge.
      */
-    private fun top(): Int {
-        val call = com.abdllh.aura.phone.CallBanner.bottom()
-        return if (call > 0) call - HudView.TOP_DP.dp + Space.S.dp else Space.XXS.dp
-    }
-
-    /** A call card came or went: the display, if it is up, moves to its place (one move of a small window). */
-    fun reposition() {
-        main.post {
-            val v = hud ?: return@post
-            val lp = params ?: return@post
-            if (!attached) return@post
-            val y = top()
-            if (lp.y == y) return@post
-            lp.y = y
-            try { (v.context.applicationContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager).updateViewLayout(v, lp) } catch (_: Throwable) { }
-        }
-    }
-
-    // only the view that faded out is removed (a theme change may have replaced it meanwhile)
-    private val hide = Runnable { val v = hud; v?.leave { if (hud === v) detach() } }
-
-    private fun detach() {
-        val v = hud ?: return
-        if (!attached) return
-        attached = false
-        params = null
-        try { (v.context.applicationContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager).removeView(v) } catch (_: Throwable) { }
-    }
-
-    /**
-     * A floating pill at the top: icon, level bar, the car's own step number (the one its buttons and the dock show).
-     * Room around it for the shadow and, above, for its entrance.
-     */
-    private class HudView(c: Context) : FrameLayout(c) {
-        val dark = Palette.dark
-        val accent = Palette.accent
+    private class HudView(c: android.content.Context) {
         val lang = Prefs.lang
-        private val card = LinearLayout(c)
-        private val iconBg = FrameLayout(c)
-        private val icon = ImageView(c)
+        val window = OverlayWindow(c, "AuraVolume", 0, 382, 420, 168, touchable = false)
+        private val card = FrameLayout(c)
+        private val icon = ImageView(c).apply { scaleType = ImageView.ScaleType.FIT_CENTER }
         private val bar = Bar(c)
-        private val value: AText = c.label(Type.HEADLINE, Palette.text, gravity = Gravity.CENTER)
+        private val value: AText = c.label(Type.hudNum, { Palette.ink }, gravity = Gravity.CENTER)
+        private val word: AText = c.label(Type.button, { Palette.redInk }, gravity = Gravity.CENTER).apply { setText(R.string.ctl_mute); visibility = View.INVISIBLE }
+        private var iconMuted = false
         private var leaving = false
 
         init {
-            card.orientation = LinearLayout.HORIZONTAL
-            card.gravity = Gravity.CENTER_VERTICAL
-            card.setPaddingRelative(Space.M.dp, 0, Space.L.dp, 0)
-            // the overlays' own surface (the call card and the assistant's pill have it too)
-            card.background = Shapes.overlay()
-            card.lift(Elev.OVERLAY, overMap = true)
-            iconBg.background = Shapes.oval(Palette.accentSoft())
-            icon.scaleType = ImageView.ScaleType.FIT_CENTER
-            iconBg.addView(icon, flp(26.dp, 26.dp, Gravity.CENTER))
-            card.addView(iconBg, lp(48.dp, 48.dp))
-            card.addView(bar, lp(0, 12.dp, 1f).apply { marginStart = Space.L.dp + 2.dp; marginEnd = Space.L.dp })
-            card.addView(value, lp(56.dp, LayoutParams.WRAP_CONTENT))
-            addView(card, flp(470.dp, 74.dp).apply { setMargins(Space.L.dp, TOP_DP.dp, Space.L.dp, 18.dp) })
+            card.addView(SurfaceCard(c, Surface.OVERLAY), Surface.OVERLAY.at(CARD_X, CARD_Y, 364, 80))
+            card.addView(icon, at(CARD_X + 18, CARD_Y + 25, 30, 30))
+            card.addView(bar, at(CARD_X + 62, CARD_Y + 37, Bar.W, Bar.H))
+            value.textDirection = View.TEXT_DIRECTION_LTR
+            card.addView(value, Type.hudNum.box(CARD_X + 296, CARD_Y + 18, 56))
+            card.addView(word, Type.button.box(CARD_X + 296, CARD_Y + 24, 56))
+            window.root.addView(card, FrameLayout.LayoutParams(420, 168))
+            icon.look { setColorFilter(if (iconMuted) Palette.ink3 else Palette.ink) }
         }
 
         fun bind(kind: Kind, level: Int, max: Int, muted: Boolean) {
+            window.syncLook()
             val m = max.coerceAtLeast(1)
             val f = level.coerceIn(0, m).toFloat() / m
             icon.setImageResource(when {
                 kind == Kind.NAV -> R.drawable.ic_nav
                 kind == Kind.PHONE -> R.drawable.ic_phone
-                muted || level <= 0 -> R.drawable.ic_volume_off
-                f < 0.4f -> R.drawable.ic_volume_low
-                else -> R.drawable.ic_volume
+                muted || level <= 0 -> R.drawable.ic_vol_mute
+                f < 0.4f -> R.drawable.ic_vol_low
+                else -> R.drawable.ic_vol
             })
-            icon.setColorFilter(if (muted) Palette.text3 else Palette.accentFg)
-            bar.fill = if (muted) Palette.text3 else accent
+            iconMuted = muted
+            icon.setColorFilter(if (muted) Palette.ink3 else Palette.ink)
             bar.dim = muted
             bar.to(f)
             if (muted) {
-                value.textRole(Type.FOOTNOTE)
-                value.text = context.getString(R.string.vol_muted)
+                value.visibility = View.INVISIBLE
+                word.visibility = View.VISIBLE
             } else {
-                value.textRole(Type.HEADLINE)
+                word.visibility = View.INVISIBLE
+                value.visibility = View.VISIBLE
                 value.text = level.coerceIn(0, m).toString()
             }
         }
 
         fun enter() {
             leaving = false
-            card.enter(dy = -ENTER_DP, scaleFrom = 0.96f)
+            card.enter(dy = ENTER_DY, dur = overlayMs(Tokens2.MS_cardIn))
         }
 
         /**
-         * Shown again while it is up: a held wheel button repeats every few tenths of a second, and the entrance plays
-         * on through the repeats (until 1.12 the first repeat cut it to its end). Shown again while it was fading
-         * out, it turns round from where it is (a cancelled fade-out does not run its end action, the removal).
+         * Shown again while it is up: a held wheel button repeats every few tenths of a second, and the entrance plays on through the repeats. Shown again while it was fading out, it turns round from
+         * where it is (a cancelled fade-out does not run its end action, the removal).
          */
         fun stay() {
             if (!leaving) return
             leaving = false
-            card.enter(dy = -ENTER_DP, scaleFrom = 0.96f, dur = Motion.SHORT)
+            card.enter(dy = ENTER_DY, dur = overlayMs(Tokens2.MS_cardIn))
         }
 
         fun leave(done: () -> Unit) {
             leaving = true
-            card.exit(dy = -10f, end = done)
+            card.exit(dur = overlayMs(Tokens2.MS_volumeOut), end = done)
         }
 
         companion object {
-            /** The card's distance from the window's top: room for the way it comes in. */
-            const val TOP_DP = 16
-            const val ENTER_DP = 14f
+            /** Where the visible card begins in this window: x 12, y 426 on the screen. */
+            const val CARD_X = 12
+            const val CARD_Y = 44
+            const val ENTER_DY = 12f
         }
     }
 
     /**
-     * The level: a rounded track filled from the start side (the right in Arabic), gliding between steps on a spring
-     * that keeps its speed through the repeats of a held button (an animation started anew at each step stuttered).
+     * The level, 226 x 6, always filled from the left, gliding between steps on a spring that keeps its speed through the repeats of a held button.
      */
-    private class Bar(c: Context) : View(c) {
-        var fill = Palette.accent
-            set(v) { field = v; invalidate() }
+    private class Bar(c: android.content.Context) : View(c), Recolours {
         var dim = false
             set(v) { field = v; invalidate() }
         private var known = false
@@ -392,6 +329,10 @@ object VolumeHud {
             if (!known || !isAttachedToWindow) { known = true; glide.snapTo(f); invalidate(); return }
             glide.animateTo(f)
         }
+
+        override fun onLook() = invalidate()
+
+        override fun hasOverlappingRendering() = false
 
         override fun onDetachedFromWindow() {
             glide.cancel()
@@ -406,11 +347,14 @@ object VolumeHud {
             c.drawRoundRect(r, h / 2, h / 2, paint)
             val f = glide.value.coerceIn(0f, 1f)
             if (f <= 0f) return
-            val len = (w * f).coerceAtLeast(h)
-            if (layoutDirection == LAYOUT_DIRECTION_RTL) r.set(w - len, 0f, w, h) else r.set(0f, 0f, len, h)
-            paint.color = fill
-            paint.alpha = if (dim) 110 else 255
+            r.set(0f, 0f, (w * f).coerceAtLeast(h), h)
+            paint.color = if (dim) Palette.ink3 else Palette.accent
             c.drawRoundRect(r, h / 2, h / 2, paint)
+        }
+
+        companion object {
+            const val W = 226
+            const val H = 6
         }
     }
 }

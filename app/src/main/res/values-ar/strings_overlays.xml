@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- المكالمة والرسالة وبطاقة الصوت، والتحكم -->
+    <string name="call_sub_incoming">جوال · مكالمة واردة</string>
+    <string name="call_sub_talking">مكالمة</string>
+    <string name="call_hang">قفل</string>
+    <string name="call_mute">كتم</string>
+    <string name="msg_listen">اسمعها</string>
+    <string name="amri_read_message">رسالة من %1$s: %2$s</string>
+    <string name="amri_go">انطلق</string>
+    <string name="amri_replace_q">%1$s: تبدّل رحلتك؟</string>
+    <string name="controls_day">نهار</string>
+    <string name="controls_night">ليل</string>
+    <string name="controls_hotspot">نقطة اتصال</string>
+    <string name="guide_pill_back">ارجع للخريطة</string>
+</resources>

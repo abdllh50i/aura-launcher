@@ -158,12 +158,17 @@ object Calls {
                         set(if (state == State.TALKING) State.TALKING else State.DIALING, num, who)
                     BT + "BEGIN_CALL_ONLINE" -> set(State.TALKING, null, null)
                     BT + "END_CALL", BT + "HFP_RELEASE" -> set(State.IDLE, null, null)
-                    ACTION_DEBUG -> if (BuildConfig.DEBUG) set(when (i.getStringExtra("state")) {
-                        "ring" -> State.RINGING
-                        "dial" -> State.DIALING
-                        "talk" -> State.TALKING
-                        else -> State.IDLE
-                    }, i.getStringExtra("number"), i.getStringExtra("name"))
+                    ACTION_DEBUG -> if (BuildConfig.DEBUG) {
+                        // a message, from the same hook: --es message "..." [--es from "..."] [--es app "..."]
+                        val m = i.getStringExtra("message")
+                        if (m != null) MessageBanner.debugShow(c, i.getStringExtra("app") ?: "WhatsApp", i.getStringExtra("from") ?: "", m)
+                        else set(when (i.getStringExtra("state")) {
+                            "ring" -> State.RINGING
+                            "dial" -> State.DIALING
+                            "talk" -> State.TALKING
+                            else -> State.IDLE
+                        }, i.getStringExtra("number"), i.getStringExtra("name"))
+                    }
                 }
             } catch (t: Throwable) {
                 Log.w(TAG, "receive: $t")
@@ -212,6 +217,18 @@ object Calls {
         main.postDelayed({ quietUntil = 0L; readState() }, QUIET_MS + 200L)
     }
 
+    /** The microphone is off for this call (the banner's Mute). */
+    var micMuted = false
+        private set
+
+    /** A service that could not be told leaves it as it was, so the plate never says what is not so. (The emulator has none: there it just shows.) */
+    fun setMicMuted(on: Boolean) {
+        if (!busy || on == micMuted) return
+        if (!BtMusic.setCallMicMuted(on) && (unit || !BuildConfig.DEBUG)) return
+        micMuted = on
+        changed()
+    }
+
     private fun operation(op: Int) {
         try { context?.sendBroadcast(Intent("com.nwd.bluetooth.hfp.operation").putExtra("extra_hfp_operation", op)) } catch (_: Throwable) { }
     }
@@ -234,6 +251,8 @@ object Calls {
         if (next != State.RINGING || was != State.RINGING) { answering = false; main.removeCallbacks(notAnswered) }
         if (next == State.IDLE) {
             if (was == State.IDLE || was == State.ENDED) return
+            // (the next call starts with the microphone on)
+            if (micMuted) { micMuted = false; BtMusic.setCallMicMuted(false) }
             state = State.ENDED
             main.removeCallbacks(forget)
             main.postDelayed(forget, ENDED_MS)

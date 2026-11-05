@@ -28,9 +28,10 @@ class ABtn @JvmOverloads constructor(
     /**
      * PRIMARY: the action (`btn-accent`). TONAL: a second choice beside it (`plate-20` in `fill2`). GHOST: cancel, dismiss (no
      * plate, `accentInk`). DANGER: a drastic choice offered beside others (`plate-18` in `redFill` with a 2 px ring). DANGER_FILLED:
-     * the one drastic action of a screen (`btn-decline`). ANSWER: the call's Answer (`btn-answer-72`, [Size.CALL]).
+     * the one drastic action of a screen (`btn-decline`). ANSWER: the call's Answer (`btn-answer-72`, [Size.CALL]). SELECTED: a tonal button that is on now, the call's Mute (the
+     * solid `selected` plate with its 1 px edge).
      */
-    enum class Kind { PRIMARY, TONAL, GHOST, DANGER, DANGER_FILLED, ANSWER }
+    enum class Kind { PRIMARY, TONAL, GHOST, DANGER, DANGER_FILLED, ANSWER, SELECTED }
 
     /** M 60, L 84; ARRIVAL 76 and CALL 72 are the two other heights there are bitmaps for. */
     enum class Size(@JvmField val height: Int) { M(60), L(84), ARRIVAL(76), CALL(72) }
@@ -46,6 +47,10 @@ class ABtn @JvmOverloads constructor(
     /** [Type.button], or [Type.go] on Go. */
     var role: Type.Role = Type.button
         set(v) { field = v; applyRole() }
+
+    /** The room at each side of the group: 24, less on a banner's 138 wide buttons, whose icon and word would not fit with it. */
+    var sidePad = SIDE
+        set(v) { field = v; applySlot() }
 
     private var plate: Tint? = null
     private var ring: Tint? = null
@@ -97,7 +102,7 @@ class ABtn @JvmOverloads constructor(
     /** The icon's place, or none: symmetric padding, so a centred label has the room the group leaves it. */
     private fun applySlot() {
         val extra = if (iconDrawable != null || loading) (slotW() + gap) / 2 else 0
-        val side = SIDE + extra
+        val side = sidePad + extra
         setPaddingRelative(side, 0, side, 0)
     }
 
@@ -126,9 +131,14 @@ class ABtn @JvmOverloads constructor(
                 val r = Tint(context, R.drawable.ring_18_2) { Palette.redEdge }.also { ring = it }
                 LayerDrawable(arrayOf(p.drawable, r.drawable))
             }
+            Kind.SELECTED -> {
+                val p = Tint(context, R.drawable.plate_18) { Palette.selected }.also { plate = it }
+                val r = Tint(context, R.drawable.ring_18) { Palette.selectedEdge }.also { ring = it }
+                LayerDrawable(arrayOf(p.drawable, r.drawable))
+            }
         }
         background = bg
-        val press = Tint(context, if (kind == Kind.DANGER) R.drawable.plate_18 else R.drawable.plate_20) { Palette.fillPress }
+        val press = Tint(context, if (kind == Kind.DANGER || kind == Kind.SELECTED) R.drawable.plate_18 else R.drawable.plate_20) { Palette.fillPress }
         pressTint = press
         foreground = PressGesture.plate(press.drawable)
         applySlot()
@@ -142,6 +152,7 @@ class ABtn @JvmOverloads constructor(
         Kind.TONAL -> Palette.ink
         Kind.GHOST -> Palette.accentInk
         Kind.DANGER -> Palette.redInk
+        Kind.SELECTED -> Palette.selectedInk
     }
 
     /** Recoloured in place: no bitmap here differs by theme but its tint. */

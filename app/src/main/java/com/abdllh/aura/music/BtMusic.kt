@@ -469,6 +469,9 @@ object BtMusic {
     fun answerCall(): Boolean = transact(14) { }
     fun cancelCall(): Boolean = transact(15) { }
 
+    /** The microphone in a call: BTFeature.setMute is 58 (DEV.md, "Facts about the firmware"). Not tried on the unit. */
+    fun setCallMicMuted(on: Boolean): Boolean = transact(58) { it.writeInt(if (on) 1 else 0) }
+
     // ------------------------------------------------------------------------------------------ binder
     private val pimCallback = object : Binder() {
         init { attachInterface(null, CALLBACK) }
