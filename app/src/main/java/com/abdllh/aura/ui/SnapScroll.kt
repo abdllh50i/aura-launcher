@@ -26,7 +26,8 @@ class SnapScroll(ctx: Context) : ScrollView(ctx) {
         isVerticalFadingEdgeEnabled = false
     }
 
-    private val most: Int get() = ((getChildAt(0)?.height ?: 0) - height).coerceAtLeast(0)
+    /** How far it can scroll. */
+    val most: Int get() = ((getChildAt(0)?.height ?: 0) - height).coerceAtLeast(0)
 
     private fun stops(): List<Int> {
         val out = ArrayList<Int>()
@@ -35,15 +36,20 @@ class SnapScroll(ctx: Context) : ScrollView(ctx) {
             var y = 0
             while (y < top) { out.add(y); y += pitch }
         } else {
-            val col = getChildAt(0) as? ViewGroup
-            if (col != null) for (i in 0 until col.childCount) {
-                val c = col.getChildAt(i)
-                if (c.visibility == View.VISIBLE && c.height > 1 && c.top < top) out.add(c.top)
-            }
+            (getChildAt(0) as? ViewGroup)?.let { tops(it, 0, top, out) }
             if (out.isEmpty() || out[0] != 0) out.add(0, 0)
         }
         out.add(top)
         return out
+    }
+
+    /** The tops of what is in [col]: a section longer than half a screen by its rows, anything else whole. */
+    private fun tops(col: ViewGroup, at: Int, top: Int, out: MutableList<Int>) {
+        for (i in 0 until col.childCount) {
+            val c = col.getChildAt(i)
+            if (c.visibility != View.VISIBLE || c.height <= 1 || at + c.top >= top) continue
+            if (c is ViewGroup && c.childCount > 1 && c.height > height / 2) tops(c, at + c.top, top, out) else out.add(at + c.top)
+        }
     }
 
     override fun fling(velocityY: Int) {

@@ -21,7 +21,6 @@ import com.abdllh.aura.system.Notices
 import com.abdllh.aura.ui.ABtn
 import com.abdllh.aura.ui.AuraSlider
 import com.abdllh.aura.ui.Confirm
-import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Menu
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Segmented
@@ -29,7 +28,6 @@ import com.abdllh.aura.ui.Snack
 import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.iconView
 import com.abdllh.aura.ui.lp
-import com.abdllh.aura.util.dp
 import com.abdllh.aura.voice.Amri
 import com.abdllh.aura.voice.OfflineCommands
 import com.abdllh.aura.voice.VoiceSetup

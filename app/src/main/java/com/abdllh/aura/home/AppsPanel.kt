@@ -101,7 +101,7 @@ class AppsPanel(shell: HomeActivity) : Panel(shell, Screens.APPS) {
         if (onTrip) {
             host = SurfaceCard(this, Surface.OVERLAY)
             root.addView(host, Surface.OVERLAY.at(CARD_X, CARD_Y, CARD_W, CARD_H))
-            turnAway = TurnAway(host, if (rtl) 12f else -12f)
+            turnAway = TurnAway(host, 12f)
             val title = label(Type.pageTitle, { Palette.ink }).apply { setText(R.string.dock_apps) }
             host.addView(title, Type.pageTitle.box(22, 10, CARD_W - 44))
         } else {
@@ -119,7 +119,7 @@ class AppsPanel(shell: HomeActivity) : Panel(shell, Screens.APPS) {
         val d = PageDots(this)
         if (onTrip) host.addView(d, at(CARD_W - 8, GRID_TRIP_Y - CARD_Y, 8, 3 * ROW_TRIP))
         else host.addView(d, at(1014, GRID_Y, 8, 2 * ROW))
-        s.onMoved = { y -> d.at(y) }
+        s.onMoved = { y -> d.at(y, s.most) }
         scroll = s
         grid = g
         dots = d
@@ -149,7 +149,7 @@ class AppsPanel(shell: HomeActivity) : Panel(shell, Screens.APPS) {
         g.minimumHeight = (rows - 1).coerceAtLeast(0) * rowH + cellH
         val s = scroll ?: return
         s.pitch = rowH
-        dots?.set(ceil(rows / (if (onTrip) 3.0 else 2.0)).toInt(), (if (onTrip) 3 else 2) * rowH)
+        dots?.set(ceil(rows / (if (onTrip) 3.0 else 2.0)).toInt())
         if (s.scrollY > g.minimumHeight - s.height) s.scrollTo(0, 0)
         // (read for the first time: it comes up as one; a list that was there just stands)
         if (reveal && hadNone) {
@@ -343,17 +343,15 @@ private class TileView(ctx: Context, e: AppEntry, private val size: Int, private
 private class PageDots(ctx: Context) : View(ctx), com.abdllh.aura.ui.Recolours {
     private var pages = 1
     private var page = 0
-    private var pageH = 1
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
 
-    fun set(pages: Int, pageH: Int) {
+    fun set(pages: Int) {
         this.pages = pages
-        this.pageH = pageH.coerceAtLeast(1)
         invalidate()
     }
 
-    fun at(y: Int) {
-        val now = ((y + pageH / 2) / pageH).coerceIn(0, pages - 1)
+    fun at(y: Int, most: Int) {
+        val now = if (most <= 0) 0 else Math.round(y.toFloat() / most * (pages - 1)).coerceIn(0, pages - 1)
         if (now != page) {
             page = now
             invalidate()

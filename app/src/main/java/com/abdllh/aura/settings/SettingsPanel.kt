@@ -6,7 +6,6 @@ import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
-import android.widget.LinearLayout
 import com.abdllh.aura.R
 import com.abdllh.aura.home.HomeActivity
 import com.abdllh.aura.home.Panel
@@ -204,7 +203,7 @@ class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
         if (trip) {
             card = SurfaceCard(this, Surface.OVERLAY)
             root.addView(card, Surface.OVERLAY.at(TRIP_X, TRIP_Y, TRIP_W, TRIP_H))
-            turnAway = TurnAway(card, reading(STEP))
+            turnAway = TurnAway(card, STEP)
             return
         }
         root.addView(surfaceImage("room"), at(0, 0, 1024, 516))
