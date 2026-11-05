@@ -40,8 +40,8 @@ import java.util.Locale
  *      --ez night true                                    the Night Panel
  *      --es nightshow "600 م"                             the same with the mockup's numbers
  *      --ez state true                                    where it all is, in the log
- * Frame times from Window.addOnFrameMetricsAvailableListener. own: what the app does for a frame (input, animation, layout, draw, sync, commands);
- * total also counts waiting and the swap, which on an emulator sharing a GPU say more about the host.
+ * Frame times from Window.addOnFrameMetricsAvailableListener. own: what the app does for a frame, ui (input, animation, layout, draw: the main thread) and rend (sync and commands: the render
+ * thread, which also waits for the host's GL here); total also counts waiting and the swap, which on an emulator sharing a GPU say more about the host.
  */
 class ChromeProbe : BroadcastReceiver() {
     override fun onReceive(c: Context, i: Intent) {
@@ -169,6 +169,8 @@ class ChromeProbe : BroadcastReceiver() {
 
     private class Rec(private val name: String) : Window.OnFrameMetricsAvailableListener {
         private val own = ArrayList<Double>()
+        private val ui = ArrayList<Double>()
+        private val render = ArrayList<Double>()
         private val total = ArrayList<Double>()
         private val swap = ArrayList<Double>()
         private val thread = HandlerThread("chrome-frames").apply { start() }
@@ -184,6 +186,8 @@ class ChromeProbe : BroadcastReceiver() {
             Handler(thread.looper).post {
                 Log.i(TAG, "$name: frames ${own.size}, dropped reports $dropped")
                 Log.i(TAG, "$name: own   ${line(own)}")
+                Log.i(TAG, "$name: ui    ${line(ui)}")
+                Log.i(TAG, "$name: rend  ${line(render)}")
                 Log.i(TAG, "$name: total ${line(total)}")
                 Log.i(TAG, "$name: swap  ${line(swap)}")
                 Log.i(TAG, "$name: done")
@@ -200,9 +204,11 @@ class ChromeProbe : BroadcastReceiver() {
 
         override fun onFrameMetricsAvailable(w: Window, m: FrameMetrics, drop: Int) {
             dropped += drop
-            val o = m.getMetric(FrameMetrics.INPUT_HANDLING_DURATION) + m.getMetric(FrameMetrics.ANIMATION_DURATION) + m.getMetric(FrameMetrics.LAYOUT_MEASURE_DURATION) +
-                m.getMetric(FrameMetrics.DRAW_DURATION) + m.getMetric(FrameMetrics.SYNC_DURATION) + m.getMetric(FrameMetrics.COMMAND_ISSUE_DURATION)
-            own.add(o / 1e6)
+            val u = m.getMetric(FrameMetrics.INPUT_HANDLING_DURATION) + m.getMetric(FrameMetrics.ANIMATION_DURATION) + m.getMetric(FrameMetrics.LAYOUT_MEASURE_DURATION) + m.getMetric(FrameMetrics.DRAW_DURATION)
+            val r = m.getMetric(FrameMetrics.SYNC_DURATION) + m.getMetric(FrameMetrics.COMMAND_ISSUE_DURATION)
+            own.add((u + r) / 1e6)
+            ui.add(u / 1e6)
+            render.add(r / 1e6)
             total.add(m.getMetric(FrameMetrics.TOTAL_DURATION) / 1e6)
             swap.add(m.getMetric(FrameMetrics.SWAP_BUFFERS_DURATION) / 1e6)
         }

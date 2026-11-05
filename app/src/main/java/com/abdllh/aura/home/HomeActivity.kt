@@ -69,9 +69,9 @@ class HomeActivity : Activity() {
         root = ShellRoot(this)
         setContentView(root)
         panels = PanelStack(this, HomePanel(this, savedInstanceState))
-        com.abdllh.aura.chrome.Chrome.attachIfOn(this) // (what stays over every panel: behind its switch until the screens are rebuilt)
         MediaMonitor.start(this)
         NwdBridge.startStockServicesOncePerBoot(this)
+        com.abdllh.aura.chrome.Chrome.attachIfOn(this) // (what stays over every panel: behind its switch until the screens are rebuilt)
         // what this start is for: a recreate brings back what was on top; the intent says it once (a recreate reads it again)
         val again = reopen
         reopen = null
