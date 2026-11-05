@@ -40,7 +40,7 @@ Map data © OpenStreetMap contributors, available under the Open Database Licens
   The offline map is downloaded on the unit itself: OpenFreeMap tiles and fonts, and BRouter's routing data
   (segments4, built from OpenStreetMap, https://brouter.de); its search index is built on the unit from those tiles.
 
-Car images (app/src/main/assets/car/*.webp) are renders of a 3D model of the owner's car, supplied by the owner of the unit.
+Car images (app/src/main/assets/car/**/*.webp) are renders of a 3D model of the owner's car, supplied by the owner of the unit.
   The model itself is not part of this repository.
 
 AMRI OS is an independent design inspired by modern EV interfaces. It is not affiliated with, or endorsed by, any car maker.

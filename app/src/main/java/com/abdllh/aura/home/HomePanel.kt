@@ -31,6 +31,7 @@ import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Snack
 import com.abdllh.aura.ui.Spring
+import com.abdllh.aura.ui.Surfaces
 import com.abdllh.aura.ui.ThemeSwap
 import com.abdllh.aura.ui.Tokens2
 import com.abdllh.aura.ui.Type
@@ -79,6 +80,7 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
 
     private lateinit var controls: ControlsSheet
     private var startLogo: ImageView? = null
+    private var startVeil: ImageView? = null
     private var introPlayed = false
     private var resumedNow = false
     private var shownNow = false
@@ -89,7 +91,7 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
     private var moveDone: (() -> Unit)? = null
     private val moves = Tweens(onRest = { val d = moveDone; moveDone = null; d?.invoke() })
     private val partsA = moves.part(1f) { v -> parts.alpha = v; show(parts, v) }
-    private val wallA = moves.part(1f) { v -> wall.alpha = v; stage.gl?.alpha = v }
+    private val wallA = moves.part(1f) { v -> wall.alpha = v; stage.fade(v) }
     private val carK = moves.part(1f) { v -> stage.presence = v }
     private var atRestUnder = false
 
@@ -314,7 +316,7 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
      * ms apart. Everything is put where it starts from at once, so the first frame shows that, and it starts moving after that frame. Any tap skips to the end. Only at the process's first show.
      */
     private fun playEntrance() {
-        val first = !processStarted
+        val first = !processStarted && Prefs.screenAnimations
         processStarted = true
         val r = room
         if (!first) {
@@ -335,6 +337,15 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
             pending.add(Runnable { p.to(1f, delay, ENTER_MS, Motion.ENTER) })
             return p
         }
+        // (BootHome's wall has no card in it: the card's hole, its shadow and the map's picture come with the card)
+        val veil = ImageView(shell).apply {
+            setImageBitmap(Surfaces.themed(shell, "wall"))
+            scaleType = ImageView.ScaleType.MATRIX
+        }
+        startVeil = veil
+        room.addView(veil, room.indexOfChild(parts), at(0, 0, CarGlView.RECT_X.toInt(), 600))
+        val veilPart = entrance.part(1f) { a -> veil.alpha = a }
+        pending.add(Runnable { veilPart.to(0f, 160L, ENTER_MS, Motion.ENTER) })
         rise(card, 160L)
         rise(widget, 200L)
         rise(clock, 240L)
@@ -379,6 +390,8 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         entranceOn = false
         startLogo?.let { room.removeView(it) }
         startLogo = null
+        startVeil?.let { room.removeView(it) }
+        startVeil = null
         chromeUp = null
     }
 

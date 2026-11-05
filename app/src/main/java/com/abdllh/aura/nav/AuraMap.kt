@@ -276,6 +276,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
             m.addOnCameraMoveStartedListener { reason ->
                 if (reason == MapboxMap.OnCameraMoveStartedListener.REASON_API_GESTURE && interactive) {
                     blendFrom = null
+                    placeCarScale(carScaleTo)
                     flightUntil = 0L
                     setMode(Camera.FREE)
                     onUserMoved?.invoke()

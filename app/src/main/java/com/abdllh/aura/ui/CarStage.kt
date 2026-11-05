@@ -107,7 +107,7 @@ class CarStage(context: Context) : FrameLayout(context) {
             addView(g, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
             g.onReady = {
                 gpuDrawing = true
-                under.visibility = GONE
+                under.visibility = INVISIBLE // (no layout: this often comes in the entrance)
                 onFirstFrame?.invoke()
                 onFirstFrame = null
                 invalidate()
@@ -170,6 +170,13 @@ class CarStage(context: Context) : FrameLayout(context) {
 
     /** What is on screen now, for a picture the window's Canvas cannot record: the theme change's ghost. */
     fun picture() = gl?.picture()
+
+    /** With the wall, as one: the wall's own pixels if the GL view is not up yet. A TextureView's alpha takes a layer of its rect, for the 240 ms of a fade only. */
+    fun fade(a: Float) {
+        under.alpha = a
+        fallback?.alpha = a
+        gl?.alpha = a
+    }
 
     val framesIn: Boolean get() = gl?.framesIn == true
 
