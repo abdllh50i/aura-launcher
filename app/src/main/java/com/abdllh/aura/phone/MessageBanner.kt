@@ -200,7 +200,8 @@ object MessageBanner {
         /** The message itself only with the car parked; the car starting to move takes it off the card at once. */
         private fun setWords(m: AuraNotificationListener.Message) {
             val body = Notices.showText && m.text.isNotBlank() && (!DriveState.moving || Asked.MESSAGE_TEXT_MOVING)
-            what.text = if (body) m.text else what.context.getString(R.string.notices_new_message)
+            // (its own direction inside the line: an English message on an Arabic screen kept its question mark at the wrong end)
+            what.text = if (body) BidiFormatter.getInstance(Fonts.arabicUi).unicodeWrap(m.text) else what.context.getString(R.string.notices_new_message)
         }
 
         private fun removeTimer() = stage.removeCallbacks(timeout)

@@ -225,6 +225,8 @@ class MapsPanel(shell: HomeActivity) : Panel(shell, Screens.MAPS) {
         if (on) {
             takeLook()
             map.toMaps(SIDE.dp)
+            // (no hand on this panel: under Music lying collapsed, the car moving, it is `drive-free` at once, with no browse's tools over the chip for 10 s)
+            lastTouch = 0L
             syncNav()
         }
     }
