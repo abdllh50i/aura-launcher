@@ -10,7 +10,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.SystemClock
-import android.view.View
+import android.util.Log
 import android.widget.FrameLayout
 import com.abdllh.aura.R
 import com.abdllh.aura.home.Actions
@@ -70,6 +70,14 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
     internal val volume = VolumeCluster(shell)
     internal val voice = VoiceButton(shell) { voiceTap() }
 
+    /** Maps tells when a search or a place card lies over its speed card: the strip takes the speed then. */
+    var speedCardHidden = false
+        set(v) {
+            if (v == field) return
+            field = v
+            refreshFaces(canMove())
+        }
+
     private var panel = Screens.HOME
     private var onHome = true
     private var appliedDark = Palette.dark
@@ -78,6 +86,7 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
     private var speedShown = false
     private var kmh: Int? = null
     private var gps = false
+    private var wifi = false
     private var lastFixAt = 0L
     private var receiving = false
     private var networkWatched = false
@@ -99,8 +108,6 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
         addView(rowDock, at(0, RowDock.TOP, 1024, 600 - RowDock.TOP))
         addView(volume, at(0, 516, 204, 84))
         addView(voice, at(186, 502, VoiceButton.SIZE, VoiceButton.SIZE))
-        rowDock.visibility = INVISIBLE
-        rowDock.live = false
         strip.speed.visibility = INVISIBLE
         rowDock.glance.onTitle = { openPlayer() }
         panel = shell.topPanel.ifEmpty { Screens.HOME }
@@ -114,13 +121,15 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
     internal fun show(name: String, animate: Boolean) {
         panel = name
         val home = name == Screens.HOME
-        if (home != onHome) {
+        val rowChanges = home != onHome
+        if (rowChanges) {
             onHome = home
             rowChange(animate)
         } else if (!home) {
             if (animate) rowDock.slideTo(name) else rowDock.placeOn(name)
         }
-        refreshFaces(animate)
+        // (the glance's own crossfade only inside a dock that is there: coming with the row, it is already the right face)
+        refreshFaces(animate, glance = animate && !rowChanges && !home)
     }
 
     private fun canMove() = shell.resumedNow && Prefs.screenAnimations && isShown
@@ -156,6 +165,8 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
 
     private fun snapRows() {
         tweens.stop()
+        rowHome.live = onHome
+        rowDock.live = !onHome
         val k = if (onHome) 0f else 1f
         homeA.snap(1f - k)
         dockA.snap(k)
@@ -163,6 +174,7 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
         face.snap(k)
         stripHome.snap(1f - k)
         stripOther.snap(k)
+        speedA.snap(if (speedShown) 1f else 0f) // (its own fade too, if it was on its way: all of it stopped above)
         if (!onHome) rowDock.placeOn(panel)
         atRest()
     }
@@ -175,13 +187,12 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
         if (speedA.value <= 0f && strip.speed.visibility != INVISIBLE) strip.speed.visibility = INVISIBLE
     }
 
-    private fun refreshFaces(animate: Boolean) {
+    private fun refreshFaces(animate: Boolean, glance: Boolean = animate && !onHome) {
         val moving = DriveState.moving
-        rowDock.glance.face(ChromeRules.glance(panel, trip, song != null) == ChromeRules.Glance.MINI, animate && !onHome)
+        rowDock.glance.face(ChromeRules.glance(panel, trip, song != null) == ChromeRules.Glance.MINI, glance)
         strip.setGear(Gear.current, Gear.sure, moving)
-        refreshPrayer()
-        val want = ChromeRules.stripSpeed(panel, moving, trip, mapsCardHidden)
-        if (want != speedShown) {
+        val want = ChromeRules.stripSpeed(panel, moving, trip, speedCardHidden)
+        if (want != speedShown && !debugSpeedHeld) {
             speedShown = want
             if (want) {
                 strip.speed.visibility = VISIBLE
@@ -199,9 +210,11 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
         trip = NavSession.state != NavSession.State.IDLE
         volume.sync(false)
         strip.setTime(Fmt.clock(Date(), Prefs.clock24))
+        wifi = Actions.wifiConnected(context)
         syncStatus()
         bindSong(MediaMonitor.current, false)
         refreshFaces(animate)
+        refreshPrayer()
     }
 
     // ------------------------------------------------------------------------------------------ the next prayer
@@ -217,8 +230,12 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
 
     // ------------------------------------------------------------------------------------------ the song
     private val onSong: (NowPlaying?) -> Unit = { n ->
-        bindSong(n, true)
-        refreshFaces(canMove())
+        // (the same song published again is most of what comes)
+        if (n != song) {
+            val faceMayChange = (n == null) != (song == null)
+            bindSong(n, true)
+            if (faceMayChange) refreshFaces(canMove())
+        }
     }
 
     private fun bindSong(n: NowPlaying?, animate: Boolean) {
@@ -258,7 +275,7 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
     private val onRoad: () -> Unit = { post { syncSpeed() } }
 
     private fun syncSpeed() {
-        if (!speedShown) return
+        if (!speedShown || debugSpeedHeld) return
         val w = RoadWatch.state
         val spot = w.spot
         val saher = if (spot != null && spot.kind == MapExtras.Kind.CAMERA) Units.distance(w.metres.toDouble(), Fonts.arabicUi) else null
@@ -267,16 +284,22 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
 
     private fun syncStatus() {
         if (debugStatus) return
-        strip.setStatus(gps, wifiOn(), (BtMusic.available && BtMusic.connected) || PhoneLink.connected)
+        strip.setStatus(gps, wifi, (BtMusic.available && BtMusic.connected) || PhoneLink.connected)
     }
-
-    private fun wifiOn() = Actions.wifiConnected(context)
 
     private val onLink: () -> Unit = { post { syncStatus() } }
 
+    // (the two calls that ask for it go to another process: asked when the network says something changed, and not at every fix)
     private val network = object : ConnectivityManager.NetworkCallback() {
-        override fun onAvailable(n: Network) { post { syncStatus() } }
-        override fun onLost(n: Network) { post { syncStatus() } }
+        override fun onAvailable(n: Network) = wifiChanged()
+        override fun onLost(n: Network) = wifiChanged()
+    }
+
+    private fun wifiChanged() {
+        post {
+            wifi = Actions.wifiConnected(context)
+            syncStatus()
+        }
     }
 
     private val onGear: () -> Unit = { refreshFaces(canMove()) }
@@ -285,6 +308,7 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
         // (the car starts moving: a dialog goes as Cancel, section 6.0's event table)
         if (DriveState.moving) Modal.dismissAll()
         refreshFaces(canMove())
+        refreshPrayer()
     }
 
     private val onNav: () -> Unit = {
@@ -441,8 +465,6 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
 
     override fun onLook() {
         appliedDark = Palette.dark
-        // (what is not a view's own: the prayer's colour goes with its quiet state)
-        refreshPrayer()
     }
 
     override fun hasOverlappingRendering() = false
@@ -467,7 +489,10 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
             if (v) strip.setStatus(gps = true, wifi = true, phone = true) else syncStatus()
         }
 
+    private var debugSpeedHeld = false
+
     internal fun debugSpeed(v: Int?, limit: Int, over: Boolean, saher: String?) {
+        debugSpeedHeld = true
         speedShown = true
         strip.speed.visibility = VISIBLE
         speedA.snap(1f)
@@ -475,6 +500,7 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
     }
 
     companion object {
+        private const val TAG = "AuraChrome"
         private const val FILE = "aura_chrome"
         private const val KEY_ON = "on"
         private const val HOLDER = "chrome"
@@ -484,9 +510,6 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
         private const val VOLUME_CHANGED = "android.media.VOLUME_CHANGED_ACTION"
         private const val STREAM_MUTE_CHANGED = "android.media.STREAM_MUTE_CHANGED_ACTION"
         private const val DEBUG_OTHER = Screens.MAPS
-
-        /** Maps tells when a search or a place card lies over its speed card: the strip takes the speed then. */
-        @JvmField var mapsCardHidden = false
 
         /** The switch, default off while the old Dock and Home cards are in their places: a debug broadcast turns it on (debug/ChromeProbe.kt). */
         fun isOn(c: Context): Boolean = try { c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(KEY_ON, false) } catch (_: Throwable) { false }
@@ -499,7 +522,9 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
         /** From the window's start, before its first frame. */
         fun attachIfOn(shell: HomeActivity) {
             if (!isOn(shell) || of(shell) != null) return
+            val t0 = SystemClock.uptimeMillis()
             shell.root.chrome.addView(Chrome(shell, Asked.DOCK), FrameLayout.LayoutParams(1024, 600))
+            Log.i(TAG, "built in ${SystemClock.uptimeMillis() - t0} ms")
         }
 
         fun of(shell: HomeActivity): Chrome? = shell.root.chrome.getChildAt(0) as? Chrome

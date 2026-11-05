@@ -16,7 +16,8 @@ class LimitSign @JvmOverloads constructor(
     private val spec: Spec = SPEED,
     private val dim: Boolean = false
 ) : View(ctx), Recolours {
-    class Spec(@JvmField val px: Int, @JvmField val role: Type.Role, @JvmField val ring: Float, @JvmField val ring3: Float, @JvmField val spacing3: Float)
+    /** [size3]: the number's size with three digits, where the role's would not fit the ring (0: the role's). */
+    class Spec(@JvmField val px: Int, @JvmField val role: Type.Role, @JvmField val ring: Float, @JvmField val ring3: Float, @JvmField val spacing3: Float, @JvmField val size3: Float = 0f)
 
     var kmh = 0
         set(v) { if (v != field) { field = v; invalidate() } }
@@ -44,7 +45,7 @@ class LimitSign @JvmOverloads constructor(
         c.drawCircle(r, r, r - ring / 2f, p)
         t.color = Palette.limitInk
         t.typeface = Fonts.of(spec.role)
-        t.textSize = spec.role.sp
+        t.textSize = if (three && spec.size3 > 0f) spec.size3 else spec.role.sp
         // (a digit is 0.6 em, and only a three-digit number is tightened: section 3)
         t.letterSpacing = if (three) spec.spacing3 / t.textSize else 0f
         c.drawText(kmh.toString(), r, r + 0.335f * t.textSize, t)
@@ -53,6 +54,6 @@ class LimitSign @JvmOverloads constructor(
     companion object {
         @JvmField val SPEED = Spec(68, Type.limit, 6f, 5f, -0.8f)
         @JvmField val HOME = Spec(40, Type.stripLimit, 3f, 3f, -0.4f)
-        @JvmField val STRIP = Spec(34, Type.stripLimit, 3f, 3f, -0.4f)
+        @JvmField val STRIP = Spec(34, Type.stripLimit, 3f, 3f, -0.4f, 15f)
     }
 }

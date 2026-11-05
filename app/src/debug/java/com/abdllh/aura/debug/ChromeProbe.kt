@@ -73,10 +73,11 @@ class ChromeProbe : BroadcastReceiver() {
             ch?.rowDock?.glance?.face(true, false)
         }
         if (i.getBooleanExtra("night", false)) s.root.night.show()
+        i.getStringExtra("nightshow")?.let { s.root.night.debugHold("87", 120, it) }
         i.getStringExtra("fly")?.let {
             val b = c.assets.open("gallery/sea.jpg").use { st -> android.graphics.BitmapFactory.decodeStream(st) }
             val sq = android.graphics.Bitmap.createScaledBitmap(b, 204, 204, true)
-            s.root.flyer.fly(sq, 278f, 338f, 84f, 16f, 92f, 48f, 204f, 20f, 320L) { Log.i(TAG, "flew") }
+            s.root.flyer.fly(sq, 278f, 338f, 84f, 16f, 92f, 48f, 204f, 20f, i.getIntExtra("ms", 320).toLong()) { Log.i(TAG, "flew") }
         }
         val gap = i.getIntExtra("gap", 400).toLong()
         if (i.hasExtra("rows") && ch != null) rows(s, ch, i.getIntExtra("rows", 10), gap)

@@ -17,7 +17,6 @@ import com.abdllh.aura.system.Gear
 import com.abdllh.aura.ui.AText
 import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.LimitSign
-import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.PressGesture
 import com.abdllh.aura.ui.Recolours
@@ -26,7 +25,6 @@ import com.abdllh.aura.ui.Tokens2
 import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.at
 import com.abdllh.aura.ui.box
-import com.abdllh.aura.ui.ink
 import com.abdllh.aura.ui.label
 import com.abdllh.aura.ui.look
 
@@ -257,8 +255,7 @@ internal class GearBadge(ctx: Context) : View(ctx), Recolours {
  * bilinear filter would skip most of their pixels, so each is cut down once to its real size, by halves, and kept.
  */
 internal class Logo(ctx: Context) : ImageView(ctx) {
-    private val arabic = Fonts.arabicUi
-    val w = if (arabic) 87 else 155
+    val w = width()
 
     init {
         scaleType = ScaleType.FIT_XY
@@ -271,20 +268,23 @@ internal class Logo(ctx: Context) : ImageView(ctx) {
         }
     }
 
-    private fun bitmap(c: Context, night: Boolean): Bitmap? = synchronized(kept) {
-        val res = if (arabic) { if (night) R.drawable.logo_amri_ar else R.drawable.logo_amri_ar_ink } else { if (night) R.drawable.logo_amri_en else R.drawable.logo_amri_en_ink }
-        kept[res] ?: try {
-            var b = BitmapFactory.decodeResource(c.resources, res, BitmapFactory.Options().apply { inScaled = false; inSampleSize = 2 })
-            while (b.width > w * 2) b = Bitmap.createScaledBitmap(b, b.width / 2, b.height / 2, true)
-            Bitmap.createScaledBitmap(b, w, 26, true).also { kept[res] = it }
-        } catch (_: Throwable) {
-            null
-        }
-    }
-
     private companion object {
         val kept = HashMap<Int, Bitmap>()
         var stepAdded = false
+
+        fun width() = if (Fonts.arabicUi) 87 else 155
+
+        fun bitmap(c: Context, night: Boolean): Bitmap? = synchronized(kept) {
+            val res = if (Fonts.arabicUi) { if (night) R.drawable.logo_amri_ar else R.drawable.logo_amri_ar_ink } else { if (night) R.drawable.logo_amri_en else R.drawable.logo_amri_en_ink }
+            kept[res] ?: try {
+                val w = width()
+                var b = BitmapFactory.decodeResource(c.resources, res, BitmapFactory.Options().apply { inScaled = false; inSampleSize = 2 })
+                while (b.width > w * 2) b = Bitmap.createScaledBitmap(b, b.width / 2, b.height / 2, true)
+                Bitmap.createScaledBitmap(b, w, 26, true).also { kept[res] = it }
+            } catch (_: Throwable) {
+                null
+            }
+        }
     }
 }
 

@@ -7,6 +7,11 @@ import android.graphics.Canvas
 import android.graphics.Outline
 import android.graphics.Picture
 import android.location.Location
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.AbsoluteSizeSpan
+import android.text.style.TypefaceSpan
+import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewOutlineProvider
@@ -133,6 +138,7 @@ class NightPanel(ctx: Context) : FrameLayout(ctx) {
     private lateinit var speed: AText
     private lateinit var sign: LimitSign
     private var woken = false
+    private var shownDist = ""
     private val back = Runnable {
         woken = false
         if (isUp) fadeTo(1f, Tokens2.MS_swap, Motion.MOVE)
@@ -156,11 +162,11 @@ class NightPanel(ctx: Context) : FrameLayout(ctx) {
         setBackgroundColor(Palette.nightPanelBg)
         arrow = ManeuverView(context).apply { color = Palette.nightPanelInk; visibility = INVISIBLE }
         addView(arrow, at(64, 150, 150, 150))
-        dist = context.label(Type.nightDist, Palette.nightPanelInk).apply { textDirection = TEXT_DIRECTION_LTR; textAlignment = TEXT_ALIGNMENT_VIEW_START }
+        dist = context.label(Type.nightDist, Palette.nightPanelInk).apply { textDirection = TEXT_DIRECTION_LTR; gravity = Gravity.LEFT or Gravity.TOP; textAlignment = TEXT_ALIGNMENT_GRAVITY }
         addView(dist, Type.nightDist.box(64, 316, 400))
-        speed = context.label(Type.nightPanel, Palette.nightPanelInk).apply { textDirection = TEXT_DIRECTION_LTR; textAlignment = TEXT_ALIGNMENT_VIEW_START }
+        speed = context.label(Type.nightPanel, Palette.nightPanelInk).apply { textDirection = TEXT_DIRECTION_LTR; gravity = Gravity.LEFT or Gravity.TOP; textAlignment = TEXT_ALIGNMENT_GRAVITY }
         addView(speed, Type.nightPanel.box(520, 210, 170))
-        sign = LimitSign(context, LimitSign.Spec(84, Type.limit, 6f, 5f, -0.8f), dim = true)
+        sign = LimitSign(context, LimitSign.Spec(84, NIGHT_LIMIT, 6f, 5f, -0.8f), dim = true)
         addView(sign, at(690, 222, 84, 84))
     }
 
@@ -207,16 +213,26 @@ class NightPanel(ctx: Context) : FrameLayout(ctx) {
         if (p != null && step != null && NavSession.state == NavSession.State.NAVIGATING) {
             arrow.visibility = VISIBLE
             arrow.show(step)
-            val d = Units.distance(p.toNext, Fonts.arabicUi)
-            if (d != dist.text.toString()) dist.text = d
+            setDistance(Units.distance(p.toNext, Fonts.arabicUi))
         } else {
             arrow.visibility = INVISIBLE
-            if (dist.text.isNotEmpty()) dist.text = ""
+            setDistance("")
         }
         val camera = w.spot != null && w.spot.kind == com.abdllh.aura.nav.MapExtras.Kind.CAMERA && w.metres < WAKE_SAHER_M
         val turn = p != null && p.toNext < WAKE_TURN_M && NavSession.state == NavSession.State.NAVIGATING
         val call = Calls.state == Calls.State.RINGING || Calls.state == Calls.State.TALKING || Calls.state == Calls.State.DIALING
         if (call || camera || turn) wake()
+    }
+
+    /** "600 م": the number in its role and the unit smaller, as the mockup has them; the same label for a new distance, one a second at most. */
+    private fun setDistance(d: String) {
+        if (d == shownDist) return
+        shownDist = d
+        val cut = d.lastIndexOf(' ')
+        dist.text = if (cut < 0) d else SpannableString(d).apply {
+            setSpan(AbsoluteSizeSpan(UNIT_PX, false), cut, d.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            setSpan(TypefaceSpan(Fonts.get(400)), cut, d.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
     }
 
     /** A moment that must be seen: the screen under it, then back in 5 s, unless he touched. */
@@ -233,12 +249,29 @@ class NightPanel(ctx: Context) : FrameLayout(ctx) {
         return true
     }
 
+    /** Debug builds: the mockup's numbers, whatever the road says. */
+    internal fun debugHold(kmh: String, limit: Int, distance: String) {
+        show()
+        CarLocation.removeListener(onFix)
+        NavSession.removeListener(onNav)
+        RoadWatch.removeListener(onNav)
+        Calls.removeListener(onNav)
+        speed.text = kmh
+        sign.visibility = VISIBLE
+        sign.kmh = limit
+        setDistance(distance)
+        arrow.visibility = VISIBLE
+        arrow.turn = com.abdllh.aura.nav.Turn.RIGHT
+    }
+
     override fun onDetachedFromWindow() {
         hide()
         super.onDetachedFromWindow()
     }
 
     private companion object {
+        val NIGHT_LIMIT = Type.Role("nightLimit", 30, 600, 84, 30)
+        const val UNIT_PX = 34
         const val WAKE_MS = 5000L
         const val WAKE_SAHER_M = 400
         const val WAKE_TURN_M = 300.0

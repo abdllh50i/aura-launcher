@@ -152,7 +152,8 @@ class IconButton @JvmOverloads constructor(
             s.draw(c)
             e.draw(c)
         }
-        pressed?.let {
+        // (not over the sliding plate: that is what a press on the selected cell would lighten)
+        if (coverage < 0.5f) pressed?.let {
             it.setBounds(cx - SELECTED_W / 2, cy - SELECTED_H / 2, cx + SELECTED_W / 2, cy + SELECTED_H / 2)
             it.draw(c)
         }

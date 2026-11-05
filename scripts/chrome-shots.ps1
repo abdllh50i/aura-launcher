@@ -1,7 +1,7 @@
 ﻿# Shoots the real chrome (app/src/main/.../chrome), behind its switch, in the states the mockups draw and in the words they use, on the mockups' plates, for scripts/gallery_compare.py:
 #   shots\v2-ds-c-<state>-<theme>.png.  chrome-shots.ps1 -Serial emulator-5578 [-Design D:\k2501-work\tmp\v2\design\final2] [-States home,drive] [-Themes night,day] [-Order spec|nearest]
 # -Design pushes the plates once. In the spec's order by default: that is what the mockups draw.
-param([string]$Serial = "emulator-5578", [string]$Design = "", [string[]]$States, [string[]]$Themes = @("night", "day"), [string]$Order = "spec", [int]$Wait = 700, [string]$Prefix = "c")
+param([string]$Serial = "emulator-5578", [string]$Design = "", [string[]]$States, [string[]]$Themes = @("night", "day"), [string]$Order = "spec", [int]$Wait = 700, [string]$Prefix = "c", [string]$Lang = "ar")
 $adb = "E:\Android\Sdk\platform-tools\adb.exe"
 $dir = "D:\k2501-work\shots"
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
@@ -38,14 +38,16 @@ $all = [ordered]@{
     apps = @{ page = "r-chrome-room"; panel = "apps"; gear = "P"; song = "سهر الطريق" }
     settings = @{ page = "r-chrome-room"; panel = "settings"; gear = "D"; speed = "72,80"; song = "سهر الطريق"; timeN = "7:20 م"; timeD = "10:05 ص" }
     music = @{ page = "r-chrome-bg"; panel = "music"; gear = "P" }
+    "en-home" = @{ page = "r-chrome-wall"; panel = "home"; gear = "P"; prayerN = @("Maghrib 4:56", "38 min", "sunset"); prayerD = @("Maghrib 4:56", "38 min", "sunset") }
+    "en-drive" = @{ page = "r-chrome-drive"; panel = "maps"; gear = "D"; quiet = $true; timeN = "7:20 PM"; timeD = "10:05 AM"; prayerN = @("Fajr 4:28", "", "sunrise"); prayerD = @("Dhuhr 11:25", "", "sun") }
 }
-if (-not $States) { $States = @($all.Keys) }
+if (-not $States) { $States = @($all.Keys | Where-Object { $_ -notlike "en-*" }) }
 foreach ($t in $Themes) {
     foreach ($s in $States) {
         $d = $all[$s]
         $night = $t -eq "night"
         & $adb -s $Serial logcat -c | Out-Null
-        Sh "am broadcast -n com.abdllh.aura/.debug.GalleryReceiver --es page $($d.page) --es theme $t --ez cut true"
+        Sh "am broadcast -n com.abdllh.aura/.debug.GalleryReceiver --es page $($d.page) --es theme $t --ez cut true --es lang $Lang"
         for ($i = 0; $i -lt 24; $i++) {
             if ((& $adb -s $Serial logcat -d -s AuraGallery:I) -match "drawn $($d.page)\.") { break }
             Start-Sleep -Milliseconds 250

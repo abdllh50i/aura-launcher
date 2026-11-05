@@ -120,9 +120,13 @@ def main():
                         continue
                     k += 1
                     x, y, w, h = int(it["x"]), int(it["y"]), int(it["w"]), int(it["h"])
+                    if page.startswith("c-") and (name.startswith("cap") or name == "dockBar"):
+                        h, y = h - (516 - y), 516  # (above the row the mockup has the panel's cards, and these pages have none)
                     x, y = max(0, x), max(0, y)
                     if w <= 0 or h <= 0:
                         continue
+                    if x + w > mock.shape[1]: w = mock.shape[1] - x
+                    if y + h > mock.shape[0]: h = mock.shape[0] - y
                     m, s = mock[y:y + h, x:x + w], shot[y:y + h, x:x + w]
                     d, over = diff(m, s)
                     v, dx, dy = best_offset(mock, shot, x, y, w, h)
