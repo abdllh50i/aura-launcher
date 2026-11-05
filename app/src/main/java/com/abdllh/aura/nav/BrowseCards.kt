@@ -412,7 +412,7 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
     private fun startsIn(s: Int): String = when {
         s <= 1 -> getString(R.string.browse_starts_in_1)
         s == 2 -> getString(R.string.browse_starts_in_2)
-        else -> getString(R.string.browse_starts_in_n, s)
+        else -> getString(R.string.browse_starts_in_n, s.toString()) // (Western digits, whatever the language: a %d would not be)
     }
 
     /** The chips: Home, Work, and the last place he drove to. Saved or not: unsaved opens the pick flow (section 5). */
@@ -465,7 +465,7 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
         syncOver()
     }
 
-    private fun closeSearch() {
+    private fun closeSearch(backToPlace: Boolean = true) {
         // a search still under way must not fill the list later (over Home / Work / recents)
         Places.cancelSearch()
         root.removeCallbacks(searchFit)
@@ -474,7 +474,7 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
         input.clearFocus()
         map.setResults(emptyList())
         lastResults = emptyList()
-        if (selected != null) placeCard.showCard()
+        if (selected != null) { if (backToPlace) placeCard.showCard() }
         else {
             input.setText("")
             // (back to the camera it had before: only if the search flew it)
@@ -489,6 +489,15 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
     }
 
     private fun select(p: Place) {
+        // (this place is the driver's now: one that was being started from elsewhere is off, or has just failed and comes here with its retry)
+        if (following != null) {
+            following = null
+            followingRoute = null
+            routing = false
+            root.removeCallbacks(countdown)
+            phoneCard.hideCard()
+            Trips.cancel("another place on the map")
+        }
         selected = p
         preview = null
         options = emptyList()
@@ -499,7 +508,7 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
     /** [p] on the card and on the map, with no route yet. */
     private fun showPlace(p: Place, card: Boolean = true) {
         resetRouteRetry()
-        closeSearch()
+        closeSearch(backToPlace = false)
         input.setText(p.name)
         placeCard.setPlace(p.name, p.detail)
         placeCard.setSaved(listOfNotNull(Places.home, Places.work).any { Geo.distance(it.pos, p.pos) < SAME_PLACE_M })
@@ -577,7 +586,7 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
 
     private fun syncChoiceLines() {
         val r = preview ?: return
-        placeCard.setArrival("${getString(R.string.maps_arrival)} ${Units.arrival(r.duration, Prefs.clock24)}")
+        placeCard.setArrival("${getString(R.string.maps_arrival)} ${Units.arrival(r.duration, Prefs.clock24, arabic)}")
         placeCard.warn(warningOf(r))
     }
 
@@ -721,9 +730,13 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
 
     private val searchFit = Runnable {
         if (!search.isOn) return@Runnable
+        val car = CarLocation.lastKnown()
         val pts = ArrayList<LatLon>()
-        lastResults.take(3).mapTo(pts) { it.pos }
-        CarLocation.lastKnown()?.let { pts.add(it) }
+        // (a namesake 800 km away is a row, not something to fly out for: what is near, or the first row when nothing is)
+        lastResults.take(3).filter { car == null || Geo.distance(car, it.pos) < SEARCH_NEAR_M }.mapTo(pts) { it.pos }
+        if (car != null) pts.add(car)
+        if (pts.size <= 1) lastResults.firstOrNull()?.takeIf { car == null || Geo.distance(car, it.pos) < SEARCH_NEAR_M }?.let { pts.add(it.pos) }
+        if (pts.size <= 1 && car != null && lastResults.isNotEmpty()) return@Runnable
         if (pts.isEmpty()) return@Runnable
         searchFlew = true
         // (a keyboard over the map: what lies above it)
@@ -836,5 +849,6 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
         const val FIRST_OVERVIEW_MS = 700L
         const val SEARCH_FIT_MS = 700L
         const val PINS = 10
+        const val SEARCH_NEAR_M = 60_000.0
     }
 }

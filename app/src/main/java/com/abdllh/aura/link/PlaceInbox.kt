@@ -147,9 +147,13 @@ internal object PlaceInbox {
             // (another app in front: a banner over it, and a touch brings AMRI to Maps: section 6.0's table)
             afterHold || !x.paired || x.ask || (!x.voice && HomeActivity.current?.resumedNow != true) -> askCard(c, x)
             // (nobody has said yes yet: the card counts down. The voice's own words were the yes)
-            else -> begin(c, x, if (x.voice) 0L else COUNTDOWN_MS)
+            else -> begin(c, x, if (x.voice) 0L else countdownMs)
         }
     }
+
+    /** Debug builds: setprop debug.aura.phonehold <ms>, for a look at the card. */
+    private val countdownMs: Long
+        get() = (if (com.abdllh.aura.BuildConfig.DEBUG) com.abdllh.aura.system.SystemProps.get("debug.aura.phonehold").toLongOrNull() else null) ?: COUNTDOWN_MS
 
     // ------------------------------------------------------------------------------------------ waiting
     private fun hold(x: Incoming, why: String) {
@@ -277,7 +281,7 @@ internal object PlaceInbox {
     private fun mayKeep(x: Incoming) = !x.src.contains("apple", ignoreCase = true)
 
     private fun tellPhase(x: Incoming, phase: Trips.Phase) {
-        if (phase == Trips.Phase.READY) tell(x, "card", JSONObject().put("kind", "countdown").put("ms", COUNTDOWN_MS))
+        if (phase == Trips.Phase.READY) tell(x, "card", JSONObject().put("kind", "countdown").put("ms", countdownMs))
         else tell(x, if (phase == Trips.Phase.WAITING_FIX) "waiting_fix" else "routing", JSONObject().put("place", x.place.toJson()))
     }
 

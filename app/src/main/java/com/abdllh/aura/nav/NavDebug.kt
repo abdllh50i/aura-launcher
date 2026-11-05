@@ -20,6 +20,7 @@ import java.util.Locale
  * Debug builds only, the emulator's way into navigation, which has no GPS or road of its own (the broadcast's name: ACTION):
  *   --es fix lat,lon,bearing,kmh[,accuracy]   a fix, as the GPS would give it
  *   --es go lat,lon,name                      a trip there from the last fix (without the Maps screen)
+ *   --es phone lat,lon,name [--ez ask true]   a place from the phone (with no token: the banner asks), to the inbox
  *   --ei sim 90                               the simulator drives the route at that speed
  *   --ez end true                             the trip ends
  *   --es turn nav|amri|free                   the car's voice ([VoiceTurn]) taken for one of them, or given back
@@ -62,6 +63,13 @@ internal object NavDebug {
                 Log.i(TAG, "route: ${if (r == null) "none: $err" else "${r.distance.toInt()} m, ${r.steps.size} steps, named ${r.steps.count { it.name.isNotBlank() }}"}")
                 if (r != null) NavSession.start(app, dest, r)
             }
+        }
+        // a place from the phone, as PhoneServer gives it to the inbox: --es phone lat,lon,name, --ez ask true for a phone with no token
+        i.getStringExtra("phone")?.let { s ->
+            val v = s.split(',', limit = 3)
+            val place = Place(v.getOrElse(2) { "test" }, "", LatLon(v[0].trim().toDouble(), v[1].trim().toDouble()))
+            val ask = i.getBooleanExtra("ask", false)
+            com.abdllh.aura.link.PlaceInbox.receive(app, com.abdllh.aura.link.PlaceInbox.Incoming("debug-${SystemClock.uptimeMillis()}", place, "debug", null, !ask, "debug", ask))
         }
         if (i.hasExtra("sim")) NavSim.start(i.getIntExtra("sim", 60).toDouble())
         if (i.getBooleanExtra("end", false)) NavSession.stop()

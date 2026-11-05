@@ -15,7 +15,7 @@
     <string name="browse_start_now">ابدأ الآن</string>
     <string name="browse_starts_in_1">يبدأ بعد ثانية</string>
     <string name="browse_starts_in_2">يبدأ بعد ثانيتين</string>
-    <string name="browse_starts_in_n">يبدأ بعد %1$d ثوان</string>
+    <string name="browse_starts_in_n">يبدأ بعد %1$s ثوان</string>
     <string name="browse_switch_route">بدّل الطريق</string>
     <string name="browse_haram_inside">الرحلة تبدأ أو تنتهي داخل حدود الحرم</string>
 </resources>

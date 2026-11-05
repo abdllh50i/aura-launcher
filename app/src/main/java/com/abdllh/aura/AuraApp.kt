@@ -31,6 +31,10 @@ import com.abdllh.aura.util.Dp
 import com.abdllh.aura.util.Prefs
 
 class AuraApp : Application() {
+    override fun attachBaseContext(base: android.content.Context) {
+        super.attachBaseContext(com.abdllh.aura.util.LocaleHelper.forApp(base))
+    }
+
     override fun onCreate() {
         // Valhalla's process (nav/route/RouteProcess.kt): its crash is not the home screen's, and it has no use for any of this
         if (processName().endsWith(":route")) { super.onCreate(); return }

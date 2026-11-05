@@ -145,6 +145,7 @@ internal object TripCard {
             answer.visibility = if (first == null) View.GONE else View.VISIBLE
             if (first != null) {
                 answer.kind = if (first.primary) ABtn.Kind.PRIMARY else ABtn.Kind.TONAL
+                answer.setPaddingRelative(4, 0, 4, 0) // (138 wide: "بدّل الطريق" has no room for a button's usual sides)
                 answer.text = first.label
                 answer.setOnClickListener { act(first) }
             }
