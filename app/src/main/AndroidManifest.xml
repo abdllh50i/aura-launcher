@@ -203,17 +203,17 @@
             android:exported="false"
             android:foregroundServiceType="location" />
 
-        <!-- Aura Music. Exported with MAIN: the firmware's source manager starts it for app id 2 (Music/Mode keys,
-             USB insertion) once replace_source_list.xml points there. -->
+        <!-- Aura Music is a panel of HomeActivity now; this name stays for whoever starts it (home/Entry.kt): no window, gone
+             at once. Exported with MAIN: the firmware's source manager starts it for app id 2 (Music/Mode keys, USB insertion)
+             once replace_source_list.xml points there. -->
         <activity
             android:name=".music.MusicActivity"
-            android:configChanges="orientation|keyboard|keyboardHidden|screenSize|smallestScreenSize|screenLayout|uiMode|density|fontScale"
+            android:excludeFromRecents="true"
             android:exported="true"
             android:label="@string/music_title"
-            android:launchMode="singleTask"
-            android:screenOrientation="landscape"
-            android:theme="@style/Theme.Aura.Heavy"
-            android:windowSoftInputMode="adjustNothing|stateAlwaysHidden">
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.NoDisplay">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.DEFAULT" />

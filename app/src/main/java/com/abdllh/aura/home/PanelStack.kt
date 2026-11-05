@@ -10,6 +10,7 @@ import android.view.View
 import android.view.inputmethod.InputMethodManager
 import com.abdllh.aura.BuildConfig
 import com.abdllh.aura.R
+import com.abdllh.aura.music.MusicPanel
 import com.abdllh.aura.nav.MapsPanel
 import com.abdllh.aura.settings.SettingsPanel
 import com.abdllh.aura.system.Front
@@ -44,6 +45,10 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
     private val asked = HashMap<Int, Panel>()
     private val windows = ArrayList<Owned>()
     private var firstArgs: Bundle? = null
+    /** For Settings → About: how long each panel's first open took, how long its build ahead of time, and who could not. */
+    private val firstOpen = HashMap<String, Long>()
+    private val builtAhead = HashMap<String, Long>()
+    private val noAhead = HashSet<String>()
     private var softInput = -1
     private var lastMove = 0
     private val overdue = Runnable { Log.w(TAG, "a move did not end"); settle() }
@@ -87,6 +92,7 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
         leave(under)
         p.alive = true
         p.offDue = false
+        p.newOnStack = true
         stack.add(p)
         if (!p.opaque) root.mapHost.covered = false // ("wake first")
         place(p)
@@ -94,18 +100,56 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
         val ready = SystemClock.uptimeMillis() - t0
         move { done -> PanelMotion.between(under.name, p.name).opening(p.frame, under.frame, done) }
         if (shell.resumedNow) p.frame.afterNextDraw {
-            lastOpen = "$name: ${SystemClock.uptimeMillis() - t0} ms to its first frame ($ready ms before it)"
+            val ms = SystemClock.uptimeMillis() - t0
+            val first = firstOpen.getOrPut(name) { ms }
+            lastOpen = "$name: $ms ms to its first frame ($ready ms before it); the first time $first ms" + (builtAhead[name]?.let { "; built ahead in $it ms" } ?: "")
             Log.i(TAG, lastOpen)
         }
     }
 
     /**
-     * Builds a kept panel ahead of time, hidden, while nothing else happens, so its first [show] has nothing to build: its
+     * Builds a kept panel ahead of time, out of sight, while nothing else happens, so its first [show] has nothing to build: its
      * views are laid out with the others (a first build on the unit's main thread has no starting window to hide behind).
      */
     fun prepare(name: String) {
         if (built[name] != null) return
-        make(name)?.frame?.apply { visibility = View.INVISIBLE; live = false }
+        val t0 = SystemClock.uptimeMillis()
+        val p = make(name)
+        if (p == null) { noAhead.add(name); return }
+        builtAhead[name] = SystemClock.uptimeMillis() - t0
+        Log.i(TAG, "$name: built ahead in ${builtAhead[name]} ms")
+        // One real frame of it, one level of 255 over what shows: its letters in the GPU's store, its icons rasterised and its
+        // shaders compiled, all of which a first open otherwise pays in its first frame. Then out of sight. (The frame's
+        // recording does not outlive it: a later open records anew, and so does the first.)
+        val f = p.frame
+        f.live = false
+        f.alpha = ONE_LEVEL
+        val hide = Runnable { if (p !in stack) { rest(f); f.visibility = View.INVISIBLE } }
+        f.afterNextDraw { main.removeCallbacks(hide); hide.run() }
+        main.postDelayed(hide, HIDE_AFTER_MS)
+    }
+
+    /**
+     * [prepare], [afterMs] from now or at the first quiet moment after that: the home screen at rest on top of a resumed window,
+     * no sheet open, no finger on the screen for a while. A build holds the main thread once, so not under anything the owner is
+     * doing. At any other screen it is off: the home panel asks again at its next resume. A panel that could not be built is
+     * not tried again this way (each try would be that hold for nothing): only when it is asked for.
+     */
+    fun prepareWhenQuiet(name: String, afterMs: Long) {
+        if (built[name] != null || name in noAhead) return
+        quietFor = name
+        main.removeCallbacks(whenQuiet)
+        main.postDelayed(whenQuiet, afterMs)
+    }
+
+    private var quietFor: String? = null
+    private val whenQuiet = object : Runnable {
+        override fun run() {
+            val name = quietFor ?: return
+            if (built[name] != null || shell.isDestroyed || !shell.resumedNow || top !== home) return
+            val touched = SystemClock.uptimeMillis() - root.touchedAt < QUIET_AFTER_TOUCH_MS
+            if (leaving != null || root.sheetOpen || touched) main.postDelayed(this, QUIET_AGAIN_MS) else prepare(name)
+        }
     }
 
     /** Back: a sheet, what the top panel uses it for, or the top panel leaves. At Home: nothing else. */
@@ -162,6 +206,7 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
         val p = when (name) {
             Screens.SETTINGS -> SettingsPanel(shell)
             Screens.MAPS -> MapsPanel(shell)
+            Screens.MUSIC -> MusicPanel(shell)
             else -> if (BuildConfig.DEBUG) debugPanel(name) else null
         }
         p?.also { attach(it) }
@@ -220,6 +265,7 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
         if (!p.shown) {
             p.shown = true
             if (!call(p, "onShow") { p.onShow(args) }) return false
+            p.newOnStack = false
         }
         if (shell.resumedNow && !p.resumed) {
             p.resumed = true
@@ -242,6 +288,7 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
         }
         shell.windowLook(p.navBar)
         Front.setPanel(p.name)
+        if (shell.startedNow) shell.drawWatch.expect()
     }
 
     private inline fun call(p: Panel, what: String, block: () -> Unit): Boolean = try {
@@ -298,6 +345,7 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
     /** The window ends. */
     fun destroyed() {
         main.removeCallbacks(overdue)
+        main.removeCallbacks(whenQuiet)
         for (p in built.values.toList()) {
             p.alive = false
             destroy(p)
@@ -401,6 +449,11 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
         /** Past this a move is over, whatever became of it: its panel is simply there. */
         private const val MOVE_LIMIT_MS = 2000L
         private const val GC_AFTER_MS = 3000L
+        /** A finger down this recently: the owner is doing something ([prepareWhenQuiet]). */
+        private const val QUIET_AFTER_TOUCH_MS = 1500L
+        private const val QUIET_AGAIN_MS = 2000L
+        private const val ONE_LEVEL = 1f / 255f
+        private const val HIDE_AFTER_MS = 2000L
 
         /** The last panel opened, and how long that took (for Settings → About). */
         @Volatile var lastOpen = ""

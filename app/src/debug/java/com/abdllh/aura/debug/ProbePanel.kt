@@ -113,12 +113,13 @@ private fun surfaceInSlot(shell: HomeActivity) {
  *   am broadcast -a com.abdllh.aura.debug.PANELS --ei rounds 60 --es panels settings,probe
  * Opens, goes back and opens again at random 0-300 ms apart, Home at the end; then says in the log (AuraProbe) how the
  * panel layer has come to rest: one frame, in place, no layer. --es prepare probe builds that one ahead of time first
- * (setprop debug.aura.probekeep 1 for one that stays).
+ * (setprop debug.aura.probekeep 1 for one that stays). --ez report true: only that report, of the state now.
  */
 class PanelStress : BroadcastReceiver() {
     override fun onReceive(c: Context, i: Intent) {
         val main = Handler(Looper.getMainLooper())
         i.getStringExtra("prepare")?.let { HomeActivity.current?.panels?.prepare(it) }
+        if (i.getBooleanExtra("report", false)) { HomeActivity.current?.let { report(it) }; return }
         val r = java.util.Random(i.getLongExtra("seed", 7L))
         val names = (i.getStringExtra("panels") ?: "settings").split(',')
         var left = i.getIntExtra("rounds", 60)
@@ -146,6 +147,6 @@ class PanelStress : BroadcastReceiver() {
         val frames = (0 until l.childCount).map { l.getChildAt(it) }.joinToString { f ->
             "vis=${f.visibility} alpha=${f.alpha} y=${f.translationY} layer=${f.layerType}"
         }
-        Log.i("AuraProbe", "at rest: top=${s.panels.top.name} frames=${l.childCount} [$frames]")
+        Log.i("AuraProbe", "at rest: top=${s.panels.top.name} covered=${s.root.mapHost.covered} frames=${l.childCount} [$frames]")
     }
 }

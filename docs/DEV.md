@@ -247,7 +247,7 @@ Checking it on the emulator (Android's own rules, not the firmware's: `persist.n
 (the map's slot, see "One engine" below: always attached, always visible, never follows the keyboard), `panelLayer`, `chrome`
 (empty until the new design), `sheets` (Controls and the drawer, the same classes). `setContentView` runs once: a new theme
 rebuilds what is in the layers. The home screen moved unchanged to `HomePanel`, the bottom of the stack; Settings to
-`SettingsPanel`, the first panel above it, built on open, dropped on close. Maps followed at step 3; Music is still an activity. Nothing
+`SettingsPanel`, the first panel above it, built on open, dropped on close. Maps followed at step 3 and Music at step 4 (both below). Nothing
 looks different; a screen that is a panel opens in the window, with no activity start.
 
 **A panel** (`Panel`) is a `ContextWrapper` of the activity, so code moved from an activity keeps working on `this`, and its
@@ -409,6 +409,80 @@ Numbers, emulator, a shared PC, interleaved with the build before the panels (`2
 So Home itself weighs 5 to 12 MB more (a map of the whole screen, Maps' cards kept), and what used to be two engines costs 20 to 25 MB less on a trip and does not grow with rounds. On the unit, GPU memory: one surface of 1024 x 600 under the window where there were a 607 x 484 TextureView and a Maps surface; not measured.
 
 What the unit has said so far (its Screen check of 1.19.1, `tmp/v2/unit-facts.md`; `MapRig`, not this code): the map on a full-bleed SurfaceView and the window are two hardware planes, 55 fps at the 60 cap and 29 at the 30 cap, the window redrawing 0.4 times a second; motion over it HWUI p95 8 ms; 4 GB of RAM; GPS one fix in 2 s (hence `glideMs` up to 2600, off the route the car stood still for 400 ms in every fix); a baked 9-patch panel animated had p95 20 ms and 13 % jank, a warning for the new look's moves. Only the unit can tell about this code: the first frame of the move on that GPU (two window-sized layers), whether the surface comes back from a stop with a flash (the cover is there for it), a native crash or GPU hang of the real driver, and the firmware's behaviour around a translucent home window. Settings → About shows the map's line and the last panel's open time, for the owner's photo.
+
+### Music in the one window (2.0 step 4: `music/MusicPanel.kt`, `music/MusicActivity.kt`, `home/DrawWatch.kt`)
+Music moved unchanged to `MusicPanel` (`git diff -B -M` shows the rename), opaque and kept. `MusicActivity` is an `Entry` that keeps the
+name `StockMusic`'s `replace_source_list.xml` names, its MAIN, `action.MUSIC` and VIEW filters, `EXTRA_SOURCE` and `delaySeconds`. What
+an activity had: the backdrop is `root.background` and not the window's (the window has none); `recreate` is `buildAgain`; `onStart` and
+`onStop` are `onShow` and `onHide`; `isDestroyed` is `isGone`; `onCreate` is the `init` at the end of the class (Kotlin runs initialisers
+in order, and the class has fields all the way down). No `stateAlwaysHidden`: `onHide` clears the search field's focus instead, which is what
+that mode was for, and a soft input mode that differs from Home's would make every switch a `relayoutWindow`.
+
+**Built ahead of time.** The starting window went with the activity, and a first build on the unit's main thread would have nothing to hide
+behind. `HomePanel.onResume` asks `PanelStack.prepareWhenQuiet(MUSIC, 6 s)`, not in the start's first seconds: at that moment and later,
+only with Home at rest on top of a resumed window, no sheet open, no finger on the screen for 1.5 s; otherwise it looks again in 2 s, and at any
+other screen it stops until Home's next resume. A panel that could not be built is not tried again this way. `prepare` then gives it one
+real frame at alpha 1/255 before making it INVISIBLE: letters in the GPU's store, icons rasterised, shaders compiled, which a first open
+otherwise pays in its first frame (the frame's recording does not survive, HWUI deletes a display list nothing refers to, so later opens
+record anew, and so does the first). `init` also says all it can, list rows included, and lets `ArtLoader` decode the cover and the rows'
+pictures for its cache and `Backdrop` work out the look, holding none of them. So the first open has the cover and the colours at once, as a later one.
+
+**Kept, and what it holds.** Across the Home key and any panel: source, tab, open group, where each list was, the lyrics (large ones too),
+YouTube's search and results. Until 2.0 the Home key destroyed all of it. The source is looked at again when it comes back from off the stack
+(`Panel.newOnStack`), as a new activity did (Bluetooth when only the phone plays, written nowhere), not when the window comes back with it on top:
+from YouTube's app it stays on YouTube. `onHide` stops everything that runs, as `onStop` did. 2.5 s later, when nothing of it can be on the screen,
+`letGoOfPictures` empties the cover's three views and the rows' pictures, and the fields that remember them. They are in caches with limits
+(`ArtLoader` 12 MB, `CoverSearch`, the session's) and those limits hold only if nobody else keeps what they evict. The look stays (48 texels and
+two colours), by a weak reference to its cover: back on the same picture nothing is worked out, and a new one comes off the main thread, simply there
+if it lands in the first 400 ms and faded in after that. List rows keep their views: building them is what an open must not pay, and they are about 100
+small views. Short of memory (`onTrimMemory`: RUNNING_LOW, RUNNING_CRITICAL, from MODERATE; not UI_HIDDEN, which only says another app came)
+`ArtLoader` empties, and out of sight the lyric lines and the rows go too; their place is kept. `onShow` hides `root` from itself while it paints
+(`isShown` false, as in an activity's `onStart`), so what changed while it was away is just there: nothing inside it moves in the move that brings it in.
+
+**New look.** `onLook` and `onShow` build the views again in place when the theme or accent is not the one they were built in. State stays,
+which `recreate` lost (F7 in `understand/music.md`). A language is the whole window's. Recolouring in place is the new design's.
+
+**Lyrics listening ends with the screen** (the switch's text promises it): `LyricsSync.end()` in `onHide`. Measured with `LYRICS_FEED` and
+the stand-in: pieces every 10 s while it shows, a last short one at the Home key, none for 20 s at Home, a new `sync start` on the way back.
+
+**Keys.** `MusicKeys` asks `Front.panel` and `Front.ownIs(name, ms)`; there is no class to ask any more. "The same source" is `MusicPanel.onBluetooth`, set
+as long as the panel exists. First and second press of 83 and 99, the other source's key, a held key, over another app, the stock screens' signs: walked.
+
+**The way back from YouTube** is `Screens.music` as before. It had never run: `YtMusic.player` knew only the two real packages, so a stand-in could
+show its session but never take a song. Now `players` (debug: plus `debug.aura.ytpkg`), and `src/debug/.../YtStandIn` in the `-PstandIn` copy takes the
+link, plays its own library a moment later, and AMRI comes back on the YouTube source with that session. Disable the copy's two home components or Android asks
+which home. `setprop debug.aura.ytfake 1`: a search with one made-up song. Still never run with YouTube's real app.
+
+**FROZEN** needs nothing from Music: `opaque` makes the stack set `shell.root.mapHost.covered` at rest (`PanelStress --ez report true` logs it) and clear it before uncovering.
+
+**A window that stops drawing (`DrawWatch`).** Found here. When a window gets no buffer for 4 s HWUI writes its surface off for good (`dequeueBuffer failed,
+error = -110; switching to fallback`, then `reserveNext failed`): the renderer disables itself and releases the Surface, and `ViewRootImpl.draw` returns at once from then on,
+with no error and no log, until the window next relayouts and is given a Surface. With an activity per screen that mended itself at the next screen. In the one window
+the screen stays on its last picture with every touch working under it, until another app comes over. Seen on this PC's loaded emulators, whose composer stalls for seconds;
+reproduced at will with `kill -STOP` on surfaceflinger for 6 s while frames are coming. Not known on the unit, where a stalled composer would be the trigger. So at every panel change,
+minute's tick, resume and finger down a frame is expected: if none was drawn 3 s later (window resumed, display on) the window's attributes are set again, which makes it relayout and costs nothing if nothing was
+wrong; if still none, `recreate` once per process (not exercised: the relayout has always been enough). Settings → About keeps the last time ("Screen stopped drawing"). Tried: back within 3 s of a finger, and
+at the minute's tick with no finger. This applies to anything in the window, not to Music; the overlays are windows of their own and are not watched.
+
+**Fail-safe.** `setprop debug.aura.musicfail build|show`: the stack drops it, Home goes on, a Snack says so, About keeps the line, and with the property gone it opens. 120 rounds of `PanelStress` over
+Settings, Music and the probe: one frame at rest, the other INVISIBLE, alpha 1, no layer, no warning.
+
+**Stand-ins to try it with** (`scripts/`): `gen_test_songs.py` (silent songs with tags and covers, `small` and `big`), `lyrics_standin.py` (never port 8790; prefs `lyricsServer` `10.0.2.2:<port>`, `lyricsServerKey` any),
+`naghm_standin.py`. When a prefs file is edited with the app stopped: the notification listener's rebinding brings the process back at once, so force-stop again after copying. `am broadcast` to `PanelStress` needs `-f 0x01000000`.
+
+Walked before and after, AMRI the real home, the same steps, on the emulator: in and out by the dock, the card, the drawer, voice, Back, the chevron, the Home key; the unit's own songs (play, next, previous, seek, shuffle, repeat, all tabs, a group,
+Play all, scroll); the phone by the debug broadcasts (no phone, first song with no position, a progress report, next song, pause); Naghm's stand-in (bar seek, next, toggle, its lyrics, line tap seeks, hold measures); YouTube's source, its field, the keyboard
+and the Home key over it; lyrics with word times, tapped to seek, large, Home and back; the manual timing (tap sets the clock, tap again saves `offsetMs`, kept across Home, hold forgets); listening; keys; a call over Music and over Home, the key refused during it,
+the song back after it; another app and back, the Home key from it; the old name with Home alive, on top, over another app, with none alive (one activity in the home stack each time, and the trap sequence ends in one); `MAIN` as the firmware starts it, `action.MUSIC`,
+VIEW `audio/*` (opens, plays nothing, as before); the notification's PendingIntent; theme with Music hidden and in front, at the tick too; language both ways; the library changing while hidden and in front; permission denied and allowed; trim; no motion; Music first in a new process. Radio has no place in Music.
+What differs, as meant: the group and scroll survive the Home key; the theme by the hook comes back to Music where it used to find Home; by the old name with no Home alive Back goes to Home. The backdrop differs by a few levels on the emulator only: the root is 552 high there and the window was 600 (no navigation bar on the unit).
+
+Numbers, emulator, interleaved with the build before, on a PC the other agents were loading: they do not carry over to the unit, and the emulator composes at its own pace. From the tap's handler to the first frame complete, ms, two blocks on a rebooted emulator: before, first open medians 2114, 2483 (1717-4222), later opens 1805, 2033 (1627-3215); after, first open 394, 547 (313-1505), later opens 304, 336 (15-655). In a quieter spell, after only: first 83-160, later 16-140. With the frame ahead of time against without it, in turns: the first frame's GPU commands 21-31 ms against 41-97, uploads 0 against 1-19, first opens about 94 against 128. On the main thread (`AuraShell`, the frame recorded) a later open takes 6-63 ms, of which 2-14 before the frame; the build ahead 50-300 ms, once 1115 under load, plus a layout and the real frame. Memory, PSS after a GC, before / after, MB: Home at rest
+104.4 / 99.6, Music open 108.1 / 100.7, back 109.8 / 99.5, after 20 opens and closes 158.7 / 106.3 (native 113.0 / 62.7, Java heap allocated 3.8 / 3.8); with 210 songs and 43 covers 102.1 / 95.9, 107.0 / 98.0, 104.7 / 98.3, 163.2 / 104.6 (native 117.2 / 60.9). Over 40 rounds through the tabs
+the old screen grew about 2 MB a round without end (105, 122, 133, 155, 172); the panel 111, 138, 138, 138, 138, Java heap flat at 4.0. About 20 MB of that step is Home's map coming back and appears with Settings alone (103, 124, 124, 124). Views at Home 228 / 409 (Music's, not drawn), window roots with Music open 2 / 1.
+With a song playing at Home, 1.1 / 1.0 window frames a second. GPU memory is not in any of this. Not tried on the unit: all of it. About's "Last screen opened" now tells the first open and the build ahead too, for the owner's photo.
+The figures above are from the build just before the pictures were let go later. The last build, another hour: Home 100.7, Music 102.3, back 100.8, after 20 opens and closes 108.1 (native 66.1, Java heap 3.8);
+40 rounds through the tabs with the 210 songs 96, 106, 103, 106, 105 (native 63, Java heap 3.9); Settings alone 110, 118, 114, 118. So the level moves by tens of MB from one sitting to the next on this emulator (the 138 above is not there this time, and the reason was not chased), and what holds in every sitting is that it stays flat.
 
 ### Memory and start-up cuts (the foundations of 2.0: nothing looks different)
 Home was the heavy screen, and almost none of its weight was code: the car's CPU path, its leftovers, the map's sprites and
@@ -1030,7 +1104,7 @@ scroll it follows again); a tapped line is where the song goes: the unit's songs
 clock (the line's time + 450 ms, the owner taps what is being sung); while a Bluetooth song's position is unknown no line
 is lit and a hint asks for that tap. The lyrics button puts it in the library's panel (with Bluetooth the song gives the
 panel back for it); the progress tick runs every 200 ms while it shows.
-The lyrics alone on the whole screen (1.7): the button in the panel's corner (`MusicActivity.showFull`; Back, or the
+The lyrics alone on the whole screen (1.7): the button in the panel's corner (`MusicPanel.showFull`; Back, or the
 button where the screen's own way back is, returns; kept in `musicLyricsFull`). A second `LyricsView(big = true)` in a
 layer over the screen (38 sp lines), with a small bar: cover, names, previous / play / next and a thin progress line.
 Both views are fed alike and the layer is INVISIBLE, never GONE, so it stays laid out: going there and back measures
@@ -1137,7 +1211,7 @@ card followed. Not tried before the unit: the connection over the real hotspot, 
 ### The Bluetooth sound's delay (1.18)
 What the phone plays comes out of the car's speakers later: buffers on the phone, in the module, on to the amplifier.
 Naghm's clock (and the module's guesses) say what the phone plays, so the lyrics ran ahead of what is heard.
-`BtMusic.delayMs` (Prefs `btDelayMs`, 0–2 s) is that delay; `MusicActivity.lyricsShift` is, for a Bluetooth song, the
+`BtMusic.delayMs` (Prefs `btDelayMs`, 0–2 s) is that delay; `MusicPanel.lyricsShift` is, for a Bluetooth song, the
 owner's own correction of that song when he made one (1.15's tap: measured against what he heard, the delay is already in
 it), else minus the delay. A tapped line on Naghm's song seeks to the line itself (`l.ms - lyricsOffset`: the delay only
 makes it heard later) and stays lit until its sound comes out (`tapLitUntil`, the delay + 400 ms) instead of the line
@@ -1155,7 +1229,7 @@ Arabic. Not tried on the unit: the real delay of its module.
 Naghm (1.6) sends, with each song, when the screen connects, and on `{"type":"lyrics"}`, the lyrics the phone has:
 `{"type":"lyrics","id","title","synced","source","lines":[{"time": seconds or null,"text"}]}` (no lines: it has none).
 `PhoneLink.lyricsOf` makes them a `Lyrics.Result` (`SOURCE_NAGHM`, ms times), kept with `lyricsId` / `lyricsTitle`.
-For a Bluetooth song that is Naghm's (`MusicActivity.phoneLyrics`: the link's song, `sameSong` titles) they are shown
+For a Bluetooth song that is Naghm's (`MusicPanel.phoneLyrics`: the link's song, `sameSong` titles) they are shown
 in place of the screen's own lookup — at once in `refreshLyrics` when already there, by `phoneListener` when they
 come later, and a lookup that answers after them is dropped. They carry no correction of their own, so the Bluetooth
 delay applies (`lyricsShift`). `BtMusic.canSeek` is now the link playing the module's song (not only while Naghm owns
@@ -1175,7 +1249,8 @@ helpers, `Snack`). Strings added in 1.12 are in `res/values*/strings_music.xml`.
   the cover halved step by step and blurred for real (three box passes), and `applyLook` hands it to
   `window.setBackgroundDrawable` with filtering on: one opaque fill a frame, two while a new one crossfades in
   (`TransitionDrawable`, `Motion.AMBIENT`). It runs on its own single-thread executor (`lookAsync`); only the very first
-  look is made on the main thread, in `buildUi`. Nothing else may set this window's background.
+  look is made on the main thread, in `buildUi`. Nothing else may set this window's background. (Since 2.0 the panel's root
+  has it, not the window, which has none: "Music in the one window".)
 * **The cover's colour** comes from `Backdrop.colours` as `fill` (progress, play buttons, indicators, equaliser bars,
   the shadow's glow) brought to 3:1 on the background, and `fillText` (the playing row's title, Play all, the crumb's
   chevron, shuffle / repeat when on, the lyrics hint) brought to 4.5:1 on the playing row's tint (a dark blue cover was
@@ -1218,7 +1293,7 @@ helpers, `Snack`). Strings added in 1.12 are in `res/values*/strings_music.xml`.
   its artist meanwhile. After a seek the position shown is the one asked for (`holdSeek` / `held`) until the source
   agrees (within 1.2 s) or `SEEK_HOLD_MS` passes (YouTube and a USB stick answer a seek late, and the knob jumped back
   and forth). The times sit 8 dp into the strip's lower edge, with fixed equal halves, set only when they change
-  (`setTextIfChanged`, private to `MusicActivity.kt`): a WRAP label asked the whole screen for a layout every tick.
+  (`setTextIfChanged`, private to `MusicPanel.kt`): a WRAP label asked the whole screen for a layout every tick.
 * **The progress tick** comes when the next lyric line is due (`LyricsView.msToNext`, at most 250 ms with lyrics, 500
   without, at least 16), and the YouTube branch reads only `appPosition`, never the bitmap. `showNowPlaying` (every
   Bluetooth broadcast, about once a second) changes only what changed.
@@ -1242,9 +1317,10 @@ helpers, `Snack`). Strings added in 1.12 are in `res/values*/strings_music.xml`.
   dims what shows (`dim`); "Looking for the lyrics…" only after 600 ms (`lyricsLoading`); "failed" has Try again. The
   whole-screen lyrics: 34 sp lines, a 40 dp fading edge, and lines to be read rather than followed start near the
   top, below the sync hint's measured height.
-* **Theme and language while open**: Music lives in its own task, so it came back from Settings in the old language and
+* **Theme and language while open**: Music lived in its own task, so it came back from Settings in the old language and
   stayed on the day colours all night under "auto". `checkLook` (in `onResume`, and from a `TIME_TICK` receiver while
-  resumed) calls `recreate()` when the theme, accent or language it was built in changed; no snapshot crossfade yet.
+  resumed) called `recreate()` when the theme, accent or language it was built in changed; no snapshot crossfade yet. (Since
+  2.0: `onLook` builds the panel again in place, with its state, and the language is the whole window's.)
   `MusicService` wraps its context with `LocaleHelper`, and YouTube's "stopped out of sight" toast a wrapped context.
 
 ### Lyrics from the owner's server, timed by listening (1.13: `Lyrics`, `LyricsServer`, `LyricsSync`, `tools/lyrics-server`)
@@ -1383,13 +1459,13 @@ never past 0.15 s before the next line (a line sung quickly before a pause does 
 most 6 s. The app estimates with the same rule when it has no word times of the server's (LRCLIB's timed lyrics
 fetched by the unit itself, an older server).
 
-#### The screen (`LyricsView.timeLines`, `MusicActivity`)
+#### The screen (`LyricsView.timeLines`, `MusicPanel`)
 Timed lines that come for the very lines on the screen do not rebuild anything: the lines stay where they are, take
 taps from then on (a tap looks the line's time up when it happens, `tapLine`, since a timing by listening can be refined
 while it shows), the room above them grows to the timed lyrics' 38 % and the scroll moves by the same amount in the same
 layout pass (`shiftOnLayout`), and the line being sung lights and glides to the middle as with any timed lyrics. They
 keep the plain lines' size (measuring them again at the timed size would move every line); the next play shows the timed
-size. Other lines (another source's) are shown anew. `MusicActivity.lyricsSong` remembers the song as its lyrics were
+size. Other lines (another source's) are shown anew. `MusicPanel.lyricsSong` remembers the song as its lyrics were
 asked for, so a late answer is matched to the song on the screen.
 Fixed on the way: the phone skipping A → B → A before B's lyrics came left A's lyrics stepped back (dimmed, not
 following, not tappable) until the next song, since A's lines counted as already shown; `lyricsShown` is now cleared
@@ -1416,7 +1492,7 @@ address", before any request.
 * The unit's microphone shared with the assistant (`MicTap`) on the unit; on the emulator only the own recording and
   the debug feed ran.
 
-### Word by word lyrics and the saved timing (1.15: `Words`, `LyricsView`, `Lyrics`, `MusicActivity`)
+### Word by word lyrics and the saved timing (1.15: `Words`, `LyricsView`, `Lyrics`, `MusicPanel`)
 The owner asked for three things: the word being sung lit on the lyrics' lit line ("an effect on the word the song has
 reached", with a switch to turn it off), his own timing kept when he sets it by tapping the line being sung ("so that
 when I play the same song later the same timing comes"), and songs whose lyrics come without timing timed by his
@@ -1488,7 +1564,7 @@ the fill looks has to be judged on the unit.
 drawn exactly as before 1.15 (`super.onDraw`). The music screen reads it in `onStart`, so it applies on coming back
 from Settings; the word times are worked out either way, so turning it on needs no new lyrics.
 
-#### The saved timing (`MusicActivity.onLineTap`, `onLineHold`, `Lyrics.keepOffset`)
+#### The saved timing (`MusicPanel.onLineTap`, `onLineHold`, `Lyrics.keepOffset`)
 A tapped line on a Bluetooth song used to set the song's clock (the phone never says where a song is). Now:
 * The clock unknown (the first song after connecting, before any tap): the tap sets the clock, as before. This is not
   a correction. With a correction already kept for the song, the clock is set so that the lyrics land on the tapped
@@ -2379,9 +2455,9 @@ sign, a trip resumed or not and why) is the first real measurement.
   being said ends before the chime. A prompt due during the assistant's turn is not looked at: the next fix decides, at the distance of
   that moment, so nothing comes late or for a turn already passed. A turn nobody gives back ends by itself (15 s, 40 s). The price: a false
   wake can hold a prompt back for up to 15 s; the sign still shows it.
-* **Lyrics** (`MusicActivity.phoneTakesOver`): Naghm's coming after the screen's own go up, unless they are the very same lines
+* **Lyrics** (`MusicPanel.phoneTakesOver`): Naghm's coming after the screen's own go up, unless they are the very same lines
   (the owner's correction goes on applying) or have no times where the shown ones do. The correction stays on disk with its lines.
-* **Music keys:** "the same source" is `MusicActivity.onBluetooth`, what the screen is really on; the pref only with no screen.
+* **Music keys:** "the same source" is `MusicPanel.onBluetooth`, what the screen is really on; the pref only with no screen.
 * **Prefs:** gone: `setupDone`, `setupBannerDismissed`, `adbBridge`, `hiddenApps` (no version ever wrote them). Kept, read-only:
   `homeAddress`, `workAddress`: their writer went in 1.3, but a unit where one was typed still drives there from it.
 

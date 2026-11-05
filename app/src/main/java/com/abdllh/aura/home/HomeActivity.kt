@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.PixelFormat
 import android.os.Bundle
+import android.view.MotionEvent
 import com.abdllh.aura.media.MediaMonitor
 import com.abdllh.aura.nav.MapController
 import com.abdllh.aura.system.CrashGuard
@@ -30,6 +31,9 @@ class HomeActivity : Activity() {
         private set
     lateinit var map: MapController
         private set
+    /** Is the window still drawing? ([PanelStack] and this class tell it when a frame should come.) */
+    internal lateinit var drawWatch: DrawWatch
+        private set
     private var builtLang = ""
     private var counted = false
     private var firstResume = true
@@ -41,7 +45,10 @@ class HomeActivity : Activity() {
 
     private val tick = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
-            if (::panels.isInitialized) panels.tick()
+            if (::panels.isInitialized) {
+                panels.tick()
+                drawWatch.expect()
+            }
         }
     }
 
@@ -75,6 +82,7 @@ class HomeActivity : Activity() {
         // a wall with its card open. From the start, as the format would otherwise change under a running window with the map's first frame)
         window.setFormat(PixelFormat.TRANSLUCENT)
         setContentView(root)
+        drawWatch = DrawWatch(this)
         map = MapController(this)
         panels = PanelStack(this, HomePanel(this))
         MediaMonitor.start(this)
@@ -110,6 +118,7 @@ class HomeActivity : Activity() {
         registerReceiver(tick, f)
         map.resumed()
         panels.resumed()
+        drawWatch.expect()
         if (firstResume) {
             firstResume = false
             // whichever panel it is (the guard's "OK" follows in about 20 s)
@@ -132,7 +141,13 @@ class HomeActivity : Activity() {
         super.onStop()
     }
 
+    override fun dispatchTouchEvent(e: MotionEvent): Boolean {
+        if (e.actionMasked == MotionEvent.ACTION_DOWN && ::drawWatch.isInitialized) drawWatch.expect()
+        return super.dispatchTouchEvent(e)
+    }
+
     override fun onDestroy() {
+        if (::drawWatch.isInitialized) drawWatch.destroyed()
         if (counted) { counted = false; alive-- }
         if (current === this) current = null
         // (a system configuration change: what was on top is back in the new window)

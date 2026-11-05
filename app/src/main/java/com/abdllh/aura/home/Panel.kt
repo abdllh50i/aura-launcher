@@ -109,6 +109,13 @@ abstract class Panel(val shell: HomeActivity, val name: String) : ContextWrapper
 
     val window: Window get() = shell.window
 
+    /**
+     * During [onShow]: it has just come onto the stack from off it, which is what a new activity used to be, rather than the
+     * window starting again with it on top, or what was over it leaving.
+     */
+    var newOnStack = false
+        internal set
+
     // (the stack's: where it has it)
     internal var alive = true
     internal var shown = false
