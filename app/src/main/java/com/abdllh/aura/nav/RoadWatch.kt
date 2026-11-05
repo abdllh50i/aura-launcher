@@ -17,7 +17,7 @@ import kotlin.math.abs
 
 /**
  * What the map's additions ([MapExtras]) mean for the car right now, from its fixes: the limit of the street it is on,
- * and the camera or the bump coming up ahead — shown by [RoadHud] on the map screens, with a short tone the first time
+ * and the camera or the bump coming up ahead — shown by the speed card on the map screens, with a short tone the first time
  * each one comes within reach. On a route the rest comes from the route where the owner's live set says nothing: with the
  * guidance part's words ([Route.guide]) [Limits.at] and [Guidance.nextAlert], by distance along the road, else
  * OpenStreetMap's limits by place ([RouteLimits]). It runs while fixes come, that is while the home screen or the map shows,
@@ -54,7 +54,7 @@ object RoadWatch {
     private var started = false
     private val limit = LimitHold(LIMIT_HOLD_MS)
     private val announced = HashSet<MapExtras.Spot>()
-    /** The route's spots ([Guidance.spots]) as [RoadHud] and [announced] know a spot: one object for each, as long as the route's words last. */
+    /** The route's spots ([Guidance.spots]) as the speed card and [announced] know a spot: one object for each, as long as the route's words last. */
     private val routeSpots = IdentityHashMap<AlongSpot, MapExtras.Spot>()
     private var routeSpotsOf: Guidance? = null
     private var tone: ToneGenerator? = null

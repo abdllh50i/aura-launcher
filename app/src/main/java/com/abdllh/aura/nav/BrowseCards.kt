@@ -14,7 +14,6 @@ import com.abdllh.aura.BuildConfig
 import com.abdllh.aura.R
 import com.abdllh.aura.home.Screens
 import com.abdllh.aura.nav.browse.BrowseGroup
-import com.abdllh.aura.nav.browse.ChipInfo
 import com.abdllh.aura.nav.browse.FromPhoneCard
 import com.abdllh.aura.nav.browse.NoGpsCard
 import com.abdllh.aura.nav.browse.PlaceCard
@@ -45,7 +44,7 @@ import com.abdllh.aura.util.Prefs
 import com.abdllh.aura.voice.Amri
 
 /**
- * Maps with no trip (SPEC.md section 6.3): the search pill and the place chips, the search panel, the place's card, the card of a place from the phone, the credit on the map; with the visit's
+ * Maps with no trip (SPEC.md section 6.3, simple/CHANGES.md section 5): the one search pill, the search panel with his places, the place's card, the card of a place from the phone, the credit on the map; with the visit's
  * logic: what was chosen, its routes, Go, Home and Work, what the phone sent. The views are nav/browse's; this file is what they do. It reaches the rest only through [MapsPanel.cardOverColumn],
  * [MapsPanel.overview], [MapsPanel.syncNav] and panel.tools.
  */
@@ -109,7 +108,7 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
         syncGroup()
     }
 
-    /** The pill and the chips: with no trip and nothing over them, `drive-free` too (section 6.2). The credit here is search's; browse's is the map tools' (section 11: on both). */
+    /** The pill: with no trip and nothing over it, `drive-free` too (section 6.2). The credit here is search's; browse's is the map tools' (section 11: on both). */
     private fun syncGroup() {
         val trip = NavSession.state != NavSession.State.IDLE
         val cardOn = search.isOn || placeCard.isOn || phoneCard.isOn
@@ -122,7 +121,7 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
         syncGps()
     }
 
-    // ---- no GPS for a while on browse: a card under the chips, and how old the last fix is (section 12). A gap of a fix or two is the strip's icon alone
+    // ---- no GPS for a while on browse: a card under the pill, and how old the last fix is (section 12). A gap of a fix or two is the strip's icon alone
     private var quietSince = 0L
     private val gpsCheck = Runnable { syncGps() }
 
@@ -259,7 +258,7 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
 
     override fun tripChanged(on: Boolean) {
         if (on) hideKeyboard() // (once: it is a call to the keyboard's service)
-        else if (selected == null) { input.setText(""); refreshChips() }
+        else if (selected == null) input.setText("")
     }
 
     override fun listen(on: Boolean) {
@@ -271,7 +270,6 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
             GuideLink.landed = guideLanded
             DriveState.addListener(driveListener)
             root.viewTreeObserver.addOnGlobalLayoutListener(keyboardWatch)
-            refreshChips()
             syncGroup()
         } else {
             map.onPlaceRow = null
@@ -351,7 +349,6 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
         pickFor = null
         group.hint(getString(R.string.home_where_to))
         placeCard.setSaved(true)
-        refreshChips()
         if (finishAfterPick) { finishAfterPick = false; panel.finish() }
     }
 
@@ -452,28 +449,6 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
         s <= 1 -> getString(R.string.browse_starts_in_1)
         s == 2 -> getString(R.string.browse_starts_in_2)
         else -> getString(R.string.browse_starts_in_n, s.toString()) // (Western digits, whatever the language: a %d would not be)
-    }
-
-    /** The chips: Home, Work, and the last place he drove to. Saved or not: unsaved opens the pick flow (section 5). */
-    private fun refreshChips() {
-        val home = Places.home
-        val work = Places.work
-        val chips = ArrayList<ChipInfo>(3)
-        chips.add(ChipInfo(R.drawable.ic_home, getString(R.string.browse_home)) { chipTapped("home") })
-        chips.add(ChipInfo(R.drawable.ic_work, getString(R.string.browse_work)) { chipTapped("work") })
-        Places.recents.firstOrNull { r -> listOfNotNull(home, work).none { Geo.distance(it.pos, r.pos) < SAME_PLACE_M } }?.let { last ->
-            chips.add(ChipInfo(R.drawable.ic_pin, last.name) { driveTo(last) })
-        }
-        group.setChips(chips)
-    }
-
-    private fun chipTapped(which: String) {
-        val saved = Trips.saved(which)
-        if (saved != null) driveTo(saved)
-        else {
-            pickFor = which
-            showPickHint()
-        }
     }
 
     private fun pillTapped() {
@@ -785,23 +760,24 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
         credit.text = MapStyle.attribution(pts.first())
     }
 
-    /** With an empty query: Home, Work and recent destinations; [note] above them. */
+    /** With an empty query, his places as the panel opens (section 5): Home, Work and the last place he drove to, each straight to a trip. Not saved yet: its row says so, and opens the pick flow. [note] above them. */
     private fun showSuggestions(note: String? = null) {
-        val near = CarLocation.lastKnown()
-        val home = Places.home
-        val work = Places.work
-        val lines = ArrayList<ResultLine>()
-        lines.add(ResultLine(getString(R.string.browse_home), home?.name ?: getString(R.string.browse_set_place), null, 0, R.drawable.ic_home) {
-            closeSearch()
-            if (home != null) driveTo(home) else { pickFor = "home"; showPickHint() }
-        })
-        lines.add(ResultLine(getString(R.string.browse_work), work?.name ?: getString(R.string.browse_set_place), null, 0, R.drawable.ic_work) {
-            closeSearch()
-            if (work != null) driveTo(work) else { pickFor = "work"; showPickHint() }
-        })
-        for (p in Places.recents) lines.add(ResultLine(p.name, p.detail, near?.let { Units.distance(Geo.distance(it, p.pos), arabic) }, 0, R.drawable.ic_clock) { select(p) })
+        val home = Trips.saved("home")
+        val work = Trips.saved("work")
+        val lines = ArrayList<ResultLine>(3)
+        lines.add(placeRow(getString(R.string.browse_home), R.drawable.ic_home, "home", home))
+        lines.add(placeRow(getString(R.string.browse_work), R.drawable.ic_work, "work", work))
+        Places.recents.firstOrNull { r -> listOfNotNull(home, work).none { Geo.distance(it.pos, r.pos) < SAME_PLACE_M } }?.let { last ->
+            lines.add(ResultLine(last.name, "", null, 0, R.drawable.ic_pin) { closeSearch(); driveTo(last) })
+        }
         search.show(lines, note)
     }
+
+    private fun placeRow(title: String, icon: Int, which: String, saved: Place?) =
+        ResultLine(title, if (saved == null) getString(R.string.browse_set_place) else "", null, 0, icon) {
+            closeSearch()
+            if (saved != null) driveTo(saved) else { pickFor = which; showPickHint() }
+        }
 
     // ------------------------------------------------------------------------------------------ UI
     override fun build() {
@@ -810,18 +786,16 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
             textDirection = View.TEXT_DIRECTION_LTR
             text = MapStyle.attribution(CarLocation.lastKnown())
         }
-        layer.addView(credit, Type.attribution.box(448, 492, 564))
+        layer.addView(credit, Type.attribution.box(508, 490, 500))
         group = BrowseGroup(this, layer)
         group.hint(getString(R.string.home_where_to))
         group.onPill = { pillTapped() }
-        refreshChips()
 
         noGps = NoGpsCard(this).apply { visibility = View.GONE }
-        layer.addView(noGps, Surface.CARD.at(12, 160, 364, 92))
+        layer.addView(noGps, Surface.CARD.at(16, 112, 364, 92))
 
         search = SearchPanel(this).apply { visibility = View.GONE }
-        layer.addView(search, Surface.CARD.at(12, 44, 364, 68))
-        search.onClose = { closeSearch() }
+        layer.addView(search, Surface.CARD.at(16, 48, 364, 68))
         input.setOnFocusChangeListener { _, f ->
             panel.shell.panels.softInputChanged(panel) // (before the keyboard)
             if (f) openSearch()
@@ -829,7 +803,6 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
         input.setOnClickListener { if (DriveState.moving) pillTapped() else openSearch() }
         input.addTextChangedListener(object : TextWatcher {
             override fun afterTextChanged(s: Editable?) {
-                search.syncClose()
                 if (input.hasFocus()) onQuery(s?.toString().orEmpty())
             }
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -844,7 +817,7 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
         }
 
         placeCard = PlaceCard(this).apply { visibility = View.GONE }
-        layer.addView(placeCard, Surface.CARD.at(12, 44, 364, 410))
+        layer.addView(placeCard, Surface.CARD.at(16, 48, 364, 410))
         placeCard.close.setOnClickListener { clearPlace() }
         placeCard.save.setOnClickListener { v ->
             // (Home or Work being chosen, the field says which: the star keeps it as that at once)
@@ -859,7 +832,7 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
         placeCard.retry.setOnClickListener { resetRouteRetry(); requestRoute() }
 
         phoneCard = FromPhoneCard(this).apply { visibility = View.GONE }
-        layer.addView(phoneCard, Surface.CARD.at(12, 44, 364, 284))
+        layer.addView(phoneCard, Surface.CARD.at(16, 48, 364, 284))
         phoneCard.startNow.setOnClickListener { Trips.startNow() }
         phoneCard.cancel.setOnClickListener { clearPlace() }
         syncGroup()
@@ -890,7 +863,7 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
 
     private companion object {
         /** Where the search's list starts on the screen, and what the card and a margin take under it above a keyboard. */
-        const val SEARCH_LIST_TOP = 44 + 68
+        const val SEARCH_LIST_TOP = 48 + 68
         const val SEARCH_LIST_FOOT = 16
         /** A place within this of a saved one is that one. */
         const val SAME_PLACE_M = 60.0

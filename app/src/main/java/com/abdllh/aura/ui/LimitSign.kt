@@ -8,7 +8,7 @@ import android.view.View
 /**
  * The speed limit as the road sign everybody knows (SPEC.md section 5): a `limitFace` disc inside a `limitRing` ring, the number in
  * `limitInk`, centred on the sign's box line. Drawn on Canvas, once for each new number.
- * [SPEED] 68 with `limit`, ring 6, 5 with three digits; [HOME] 40; [STRIP] 34 with `stripLimit`, ring 3. Any other size scales from these.
+ * [SPEED] 76 with `limit`, ring 7, 6 with three digits; [HOME] 40; [STRIP] 34 with `stripLimit`, ring 3. Any other size scales from these.
  * [dim]: the Night Panel's face and ring, which have no white in them.
  */
 class LimitSign @JvmOverloads constructor(
@@ -52,7 +52,7 @@ class LimitSign @JvmOverloads constructor(
     }
 
     companion object {
-        @JvmField val SPEED = Spec(68, Type.limit, 6f, 5f, -0.8f)
+        @JvmField val SPEED = Spec(76, Type.limit, 7f, 6f, -0.8f)
         @JvmField val HOME = Spec(40, Type.stripLimit, 3f, 3f, -0.4f)
         @JvmField val STRIP = Spec(34, Type.stripLimit, 3f, 3f, -0.4f, 15f)
     }

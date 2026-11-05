@@ -48,7 +48,7 @@ internal class Strip(ctx: Context, onControls: () -> Unit, onNight: () -> Unit) 
         addView(status, at(0, 0, 126, 48))
         addView(gearRow, at(128, 0, 102, 40))
         addView(badge, at(128, 5, 30, 30))
-        addView(speed, at(240, 2, 320, 36))
+        addView(speed, at(118, 2, 320, 36))
         addView(logo, FrameLayout.LayoutParams(logo.w, 26, Gravity.RIGHT or Gravity.TOP).apply { rightMargin = 24; topMargin = 7 })
         addView(time, Type.stripTime.box(TIME_RIGHT - TIME_W, 0, TIME_W))
     }
@@ -294,7 +294,7 @@ internal class Logo(ctx: Context) : ImageView(ctx) {
 }
 
 /**
- * The speed in the strip, from x 240 (SPEC.md section 5): the limit sign 34, then the number; over the limit a plate behind the number in `overFill`, the number `overInk`;
+ * The speed in the strip, from x 118 (CHANGES.md section 1): the limit sign 34, then the number; over the limit a plate behind the number in `overFill`, the number `overInk`;
  * a Saher camera within reach, `cam` and its distance beside it. No GPS: a dash, no sign. Everything stays where it was laid out: what has no sign moves the number by
  * translation, the number is drawn, the distance is a label in a fixed box, so a new speed redraws this one small view.
  */

@@ -142,17 +142,16 @@ internal object Backdrop {
     // ------------------------------------------------------------------------------------------ the song's colour in 2.0
     /**
      * What a song gives the design (SPEC.md section 4, "Song colour, on the unit"), once per song on the single worker, nothing per
-     * frame. [panel]: the Music panel's background, one 48 x 28 opaque bitmap to stretch with FILTER on to 1024 x 600. [widget] and
-     * [mini]: Home's widget and the mini card, card, edge and shadow in one bitmap, to show in a plain ImageView at the card's rect grown
+     * frame. [panel]: the Music panel's background, one 48 x 28 opaque bitmap to stretch with FILTER on to 1024 x 600. [widget]:
+     * Home's widget, card, edge and shadow in one bitmap, to show in a plain ImageView at the card's rect grown
      * by [CARD_MARGIN]; no clip. [fill]: the song's colour as a fill. [wordPill] and [wordPillInk]: the current word's pill.
      */
-    class Wash(val night: Boolean, val fill: Int, val wordPill: Int, val wordPillInk: Int, val panel: Bitmap, val widget: Bitmap?, val mini: Bitmap?)
+    class Wash(val night: Boolean, val fill: Int, val wordPill: Int, val wordPillInk: Int, val panel: Bitmap, val widget: Bitmap?)
 
-    /** The margin of [Wash.widget] and [Wash.mini] round the card: `wash-*` of the design. */
+    /** The margin of [Wash.widget] round the card: `wash-*` of the design. */
     const val CARD_MARGIN = 30
     private const val WASH_W = 364
     private const val WIDGET_H = 182
-    private const val MINI_H = 80
     private const val ASPECT = 1024f / 600f
 
     /** Stops of the sea cover, each keeping its saturation and value and taking its hue from the song's fill. */
@@ -172,7 +171,7 @@ internal object Backdrop {
         }
     }
 
-    // The song's two washes, one per theme, by the cover they came from: the panel, Home's widget, the mini and the theme's ready step all ask for the same song.
+    // The song's two washes, one per theme, by the cover they came from: the panel, Home's widget and the theme's ready step all ask for the same song.
     private var washOf: java.lang.ref.WeakReference<Bitmap>? = null
     private var washNoCover = false
     private val washes = arrayOfNulls<Wash>(2)
@@ -245,16 +244,13 @@ internal object Backdrop {
         val widget = try {
             if (night) card(ctx, "widget", WIDGET_H, coverWash, black, .68f, .82f, true) else card(ctx, "widget", WIDGET_H, coverWash, Color.WHITE, .80f, .86f, false)
         } catch (_: Throwable) { null }
-        val mini = try {
-            if (night) card(ctx, "mini", MINI_H, panel, Color.rgb(0x15, 0x18, 0x1F), .42f, .42f, true) else card(ctx, "mini", MINI_H, panel, Color.WHITE, .10f, .10f, false)
-        } catch (_: Throwable) { null }
         // (the song's hue at the saturation and value of what the sea cover gives, wordPill: from the fill itself the pill was duller than
         // the design's, because the fill's value is held down so that it can be a fill. Then as far as it takes to read.)
         hsv[0] = hue
         hsv[1] = if (night) .55f else .89f
         hsv[2] = if (night) .96f else .525f
         val pill = Palette.reach(Color.HSVToColor(hsv), c.wordPillInk, 4.5, night)
-        return Wash(night, fill, if (px == null) c.wordPill else pill, c.wordPillInk, panel, widget, mini)
+        return Wash(night, fill, if (px == null) c.wordPill else pill, c.wordPillInk, panel, widget)
     }
 
     private fun rehue(c: Int, hue: Float): Int {

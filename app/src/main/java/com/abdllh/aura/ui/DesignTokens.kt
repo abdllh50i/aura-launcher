@@ -146,7 +146,7 @@ abstract class TypeRoles {
     @JvmField val hint = Type.Role("hint", 28, 400, 38, 26, 500)
     @JvmField val speed = Type.Role("speed", 52, 500, 56, 52, 500)
     @JvmField val speedUnit = Type.Role("speedUnit", 24, 400, 26, 24, 500)
-    @JvmField val limit = Type.Role("limit", 28, 600, 68, 28, 600)
+    @JvmField val limit = Type.Role("limit", 30, 600, 76, 30, 600)
     @JvmField val saherLabel = Type.Role("saherLabel", 24, 400, 32, 24, 400)
     @JvmField val saherValue = Type.Role("saherValue", 30, 500, 40, 28, 500)
     @JvmField val etaValue = Type.Role("etaValue", 32, 500, 40, 30, 500)

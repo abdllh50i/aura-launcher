@@ -31,10 +31,10 @@ import com.abdllh.aura.ui.look
 import kotlin.math.abs
 
 /**
- * What belongs to the map itself over [MapsPanel], at x 384 in both languages, beside the column and clear of the route (SPEC.md sections 1 and 6.2): compass, camera here, overview, zoom, locate, and the attribution, and
- * what the camera does after a touch. Browse has zoom and locate always, and the compass when the map is turned. On a trip they come with a touch on the map and go 5 s after the last one, unless the camera is free: then locate
- * is `accentInk` and stays. While moving a free camera comes back by itself 10 s after the last touch, a whole route 20 s, and at once under 300 m to a turn; parked it stays until locate is pressed.
- * `drive-free` has none of them. The guidance mute of the mockups is not here: no spoken navigation in 2.0.
+ * What belongs to the map itself over [MapsPanel] (SPEC.md sections 1 and 6.2, simple/CHANGES.md sections 4 and 5): on a trip at x 392 in both languages, beside the column and clear of the route; with no trip zoom and locate at
+ * x 16, the driver's edge, because the column is empty there. Compass, camera here, overview, zoom, locate, and the attribution, and what the camera does after a touch. Trip or browse, the tools come with a touch on the map and go
+ * 5 s after the last one, unless the camera is free: then locate is `accentInk` and stays. Browse has the compass whenever the map is turned. While moving a free camera comes back by itself 10 s after the last touch, a whole route
+ * 20 s, and at once under 300 m to a turn; parked it stays until locate is pressed. `drive-free` has none of them. The guidance mute of the mockups is not here: no spoken navigation in 2.0.
  */
 internal class MapTools(panel: MapsPanel) : MapsPart(panel) {
     private lateinit var compass: SurfaceCard
@@ -51,7 +51,7 @@ internal class MapTools(panel: MapsPanel) : MapsPart(panel) {
     private var bearingWatched = false
     private var compassAt = Float.NaN
     private var turned = false
-    /** On a trip: the tools are up from a touch, until [hideTools]. */
+    /** The tools are up from a touch on the map, until [hideTools]. */
     private var touched = false
     /** The keyboard is up: nothing here is needed while typing. */
     private var searching = false
@@ -72,7 +72,7 @@ internal class MapTools(panel: MapsPanel) : MapsPart(panel) {
             textDirection = View.TEXT_DIRECTION_LTR
             text = MapStyle.attribution(CarLocation.lastKnown())
         }
-        layer.addView(attribution, Type.attribution.box(512, 492, 500))
+        layer.addView(attribution, Type.attribution.box(508, 490, 500))
         // (the credit follows what is drawn: the pack inside the Kingdom, OpenFreeMap's tiles outside it)
         map.onCameraIdle = { at -> MapStyle.attribution(at).let { if (attribution.text != it) attribution.text = it } }
 
@@ -83,12 +83,12 @@ internal class MapTools(panel: MapsPanel) : MapsPart(panel) {
         }
         compassGlyph = iconView(R.drawable.ic_compass, GLYPH) { Palette.icon }
         compass.addView(compassGlyph, at((BTN - GLYPH) / 2, (BTN - GLYPH) / 2, GLYPH, GLYPH))
-        layer.addView(compass, Surface.PILL.at(X, 138, BTN, BTN))
+        layer.addView(compass, Surface.PILL.at(X_BROWSE, 256, BTN, BTN))
 
         camHere = pill(R.drawable.ic_cam_add, R.string.mark_camera, { Palette.red }) { mark() }
-        layer.addView(camHere, Surface.PILL.at(X, 202, BTN, BTN))
+        layer.addView(camHere, Surface.PILL.at(X, 188, BTN, BTN))
         overview = pill(R.drawable.ic_overview, R.string.maps_overview) { overviewOfTrip() }
-        layer.addView(overview, Surface.PILL.at(X, 266, BTN, BTN))
+        layer.addView(overview, Surface.PILL.at(X, 256, BTN, BTN))
 
         zoom = SurfaceCard(this, Surface.PILL)
         zoom.addView(IconButton(this, R.drawable.ic_plus, GLYPH, BTN, BTN, press = PressGesture.CONTROL).apply {
@@ -100,10 +100,10 @@ internal class MapTools(panel: MapsPanel) : MapsPart(panel) {
             contentDescription = getString(R.string.maps_zoom_out)
             setOnClickListener { map.zoomBy(-1.0) }
         }, at(0, BTN, BTN, BTN))
-        layer.addView(zoom, Surface.PILL.at(X, 330, BTN, 2 * BTN))
+        layer.addView(zoom, Surface.PILL.at(X, 324, BTN, 2 * BTN))
 
         locate = pill(R.drawable.ic_locate, R.string.maps_my_location) { recenter() }
-        layer.addView(locate, Surface.PILL.at(X, 450, BTN, BTN))
+        layer.addView(locate, Surface.PILL.at(X, 448, BTN, BTN))
 
         // "a camera here": what happened, beside the button, and a tap on it takes it back
         markNote = SurfaceCard(this, Surface.PILL).apply {
@@ -113,7 +113,7 @@ internal class MapTools(panel: MapsPanel) : MapsPart(panel) {
         }
         markText = line(Type.chip, { Palette.ink }, moving = false)
         markNote.addView(markText, Type.chip.box(16, 12, MARK_W - 32))
-        layer.addView(markNote, Surface.PILL.at(X + BTN + 8, 202, MARK_W, BTN))
+        layer.addView(markNote, Surface.PILL.at(X + BTN + 8, 188, MARK_W, BTN))
 
         for (v in arrayOf<View>(compass, camHere, overview, zoom, locate)) { v.alpha = 0f; v.visibility = View.INVISIBLE }
         built = true
@@ -184,13 +184,17 @@ internal class MapTools(panel: MapsPanel) : MapsPart(panel) {
         val whole = map.camera == AuraMap.Camera.OVERVIEW
         val onTrip = trip && !searching
         val browsing = !trip && !searching && face == MapsPanel.Face.BROWSE
-        val all = onTrip && (touched || free)
-        tool(compass, browsing && turned, animate)
+        val up = touched || free
+        val all = onTrip && up
+        // (`رجّعها` lies where they would)
+        val browseTools = browsing && up && !panel.drive.undoUp
+        placeZoomAndLocate()
+        tool(compass, browsing && turned && !panel.drive.undoUp, animate)
         tool(camHere, all && !whole && CameraMark.enabled, animate)
         tool(overview, all && !whole && NavSession.state == NavSession.State.NAVIGATING, animate)
-        tool(zoom, (all && !whole) || browsing, animate)
-        tool(locate, all || (onTrip && whole) || browsing, animate)
-        attribution.visibility = if (!trip && !searching && face == MapsPanel.Face.BROWSE) View.VISIBLE else View.INVISIBLE
+        tool(zoom, (all && !whole) || browseTools, animate)
+        tool(locate, all || (onTrip && whole) || browseTools, animate)
+        attribution.visibility = if (browsing) View.VISIBLE else View.INVISIBLE
         val want = if (free || whole) ACCENT else ICON
         if (want != locateTint) {
             locateTint = want
@@ -199,6 +203,16 @@ internal class MapTools(panel: MapsPanel) : MapsPart(panel) {
     }
 
     private var locateTint = ICON
+
+    /** Beside the column on a trip, at the driver's edge with none. A translation, and at once: they fade in the place they belong to. */
+    private fun placeZoomAndLocate() {
+        val dx = if (trip) 0f else (X_BROWSE - X).toFloat()
+        if (zoom.translationX == dx) return
+        for (v in arrayOf(zoom, locate)) {
+            tool(v, false, false)
+            v.translationX = dx
+        }
+    }
 
     /** Map tools in, out: alpha, 140 and 180 (section 9). */
     private fun tool(v: View, show: Boolean, animate: Boolean) {
@@ -226,7 +240,8 @@ internal class MapTools(panel: MapsPanel) : MapsPart(panel) {
     // ------------------------------------------------------------------------------------------ touches
     /** A touch on the map that nothing over it took. */
     fun mapTouched() {
-        if (!trip) return
+        // (a card lies over the map: this touch is to leave it, not to ask for tools)
+        if (searching) return
         touched = true
         syncTools(true)
         keepUp()
@@ -359,7 +374,8 @@ internal class MapTools(panel: MapsPanel) : MapsPart(panel) {
     private val hideNote = Runnable { markNote.showCard(false) }
 
     private companion object {
-        const val X = 384
+        const val X = 392
+        const val X_BROWSE = 16
         const val BTN = 56
         const val GLYPH = 30
         const val ICON = 0
