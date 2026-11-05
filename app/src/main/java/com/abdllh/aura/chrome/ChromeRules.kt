@@ -9,9 +9,10 @@ internal object ChromeRules {
     /** The tiles' capsule, on every screen. */
     private const val CAPSULE_X = 292
     private const val CAPSULE_W = 716
+    private const val TILES = 6
 
-    /** The centre x of the tile at [index] of the row's six: each in its sixth of the capsule, so they are evenly spaced and the hits fill it. */
-    fun tileX(index: Int, count: Int = 6): Int = CAPSULE_X + (CAPSULE_W * (2 * index + 1) + count) / (2 * count)
+    /** The centre x of the tile at [index]: each in its sixth of the capsule, so they are evenly spaced and the hits fill it. */
+    fun tileX(index: Int): Int = CAPSULE_X + (CAPSULE_W * (2 * index + 1) + TILES) / (2 * TILES)
 
     /** The song's card: on Maps, with a song. Everywhere else he has the Music tile or Home's widget. */
     fun songCard(panel: String, song: Boolean): Boolean = song && panel == Screens.MAPS
