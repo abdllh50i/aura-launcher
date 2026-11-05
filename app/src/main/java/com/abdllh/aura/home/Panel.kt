@@ -41,6 +41,8 @@ abstract class Panel(val shell: HomeActivity, val name: String) : ContextWrapper
     /**
      * WindowManager.LayoutParams.SOFT_INPUT_* for the window while it is on top. With ADJUST_RESIZE only this panel
      * follows the keyboard: the map's slot and the panels under it keep their size, so nothing heavy is laid out again.
+     * A mode that differs from the panel under it makes the move between them a relayout of the window, in the frame that
+     * must answer: leave it alone, or differ only while a field has the focus ([PanelStack.softInputChanged], MapsPanel).
      */
     open val softInput: Int get() = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
 
