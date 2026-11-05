@@ -1,4 +1,4 @@
-﻿# Shoots the real chrome (app/src/main/.../chrome), behind its switch, in the states the mockups draw and in the words they use, on the mockups' plates, for scripts/gallery_compare.py:
+# Shoots the real chrome (app/src/main/.../chrome) in the states the mockups draw and in the words they use, on the mockups' plates, for scripts/gallery_compare.py:
 #   shots\v2-ds-c-<state>-<theme>.png.  chrome-shots.ps1 -Serial emulator-5578 [-Design D:\k2501-work\tmp\v2\design\final2] [-States home,drive] [-Themes night,day] [-Order spec|nearest]
 # -Design pushes the plates once. In the spec's order by default: that is what the mockups draw.
 param([string]$Serial = "emulator-5578", [string]$Design = "", [string[]]$States, [string[]]$Themes = @("night", "day"), [string]$Order = "spec", [int]$Wait = 700, [string]$Prefix = "c", [string]$Lang = "ar")

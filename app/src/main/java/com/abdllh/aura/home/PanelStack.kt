@@ -95,6 +95,7 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
         val p = built[name] ?: make(name)
         if (p == null) { Snack.show(shell, R.string.panel_failed); return }
         val under = top
+        val wasUnder = beside === p // (Maps, drawn under the panel on top: that one simply goes off it)
         closeWindows()
         under.frame.live = false
         leave(under)
@@ -107,7 +108,10 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
         if (!arrive(p, args)) { failed(p); return }
         setBeside(besideFor(p))
         val ready = SystemClock.uptimeMillis() - t0
-        move { done -> PanelMotion.between(under.name, p.name, beside != null).opening(p.frame, under.frame, done) }
+        move { done ->
+            if (wasUnder) PanelMotion.between(under.name, p.name, true).closing(under.frame, p.frame, done)
+            else PanelMotion.between(under.name, p.name, beside != null).opening(p.frame, under.frame, done)
+        }
         if (shell.resumedNow) p.frame.afterNextDraw {
             val ms = SystemClock.uptimeMillis() - t0
             val first = firstOpen.getOrPut(name) { ms }
