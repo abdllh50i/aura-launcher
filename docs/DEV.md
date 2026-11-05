@@ -248,7 +248,7 @@ Checking it on the emulator (Android's own rules, not the firmware's: `persist.n
 (the map's slot, empty until step 3: always attached, always visible, never follows the keyboard), `panelLayer`, `chrome`
 (empty until the new design), `sheets` (Controls and the drawer, the same classes). `setContentView` runs once: a new theme
 rebuilds what is in the layers. The home screen moved unchanged to `HomePanel`, the bottom of the stack; Settings to
-`SettingsPanel`, the first panel above it, built on open, dropped on close. Maps and Music are still activities. Nothing
+`SettingsPanel`, the first panel above it, built on open, dropped on close. Music followed (below); Maps is still an activity. Nothing
 looks different; a screen that is a panel opens in the window, with no activity start.
 
 **A panel** (`Panel`) is a `ContextWrapper` of the activity, so code moved from an activity keeps working on `this`, and its
@@ -965,7 +965,7 @@ scroll it follows again); a tapped line is where the song goes: the unit's songs
 clock (the line's time + 450 ms, the owner taps what is being sung); while a Bluetooth song's position is unknown no line
 is lit and a hint asks for that tap. The lyrics button puts it in the library's panel (with Bluetooth the song gives the
 panel back for it); the progress tick runs every 200 ms while it shows.
-The lyrics alone on the whole screen (1.7): the button in the panel's corner (`MusicActivity.showFull`; Back, or the
+The lyrics alone on the whole screen (1.7): the button in the panel's corner (`MusicPanel.showFull`; Back, or the
 button where the screen's own way back is, returns; kept in `musicLyricsFull`). A second `LyricsView(big = true)` in a
 layer over the screen (38 sp lines), with a small bar: cover, names, previous / play / next and a thin progress line.
 Both views are fed alike and the layer is INVISIBLE, never GONE, so it stays laid out: going there and back measures
@@ -1072,7 +1072,7 @@ card followed. Not tried before the unit: the connection over the real hotspot, 
 ### The Bluetooth sound's delay (1.18)
 What the phone plays comes out of the car's speakers later: buffers on the phone, in the module, on to the amplifier.
 Naghm's clock (and the module's guesses) say what the phone plays, so the lyrics ran ahead of what is heard.
-`BtMusic.delayMs` (Prefs `btDelayMs`, 0–2 s) is that delay; `MusicActivity.lyricsShift` is, for a Bluetooth song, the
+`BtMusic.delayMs` (Prefs `btDelayMs`, 0–2 s) is that delay; `MusicPanel.lyricsShift` is, for a Bluetooth song, the
 owner's own correction of that song when he made one (1.15's tap: measured against what he heard, the delay is already in
 it), else minus the delay. A tapped line on Naghm's song seeks to the line itself (`l.ms - lyricsOffset`: the delay only
 makes it heard later) and stays lit until its sound comes out (`tapLitUntil`, the delay + 400 ms) instead of the line
@@ -1090,7 +1090,7 @@ Arabic. Not tried on the unit: the real delay of its module.
 Naghm (1.6) sends, with each song, when the screen connects, and on `{"type":"lyrics"}`, the lyrics the phone has:
 `{"type":"lyrics","id","title","synced","source","lines":[{"time": seconds or null,"text"}]}` (no lines: it has none).
 `PhoneLink.lyricsOf` makes them a `Lyrics.Result` (`SOURCE_NAGHM`, ms times), kept with `lyricsId` / `lyricsTitle`.
-For a Bluetooth song that is Naghm's (`MusicActivity.phoneLyrics`: the link's song, `sameSong` titles) they are shown
+For a Bluetooth song that is Naghm's (`MusicPanel.phoneLyrics`: the link's song, `sameSong` titles) they are shown
 in place of the screen's own lookup — at once in `refreshLyrics` when already there, by `phoneListener` when they
 come later, and a lookup that answers after them is dropped. They carry no correction of their own, so the Bluetooth
 delay applies (`lyricsShift`). `BtMusic.canSeek` is now the link playing the module's song (not only while Naghm owns
@@ -1110,7 +1110,8 @@ helpers, `Snack`). Strings added in 1.12 are in `res/values*/strings_music.xml`.
   the cover halved step by step and blurred for real (three box passes), and `applyLook` hands it to
   `window.setBackgroundDrawable` with filtering on: one opaque fill a frame, two while a new one crossfades in
   (`TransitionDrawable`, `Motion.AMBIENT`). It runs on its own single-thread executor (`lookAsync`); only the very first
-  look is made on the main thread, in `buildUi`. Nothing else may set this window's background.
+  look is made on the main thread, in `buildUi`. Nothing else may set this window's background. (Since 2.0 the panel's root
+  has it, not the window, which has none: "Music in the one window".)
 * **The cover's colour** comes from `Backdrop.colours` as `fill` (progress, play buttons, indicators, equaliser bars,
   the shadow's glow) brought to 3:1 on the background, and `fillText` (the playing row's title, Play all, the crumb's
   chevron, shuffle / repeat when on, the lyrics hint) brought to 4.5:1 on the playing row's tint (a dark blue cover was
@@ -1153,7 +1154,7 @@ helpers, `Snack`). Strings added in 1.12 are in `res/values*/strings_music.xml`.
   its artist meanwhile. After a seek the position shown is the one asked for (`holdSeek` / `held`) until the source
   agrees (within 1.2 s) or `SEEK_HOLD_MS` passes (YouTube and a USB stick answer a seek late, and the knob jumped back
   and forth). The times sit 8 dp into the strip's lower edge, with fixed equal halves, set only when they change
-  (`setTextIfChanged`, private to `MusicActivity.kt`): a WRAP label asked the whole screen for a layout every tick.
+  (`setTextIfChanged`, private to `MusicPanel.kt`): a WRAP label asked the whole screen for a layout every tick.
 * **The progress tick** comes when the next lyric line is due (`LyricsView.msToNext`, at most 250 ms with lyrics, 500
   without, at least 16), and the YouTube branch reads only `appPosition`, never the bitmap. `showNowPlaying` (every
   Bluetooth broadcast, about once a second) changes only what changed.
@@ -1177,9 +1178,10 @@ helpers, `Snack`). Strings added in 1.12 are in `res/values*/strings_music.xml`.
   dims what shows (`dim`); "Looking for the lyrics…" only after 600 ms (`lyricsLoading`); "failed" has Try again. The
   whole-screen lyrics: 34 sp lines, a 40 dp fading edge, and lines to be read rather than followed start near the
   top, below the sync hint's measured height.
-* **Theme and language while open**: Music lives in its own task, so it came back from Settings in the old language and
+* **Theme and language while open**: Music lived in its own task, so it came back from Settings in the old language and
   stayed on the day colours all night under "auto". `checkLook` (in `onResume`, and from a `TIME_TICK` receiver while
-  resumed) calls `recreate()` when the theme, accent or language it was built in changed; no snapshot crossfade yet.
+  resumed) called `recreate()` when the theme, accent or language it was built in changed; no snapshot crossfade yet. (Since
+  2.0: `onLook` builds the panel again in place, with its state, and the language is the whole window's.)
   `MusicService` wraps its context with `LocaleHelper`, and YouTube's "stopped out of sight" toast a wrapped context.
 
 ### Lyrics from the owner's server, timed by listening (1.13: `Lyrics`, `LyricsServer`, `LyricsSync`, `tools/lyrics-server`)
@@ -1318,13 +1320,13 @@ never past 0.15 s before the next line (a line sung quickly before a pause does 
 most 6 s. The app estimates with the same rule when it has no word times of the server's (LRCLIB's timed lyrics
 fetched by the unit itself, an older server).
 
-#### The screen (`LyricsView.timeLines`, `MusicActivity`)
+#### The screen (`LyricsView.timeLines`, `MusicPanel`)
 Timed lines that come for the very lines on the screen do not rebuild anything: the lines stay where they are, take
 taps from then on (a tap looks the line's time up when it happens, `tapLine`, since a timing by listening can be refined
 while it shows), the room above them grows to the timed lyrics' 38 % and the scroll moves by the same amount in the same
 layout pass (`shiftOnLayout`), and the line being sung lights and glides to the middle as with any timed lyrics. They
 keep the plain lines' size (measuring them again at the timed size would move every line); the next play shows the timed
-size. Other lines (another source's) are shown anew. `MusicActivity.lyricsSong` remembers the song as its lyrics were
+size. Other lines (another source's) are shown anew. `MusicPanel.lyricsSong` remembers the song as its lyrics were
 asked for, so a late answer is matched to the song on the screen.
 Fixed on the way: the phone skipping A → B → A before B's lyrics came left A's lyrics stepped back (dimmed, not
 following, not tappable) until the next song, since A's lines counted as already shown; `lyricsShown` is now cleared
@@ -1351,7 +1353,7 @@ address", before any request.
 * The unit's microphone shared with the assistant (`MicTap`) on the unit; on the emulator only the own recording and
   the debug feed ran.
 
-### Word by word lyrics and the saved timing (1.15: `Words`, `LyricsView`, `Lyrics`, `MusicActivity`)
+### Word by word lyrics and the saved timing (1.15: `Words`, `LyricsView`, `Lyrics`, `MusicPanel`)
 The owner asked for three things: the word being sung lit on the lyrics' lit line ("an effect on the word the song has
 reached", with a switch to turn it off), his own timing kept when he sets it by tapping the line being sung ("so that
 when I play the same song later the same timing comes"), and songs whose lyrics come without timing timed by his
@@ -1423,7 +1425,7 @@ the fill looks has to be judged on the unit.
 drawn exactly as before 1.15 (`super.onDraw`). The music screen reads it in `onStart`, so it applies on coming back
 from Settings; the word times are worked out either way, so turning it on needs no new lyrics.
 
-#### The saved timing (`MusicActivity.onLineTap`, `onLineHold`, `Lyrics.keepOffset`)
+#### The saved timing (`MusicPanel.onLineTap`, `onLineHold`, `Lyrics.keepOffset`)
 A tapped line on a Bluetooth song used to set the song's clock (the phone never says where a song is). Now:
 * The clock unknown (the first song after connecting, before any tap): the tap sets the clock, as before. This is not
   a correction. With a correction already kept for the song, the clock is set so that the lyrics land on the tapped
@@ -2314,9 +2316,9 @@ sign, a trip resumed or not and why) is the first real measurement.
   being said ends before the chime. A prompt due during the assistant's turn is not looked at: the next fix decides, at the distance of
   that moment, so nothing comes late or for a turn already passed. A turn nobody gives back ends by itself (15 s, 40 s). The price: a false
   wake can hold a prompt back for up to 15 s; the sign still shows it.
-* **Lyrics** (`MusicActivity.phoneTakesOver`): Naghm's coming after the screen's own go up, unless they are the very same lines
+* **Lyrics** (`MusicPanel.phoneTakesOver`): Naghm's coming after the screen's own go up, unless they are the very same lines
   (the owner's correction goes on applying) or have no times where the shown ones do. The correction stays on disk with its lines.
-* **Music keys:** "the same source" is `MusicActivity.onBluetooth`, what the screen is really on; the pref only with no screen.
+* **Music keys:** "the same source" is `MusicPanel.onBluetooth`, what the screen is really on; the pref only with no screen.
 * **Prefs:** gone: `setupDone`, `setupBannerDismissed`, `adbBridge`, `hiddenApps` (no version ever wrote them). Kept, read-only:
   `homeAddress`, `workAddress`: their writer went in 1.3, but a unit where one was typed still drives there from it.
 

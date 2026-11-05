@@ -248,6 +248,7 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
 
     /** It is in front, or on its way there; out of sight nothing asks for a picture or for lyrics. */
     private var showing = false
+    private var shownAt = 0L
 
     /** The source it opens on: the one chosen, or Bluetooth when only the phone plays (which is no choice: nothing is written). */
     private fun sourceNow() = when {
@@ -302,7 +303,9 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         debugFail("show")
         if (lookStale()) buildAgain()
         root.visibility = View.INVISIBLE
+        root.removeCallbacks(letGo)
         showing = true
+        shownAt = SystemClock.uptimeMillis()
         shownSong = null
         lastArtKey = Long.MIN_VALUE
         coverShown = false
@@ -352,14 +355,19 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         // (the keyboard's field: a window that comes back forward would bring the keyboard up for it)
         ytInput.clearFocus()
         showing = false
-        letGoOfPictures()
+        // (not now: it is on the screen until the move away has ended)
+        root.removeCallbacks(letGo)
+        root.postDelayed(letGo, LET_GO_AFTER_MS)
     }
+
+    private val letGo = Runnable { if (!showing && !isGone) letGoOfPictures() }
 
     /**
      * What a hidden screen would keep for nothing: the cover (in three views, and in the fields that remember it) and the
      * rows' pictures. They are all in caches with a limit (ArtLoader's, CoverSearch's, the session's), a limit that holds only if
      * nobody else keeps what they evict; [onShow] takes them from there again, and the look worked out from the cover stays
-     * (a picture of 48 texels and two colours), so coming back on the same cover costs nothing: [setArt].
+     * (a picture of 48 texels and two colours), so coming back on the same cover costs nothing: [setArt]. A moment after
+     * [onHide], once nothing of it can be on the screen.
      */
     private fun letGoOfPictures() {
         flight?.cancel()
@@ -384,6 +392,7 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
     }
 
     override fun onDestroy() {
+        root.removeCallbacks(letGo)
         onBluetooth = null
     }
 
@@ -1143,7 +1152,7 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
                     names(t.title, t.artist.ifBlank { getString(R.string.music_unknown_artist) }, t.album)
                     if (lastArtKey != t.albumId) {
                         lastArtKey = t.albumId
-                        if (showing) ArtLoader.get(this, t, 600) { b -> if (showing && Player.current?.albumId == t.albumId && src == Src.LOCAL) setArt(b, t.albumId) }
+                        ArtLoader.get(this, t, 600) { b -> if (Player.current?.albumId == t.albumId && src == Src.LOCAL) setArt(b, t.albumId) }
                     }
                 }
                 repeatBtn.contentDescription = Player.repeat.name
@@ -1322,8 +1331,8 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
     }
 
     private fun setArt(b: Bitmap?, key: Long) {
-        // (out of sight it takes no picture: it asks again when it comes back)
-        if (!showing && b != null) return
+        // (out of sight it takes no picture, it asks again when it comes back: only what the cover looks like is worked out)
+        if (!showing && b != null) { lookAhead(b); return }
         // the first picture since it came back, or of all: there is nothing on the screen to move it from
         val returning = !coverShown
         // a new picture on a screen that already showed one (the keys are set before a cover loads: not those)
@@ -1347,13 +1356,24 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         // back on the cover it left: its look never went
         if (returning && back != null && (if (b == null) lookOf == null else lookOf?.get() === b)) return
         // its colours and the backdrop: worked out off the main thread (the first at once: there is nothing to fade from.
-        // A cover that came while the screen was away fades in over the look it left, with nothing held up for it)
-        val t = Backdrop.Theme(Palette.dark, Palette.bg, Palette.card, Palette.accent, Palette.accentFg,
-            resources.displayMetrics.widthPixels.toFloat() / resources.displayMetrics.heightPixels.coerceAtLeast(1))
+        // A cover that came while the screen was away holds nothing up either: its look is simply there when it comes during
+        // the move that brings the screen in, with no fade or recolouring on top of that move, and fades in if it is later)
+        val t = lookTheme()
         val g = ++lookGen
         lookOf = b?.let { WeakReference(it) }
         if (!changed && (b == null || !returning)) applyLook(Backdrop.look(b, t), animate = false)
-        else Backdrop.lookAsync(b, t) { l -> if (g == lookGen && !isGone) applyLook(l, animate = true) }
+        else Backdrop.lookAsync(b, t) { l -> if (g == lookGen && !isGone) applyLook(l, animate = SystemClock.uptimeMillis() - shownAt > ARRIVING_MS) }
+    }
+
+    private fun lookTheme() = Backdrop.Theme(Palette.dark, Palette.bg, Palette.card, Palette.accent, Palette.accentFg,
+        resources.displayMetrics.widthPixels.toFloat() / resources.displayMetrics.heightPixels.coerceAtLeast(1))
+
+    /** The look of a cover the screen is not showing, for when it opens: built ahead of time, the first open is on it at once. */
+    private fun lookAhead(b: Bitmap) {
+        if (lookOf?.get() === b) return
+        val g = ++lookGen
+        lookOf = WeakReference(b)
+        Backdrop.lookAsync(b, lookTheme()) { l -> if (g == lookGen && !isGone) applyLook(l, animate = false) }
     }
 
     private var lookGen = 0
@@ -1722,7 +1742,8 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         img.animate().cancel()
         img.alpha = 1f
         img.setImageDrawable(null)
-        if (!showing) return // (out of sight no row holds a picture: they are all bound again when it comes back)
+        // (out of sight no row holds a picture, they are all bound again when it comes back: it only gets to the cache)
+        if (!showing) { load { }; return }
         var sync = true
         load { b ->
             if (b != null && still() && showing) {
@@ -2533,6 +2554,10 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         private const val ART_WAIT_MS = 2500L
         /** A seek is shown where it was asked for at most this long while the source still says otherwise. */
         private const val SEEK_HOLD_MS = 1500L
+        /** A screen that left this long ago is out of sight, whatever became of its move (the stack ends any at 2 s). */
+        private const val LET_GO_AFTER_MS = 2500L
+        /** A screen that came to the front this recently is still on its way in ([setArt]). */
+        private const val ARRIVING_MS = 400L
         /** "Looking for the lyrics" shows only when the answer takes longer than this. */
         private const val LOADING_AFTER_MS = 600L
 

@@ -103,7 +103,7 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
     }
 
     /**
-     * Builds a kept panel ahead of time, hidden, while nothing else happens, so its first [show] has nothing to build: its
+     * Builds a kept panel ahead of time, out of sight, while nothing else happens, so its first [show] has nothing to build: its
      * views are laid out with the others (a first build on the unit's main thread has no starting window to hide behind).
      */
     fun prepare(name: String) {
@@ -111,9 +111,17 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
         val t0 = SystemClock.uptimeMillis()
         val p = make(name)
         if (p == null) { noAhead.add(name); return }
-        p.frame.apply { visibility = View.INVISIBLE; live = false }
         builtAhead[name] = SystemClock.uptimeMillis() - t0
         Log.i(TAG, "$name: built ahead in ${builtAhead[name]} ms")
+        // One real frame of it, one level of 255 over what shows: its letters in the GPU's store, its icons rasterised and its
+        // shaders compiled, all of which a first open otherwise pays in its first frame. Then out of sight. (The frame's
+        // recording does not outlive it: a later open records anew, and so does the first.)
+        val f = p.frame
+        f.live = false
+        f.alpha = ONE_LEVEL
+        val hide = Runnable { if (p !in stack) { rest(f); f.visibility = View.INVISIBLE } }
+        f.afterNextDraw { main.removeCallbacks(hide); hide.run() }
+        main.postDelayed(hide, HIDE_AFTER_MS)
     }
 
     /**
@@ -430,6 +438,8 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
         /** A finger down this recently: the owner is doing something ([prepareWhenQuiet]). */
         private const val QUIET_AFTER_TOUCH_MS = 1500L
         private const val QUIET_AGAIN_MS = 2000L
+        private const val ONE_LEVEL = 1f / 255f
+        private const val HIDE_AFTER_MS = 2000L
 
         /** The last panel opened, and how long that took (for Settings → About). */
         @Volatile var lastOpen = ""
