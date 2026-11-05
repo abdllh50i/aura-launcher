@@ -26,10 +26,15 @@ object Daylight {
 
     /** Night now, where the car is (or last was). */
     fun isNightNow(): Boolean {
+        val (lat, lon) = place()
+        return isNight(lat, lon, System.currentTimeMillis())
+    }
+
+    /** Where the sun is asked about: the car's last fix, or Dammam before any. Latitude, longitude. */
+    fun place(): Pair<Double, Double> {
         val at = CarLocation.lastKnown()
         // (some GPS chips report 0, 0 before they have a position)
-        val known = at != null && (abs(at.lat) > 0.01 || abs(at.lon) > 0.01)
-        return isNight(if (known) at!!.lat else HOME_LAT, if (known) at!!.lon else HOME_LON, System.currentTimeMillis())
+        return if (at != null && (abs(at.lat) > 0.01 || abs(at.lon) > 0.01)) at.lat to at.lon else HOME_LAT to HOME_LON
     }
 
     fun isNight(lat: Double, lon: Double, utcMs: Long): Boolean = altitude(lat, lon, utcMs) < NIGHT_BELOW_DEG

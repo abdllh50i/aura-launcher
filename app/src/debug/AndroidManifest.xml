@@ -6,6 +6,10 @@
         <receiver
             android:name=".debug.GalleryReceiver"
             android:exported="true" />
+        <!-- The chrome's switch, its states and its frame times: am broadcast -n com.abdllh.aura/.debug.ChromeProbe (ChromeProbe.kt) -->
+        <receiver
+            android:name=".debug.ChromeProbe"
+            android:exported="true" />
         <activity
             android:name=".debug.CarBakerActivity"
             android:exported="true"

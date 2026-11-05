@@ -42,6 +42,8 @@ object Screens {
     const val MAPS = "maps"
     const val MUSIC = "music"
     const val SETTINGS = "settings"
+    const val PHONE = "phone"
+    const val APPS = "apps"
 
     /** The screens that are panels of the home activity. */
     private val PANELS = setOf(SETTINGS)

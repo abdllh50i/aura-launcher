@@ -2,23 +2,32 @@ package com.abdllh.aura.home
 
 import android.content.Context
 import android.os.SystemClock
+import android.view.Gravity
 import android.view.MotionEvent
 import android.view.WindowManager
 import android.widget.FrameLayout
+import com.abdllh.aura.chrome.Flyer
+import com.abdllh.aura.chrome.Ghost
+import com.abdllh.aura.chrome.NightPanel
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Sheet
+import com.abdllh.aura.ui.SnackHost
 
 /**
  * The content of the one window, in layers, bottom to top: [mapHost] (the map's slot), [panelLayer] (Home, Settings...:
- * [PanelStack]), [chrome] (what stays over every panel in the new design: empty until then), [sheets] (Controls, the
- * app drawer). Snack adds itself to android.R.id.content, above all of this. Set once and never replaced: a new theme
- * rebuilds what is in the layers, so a surface in [mapHost] is never detached.
+ * [PanelStack]), [chrome] (what stays over every panel, [com.abdllh.aura.chrome.Chrome], behind its switch until the screens are
+ * rebuilt), [sheets] (Controls, the app drawer), then the slots of SPEC.md section 6.0: [snack], [night], [flyer], [ghost], not drawn
+ * at rest. Set once and never replaced: a new theme rebuilds what is in the layers, so a surface in [mapHost] is never detached.
  */
 class ShellRoot(ctx: Context) : FrameLayout(ctx) {
     val mapHost = MapHost(ctx, this)
     val panelLayer = FrameLayout(ctx)
     val chrome = FrameLayout(ctx)
     val sheets = FrameLayout(ctx)
+    val snack = SnackHost(ctx)
+    val night = NightPanel(ctx)
+    val flyer = Flyer(ctx)
+    val ghost = Ghost(ctx)
 
     /** The content's size with no keyboard in it: what the map and every panel but one that asked to follow it are given. */
     internal var restWidth = 0
@@ -32,6 +41,10 @@ class ShellRoot(ctx: Context) : FrameLayout(ctx) {
         addView(panelLayer, MATCH, MATCH)
         addView(chrome, MATCH, MATCH)
         addView(sheets, MATCH, MATCH)
+        addView(snack, MATCH, MATCH)
+        addView(night, MATCH, MATCH)
+        addView(flyer, FrameLayout.LayoutParams(Flyer.SIZE, Flyer.SIZE, Gravity.LEFT or Gravity.TOP))
+        addView(ghost, MATCH, MATCH)
     }
 
     override fun onMeasure(w: Int, h: Int) {

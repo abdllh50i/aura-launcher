@@ -96,6 +96,7 @@ class AuraApp : Application() {
             NwdBridge.stopBootTip(this) // (one an earlier AMRI started this boot)
             com.abdllh.aura.system.BetaLeftovers.removeOnce(this) // what a 1.6.1 beta left over the Bluetooth daemon
             Gear.init(this)
+            com.abdllh.aura.system.DriveState.init(this) // Parked or Moving, the one source (after the gear it reads)
             com.abdllh.aura.phone.Calls.init(this) // a phone call: AMRI's own card and ring, not the stock window
             com.abdllh.aura.system.Notices.apply(this) // Android's notifications off the screen, the phone's messages on it
             BootAnim.ensure(this) // this build's boot animation, also after an update from the screen

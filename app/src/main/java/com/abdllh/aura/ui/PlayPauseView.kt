@@ -26,6 +26,9 @@ class PlayPauseView(ctx: Context) : View(ctx), Recolours {
     /** The glyph's size in the view, in px; the view's smaller side if 0. */
     var glyphPx = 0
         set(v) { field = v; invalidate() }
+    /** The glyph off the view's middle, in px: a hit that runs to the screen's edge, with the glyph on the row's centre. */
+    var centerDy = 0
+        set(v) { field = v; invalidate() }
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL_AND_STROKE; strokeJoin = Paint.Join.ROUND; strokeCap = Paint.Cap.ROUND }
     private val discPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val path = Path()
@@ -67,7 +70,7 @@ class PlayPauseView(ctx: Context) : View(ctx), Recolours {
         }
         val s = if (glyphPx > 0) glyphPx.toFloat() else min(width, height).toFloat()
         val ox = (width - s) / 2f
-        val oy = (height - s) / 2f
+        val oy = (height - s) / 2f + centerDy
         val u = s / 24f
         fun x(v: Float) = ox + v * u
         fun y(v: Float) = oy + v * u

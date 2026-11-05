@@ -16,6 +16,10 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import com.abdllh.aura.R
+import com.abdllh.aura.chrome.RowDock
+import com.abdllh.aura.chrome.RowHome
+import com.abdllh.aura.chrome.VoiceButton
+import com.abdllh.aura.chrome.VolumeCluster
 import com.abdllh.aura.home.HomeActivity
 import com.abdllh.aura.home.Panel
 import com.abdllh.aura.music.Backdrop
@@ -161,6 +165,12 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
             "wash" -> wash(s)
             "covers" -> covers(s)
             "dock" -> dockOrder(s)
+            "chrome-orders" -> chromeOrders(s)
+            "r-chrome-wall" -> s.mapPlate("stage-hole")
+            "r-chrome-drive" -> { s.mapPlate("drive-turn"); s.scrims() }
+            "r-chrome-browse" -> { s.mapPlate("browse"); s.scrims() }
+            "r-chrome-room" -> s.room()
+            "r-chrome-bg" -> Unit
             "r-settings-display" -> rSettingsDisplay(s)
             "r-settings-maps" -> rSettingsMaps(s)
             "r-controls" -> rControls(s, false)
@@ -705,6 +715,27 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
         s.mapPlate("browse")
         s.head("The dock in the owner's second order (Asked.DOCK), Maps selected", 12, 460)
         s.dockRow("maps", Asked.DOCK)
+    }
+
+    /** Both orders of the dock, the real rows: Home's and the dock's, one under the other, as they are at the two ends of the row's change. */
+    private fun chromeOrders(s: FrameLayout) {
+        fun block(y: Int, name: String, order: List<Asked.Cell>, home: Boolean) {
+            s.caption(14, y, name, 900)
+            val row = FrameLayout(ctx)
+            if (home) row.addView(RowHome(ctx, order) { }.apply { setPrayer("المغرب 4:56", "بعد 38 د", R.drawable.ic_sunset) }, at(0, 0, 1024, 110))
+            else row.addView(RowDock(ctx, order) { }.apply {
+                placeOn(order[1].panel)
+                glance.setPrayer("الفجر 4:28", R.drawable.ic_sunrise, true)
+                shift(1f)
+            }, at(0, 10, 1024, 100))
+            row.addView(VolumeCluster(ctx).apply { hold(12, false, -1f) }, at(0, 26, 204, 84))
+            row.addView(VoiceButton(ctx) { }.apply { face = if (home) 0f else 1f }, at(186, 12, VoiceButton.SIZE, VoiceButton.SIZE))
+            s.addView(row, at(0, y + 20, 1024, 110))
+        }
+        block(0, "Asked.ORDER_NEAREST, the default: Home's row", Asked.ORDER_NEAREST, true)
+        block(130, "the dock: each tile one cell to the right, with the home cell in the room left: the row's change moves them there", Asked.ORDER_NEAREST, false)
+        block(280, "Asked.ORDER_SPEC, SPEC.md's: Home's row", Asked.ORDER_SPEC, true)
+        block(410, "the dock: each tile where it is, the home cell at the far end: the row's change only fades", Asked.ORDER_SPEC, false)
     }
 
     // ------------------------------------------------------------------------------------------ replicas of the mockups

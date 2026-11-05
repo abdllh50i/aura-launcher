@@ -53,7 +53,14 @@ object Front {
         if (name == panel) return
         panel = name
         Log.i(TAG, "panel: $name")
+        for (l in panelListeners) l(name)
     }
+
+    private val panelListeners = CopyOnWriteArrayList<(String) -> Unit>()
+
+    /** Told [panel] when it changes, on the main thread: the moment a panel comes to the top. */
+    fun addPanelListener(l: (String) -> Unit) { panelListeners.add(l) }
+    fun removePanelListener(l: (String) -> Unit) { panelListeners.remove(l) }
 
     /** [panel] is [name] and is in front, or was until less than [withinMs] ago. */
     fun ownIs(name: String, withinMs: Long): Boolean =

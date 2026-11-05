@@ -223,6 +223,8 @@ object VolumeHud {
     private fun show(kind: Kind, value: Int, muted: Boolean) {
         val c = app ?: return
         if (auraOff() || !Settings.canDrawOverlays(c)) return
+        // (the row is on screen and shows it itself, with no overlay over what he is handling: SPEC.md, "Volume")
+        if (kind == Kind.MEDIA && com.abdllh.aura.chrome.Chrome.rowOnScreen()) return
         var v = hud
         if (v == null || v.dark != Palette.dark || v.accent != Palette.accent || v.lang != Prefs.lang) {
             if (v != null && attached) { v.stay(); detach() } // theme or language changed: built again

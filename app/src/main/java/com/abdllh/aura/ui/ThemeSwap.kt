@@ -52,7 +52,6 @@ object ThemeSwap {
     private val main = Handler(Looper.getMainLooper())
     private var heldSince = 0L
     private var preparing = false
-    private var ghost: View? = null
 
     /** At the minute's tick, with the window resumed. */
     fun tick(shell: HomeActivity) {
@@ -91,7 +90,7 @@ object ThemeSwap {
         val root = shell.root
         val w = root.width
         val h = root.height
-        val g = if (shell.resumedNow && w > 0 && h > 0) makeGhost(root, w, h) else null
+        val g = if (shell.resumedNow && w > 0 && h > 0) holdGhost(root, w, h) else null
         val t1 = SystemClock.uptimeMillis()
         Theme.refresh()
         shell.windowLook(shell.panels.top.navBar)
@@ -106,10 +105,8 @@ object ThemeSwap {
         val t2 = SystemClock.uptimeMillis()
         Log.i(TAG, "theme ${if (night) "night" else "day"}: picture ${t1 - t0} ms, recolour ${t2 - t1} ms")
         if (g == null) { after(night, done); return }
-        ghost = g
         g.animate().alpha(0f).setDuration(Tokens2.MS_theme).setInterpolator(Motion.MOVE).setStartDelay(0L).withEndAction {
-            (g.parent as? ViewGroup)?.removeView(g)
-            if (ghost === g) ghost = null
+            g.clear()
             after(night, done)
         }.start()
     }
@@ -119,20 +116,15 @@ object ThemeSwap {
         done?.invoke()
     }
 
-    /** What the window shows now, over it, to be faded. The map is not in it: under the fade the map changes by itself. */
-    private fun makeGhost(root: com.abdllh.aura.home.ShellRoot, w: Int, h: Int): View? = try {
-        ghost?.let { old -> old.animate().cancel(); (old.parent as? ViewGroup)?.removeView(old) }
+    /** What the window shows now, in its slot above everything, to be faded. The map is not in it: under the fade the map changes by itself. */
+    private fun holdGhost(root: com.abdllh.aura.home.ShellRoot, w: Int, h: Int): com.abdllh.aura.chrome.Ghost? = try {
+        root.ghost.clear() // (one that is still fading)
         val pic = Picture()
         val c = pic.beginRecording(w, h)
-        for (layer in arrayOf(root.panelLayer, root.chrome, root.sheets)) if (layer.visibility == View.VISIBLE) layer.draw(c)
+        for (layer in arrayOf(root.panelLayer, root.chrome, root.sheets, root.snack)) if (layer.visibility == View.VISIBLE) layer.draw(c)
         ghostExtra?.invoke(c)
         pic.endRecording()
-        object : View(root.context) {
-            override fun onDraw(c: Canvas) { c.drawPicture(pic) }
-        }.also {
-            it.setLayerType(View.LAYER_TYPE_HARDWARE, null)
-            root.addView(it, FrameLayout.LayoutParams(MATCH, MATCH))
-        }
+        root.ghost.also { it.hold(pic) }
     } catch (t: Throwable) {
         Log.w(TAG, "ghost: $t")
         null // (no fade this once: a cut, not a failure)

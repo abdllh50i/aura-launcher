@@ -17,7 +17,25 @@ import numpy as np
 # gallery page -> (mockup screen, rect names to compare)
 SETTINGS = ["settingsTitle", "pageTitle", "navItem", "settingsGroup", "settingsRow", "slider", "segmented", "switch"]
 DOCK = ["dockBar", "volPill", "volMinus", "volNum", "volPlus", "voice", "selectedPlate", "dock-settings", "dock-apps", "dock-phone", "dock-music", "dock-map", "dock-home", "statusIcons", "controlsHint", "gearBadge"]
+CHROME_STRIP = ["statusIcons", "controlsHint", "gearBadge", "stripTime"]
+CHROME_DOCK = ["dockBar", "volPill", "volMinus", "volNum", "volPlus", "voice", "selectedPlate", "dock-settings", "dock-apps", "dock-phone", "dock-music", "dock-map", "dock-home", "glance", "glancePrayer", "glanceMini"]
+CHROME_HOME = ["statusIcons", "controlsHint", "gearRow", "logo", "capLeft", "capDock", "capChip", "volMinus", "volNum", "volPlus", "voice", "tile-settings", "tile-apps", "tile-phone", "tile-music", "tile-map", "chipIcon", "chipPrayer", "chipLeft"]
 PAGES = {
+    # the real chrome (scripts/chrome-shots.ps1), not a replica, on the mockups' plates, in the spec's order
+    "c-home": ("home", CHROME_HOME),
+    "c-moving": ("home-moving", CHROME_HOME),
+    "c-trip": ("home-trip", CHROME_HOME + ["stripSpeed", "stripLimit", "stripSpeedNum"]),
+    "c-voice-home": ("home-voice", CHROME_HOME),
+    "c-volume-home": ("home-volume", CHROME_HOME + ["volLevel"]),
+    "c-drive": ("drive-turn", CHROME_STRIP + CHROME_DOCK),
+    "c-volume": ("volume", CHROME_STRIP + CHROME_DOCK + ["volLevel"]),
+    "c-muted": ("volume-muted", CHROME_STRIP + CHROME_DOCK),
+    "c-voice": ("voice", CHROME_STRIP + CHROME_DOCK),
+    "c-apps": ("apps", CHROME_STRIP + CHROME_DOCK),
+    "c-settings": ("settings-moving", CHROME_STRIP + CHROME_DOCK + ["stripSpeed", "stripLimit", "stripSpeedNum"]),
+    "c-music": ("music", CHROME_STRIP + CHROME_DOCK),
+    "c-en-home": ("en-home", CHROME_HOME),
+    "c-en-drive": ("en-drive", CHROME_STRIP + CHROME_DOCK),
     "r-settings-display": ("settings-display", SETTINGS + DOCK + ["stripTime"]),
     "r-settings-maps": ("settings-maps", SETTINGS + DOCK + ["stripTime"]),
     "r-controls": ("controls", ["controlsSheet", "controlsTitle", "controlsClose", "slider", "segmented", "controlTile", "glancePrayer"] + DOCK),

@@ -54,7 +54,20 @@ object Amri {
 
     private val main = Handler(Looper.getMainLooper())
     private var app: Context? = null
-    @Volatile var state = State.IDLE; private set
+    @Volatile var state = State.IDLE
+        private set(v) {
+            if (v == field) return
+            field = v
+            main.post { for (l in stateListeners) l() }
+        }
+    private val stateListeners = java.util.concurrent.CopyOnWriteArrayList<() -> Unit>()
+
+    /** Told when [state] changes, on the main thread: the voice button's ring. */
+    fun addStateListener(l: () -> Unit) { stateListeners.add(l) }
+    fun removeStateListener(l: () -> Unit) { stateListeners.remove(l) }
+
+    /** The voice's level, 0..1, while listening, as often as the recogniser tells (main thread). */
+    @Volatile var onLevel: ((Float) -> Unit)? = null
     private var recognizer: SpeechRecognizer? = null
     private var tts: TextToSpeech? = null
     private var ttsReady = false

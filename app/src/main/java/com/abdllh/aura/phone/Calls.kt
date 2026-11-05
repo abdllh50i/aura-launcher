@@ -83,6 +83,7 @@ object Calls {
     val busy get() = state == State.RINGING || state == State.DIALING || state == State.TALKING
 
     fun addListener(l: () -> Unit) { listeners.add(l) }
+    fun removeListener(l: () -> Unit) { listeners.remove(l) }
 
     fun init(ctx: Context) {
         if (context != null) return

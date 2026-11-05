@@ -25,8 +25,12 @@ object Theme {
         val want = isDarkNow()
         if (want == Palette.dark) return false
         Palette.applyTheme(want)
+        changed?.invoke()
         return true
     }
+
+    /** The tokens changed, by whichever path: what lasts through every old screen's own restyle (the chrome) follows from here. */
+    var changed: (() -> Unit)? = null
 
     /**
      * Window background and system bar colours for the current theme. [fill] false: no background at all, what is in the

@@ -97,7 +97,10 @@ internal object AmriOverlay {
     fun text(t: String) { frame?.pill?.title?.text = t }
 
     /** The voice's level, 0..1, while listening. */
-    fun level(l: Float) { frame?.pill?.level(l) }
+    fun level(l: Float) {
+        frame?.pill?.level(l)
+        Amri.onLevel?.invoke(l)
+    }
 
     fun hide() {
         main.removeCallbacks(hideLater)

@@ -53,11 +53,13 @@ object Snack {
             main.postDelayed({ show(ctx, msg, long, icon, aboveDp, false) }, WAIT_MS)
             return
         }
-        val host = (content.getTag(R.id.aura_snack) as? SnackHost)?.takeIf { it.parent === content } ?: SnackHost(a).also {
+        // (the shell has one slot for it, under the Night Panel, the Flyer and the Ghost; an old screen that is still an activity gets one of its own)
+        val slot = (content.getChildAt(0) as? com.abdllh.aura.home.ShellRoot)?.snack
+        val host = slot ?: (content.getTag(R.id.aura_snack) as? SnackHost)?.takeIf { it.parent === content } ?: SnackHost(a).also {
             content.setTag(R.id.aura_snack, it)
             content.addView(it, flp(MATCH, MATCH))
         }
-        if (content.getChildAt(content.childCount - 1) !== host) host.bringToFront()
+        if (slot == null && content.getChildAt(content.childCount - 1) !== host) host.bringToFront()
         host.say(msg, icon, if (long) LONG_MS else SHORT_MS)
     }
 

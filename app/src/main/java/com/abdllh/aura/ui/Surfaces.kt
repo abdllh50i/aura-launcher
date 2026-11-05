@@ -9,6 +9,7 @@ import android.graphics.drawable.NinePatchDrawable
 import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -211,6 +212,15 @@ fun at(x: Int, y: Int, w: Int, h: Int): FrameLayout.LayoutParams =
  * it may overlap its neighbour, which is harmless because a label draws nothing outside its glyphs.
  */
 fun Type.Role.box(x: Int, lineTop: Int, w: Int): FrameLayout.LayoutParams = at(x, lineTop + viewTop, w, viewH)
+
+/** A plate of a visual radius in one colour token as a plain view, recoloured in place. */
+fun Context.plateView(radius: Int, token: () -> Int): View = object : View(this) {
+    override fun hasOverlappingRendering() = false
+}.apply {
+    val t = Tint(context, Plates.res(radius), token)
+    background = t.drawable
+    look { t.recolour() }
+}
 
 /** A bitmap of assets/surfaces in a plain view, in this theme, and in the next one when it changes. */
 fun Context.surfaceImage(stem: String): ImageView = ImageView(this).apply {

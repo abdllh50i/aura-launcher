@@ -57,6 +57,15 @@ class IconButton @JvmOverloads constructor(
             invalidate()
         }
 
+    /** How much of the plate sliding along the dock lies over it, 0 to 1: the glyph goes from its own colour to `selectedInk` by as much, a redraw of this one view. */
+    var coverage = 0f
+        set(v) {
+            if (v == field) return
+            field = v
+            tintGlyph()
+            invalidate()
+        }
+
     init {
         isClickable = true
         isFocusable = true
@@ -89,7 +98,7 @@ class IconButton @JvmOverloads constructor(
         invalidate()
     }
 
-    private fun tintGlyph() = glyph.setTint(if (active) Palette.selectedInk else token())
+    private fun tintGlyph() = glyph.setTint(if (active) Palette.selectedInk else if (coverage > 0f) Palette.mix(token(), Palette.selectedInk, coverage) else token())
 
     override fun onLook() {
         plate?.recolour()

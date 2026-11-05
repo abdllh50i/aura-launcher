@@ -12,11 +12,10 @@ object Asked {
     class Cell(@JvmField val panel: String, @JvmField val icon: Int)
 
     /**
-     * The dock, left to right, nearest the driver first; each at the next of the row's fixed centres ([centreX]). The second order of
-     * final2/q-dock-order.png, the reverse of SPEC.md's table: the most used nearest him, the places the same. On Home the row has
-     * no `home` cell, and the rest keep their centres.
+     * The second order of final2/q-dock-order.png, the reverse of SPEC.md's table: left to right, nearest the driver first, the most used
+     * nearest him, the places the same.
      */
-    @JvmField val DOCK = listOf(
+    @JvmField val ORDER_NEAREST = listOf(
         Cell("home", R.drawable.ic_home),
         Cell("maps", R.drawable.ic_nav),
         Cell("music", R.drawable.ic_music),
@@ -24,6 +23,22 @@ object Asked {
         Cell("apps", R.drawable.ic_apps),
         Cell("settings", R.drawable.ic_gear)
     )
+
+    /** SPEC.md section 1's order. */
+    @JvmField val ORDER_SPEC = listOf(
+        Cell("settings", R.drawable.ic_gear),
+        Cell("apps", R.drawable.ic_apps),
+        Cell("phone", R.drawable.ic_phone),
+        Cell("music", R.drawable.ic_music),
+        Cell("maps", R.drawable.ic_nav),
+        Cell("home", R.drawable.ic_home)
+    )
+
+    /**
+     * The dock, left to right; each at the next of the row's fixed centres ([centreX]). Home's row is the same list without the `home` cell, from
+     * the same first centre, and [com.abdllh.aura.chrome.ChromeRules.shifts] works out what the row does between the two: nothing else names the order.
+     */
+    @JvmField val DOCK = ORDER_NEAREST
 
     /** The centre x of the cell at [index] of [DOCK]: the first at the spec's first centre, 72 px apart. */
     fun centreX(index: Int): Int = Tokens2.X_settings + 72 * index
