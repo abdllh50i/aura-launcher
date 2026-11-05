@@ -372,9 +372,14 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
         call(want, "onBeside") { want.onBeside(true) }
     }
 
+    /** Told when the top panel says it is another thing now. */
+    var onTopChanged: (() -> Unit)? = null
+
     /** The top panel [p] says it is another thing now ([Panel.opaque], [Panel.overMaps]): the map and what lies under it follow, at once. */
     fun panelChanged(p: Panel) {
-        if (p !== top || leaving != null) return
+        if (p !== top) return
+        onTopChanged?.invoke()
+        if (leaving != null) return
         setBeside(besideFor(p))
         root.mapHost.covered = p.opaque
     }

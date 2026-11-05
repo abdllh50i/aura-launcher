@@ -9,17 +9,15 @@ import org.junit.Test
 class ChromeRulesTest {
     @Test fun theMiniOnEveryScreenWithASong() {
         for (p in listOf(Screens.HOME, Screens.MAPS, Screens.PHONE, Screens.APPS, Screens.SETTINGS)) {
-            assertTrue(p, ChromeRules.mini(p, song = true, parked = true, trip = false))
-            assertTrue(p, ChromeRules.mini(p, song = true, parked = false, trip = true))
-            assertFalse("$p, no song", ChromeRules.mini(p, song = false, parked = true, trip = false))
+            assertTrue(p, ChromeRules.mini(p, song = true, musicLies = false))
+            assertFalse("$p, no song", ChromeRules.mini(p, song = false, musicLies = false))
         }
     }
 
     @Test fun onTheMusicPanelOnlyWhenItLiesCollapsed() {
-        assertFalse("parked: the song is the whole screen", ChromeRules.mini(Screens.MUSIC, song = true, parked = true, trip = false))
-        assertTrue("moving", ChromeRules.mini(Screens.MUSIC, song = true, parked = false, trip = false))
-        assertTrue("parked on a trip", ChromeRules.mini(Screens.MUSIC, song = true, parked = true, trip = true))
-        assertFalse("no song", ChromeRules.mini(Screens.MUSIC, song = false, parked = false, trip = false))
+        assertFalse("in full: the song is the whole screen", ChromeRules.mini(Screens.MUSIC, song = true, musicLies = false))
+        assertTrue("lying over the map", ChromeRules.mini(Screens.MUSIC, song = true, musicLies = true))
+        assertFalse("no song", ChromeRules.mini(Screens.MUSIC, song = false, musicLies = true))
     }
 
     @Test fun stripSpeedByTheTable() {

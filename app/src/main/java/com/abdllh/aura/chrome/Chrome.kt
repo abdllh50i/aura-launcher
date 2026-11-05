@@ -179,7 +179,7 @@ class Chrome private constructor(private val shell: HomeActivity) : FrameLayout(
 
     private fun refreshFaces(animate: Boolean, mini: Boolean = animate && !onHome) {
         val moving = DriveState.moving
-        rowDock.glance.show(ChromeRules.mini(panel, song != null, !moving, trip), mini)
+        rowDock.glance.show(ChromeRules.mini(panel, song != null, shell.panels.top.overMaps), mini)
         strip.setGear(if (Gear.canReports) Gear.current else null, Gear.sure)
         val want = ChromeRules.stripSpeed(panel, moving, trip, speedCardHidden)
         if (want != speedShown && !debugSpeedHeld) {
@@ -368,6 +368,7 @@ class Chrome private constructor(private val shell: HomeActivity) : FrameLayout(
         val top = shell.topPanel
         if (top.isNotEmpty() && top != panel && !debugHeld) show(top, false)
         Front.addPanelListener(onPanel)
+        shell.panels.onTopChanged = { refreshFaces(canMove()) }
         DriveState.addListener(onDrive)
         Gear.addListener(onGear)
         NavSession.addListener(onNav)
@@ -385,6 +386,7 @@ class Chrome private constructor(private val shell: HomeActivity) : FrameLayout(
 
     override fun onDetachedFromWindow() {
         Front.removePanelListener(onPanel)
+        shell.panels.onTopChanged = null
         DriveState.removeListener(onDrive)
         Gear.removeListener(onGear)
         NavSession.removeListener(onNav)

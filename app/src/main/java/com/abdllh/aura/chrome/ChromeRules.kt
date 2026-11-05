@@ -11,10 +11,10 @@ internal object ChromeRules {
     const val CELL_W = 80
 
     /**
-     * The mini player at the row's right end: on every screen a song plays. Parked on the Music panel nothing, because the song is the whole screen; lying collapsed there (moving, or on a trip) it stays.
-     * Say if he wants it back on the panel: this is the one condition.
+     * The mini player at the row's right end: on every screen a song plays. On the Music panel in full nothing, because the song is the whole screen; lying collapsed over the map ([musicLies]: moving, or on a
+     * trip, and until he brings it up again) it stays. Say if he wants it back on the panel: this is the one condition.
      */
-    fun mini(panel: String, song: Boolean, parked: Boolean, trip: Boolean): Boolean = song && !(panel == Screens.MUSIC && parked && !trip)
+    fun mini(panel: String, song: Boolean, musicLies: Boolean): Boolean = song && (panel != Screens.MUSIC || musicLies)
 
     /**
      * The strip's speed: whenever the car is Moving and no speed card is on screen. Home on a trip; Home with no trip has it in the search's
