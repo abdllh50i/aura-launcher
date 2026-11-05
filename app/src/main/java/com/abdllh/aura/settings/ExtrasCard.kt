@@ -15,30 +15,29 @@ import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.WRAP
 import com.abdllh.aura.ui.label
 import com.abdllh.aura.ui.lp
-import com.abdllh.aura.util.dp
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 /**
- * Settings › Navigation: the owner's additions to the map ([MapExtras]: cameras, bumps, signals, streets' limits):
+ * Settings › workshop: the owner's additions to the map ([MapExtras]: cameras, bumps, signals, streets' limits):
  * how many are on the unit, from when, and the button that fetches the newest.
  */
 class ExtrasCard(private val ctx: Context) {
-    private val status: AText = ctx.label(Type.FOOTNOTE, Palette.text2, lines = 3)
+    private val status: AText = ctx.label(Type.rowHint, { Palette.ink2 }, lines = 3)
     private val update = ABtn(ctx).apply {
-        kind = ABtn.Kind.PRIMARY
+        kind = ABtn.Kind.TONAL
         setOnClickListener { fetch() }
     }
     private val spinner = Spinner(ctx, 24).apply { visibility = View.GONE }
     private val changed: () -> Unit = { refresh(null) }
     private var busy = false
 
-    val view: View = ctx.block(R.drawable.ic_speed_camera, ctx.getString(R.string.extras_title), null, LinearLayout(ctx).apply {
+    val view: View = ctx.block(null, ctx.getString(R.string.extras_title), null, LinearLayout(ctx).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         addView(update, lp(WRAP, WRAP))
-        addView(spinner, lp(24.dp, 24.dp).apply { marginStart = Space.L.dp })
+        addView(spinner, lp(24, 24).apply { marginStart = Space.L })
     }, live = status)
 
     fun attach() {

@@ -4,7 +4,6 @@ import android.content.Context
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
-import android.widget.FrameLayout
 import android.widget.LinearLayout
 import com.abdllh.aura.BuildConfig
 import com.abdllh.aura.R
@@ -12,15 +11,11 @@ import com.abdllh.aura.ui.ABtn
 import com.abdllh.aura.ui.AText
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Palette
-import com.abdllh.aura.ui.Radius
-import com.abdllh.aura.ui.Shapes
 import com.abdllh.aura.ui.ProgressBar
 import com.abdllh.aura.ui.Space
 import com.abdllh.aura.ui.Spinner
-import com.abdllh.aura.ui.Touch
 import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.WRAP
-import com.abdllh.aura.ui.enter
 import com.abdllh.aura.ui.iconView
 import com.abdllh.aura.ui.label
 import com.abdllh.aura.ui.lp
@@ -29,10 +24,9 @@ import com.abdllh.aura.update.Release
 import com.abdllh.aura.update.UpdateManager
 import com.abdllh.aura.util.Fmt
 import com.abdllh.aura.util.Prefs
-import com.abdllh.aura.util.dp
 
-/** Software update screen: check GitHub, show release notes, download, verify, install. */
-class UpdatePage(private val act: SettingsPanel) : Page(R.string.set_update, R.drawable.ic_download) {
+/** Software update, a sub-page of Car and system: check GitHub, show release notes, download, verify, install. The logic is [UpdateManager]'s, as it was; only the look is new. */
+class UpdatePage(private val act: SettingsPanel) : Page(R.string.st_update) {
     private lateinit var holder: LinearLayout
     private lateinit var ctx: Context
     private var observer: ((UpdateManager.State) -> Unit)? = null
@@ -46,53 +40,41 @@ class UpdatePage(private val act: SettingsPanel) : Page(R.string.set_update, R.d
         lastKind = null
         val col = ctx.pageColumn()
 
-        // header card
-        val head = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPaddingRelative(20.dp, Space.L.dp, 20.dp, Space.L.dp)
-            background = Shapes.card()
-        }
-        val badge = FrameLayout(ctx).apply { background = Shapes.oval(Palette.accentSoft()) }
-        badge.addView(ctx.iconView(R.drawable.ic_layers, 28, Palette.accentFg).apply { layoutParams = FrameLayout.LayoutParams(28.dp, 28.dp, Gravity.CENTER) })
-        head.addView(badge, lp(Touch.MIN.dp, Touch.MIN.dp))
-        val t = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-        t.addView(ctx.label(Type.TITLE, Palette.text).apply { text = "${ctx.getString(R.string.app_name)} ${BuildConfig.VERSION_NAME}" })
-        t.addView(ctx.label(Type.FOOTNOTE, Palette.text2).apply {
-            text = ctx.getString(R.string.upd_build_line, BuildConfig.VERSION_CODE.toString(), ctx.getString(if (Prefs.updateBeta) R.string.upd_channel_beta else R.string.upd_channel_stable))
-        }, lp(MATCH, WRAP).apply { topMargin = Space.XXS.dp })
-        head.addView(t, lp(0, WRAP, 1f).apply { marginStart = 18.dp })
-        col.addRow(head)
+        // this version
+        col.addView(ctx.settingRow(null, "${ctx.getString(R.string.app_name)} ${BuildConfig.VERSION_NAME}",
+            ctx.getString(R.string.upd_build_line, BuildConfig.VERSION_CODE.toString(), ctx.getString(if (Prefs.updateBeta) R.string.upd_channel_beta else R.string.upd_channel_stable))))
 
-        // dynamic status area
+        // what is going on now
         holder = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPaddingRelative(20.dp, Space.L.dp + Space.XS.dp, 20.dp, Space.L.dp + Space.XS.dp)
-            background = Shapes.card()
+            setPaddingRelative(PAD, Space.S, PAD, Space.L)
         }
-        col.addRow(holder)
+        col.addView(holder, lp(MATCH, WRAP))
 
         // options
-        col.addSection(ctx.getString(R.string.upd_options))
-        col.addRow(ctx.group(
-            ctx.switchRow(R.drawable.ic_refresh, ctx.getString(R.string.upd_auto), ctx.getString(R.string.upd_auto_sub), Prefs.updateAuto) { Prefs.updateAuto = it },
-            ctx.switchRow(R.drawable.ic_zap, ctx.getString(R.string.upd_beta), ctx.getString(R.string.upd_beta_sub), Prefs.updateBeta) {
+        col.addPart(ctx.getString(R.string.upd_options))
+        col.addView(ctx.rows(
+            ctx.switchRow(null, ctx.getString(R.string.upd_auto), ctx.getString(R.string.upd_auto_sub), Prefs.updateAuto) { Prefs.updateAuto = it },
+            ctx.switchRow(null, ctx.getString(R.string.upd_beta), ctx.getString(R.string.upd_beta_sub), Prefs.updateBeta) {
                 Prefs.updateBeta = it
                 UpdateManager.forget() // a release found on the other channel must not stay on offer
                 act.rebuild()
             },
-            ctx.settingRow(R.drawable.ic_github, ctx.getString(R.string.upd_source), Prefs.updateRepo, ctx.iconView(R.drawable.ic_edit, 22, Palette.text3)) {
-                InputDialog.show(ctx, ctx.getString(R.string.upd_source), "owner/repo", Prefs.updateRepo) { v ->
-                    if (GitHub.isValidRepo(v)) { Prefs.updateRepo = v.trim(); UpdateManager.forget(); act.rebuild() }
-                    else com.abdllh.aura.ui.Snack.show(ctx, R.string.upd_err_repo, long = true)
+            ctx.settingRow(null, ctx.getString(R.string.upd_source), Prefs.updateRepo, ctx.iconView(R.drawable.ic_edit, 22) { Palette.ink3 }) {
+                ctx.parked {
+                    InputDialog.show(ctx, ctx.getString(R.string.upd_source), "owner/repo", Prefs.updateRepo) { v ->
+                        if (GitHub.isValidRepo(v)) { Prefs.updateRepo = v.trim(); UpdateManager.forget(); act.rebuild() }
+                        else com.abdllh.aura.ui.Snack.show(ctx, R.string.upd_err_repo, long = true)
+                    }
                 }
             }
         ))
-        col.addHint(ctx.getString(R.string.upd_footer))
+        col.addNote(ctx.getString(R.string.upd_footer))
         return col
     }
 
     override fun onShow() {
+        if (observer != null) return
         val o: (UpdateManager.State) -> Unit = { render(it) }
         observer = o
         UpdateManager.observe(o)
@@ -131,11 +113,7 @@ class UpdatePage(private val act: SettingsPanel) : Page(R.string.set_update, R.d
             is UpdateManager.State.Installing -> busy(ctx.getString(R.string.upd_installing), s.release.tag)
             is UpdateManager.State.Failed -> failed(s)
         }
-        if (lastKind != kind) {
-            // (not on the first showing: the card is there with the page, not arriving after it)
-            if (lastKind != null) holder.enter(dy = Space.S.toFloat())
-            lastKind = kind
-        }
+        lastKind = kind
     }
 
     private fun idle() {
@@ -146,8 +124,8 @@ class UpdatePage(private val act: SettingsPanel) : Page(R.string.set_update, R.d
 
     private fun upToDate(at: Long, noReleases: Boolean) {
         val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        row.addView(ctx.iconView(R.drawable.ic_check_circle, 28, Palette.success), lp(28.dp, 28.dp).apply { marginEnd = Space.M.dp })
-        row.addView(ctx.label(Type.TITLE, Palette.text).apply { setText(R.string.upd_uptodate) })
+        row.addView(ctx.iconView(R.drawable.ic_check_round, 28) { Palette.green }, lp(28, 28).apply { marginEnd = Space.M })
+        row.addView(ctx.label(Type.stateTitle, { Palette.ink }).apply { setText(R.string.upd_uptodate) }, lp(0, Type.stateTitle.viewH, 1f))
         holder.addView(row, lp(MATCH, WRAP))
         subtitle(ctx.getString(R.string.upd_last_checked, Fmt.dateTime(at)))
         if (noReleases) subtitle(ctx.getString(R.string.upd_no_releases, Prefs.updateRepo))
@@ -155,30 +133,18 @@ class UpdatePage(private val act: SettingsPanel) : Page(R.string.set_update, R.d
     }
 
     private fun available(r: Release) {
-        val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        row.addView(ctx.iconView(R.drawable.ic_download, 28, Palette.accentFg), lp(28.dp, 28.dp).apply { marginEnd = Space.M.dp })
-        val t = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-        t.addView(ctx.label(Type.TITLE, Palette.text).apply { text = ctx.getString(R.string.upd_available_title, r.tag.removePrefix("v")) })
-        val meta = buildString {
+        title(ctx.getString(R.string.upd_available_title, r.tag.removePrefix("v")))
+        subtitle(buildString {
             append(Fmt.bytes(r.apkSize))
             if (r.prerelease) append("  ·  ").append(ctx.getString(R.string.upd_channel_beta))
-        }
-        t.addView(ctx.label(Type.FOOTNOTE, Palette.text2).apply { text = meta }, lp(MATCH, WRAP).apply { topMargin = Space.XXS.dp })
-        row.addView(t, lp(0, WRAP, 1f))
-        holder.addView(row, lp(MATCH, WRAP))
-
+        })
         // What's new, in the page itself: the first lines, and the rest on "Show all". (It was a small box that
         // scrolled on its own inside the scrolling page, where a swipe got stuck in one or the other.)
         val notes = cleanNotes(r.notes)
         if (notes.isNotEmpty()) {
-            holder.addView(ctx.label(Type.CAPTION, Palette.text3).apply { setText(R.string.upd_notes) }, lp(MATCH, WRAP).apply { topMargin = Space.L.dp })
-            val box = LinearLayout(ctx).apply {
-                orientation = LinearLayout.VERTICAL
-                background = Shapes.rect(Palette.card2, Radius.M)
-                setPaddingRelative(Space.L.dp, Space.M.dp, Space.L.dp, Space.M.dp)
-            }
-            val text = ctx.label(Type.FOOTNOTE, Palette.text, lines = NOTES_LINES).apply { this.text = notes; ellipsize = TextUtils.TruncateAt.END }
-            box.addView(text, lp(MATCH, WRAP))
+            holder.addView(ctx.label(Type.sectionHead, { Palette.ink2 }).apply { setText(R.string.upd_notes) }, lp(MATCH, Type.sectionHead.viewH).apply { topMargin = Space.L })
+            val text = ctx.label(Type.rowHint, { Palette.ink }, lines = NOTES_LINES).apply { this.text = notes; ellipsize = TextUtils.TruncateAt.END }
+            holder.addView(text, lp(MATCH, WRAP).apply { topMargin = Space.XS })
             val more = ABtn(ctx).apply {
                 kind = ABtn.Kind.GHOST
                 setText(R.string.upd_notes_more)
@@ -188,21 +154,20 @@ class UpdatePage(private val act: SettingsPanel) : Page(R.string.set_update, R.d
                     visibility = View.GONE
                 }
             }
-            box.addView(more, lp(WRAP, WRAP).apply { topMargin = Space.M.dp })
+            holder.addView(more, lp(WRAP, WRAP))
             // (offered once the notes are laid out and found longer than what shows)
             text.addOnLayoutChangeListener(object : View.OnLayoutChangeListener {
                 override fun onLayoutChange(v: View, l: Int, t: Int, r: Int, b: Int, ol: Int, ot: Int, or: Int, ob: Int) {
                     text.removeOnLayoutChangeListener(this)
                     val lay = text.layout ?: return
-                    if (lay.lineCount > 0 && lay.getEllipsisCount(lay.lineCount - 1) > 0) more.visibility = View.VISIBLE
+                    if (lay.lineCount > 0 && lay.getEllipsisCount(lay.lineCount - 1) > 0) more.post { more.visibility = View.VISIBLE }
                 }
             })
-            holder.addView(box, lp(MATCH, WRAP).apply { topMargin = Space.S.dp })
         }
         val actions = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
         actions.addView(ABtn(ctx).apply { kind = ABtn.Kind.PRIMARY; setText(R.string.upd_download); setOnClickListener { UpdateManager.downloadAndInstall() } }, lp(WRAP, WRAP))
-        actions.addView(ABtn(ctx).apply { kind = ABtn.Kind.TONAL; setText(R.string.upd_check_again); setOnClickListener { UpdateManager.check() } }, lp(WRAP, WRAP).apply { marginStart = Space.M.dp })
-        holder.addView(actions, lp(MATCH, WRAP).apply { topMargin = Space.L.dp })
+        actions.addView(ABtn(ctx).apply { kind = ABtn.Kind.TONAL; setText(R.string.upd_check_again); setOnClickListener { UpdateManager.check() } }, lp(WRAP, WRAP).apply { marginStart = Space.M })
+        holder.addView(actions, lp(MATCH, WRAP).apply { topMargin = Space.L })
     }
 
     private fun fraction(s: UpdateManager.State.Downloading) = if (s.total > 0) s.done.toFloat() / s.total else 0f
@@ -216,47 +181,43 @@ class UpdatePage(private val act: SettingsPanel) : Page(R.string.set_update, R.d
         val f = fraction(s)
         title(ctx.getString(R.string.upd_downloading, s.release.tag.removePrefix("v")))
         val bar = ProgressBar(ctx).apply { set(f) }
-        holder.addView(bar, lp(MATCH, WRAP).apply { topMargin = Space.L.dp })
-        val line = ctx.label(Type.FOOTNOTE, Palette.text2).apply { text = progressLine(s, f) }
-        holder.addView(line, lp(MATCH, WRAP).apply { topMargin = Space.S.dp })
-        holder.addView(ABtn(ctx).apply { kind = ABtn.Kind.GHOST; setText(R.string.btn_cancel); setOnClickListener { UpdateManager.cancel() } }, lp(WRAP, WRAP).apply { topMargin = Space.L.dp })
+        holder.addView(bar, lp(MATCH, WRAP).apply { topMargin = Space.L })
+        val line = ctx.label(Type.rowHint, { Palette.ink2 }).apply { text = progressLine(s, f) }
+        holder.addView(line, lp(MATCH, Type.rowHint.viewH).apply { topMargin = Space.S })
+        holder.addView(ABtn(ctx).apply { kind = ABtn.Kind.TONAL; setText(R.string.btn_cancel); setOnClickListener { UpdateManager.cancel() } }, lp(WRAP, WRAP).apply { topMargin = Space.L })
         dlBar = bar
         dlText = line
     }
 
     private fun busy(text: String, tag: String?) {
         val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        row.addView(Spinner(ctx, 28), lp(28.dp, 28.dp).apply { marginEnd = Space.M.dp })
-        val t = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-        t.addView(ctx.label(Type.TITLE, Palette.text).apply { this.text = text })
-        if (tag != null) t.addView(ctx.label(Type.FOOTNOTE, Palette.text2).apply { this.text = tag.removePrefix("v") }, lp(MATCH, WRAP).apply { topMargin = Space.XXS.dp })
-        row.addView(t, lp(0, WRAP, 1f))
+        row.addView(Spinner(ctx, 24), lp(24, 24).apply { marginEnd = Space.M })
+        row.addView(ctx.label(Type.stateTitle, { Palette.ink }).apply { this.text = text }, lp(0, Type.stateTitle.viewH, 1f))
         holder.addView(row, lp(MATCH, WRAP))
-        holder.addView(ProgressBar(ctx).apply { setIndeterminate() }, lp(MATCH, WRAP).apply { topMargin = Space.L.dp })
+        if (tag != null) subtitle(tag.removePrefix("v"))
+        holder.addView(ProgressBar(ctx).apply { setIndeterminate() }, lp(MATCH, WRAP).apply { topMargin = Space.L })
     }
 
     private fun failed(s: UpdateManager.State.Failed) {
-        val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.TOP }
-        row.addView(ctx.iconView(R.drawable.ic_alert, 28, Palette.warn), lp(28.dp, 28.dp).apply { marginEnd = Space.M.dp })
-        val t = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-        t.addView(ctx.label(Type.TITLE, Palette.text).apply { setText(R.string.upd_failed) })
-        t.addView(ctx.label(Type.FOOTNOTE, Palette.text2, lines = 0).apply { text = s.message }, lp(MATCH, WRAP).apply { topMargin = Space.XS.dp })
-        row.addView(t, lp(0, WRAP, 1f))
+        val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        row.addView(ctx.iconView(R.drawable.ic_warn, 28) { Palette.warn }, lp(28, 28).apply { marginEnd = Space.M })
+        row.addView(ctx.label(Type.stateTitle, { Palette.ink }).apply { setText(R.string.upd_failed) }, lp(0, Type.stateTitle.viewH, 1f))
         holder.addView(row, lp(MATCH, WRAP))
+        subtitle(s.message)
         holder.addView(ABtn(ctx).apply {
             kind = ABtn.Kind.PRIMARY
             setText(R.string.upd_retry)
             setOnClickListener { if (s.release != null) UpdateManager.downloadAndInstall() else UpdateManager.check() }
-        }, lp(WRAP, WRAP).apply { topMargin = Space.L.dp })
+        }, lp(WRAP, WRAP).apply { topMargin = Space.L })
     }
 
     // ------------------------------------------------------------------------------------ bits
     private fun title(text: String) {
-        holder.addView(ctx.label(Type.TITLE, Palette.text).apply { this.text = text }, lp(MATCH, WRAP))
+        holder.addView(ctx.label(Type.stateTitle, { Palette.ink }).apply { this.text = text }, lp(MATCH, Type.stateTitle.viewH))
     }
 
     private fun subtitle(text: String) {
-        holder.addView(ctx.label(Type.FOOTNOTE, Palette.text2).apply { this.text = text }, lp(MATCH, WRAP).apply { topMargin = Space.XS.dp })
+        holder.addView(ctx.label(Type.rowHint, { Palette.ink2 }, lines = 0).apply { this.text = text }, lp(MATCH, WRAP).apply { topMargin = Space.XS })
     }
 
     private fun checkButton() {
@@ -264,7 +225,7 @@ class UpdatePage(private val act: SettingsPanel) : Page(R.string.set_update, R.d
             kind = ABtn.Kind.PRIMARY
             setText(R.string.upd_check)
             setOnClickListener { UpdateManager.check() }
-        }, lp(WRAP, WRAP).apply { topMargin = Space.L.dp })
+        }, lp(WRAP, WRAP).apply { topMargin = Space.L })
     }
 
     private fun cleanNotes(raw: String): String = raw
@@ -280,5 +241,7 @@ class UpdatePage(private val act: SettingsPanel) : Page(R.string.set_update, R.d
     private companion object {
         /** Lines of the release notes shown before "Show all". */
         const val NOTES_LINES = 8
+        /** The rows' inset ([settingRow]). */
+        const val PAD = 22
     }
 }

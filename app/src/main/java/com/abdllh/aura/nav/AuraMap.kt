@@ -904,12 +904,15 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         if (camera != Camera.NAVIGATE || carPos == null) return false
         val v = speedKmh
         var z = zoomFor(v)
-        var tilt = NAV_TILT
+        // (the owner's choice in Settings: leaning towards the road, from straight above, or from above with north up)
+        val view = com.abdllh.aura.util.Prefs.mapView
+        val tilted = view == com.abdllh.aura.util.Prefs.VIEW_TILTED
+        var tilt = if (tilted) NAV_TILT else 0.0
         val ahead = turnAt - drawnAlong
-        if (turnLine != null && onRoute && ahead > -15 && ahead < max(120.0, v / 3.6 * 7)) { z = max(z, 16.9); tilt = NAV_TILT_TURN }
+        if (turnLine != null && onRoute && ahead > -15 && ahead < max(120.0, v / 3.6 * 7)) { z = max(z, 16.9); if (tilted) tilt = NAV_TILT_TURN }
         z = (z + navZoomOffset).coerceIn(12.0, 19.0)
         val pad = navTopPadding * (0.95 + 0.19 * ((v - 40) / 50).coerceIn(0.0, 1.0))
-        val b = lookBearing(v)
+        val b = if (view == com.abdllh.aura.util.Prefs.VIEW_NORTH) 0.0 else lookBearing(v)
         if (!steerReady) {
             navZoom = z; navTilt = tilt; navPad = pad; camBearing = b
             steerReady = true

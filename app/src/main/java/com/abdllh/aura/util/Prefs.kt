@@ -57,10 +57,26 @@ object Prefs {
         get() = sp.getBoolean("screenAnimations", true)
         set(v) { sp.edit().putBoolean("screenAnimations", v).apply() }
 
-    /** Use Aura's built-in maps for the Maps button and Home/Work (false = an installed navigation app). */
+    /**
+     * Use Aura's built-in maps for the Maps button and Home/Work (false = an installed navigation app). 2.0 has no "automatic" any more
+     * (SPEC.md section 6.6): one stored as false with no app named reads as AMRI, and what is stored stays as it was.
+     */
     var builtInMaps: Boolean
-        get() = sp.getBoolean("builtInMaps", true)
+        get() = sp.getBoolean("builtInMaps", true) || navPackage.isEmpty()
         set(v) { sp.edit().putBoolean("builtInMaps", v).apply() }
+
+    /** How the driving map looks at the road: [VIEW_TILTED], [VIEW_ABOVE], [VIEW_NORTH] (Settings › الشاشة والصوت). */
+    var mapView: String
+        get() = sp.getString("mapView", VIEW_TILTED) ?: VIEW_TILTED
+        set(v) { sp.edit().putString("mapView", v).apply() }
+    const val VIEW_TILTED = "tilted"
+    const val VIEW_ABOVE = "above"
+    const val VIEW_NORTH = "north"
+
+    /** The one tone before a Saher camera (Settings › الخرائط; SPEC.md section 15). */
+    var saherTone: Boolean
+        get() = sp.getBoolean("saherTone", true)
+        set(v) { sp.edit().putBoolean("saherTone", v).apply() }
 
     var dockLabels: Boolean
         get() = sp.getBoolean("dockLabels", false)

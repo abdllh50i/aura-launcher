@@ -119,9 +119,9 @@ object PhoneServer {
     private fun changed() { NavBridge.post("status") { for (l in listeners) l() } }
 
     // ------------------------------------------------------------------------------------------ on and off
-    /** The owner's switch in Settings. Off by default. */
+    /** The owner's switch in Settings. On by default since 2.0: he never turned it off, and the Amri app needs it. */
     var enabled: Boolean
-        get() = Prefs.raw.getBoolean(KEY_ON, false)
+        get() = Prefs.raw.getBoolean(KEY_ON, true)
         set(v) { Prefs.raw.edit().putBoolean(KEY_ON, v).apply(); apply() }
 
     fun init(ctx: Context) {

@@ -44,7 +44,7 @@ object Tones {
 
     fun tick(ctx: Context) { if (Prefs.pressTick) play(ctx, R.raw.tone_tick) }
 
-    fun saher(ctx: Context) = play(ctx, R.raw.tone_saher)
+    fun saher(ctx: Context) { if (Prefs.saherTone) play(ctx, R.raw.tone_saher) }
 
     fun over(ctx: Context) = play(ctx, R.raw.tone_over)
 }

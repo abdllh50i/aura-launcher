@@ -1,6 +1,7 @@
 package com.abdllh.aura.settings
 
 import android.content.Context
+import android.graphics.drawable.GradientDrawable
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
@@ -11,50 +12,46 @@ import com.abdllh.aura.ui.ABtn
 import com.abdllh.aura.ui.AText
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Palette
-import com.abdllh.aura.ui.Shapes
 import com.abdllh.aura.ui.WRAP
-import com.abdllh.aura.ui.iconView
 import com.abdllh.aura.ui.label
+import com.abdllh.aura.ui.look
 import com.abdllh.aura.ui.lp
 import com.abdllh.aura.ui.Space
 import com.abdllh.aura.ui.Type
-import com.abdllh.aura.util.dp
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
 /**
- * Settings › Vehicle & system: what the Wi-Fi internet is doing right now, and the latest drops with their cause
+ * Settings › workshop: what the Wi-Fi internet is doing right now, and the latest drops with their cause
  * (from [WifiKeeper]'s log, kept across restarts), so a drop on the road can be explained afterwards.
  */
 class InternetCard(private val ctx: Context) {
     private val dot = View(ctx)
-    private val status: AText = ctx.label(Type.FOOTNOTE, Palette.text2, lines = 3)
+    private val status: AText = ctx.label(Type.rowHint, { Palette.ink2 }, lines = 3)
     private val list = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
     private val listener: () -> Unit = { refresh() }
-    private var dotColor = 0
 
     val view: View = LinearLayout(ctx).apply {
         orientation = LinearLayout.VERTICAL
-        setPaddingRelative(20.dp, Space.L.dp, 20.dp, Space.L.dp)
+        setPaddingRelative(22, Space.M, 22, Space.M)
         val head = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        head.addView(ctx.iconView(R.drawable.ic_wifi, 26, Palette.text2), lp(26.dp, 26.dp).apply { marginEnd = 18.dp })
         val texts = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
         val titleRow = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        titleRow.addView(ctx.label(Type.LABEL, Palette.text).apply { setText(R.string.net_title) }, lp(WRAP, WRAP))
-        titleRow.addView(dot, lp(10.dp, 10.dp).apply { marginStart = Space.S.dp })
+        titleRow.addView(ctx.label(Type.rowLabel, { Palette.ink }).apply { setText(R.string.net_title) }, lp(WRAP, Type.rowLabel.viewH))
+        titleRow.addView(dot, lp(12, 12).apply { marginStart = Space.S })
         texts.addView(titleRow, lp(MATCH, WRAP))
-        texts.addView(status, lp(MATCH, WRAP).apply { topMargin = Space.XXS.dp })
+        texts.addView(status, lp(MATCH, WRAP))
         head.addView(texts, lp(0, WRAP, 1f))
         head.addView(ABtn(ctx).apply {
             kind = ABtn.Kind.TONAL
             setText(R.string.net_check)
             setOnClickListener { WifiKeeper.checkNow() }
-        }, lp(WRAP, WRAP).apply { marginStart = Space.L.dp })
+        }, lp(WRAP, WRAP).apply { marginStart = Space.L })
         addView(head, lp(MATCH, WRAP))
-        addView(View(ctx).apply { setBackgroundColor(Palette.stroke) }, lp(MATCH, 1).apply { topMargin = Space.M.dp; bottomMargin = Space.XS.dp })
-        addView(list, lp(MATCH, WRAP))
+        addView(list, lp(MATCH, WRAP).apply { topMargin = Space.S })
+        look { paintDot() }
     }
 
     fun attach() {
@@ -66,40 +63,51 @@ class InternetCard(private val ctx: Context) {
         if (WifiKeeper.listener === listener) WifiKeeper.listener = null
     }
 
+    private fun dotColor(): Int = when (WifiKeeper.state) {
+        WifiKeeper.State.ONLINE -> Palette.green
+        WifiKeeper.State.OFFLINE -> Palette.red
+        WifiKeeper.State.CHECKING -> Palette.warn
+        else -> Palette.ink3
+    }
+
+    private fun paintDot() {
+        dot.background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(dotColor()) }
+    }
+
     fun refresh() {
-        val (line, color) = when (WifiKeeper.state) {
-            WifiKeeper.State.ONLINE -> (if (WifiKeeper.ssid.isNotEmpty()) ctx.getString(R.string.net_online_via, WifiKeeper.ssid)
-                else ctx.getString(R.string.net_online)) to Palette.success
+        val line = when (WifiKeeper.state) {
+            WifiKeeper.State.ONLINE -> if (WifiKeeper.ssid.isNotEmpty()) ctx.getString(R.string.net_online_via, WifiKeeper.ssid) else ctx.getString(R.string.net_online)
             WifiKeeper.State.OFFLINE -> {
                 val down = WifiKeeper.downSeconds()
                 val since = if (down > 0) " · " + duration(ctx, down) else ""
-                ctx.getString(R.string.net_offline, cause(ctx, WifiKeeper.cause?.name)) + since + "\n" + signal(ctx, WifiKeeper.rssi) to Palette.danger
+                ctx.getString(R.string.net_offline, cause(ctx, WifiKeeper.cause?.name)) + since + "\n" + signal(ctx, WifiKeeper.rssi)
             }
-            WifiKeeper.State.CHECKING -> ctx.getString(R.string.net_checking) to Palette.warn
-            WifiKeeper.State.NO_WIFI -> ctx.getString(R.string.net_no_wifi) to Palette.text3
-            WifiKeeper.State.OFF -> ctx.getString(R.string.net_off) to Palette.text3
-            WifiKeeper.State.PAUSED -> ctx.getString(R.string.net_paused) to Palette.text3
+            WifiKeeper.State.CHECKING -> ctx.getString(R.string.net_checking)
+            WifiKeeper.State.NO_WIFI -> ctx.getString(R.string.net_no_wifi)
+            WifiKeeper.State.OFF -> ctx.getString(R.string.net_off)
+            WifiKeeper.State.PAUSED -> ctx.getString(R.string.net_paused)
         }
         status.text = line
-        if (color != dotColor) { dotColor = color; dot.background = Shapes.oval(color) }
+        paintDot()
 
         list.removeAllViews()
         val events = WifiKeeper.log().asReversed().take(12)
         if (events.isEmpty()) {
-            list.addView(ctx.label(Type.FOOTNOTE, Palette.text3, lines = 0).apply { setText(R.string.net_log_empty) }, lp(MATCH, WRAP).apply { topMargin = Space.S.dp })
+            list.addView(ctx.label(Type.rowHint, { Palette.ink2 }, lines = 0).apply { setText(R.string.net_log_empty) }, lp(MATCH, WRAP))
             return
         }
         for (e in events) {
             val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.TOP }
-            row.addView(ctx.label(Type.CAPTION, Palette.text3).apply {
+            row.addView(ctx.label(Type.rowHint, { Palette.ink2 }).apply {
                 text = time(e.at)
                 textDirection = View.TEXT_DIRECTION_LTR
-            }, lp(96.dp, WRAP).apply { marginEnd = Space.M.dp })
-            row.addView(ctx.label(Type.CAPTION, if (e.type == "lost") Palette.text else Palette.text2, lines = 2).apply {
+            }, lp(110, WRAP).apply { marginEnd = Space.M })
+            val lost = e.type == "lost"
+            row.addView(ctx.label(Type.rowHint, { if (lost) Palette.ink else Palette.ink2 }, lines = 2).apply {
                 text = describe(ctx, e)
                 ellipsize = TextUtils.TruncateAt.END
             }, lp(0, WRAP, 1f))
-            list.addView(row, lp(MATCH, WRAP).apply { topMargin = Space.S.dp })
+            list.addView(row, lp(MATCH, WRAP).apply { topMargin = Space.XS })
         }
     }
 

@@ -58,7 +58,6 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
     private lateinit var carPanel: CarPanel
     private lateinit var mapPanel: MapPanel
     private lateinit var controls: ControlsSheet
-    private lateinit var drawer: AppDrawer
     private var introPlayed = false
     /** Over the screen until its entrance starts, after a cold start on the light theme ([coverStart]). */
     private var startCover: View? = null
@@ -137,8 +136,6 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
 
         controls = ControlsSheet(shell, this)
         shell.root.sheets.addView(controls, MATCH, MATCH)
-        drawer = AppDrawer(shell, this)
-        shell.root.sheets.addView(drawer, MATCH, MATCH)
         // the map has drawn: the card opens on it, under the picture that has been standing in for it (none of it is seen until the
         // picture fades, and with no map ever, the wall simply stays whole, as a plain room and an opaque window)
         shell.map.whenDrawn {
@@ -214,7 +211,6 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         if (!introPlayed) {
             introPlayed = true
             animateIn()
-            room.postDelayed({ if (!isGone) drawer.prewarm() }, PREWARM_AFTER_MS)
             room.postDelayed({ if (!isGone) askLocationOnce() }, 2600)
         }
         // (not in the start's first seconds, and once it is there this is one look in a map)
@@ -233,7 +229,7 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
      */
     override fun onLook() {
         if (Theme.isDarkNow() == builtDark && Prefs.accent == builtAccent) return
-        if (drawer.isOpen || controls.isOpen || !shell.map.lookMayChange) return
+        if (controls.isOpen || !shell.map.lookMayChange) return
         if (shell.panels.leaving != null) rebuild(null) else restyle()
     }
 
@@ -307,13 +303,7 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
     }
 
     // ---- HomeHost
-    override fun openDrawer() {
-        if (controls.isOpen) controls.close()
-        drawer.open()
-    }
-
     override fun openControls() {
-        if (drawer.isOpen) drawer.close()
         controls.open()
     }
 
@@ -387,7 +377,6 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         if (startedNow) mapPanel.onStart()
         refreshAll()
         if (reopen) controls.open(false)
-        room.postDelayed({ if (!isGone) drawer.prewarm() }, PREWARM_AFTER_MS)
         if (snap != null) {
             val cover = ImageView(shell).apply { setImageBitmap(snap); scaleType = ImageView.ScaleType.FIT_XY }
             shell.root.addView(cover, MATCH, MATCH)
@@ -407,8 +396,6 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         private const val LIVE_MAP_AFTER_MS = 700L
         /** Maps' panel is built ahead of time once that has come. */
         private const val MAPS_PANEL_AFTER_MS = 3000L
-        /** The app drawer's cells are built while nothing else happens. */
-        private const val PREWARM_AFTER_MS = 2500L
         /** The music screen is built ahead of time ([PanelStack.prepareWhenQuiet]). */
         private const val PREPARE_MUSIC_AFTER_MS = 6000L
     }

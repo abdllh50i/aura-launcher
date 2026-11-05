@@ -6,88 +6,85 @@ import android.text.InputType
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
-import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
-import android.widget.EditText
 import android.widget.LinearLayout
 import com.abdllh.aura.R
 import com.abdllh.aura.music.LyricsServer
 import com.abdllh.aura.music.LyricsSync
 import com.abdllh.aura.ui.ABtn
 import com.abdllh.aura.ui.AText
-import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Modal
 import com.abdllh.aura.ui.Palette
-import com.abdllh.aura.ui.Radius
-import com.abdllh.aura.ui.Shapes
 import com.abdllh.aura.ui.Snack
 import com.abdllh.aura.ui.Space
-import com.abdllh.aura.ui.TextField
 import com.abdllh.aura.ui.Spinner
-import com.abdllh.aura.ui.Touch
+import com.abdllh.aura.ui.TextField
 import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.WRAP
 import com.abdllh.aura.ui.label
 import com.abdllh.aura.ui.lp
-import com.abdllh.aura.util.dp
 import com.abdllh.aura.voice.Amri
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * Settings › Display & sound › Music: the owner's own lyrics server (1.13; tools/lyrics-server on his PC, published
- * through his domain): its address and key, a test that says whether it answers and takes the key, and the switch
- * for timing lyrics by listening ([com.abdllh.aura.music.LyricsSync], on by default since 1.15). Kept in a file of its
- * own so the music section of [DisplaySoundPage] has one line for it.
+ * The owner's own lyrics server (1.13; tools/lyrics-server on his PC, published through his domain): the switch for timing lyrics by listening ([com.abdllh.aura.music.LyricsSync], on by default
+ * since 1.15) and the key go on the Music page, its address and a test that says whether it answers and takes the key in the workshop. Rows only: each page puts them where it wants.
  */
-class LyricsCard private constructor(private val act: SettingsPanel, private val ctx: Context) {
-    private val status: AText = ctx.label(Type.FOOTNOTE, Palette.text2, lines = 3)
+class LyricsCard(private val act: SettingsPanel, private val ctx: Context) {
+    private val status: AText = ctx.label(Type.rowHint, { Palette.ink2 }, lines = 3)
     private val test = ABtn(ctx).apply {
         kind = ABtn.Kind.TONAL
         setText(R.string.lyr_srv_test)
         setOnClickListener { check() }
     }
     private val spinner = Spinner(ctx, 24).apply { visibility = View.GONE }
-    private val address = ctx.valueText("")
-    private val key = ctx.valueText("")
+    private val address = ctx.valueChevron("")
+    private val key = ctx.valueChevron("")
     private var busy = false
 
-    val view: View = ctx.group(
-        ctx.block(R.drawable.ic_lyrics, ctx.getString(R.string.lyr_srv_title), null, LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            addView(test, lp(WRAP, WRAP))
-            addView(spinner, lp(24.dp, 24.dp).apply { marginStart = Space.L.dp })
-        }, live = status),
-        ctx.settingRow(R.drawable.ic_globe, ctx.getString(R.string.lyr_srv_address), null, address) {
+    /** A test of the server: does it answer, with this key? */
+    val testRow: SettingRow = ctx.block(null, ctx.getString(R.string.lyr_srv_title), null, LinearLayout(ctx).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        addView(test, lp(WRAP, WRAP))
+        addView(spinner, lp(24, 24).apply { marginStart = Space.L })
+    }, live = status)
+
+    val addressRow: SettingRow = ctx.settingRow(null, ctx.getString(R.string.lyr_srv_address), null, address) {
+        ctx.parked {
             ask(ctx.getString(R.string.lyr_srv_address), ctx.getString(R.string.lyr_srv_address_hint), LyricsServer.address, uri = true) {
                 LyricsServer.address = it
                 refresh(null)
             }
-        },
-        ctx.settingRow(R.drawable.ic_lock, ctx.getString(R.string.lyr_srv_key), null, key) {
-            ask(ctx.getString(R.string.lyr_srv_key), ctx.getString(R.string.lyr_srv_key_hint), LyricsServer.key, uri = false) {
+        }
+    }
+
+    val keyRow: SettingRow = ctx.settingRow(null, ctx.getString(R.string.st_lyrics_key), null, key) {
+        ctx.parked {
+            ask(ctx.getString(R.string.st_lyrics_key), ctx.getString(R.string.lyr_srv_key_hint), LyricsServer.key, uri = false) {
                 LyricsServer.key = it
                 refresh(null)
             }
-        },
-        // (on by default since 1.15; shown on only where it can work: without the microphone permission it listens to
-        // nothing — Android asks it for the car's own sound too — and turning it on asks for that permission)
-        withLastHeard(ctx.switchRow(R.drawable.ic_mic, ctx.getString(R.string.lyr_srv_listen), ctx.getString(R.string.lyr_srv_listen_sub),
-            LyricsServer.listen && Amri.hasMicPermission(ctx)) { on ->
-            when {
-                !on -> LyricsServer.listen = false
-                !LyricsServer.configured -> { Snack.show(ctx, R.string.lyr_srv_listen_needs); act.rebuild() }
-                Amri.hasMicPermission(ctx) -> LyricsServer.listen = true
-                // the microphone permission first (asked once; on when it is given, the switch back off when not)
-                else -> {
-                    act.afterMic = { LyricsServer.listen = true; act.rebuild() }
-                    act.requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), SettingsActivity.REQ_MIC)
-                }
+        }
+    }
+
+    // (on by default since 1.15; shown on only where it can work: without the microphone permission it listens to
+    // nothing — Android asks it for the car's own sound too — and turning it on asks for that permission)
+    val listenRow: SettingRow = withLastHeard(ctx.switchRow(null, ctx.getString(R.string.lyr_srv_listen), ctx.getString(R.string.st_lyrics_listen_sub),
+        LyricsServer.listen && Amri.hasMicPermission(ctx)) { on ->
+        when {
+            !on -> LyricsServer.listen = false
+            !LyricsServer.configured -> { Snack.show(ctx, R.string.lyr_srv_listen_needs); act.rebuild() }
+            Amri.hasMicPermission(ctx) -> LyricsServer.listen = true
+            // the microphone permission first (asked once; on when it is given, the switch back off when not)
+            else -> {
+                act.afterMic = { LyricsServer.listen = true; act.rebuild() }
+                act.requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), SettingsActivity.REQ_MIC)
             }
-        })
-    )
+        }
+    })
 
     init { refresh(null) }
 
@@ -106,8 +103,8 @@ class LyricsCard private constructor(private val act: SettingsPanel, private val
         // (the row's text column: its title and its words, beside the switch)
         val column = (0 until row.childCount).map { row.getChildAt(it) }
             .firstOrNull { it is LinearLayout && it.orientation == LinearLayout.VERTICAL } as? LinearLayout ?: return row
-        column.addView(ctx.label(Type.FOOTNOTE, Palette.text3, lines = 2).apply { this.text = text },
-            lp(MATCH, WRAP).apply { topMargin = Space.XS.dp })
+        column.addView(ctx.label(Type.rowHint, { Palette.ink2 }, lines = 2).apply { this.text = text },
+            lp(MATCH, WRAP).apply { topMargin = -2; bottomMargin = -2 })
         return row
     }
 
@@ -133,10 +130,9 @@ class LyricsCard private constructor(private val act: SettingsPanel, private val
         test.setText(if (busy) R.string.lyr_srv_testing else R.string.lyr_srv_test)
         test.isEnabled = !busy
         spinner.visibility = if (busy) View.VISIBLE else View.GONE
-        address.text = LyricsServer.address.ifBlank { ctx.getString(R.string.lyr_srv_none) }
-        // (the key shown in part: enough to see which one is set)
-        val k = LyricsServer.key
-        key.text = if (k.isBlank()) ctx.getString(R.string.lyr_srv_none) else k.take(3) + "•".repeat((k.length - 3).coerceIn(3, 8))
+        address.value = LyricsServer.address.ifBlank { ctx.getString(R.string.lyr_srv_none) }
+        // (that a key is set, not any of it: the mockup's word)
+        key.value = ctx.getString(if (LyricsServer.key.isBlank()) R.string.st_not_set else R.string.st_saved)
         status.text = note ?: when {
             LyricsServer.base() == null -> ctx.getString(R.string.lyr_srv_off)
             LyricsServer.cleartextBlocked() -> ctx.getString(R.string.lyr_srv_cleartext)
@@ -176,13 +172,5 @@ class LyricsCard private constructor(private val act: SettingsPanel, private val
         card.addView(Modal.buttons(ctx, yes, no), lp(MATCH, WRAP).apply { topMargin = 20 })
         m.show()
         input.requestFocus()
-    }
-
-    companion object {
-        /** The card and its hint, at the end of the music section ([DisplaySoundPage]'s one line for it). */
-        fun addTo(act: SettingsPanel, ctx: Context, col: LinearLayout) {
-            col.addRow(LyricsCard(act, ctx).view)
-            col.addHint(ctx.getString(R.string.lyr_srv_hint))
-        }
     }
 }

@@ -7,34 +7,34 @@ import android.view.View
 import android.widget.LinearLayout
 import com.abdllh.aura.R
 import com.abdllh.aura.settings.block
-import com.abdllh.aura.settings.group
+import com.abdllh.aura.settings.parked
+import com.abdllh.aura.settings.rows
 import com.abdllh.aura.settings.switchRow
 import com.abdllh.aura.ui.ABtn
 import com.abdllh.aura.ui.AText
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Palette
-import com.abdllh.aura.ui.Radius
-import com.abdllh.aura.ui.Shapes
 import com.abdllh.aura.ui.Space
 import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.WRAP
+import com.abdllh.aura.ui.flp
 import com.abdllh.aura.ui.label
 import com.abdllh.aura.ui.lp
-import com.abdllh.aura.util.dp
+import com.abdllh.aura.ui.plateView
 import kotlin.math.ceil
 
 /**
- * Settings › Vehicle & system › "ربط الجوال": the server's switch, what it is doing now, and the code that pairs a
- * phone, a QR the iPhone's camera opens in Safari with the six digits beside it. The code exists only while it is on
- * this card: leaving the page ends it ([Pairing]).
+ * Settings › Phone › the Amri app: the server's switch, what it is doing now, and the code that pairs a phone, a QR the
+ * iPhone's camera opens in Safari with the six digits beside it. The code exists only while it is on this card: leaving
+ * the page ends it ([Pairing]).
  */
 class PhoneLinkCard(private val ctx: Context) {
-    private val status: AText = ctx.label(Type.FOOTNOTE, Palette.text2, lines = 3)
+    private val status: AText = ctx.label(Type.rowHint, { Palette.ink2 }, lines = 3)
     private val body = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
     private val qrRow = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; visibility = View.GONE }
     private val qr = QrView(ctx)
-    private val manual: AText = ctx.label(Type.BODY, Palette.text2, lines = 0)
-    private val left: AText = ctx.label(Type.FOOTNOTE, Palette.text3)
+    private val manual: AText = ctx.label(Type.stateBody, { Palette.ink2 }, lines = 0)
+    private val left: AText = ctx.label(Type.rowHint, { Palette.ink2 })
     private val showBtn = ABtn(ctx).apply { kind = ABtn.Kind.TONAL }
     private val forgetBtn = ABtn(ctx).apply { kind = ABtn.Kind.GHOST; setText(R.string.link_forget) }
     private var showing = false
@@ -58,8 +58,8 @@ class PhoneLinkCard(private val ctx: Context) {
         }
     }
 
-    val view: View = ctx.group(
-        ctx.switchRow(R.drawable.ic_smartphone, ctx.getString(R.string.link_title), ctx.getString(R.string.link_sub), PhoneServer.enabled) { on ->
+    val view: View = ctx.rows(
+        ctx.switchRow(null, ctx.getString(R.string.link_title), ctx.getString(R.string.link_sub), PhoneServer.enabled) { on ->
             PhoneServer.enabled = on
             if (!on) setShowing(false)
             refresh()
@@ -73,27 +73,31 @@ class PhoneLinkCard(private val ctx: Context) {
         showBtn.setOnClickListener { setShowing(!showing) }
         actions.addView(showBtn, lp(WRAP, WRAP))
         forgetBtn.setOnClickListener {
-            com.abdllh.aura.ui.Confirm.show(ctx, ctx.getString(R.string.link_forget_title), ctx.getString(R.string.link_forget_text), ctx.getString(R.string.link_forget)) {
-                Pairing.forgetAll()
-                refresh()
+            ctx.parked {
+                com.abdllh.aura.ui.Confirm.show(ctx, ctx.getString(R.string.link_forget_title), ctx.getString(R.string.link_forget_text), ctx.getString(R.string.link_forget)) {
+                    Pairing.forgetAll()
+                    refresh()
+                }
             }
         }
-        actions.addView(forgetBtn, lp(WRAP, WRAP).apply { marginStart = Space.S.dp })
-        body.addView(actions, lp(MATCH, WRAP).apply { topMargin = Space.M.dp })
+        actions.addView(forgetBtn, lp(WRAP, WRAP).apply { marginStart = Space.S })
+        body.addView(actions, lp(MATCH, WRAP).apply { topMargin = Space.M })
 
         // the code on white, its own square: a phone's camera reads that whatever the screen's theme is
-        val square = android.widget.FrameLayout(ctx).apply { background = Shapes.rect(0xFFFFFFFF.toInt(), Radius.M) }
-        square.addView(qr, com.abdllh.aura.ui.flp(MATCH, MATCH))
-        qrRow.addView(square, lp(QR_DP.dp, QR_DP.dp))
+        val square = android.widget.FrameLayout(ctx)
+        square.addView(ctx.plateView(20) { Palette.knob }, flp(MATCH, MATCH))
+        square.addView(qr, flp(MATCH, MATCH).apply { setMargins(10, 10, 10, 10) })
+        qrRow.addView(square, lp(QR, QR))
         val notes = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-        notes.addView(ctx.label(Type.LABEL, Palette.text, lines = 0).apply { setText(R.string.link_scan_hint) }, lp(MATCH, WRAP))
-        notes.addView(manual, lp(MATCH, WRAP).apply { topMargin = Space.S.dp })
-        notes.addView(left, lp(MATCH, WRAP).apply { topMargin = Space.S.dp })
-        qrRow.addView(notes, lp(0, WRAP, 1f).apply { marginStart = Space.L.dp })
-        body.addView(qrRow, lp(MATCH, WRAP).apply { topMargin = Space.M.dp })
+        notes.addView(ctx.label(Type.rowLabel, { Palette.ink }, lines = 0).apply { setText(R.string.link_scan_hint) }, lp(MATCH, WRAP))
+        notes.addView(manual, lp(MATCH, WRAP).apply { topMargin = Space.S })
+        notes.addView(left, lp(MATCH, Type.rowHint.viewH).apply { topMargin = Space.S })
+        qrRow.addView(notes, lp(0, WRAP, 1f).apply { marginStart = Space.L })
+        body.addView(qrRow, lp(MATCH, WRAP).apply { topMargin = Space.M })
     }
 
     fun attach() {
+        if (attached) return
         attached = true
         PhoneServer.addListener(listener)
         PhoneServer.pairedListeners.add(paired)
@@ -160,7 +164,8 @@ class PhoneLinkCard(private val ctx: Context) {
     }
 
     companion object {
-        private const val QR_DP = 232
+        /** SPEC.md section 12: 168, and the 10 of white round the code that it reads by. */
+        private const val QR = 188
 
         /** One line for Settings → About: the server and its last request; "" while it is off. */
         fun aboutLine(c: Context): String {

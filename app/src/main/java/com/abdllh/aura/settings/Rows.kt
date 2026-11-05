@@ -91,7 +91,15 @@ fun LinearLayout.addHint(text: CharSequence) {
  * [fill]: the rows share that height evenly, rounded as the screen rounds (a page that fills its card: 414 / 4 is 103.5, 414 / 5 is 82.8).
  * A hairline lies over the top of the row under it and takes no height of its own.
  */
-fun Context.group(vararg rows: View?, fill: Int = 0): LinearLayout = SurfaceColumn(this, Surface.CARD).apply {
+fun Context.group(vararg rows: View?, fill: Int = 0): LinearLayout = SurfaceColumn(this, Surface.CARD).apply { putRows(rows, fill) }
+
+/** The same rows with no card of their own: what lies in the Settings panel's one card, on a page or under a section's title there. */
+fun Context.rows(vararg rows: View?, fill: Int = 0): LinearLayout = LinearLayout(this).apply {
+    orientation = LinearLayout.VERTICAL
+    putRows(rows, fill)
+}
+
+private fun LinearLayout.putRows(rows: Array<out View?>, fill: Int) {
     val shown = rows.filterNotNull()
     for ((i, r) in shown.withIndex()) {
         if (i > 0) {
@@ -201,26 +209,57 @@ fun Context.valueText(text: CharSequence): AText = label(Type.rowValue, { Palett
     textDirection = View.TEXT_DIRECTION_FIRST_STRONG_LTR
 }
 
-/** A value and a chevron side by side, the far end of a row that opens a sub-page. */
-fun Context.valueChevron(text: CharSequence?): LinearLayout = LinearLayout(this).apply {
-    orientation = LinearLayout.HORIZONTAL
-    gravity = Gravity.CENTER_VERTICAL
-    if (!text.isNullOrEmpty()) addView(valueText(text), lp(WRAP, Type.rowValue.viewH))
-    addView(chevron(), lp(24, 24).apply { marginStart = Space.M })
+/** A value and a chevron side by side, the far end of a row that opens a sub-page. [value] changes it in place. */
+class ValueChevron(ctx: Context, text: CharSequence?) : LinearLayout(ctx) {
+    private val word = ctx.valueText(text ?: "").apply { maxWidth = VALUE_MAX }
+
+    init {
+        orientation = HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        addView(word, lp(WRAP, Type.rowValue.viewH))
+        addView(ctx.chevron(), lp(24, 24).apply { marginStart = Space.M })
+        word.visibility = if (text.isNullOrEmpty()) GONE else VISIBLE
+    }
+
+    var value: CharSequence
+        get() = word.text
+        set(v) {
+            if (word.text.toString() == v.toString()) return
+            word.text = v
+            word.visibility = if (v.isEmpty()) GONE else VISIBLE
+        }
 }
 
-/** The state at a row's far end: a dot 12, `green` when [on] and `ink3` when not, and its word in `rowValue`. */
-fun Context.stateDot(text: CharSequence, on: Boolean): LinearLayout = LinearLayout(this).apply {
-    orientation = LinearLayout.HORIZONTAL
-    gravity = Gravity.CENTER_VERTICAL
-    addView(View(context).look {
-        background = android.graphics.drawable.GradientDrawable().apply {
+fun Context.valueChevron(text: CharSequence?): ValueChevron = ValueChevron(this, text)
+
+/** The state at a row's far end: a dot 12, `green` when on and `ink3` when not, and its word in `rowValue`. [set] changes it in place. */
+class StateDot(ctx: Context, text: CharSequence, private var on: Boolean) : LinearLayout(ctx) {
+    private val dot = View(ctx)
+    private val word = ctx.label(Type.rowValue, { Palette.ink2 }).apply { this.text = text }
+
+    init {
+        orientation = HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        dot.look { paint() }
+        addView(dot, lp(12, 12))
+        addView(word, lp(WRAP, Type.rowValue.viewH).apply { marginStart = Space.S })
+    }
+
+    private fun paint() {
+        dot.background = android.graphics.drawable.GradientDrawable().apply {
             shape = android.graphics.drawable.GradientDrawable.OVAL
             setColor(if (on) Palette.green else Palette.ink3)
         }
-    }, lp(12, 12))
-    addView(label(Type.rowValue, { Palette.ink2 }).apply { this.text = text }, lp(WRAP, Type.rowValue.viewH).apply { marginStart = Space.S })
+    }
+
+    fun set(text: CharSequence, on: Boolean) {
+        this.on = on
+        word.text = text
+        paint()
+    }
 }
+
+fun Context.stateDot(text: CharSequence, on: Boolean): StateDot = StateDot(this, text, on)
 
 /**
  * A row with a switch. The whole row is the switch's target: a tap anywhere on it flips it, and the switch shows the
@@ -264,6 +303,25 @@ fun Context.sliderRow(title: CharSequence, slider: AuraSlider, valueView: AText)
 }
 
 private const val VALUE_W = 34
+private const val VALUE_MAX = 300
+
+/** A multi-line note inside a page: `rowHint` in `ink2`, the row's insets, a step under what is above it. */
+fun LinearLayout.addNote(text: CharSequence) {
+    addView(context.hint(text), lp(MATCH, WRAP).apply { topMargin = Space.XS; bottomMargin = Space.M })
+}
+
+/** A section inside the panel's one card: its title in `sectionHead`, with a hairline over it when there is something above. */
+fun LinearLayout.addPart(title: CharSequence) {
+    if (childCount > 0) addView(View(context).apply { look { setBackgroundColor(Palette.line) } }, lp(MATCH, 1).apply { topMargin = Space.M })
+    val t = context.label(Type.sectionHead, { Palette.ink2 }).apply { text = title }
+    t.setPaddingRelative(INSET, 0, INSET, 0)
+    addView(t, lp(MATCH, Type.sectionHead.viewH).apply { topMargin = Space.L; bottomMargin = Space.XS })
+}
+
+/** A dialog never while the car moves (SPEC.md section 5): [then] now, or a word that it waits. */
+fun Context.parked(then: () -> Unit) {
+    if (com.abdllh.aura.system.DriveState.moving) com.abdllh.aura.ui.Snack.show(this, R.string.st_parked_only) else then()
+}
 
 fun Context.hint(text: CharSequence): AText = label(Type.rowHint, { Palette.ink2 }, lines = 0).apply {
     this.text = text

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 2.0: the known apps' words on the Apps panel's grid (others keep their own names) -->
+    <string name="apps_yt">يوتيوب ميوزك</string>
+    <string name="apps_radio">الراديو</string>
+    <string name="apps_video">الفيديو</string>
+    <string name="apps_car">إعدادات السيارة</string>
+    <string name="apps_wheel">عجلة القيادة</string>
+    <string name="apps_tools">صندوق الأدوات</string>
+    <string name="apps_files">الملفات</string>
+    <string name="apps_browser">المتصفح</string>
+    <string name="apps_clock">الساعة</string>
+    <string name="apps_zlink">الربط بالجوال</string>
+    <string name="apps_camera">الكاميرا</string>
+    <string name="apps_gallery">المعرض</string>
+    <string name="apps_cam360">كاميرا 360</string>
+    <string name="apps_mycar">سيارتي</string>
+    <string name="apps_phone">الهاتف</string>
+</resources>

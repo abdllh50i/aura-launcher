@@ -1,70 +1,57 @@
 package com.abdllh.aura.settings
 
-import android.graphics.Bitmap
-import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.view.Gravity
-import android.view.PixelCopy
 import android.view.View
-import android.view.ViewTreeObserver
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import com.abdllh.aura.R
 import com.abdllh.aura.home.HomeActivity
 import com.abdllh.aura.home.Panel
 import com.abdllh.aura.home.Screens
+import com.abdllh.aura.nav.NavSession
 import com.abdllh.aura.ui.AText
+import com.abdllh.aura.ui.IconButton
+import com.abdllh.aura.ui.Look
 import com.abdllh.aura.ui.MATCH
-import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
-import com.abdllh.aura.ui.Radius
-import com.abdllh.aura.ui.Shapes
-import com.abdllh.aura.ui.Space
+import com.abdllh.aura.ui.PressGesture
+import com.abdllh.aura.ui.SnapScroll
 import com.abdllh.aura.ui.Spring
-import com.abdllh.aura.ui.Theme
-import com.abdllh.aura.ui.Touch
+import com.abdllh.aura.ui.Surface
+import com.abdllh.aura.ui.SurfaceCard
+import com.abdllh.aura.ui.Tint
+import com.abdllh.aura.ui.Tokens2
+import com.abdllh.aura.ui.Tones
+import com.abdllh.aura.ui.TurnAway
 import com.abdllh.aura.ui.Type
-import com.abdllh.aura.ui.WRAP
+import com.abdllh.aura.ui.at
+import com.abdllh.aura.ui.box
 import com.abdllh.aura.ui.enter
 import com.abdllh.aura.ui.exit
-import com.abdllh.aura.ui.fadeTo
 import com.abdllh.aura.ui.flp
-import com.abdllh.aura.ui.iconView
 import com.abdllh.aura.ui.label
-import com.abdllh.aura.ui.lp
-import com.abdllh.aura.ui.pressScale
+import com.abdllh.aura.ui.look
+import com.abdllh.aura.ui.scrollFade
+import com.abdllh.aura.ui.surfaceImage
 import com.abdllh.aura.update.UpdateManager
-import com.abdllh.aura.util.Prefs
-import com.abdllh.aura.util.dp
 import kotlin.math.abs
-import kotlin.math.sign
 
 /**
- * Settings, a panel of the one window: category list on the start side, selected page on the other. Built when it is
- * opened and dropped when it is closed, opaque, its own room. (A class name is left for whoever starts it from outside:
- * [SettingsActivity], which also has the page numbers.)
- * A page is built the first time it is shown and kept (with where it was scrolled to, unless [Page.keep] says not)
- * while the screen is up; a preference that changes what a page shows rebuilds that page in place ([rebuild]); a new
- * theme, accent or language builds the screen again behind a picture of it that fades out ([restyle]). Until 1.11
- * every one of those recreated
- * the activity: a flash of the bare window and the page back at its top, for picking a navigation app or a microphone.
+ * Settings (SPEC.md section 6.6): the room, a side list of seven pages on the reading side, one card 666 x 414 that holds the page, or a sub-page with back at its reading edge. On a
+ * trip a card beside the column, x 384..1012, one page at a time; back goes to the list of pages. The panel stays built, each page with it, and a theme comes by [Look]: no picture, nothing
+ * is built again. A trip beginning or ending builds the frame anew, since what lies in the card has other widths (a page is rare there, and a trip's start rarer).
+ * (A class name is left for whoever starts it from outside: [SettingsActivity], which also has the page numbers.)
  */
 class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
-    companion object {
-        /** Where the page was scrolled to (kept across a language change, which recreates the window). */
-        private const val EXTRA_SCROLL = "scrollY"
-
-        /** The old screen's picture, handed from the panel a language change ends to the one it starts. */
-        private var cover: Bitmap? = null
-    }
-
     override val root = FrameLayout(this)
-    override val opaque: Boolean get() = true
+    override val opaque: Boolean get() = NavSession.state == NavSession.State.IDLE
+    override val solid: Boolean get() = opaque
+    override val keep: Boolean get() = true
+    override val recolours: Boolean get() = true
+    override val besideColumn: Boolean get() = true
 
     /** Goes on once the microphone permission is given (the voice page asked for it on the owner's way somewhere). */
     var afterMic: (() -> Unit)? = null
@@ -77,343 +64,89 @@ class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
         if (grants.isNotEmpty() && grants[0] == android.content.pm.PackageManager.PERMISSION_GRANTED && then != null) then() else rebuild()
     }
 
-    private lateinit var pages: List<Page>
-    /** Each page's view once built (null: built when next shown). */
-    private lateinit var built: Array<ScrollView?>
-    private var current = -1
-    private lateinit var navItems: List<LinearLayout>
-    /** How much of each item the indicator covered at the last frame (-1: not tinted yet). */
-    private lateinit var navShare: FloatArray
-    private lateinit var indicator: View
-    private var indicatorPlaced = false
-    private lateinit var indicatorSpring: Spring
-    private lateinit var content: FrameLayout
-    private lateinit var topEdge: View
-    private lateinit var bottomEdge: View
-    private lateinit var title: AText
-    private var updateDot: View? = null
-    private var builtDark = true
-    private var builtAccent = 0
-    private var restyling = false
-    private val main = Handler(Looper.getMainLooper())
-
-    override fun onShow(args: Bundle?) {
-        if (!::pages.isInitialized) {
-            build(args?.getInt(SettingsActivity.EXTRA_PAGE, SettingsActivity.PAGE_GENERAL) ?: SettingsActivity.PAGE_GENERAL, args?.getInt(EXTRA_SCROLL, 0) ?: 0)
-            cover?.let { cover = null; fadeCover(it) }
-            return
+    /** The microphone permission first (asked once; what was asked for goes on when it is given). */
+    fun withMic(then: () -> Unit) {
+        if (com.abdllh.aura.voice.Amri.hasMicPermission(this)) then()
+        else {
+            afterMic = then
+            requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), SettingsActivity.REQ_MIC)
         }
-        again()
-        if (args != null) onArgs(args)
+    }
+
+    val rtl = resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL
+
+    /** What a page's rows share, in this frame: the room's card, or the trip's. */
+    var onTripNow = false
+        private set
+    val fillH: Int get() = if (onTripNow) TRIP_FILL else CARD_H
+    val controlW: Int get() = if (onTripNow) 400 else 440
+
+    private val pages: List<Page> = listOf(DisplayPage(this), MapsPage(this), MusicPage(this), AmriPage(this), PhonePage(this), CarPage(this), AboutPage(this))
+    private val listPage = TripListPage(this)
+    private var current = 0
+    /** Sub-pages over the current page. */
+    private val subs = ArrayList<Page>()
+    /** On a trip: the list of pages is what shows. */
+    private var onList = false
+    private var shownPage: Page? = null
+    private var shownView: View? = null
+    private var live = false
+    private var resetDue = false
+    private val holders = HashMap<Page, View>()
+
+    private var built = false
+    private var builtDark = Palette.dark
+    private lateinit var card: FrameLayout
+    private var pageTitle: AText? = null
+    private var navItems: List<NavItem> = emptyList()
+    private var indicator: View? = null
+    private var indicatorSpring: Spring? = null
+    private var indicatorPlaced = false
+    private var turnAway: TurnAway? = null
+    private var updateDot: View? = null
+
+    // ------------------------------------------------------------------------------------------ the panel's life
+    override fun onShow(args: Bundle?) {
+        val trip = NavSession.state != NavSession.State.IDLE
+        if (!built || trip != onTripNow) buildFrame(trip)
+        catchUp()
+        turnAway?.on()
+        if (resetDue) {
+            resetDue = false
+            subs.clear()
+            onList = false
+            go(current, false)
+        }
+        when {
+            args != null && args.containsKey(SettingsActivity.EXTRA_PAGE) -> go(args.getInt(SettingsActivity.EXTRA_PAGE), false)
+            shownPage == null -> go(current, false)
+            else -> goLive()
+        }
     }
 
     /** Asked for again while it is up: the page asked for (a start from outside, which may also have set the theme). */
     override fun onArgs(args: Bundle) {
-        if (Palette.dark != builtDark || Palette.accent != builtAccent) buildAgain()
-        if (args.containsKey(SettingsActivity.EXTRA_PAGE)) show(args.getInt(SettingsActivity.EXTRA_PAGE).coerceIn(0, pages.size - 1), shell.resumedNow)
+        catchUp()
+        if (args.containsKey(SettingsActivity.EXTRA_PAGE)) go(args.getInt(SettingsActivity.EXTRA_PAGE), shell.resumedNow)
     }
 
-    /** The whole screen, for the loaded theme and accent, showing [page] scrolled to [scrollY]. */
-    private fun build(page: Int, scrollY: Int) {
-        builtDark = Palette.dark
-        builtAccent = Palette.accent
-        pages = listOf(GeneralPage(this), UpdatePage(this), DisplaySoundPage(this), NavigationPage(this), VehiclePage(this), VoicePage(this), AboutPage(this))
-        built = arrayOfNulls(pages.size)
-        current = -1
-        indicatorPlaced = false
-        root.removeAllViews()
-        root.setBackgroundColor(Palette.bg)
-        root.addView(buildFrame(), MATCH, MATCH)
-        show(page.coerceIn(0, pages.size - 1), false)
-        if (scrollY > 0) built[current]?.let { scrollWhenLaidOut(it, scrollY) }
+    override fun onHide() {
+        goQuiet()
+        turnAway?.off()
     }
 
-    // (no backdrop view: the panel's own room is the screen's colour and the window has none, and a second full-screen
-    // fill under every frame of a scroll or a page change is a cost this GPU feels)
-    private fun buildFrame(): FrameLayout {
-        val root = FrameLayout(this)
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-
-        // ---- sidebar
-        val side = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPaddingRelative(Space.L.dp, Space.M.dp, Space.M.dp, Space.M.dp)
-        }
-        val back = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPaddingRelative(Space.S.dp, 0, Space.L.dp, 0)
-            background = Shapes.ghost(Radius.M)
-            isClickable = true
-            contentDescription = getString(R.string.set_title)
-            pressScale(Motion.PRESS_CONTROL)
-            setOnClickListener { finish() }
-            addView(iconView(R.drawable.ic_chevron_left, 30, Palette.text).also {
-                if (resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL) it.scaleX = -1f
-            }, lp(30.dp, 30.dp))
-            addView(label(Type.HEADLINE, Palette.text).apply { setText(R.string.set_title) }, lp(WRAP, WRAP).apply { marginStart = Space.S.dp })
-        }
-        side.addView(back, lp(WRAP, Touch.LARGE.dp))
-
-        // The selection is one tint behind the items that slides from the old one to the new one, the colours of
-        // the items following it, instead of a background that jumps from item to item.
-        val nav = FrameLayout(this).apply { clipChildren = false }
-        indicator = View(this).apply { background = Shapes.rect(Palette.accentSoft(), Radius.L) }
-        nav.addView(indicator, flp(MATCH, Touch.MIN.dp, Gravity.TOP))
-        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val items = ArrayList<LinearLayout>()
-        for ((i, p) in pages.withIndex()) {
-            val item = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPaddingRelative(Space.L.dp, 0, Space.L.dp, 0)
-                background = Shapes.ghost(Radius.L)
-                isClickable = true
-                pressScale(Motion.PRESS_SURFACE)
-                setOnClickListener { show(i, true) }
-            }
-            item.addView(iconView(p.iconRes, 26, Palette.text2), lp(26.dp, 26.dp))
-            item.addView(label(Type.LABEL, Palette.text2).apply { setText(p.titleRes) }, lp(0, WRAP, 1f).apply { marginStart = Space.L.dp })
-            if (p is UpdatePage) {
-                updateDot = View(this).apply { background = Shapes.oval(Palette.accent); visibility = if (UpdateManager.hasUpdateBadge()) View.VISIBLE else View.GONE }
-                item.addView(updateDot, lp(10.dp, 10.dp))
-            }
-            items.add(item)
-            col.addView(item, lp(MATCH, Touch.MIN.dp).apply { if (i > 0) topMargin = Space.XS.dp }) // seven pages fit the 600 px screen
-        }
-        nav.addView(col, flp(MATCH, WRAP))
-        navItems = items
-        navShare = FloatArray(items.size) { -1f }
-        indicatorSpring = Spring(0f, 520f, 0.86f, 0.5f) { y -> indicator.translationY = y; tintNav(y) }
-        side.addView(nav, lp(MATCH, WRAP).apply { topMargin = Space.S.dp })
-        row.addView(side, lp(280.dp, MATCH))
-
-        // ---- content
-        val right = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPaddingRelative(Space.S.dp, Space.L.dp, Space.XL.dp, 0)
-        }
-        title = label(Type.DISPLAY_S, Palette.text)
-        right.addView(title, lp(MATCH, WRAP).apply { bottomMargin = Space.M.dp; marginStart = Space.S.dp })
-        content = FrameLayout(this)
-        // The page scrolls under soft edges in the screen's colour, shown only where there is more to see, instead
-        // of cards cut by a hard line under the title (a gradient on top: the fading edge of a ScrollView would draw
-        // through an offscreen layer on every frame of a scroll).
-        topEdge = edge(GradientDrawable.Orientation.TOP_BOTTOM)
-        bottomEdge = edge(GradientDrawable.Orientation.BOTTOM_TOP)
-        content.addView(topEdge, flp(MATCH, Space.XL.dp, Gravity.TOP))
-        content.addView(bottomEdge, flp(MATCH, Space.XL.dp, Gravity.BOTTOM))
-        right.addView(content, lp(MATCH, 0, 1f))
-        row.addView(right, lp(0, MATCH, 1f))
-        root.addView(row, MATCH, MATCH)
-        return root
+    /** A visit is over: the next one opens on the last page, not on a sub-page. */
+    override fun onOff() {
+        resetDue = subs.isNotEmpty() || onList
     }
 
-    private fun edge(o: GradientDrawable.Orientation) = object : View(this) {
-        override fun hasOverlappingRendering() = false
-    }.apply {
-        background = GradientDrawable(o, intArrayOf(Palette.bg, Palette.withAlpha(Palette.bg, 0f)))
-        alpha = 0f
-    }
-
-    /** Each edge as strong as there is page beyond it, up to its own height (no edge at the very top or bottom). */
-    private fun edges(sv: ScrollView) {
-        val h = Space.XL.dp.toFloat()
-        val below = ((sv.getChildAt(0)?.height ?: 0) - sv.height - sv.scrollY).toFloat()
-        topEdge.alpha = (sv.scrollY / h).coerceIn(0f, 1f)
-        bottomEdge.alpha = (below / h).coerceIn(0f, 1f)
-    }
-
-    /**
-     * The items take the indicator's colours by how much of each it covers (it slides past the ones between). Only
-     * the items whose share changed are touched: a new colour filter redraws its icon even when it is the same colour.
-     */
-    private fun tintNav(y: Float) {
-        for ((i, item) in navItems.withIndex()) {
-            val h = item.height.coerceAtLeast(1)
-            val k = (1f - abs(item.top - y) / h).coerceIn(0f, 1f)
-            if (k == navShare[i]) continue
-            navShare[i] = k
-            (item.getChildAt(0) as ImageView).setColorFilter(Palette.mix(Palette.text2, Palette.accentFg, k))
-            (item.getChildAt(1) as AText).setTextColor(Palette.mix(Palette.text2, Palette.text, k))
-        }
-    }
-
-    private fun moveIndicator(index: Int, animate: Boolean) {
-        val item = navItems[index]
-        if (item.height == 0) { // not laid out yet: placed when it is
-            item.post { if (current == index) moveIndicator(index, false) }
-            return
-        }
-        val y = item.top.toFloat()
-        if (animate && indicatorPlaced) indicatorSpring.animateTo(y) else indicatorSpring.snapTo(y)
-        indicatorPlaced = true
-    }
-
-    /**
-     * Shows page [index]. The page that was showing goes quickly (towards the side of the list it was on), the new
-     * one comes in from the other side and settles, and the title with it; both through a layer, so the cards of a
-     * page fade as one picture. A page is built once and kept, so going back to it is instant and finds it scrolled
-     * where it was.
-     */
-    fun show(index: Int, animate: Boolean) {
-        if (index == current) return
-        val prev = current
-        if (prev >= 0) pages[prev].onHide()
-        current = index
-        moveIndicator(index, animate)
-        val page = pages[index]
-        // (a page that is not kept is built anew; its old view, if still leaving, goes at once in the loop below)
-        if (!page.keep) built[index] = null
-        val view = built[index] ?: scrolled(page.build(this)).also { sv ->
-            built[index] = sv
-            sv.setOnScrollChangeListener { v, _, _, _, _ -> if (built.getOrNull(current) === v) edges(v as ScrollView) }
-            sv.addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ -> if (built.getOrNull(current) === v) edges(v as ScrollView) }
-        }
-        val dir = if (prev < 0) 0f else sign((index - prev).toFloat())
-        // (pages left from earlier taps go at once; a page coming back while it was still leaving turns back)
-        for (i in content.childCount - 1 downTo 0) {
-            val c = content.getChildAt(i)
-            if (c === view || c === topEdge || c === bottomEdge) continue
-            if (animate && prev >= 0 && c === built[prev]) c.exit(dy = -dir * Space.S, dur = Motion.XSHORT) { content.removeView(c) }
-            else { c.animate().cancel(); content.removeView(c) }
-        }
-        if (view.parent == null) content.addView(view, content.indexOfChild(topEdge), flp(MATCH, MATCH))
-        title.setText(page.titleRes)
-        if (animate) {
-            view.enter(dy = dir * Space.L, delay = 40L)
-            title.enter(dy = dir * Space.S, delay = 40L)
-        } else {
-            view.animate().cancel()
-            view.alpha = 1f; view.translationY = 0f
-        }
-        edges(view)
-        page.onShow()
-    }
-
-    /** Rebuilds the current page in place, where it was scrolled to (a preference changed what it shows). */
-    fun rebuild() {
-        // (after the tap that asked for it has finished with the view it came from)
-        content.post {
-            val i = current
-            if (i < 0 || isGone) return@post
-            val old = built[i]
-            val y = old?.scrollY ?: 0
-            pages[i].onHide()
-            built[i] = null
-            old?.let { it.animate().cancel(); content.removeView(it) }
-            current = -1
-            show(i, false)
-            built[i]?.let { scrollWhenLaidOut(it, y) }
-        }
-    }
-
-    /**
-     * An accent or a language picked that the screen has not taken yet ([restyle] takes it). Kept here from the tap
-     * and not in Prefs at once: the accent there would change [Palette] under the screen before its picture is taken.
-     * If the screen goes first, [onDestroy] stores it.
-     */
-    var pendingAccent: Int? = null
-    var pendingLang: String? = null
-
-    /** Stores the waiting accent and language; true when the language was one of them. */
-    private fun takePending(): Boolean {
-        pendingAccent?.let { Prefs.accent = it }
-        pendingAccent = null
-        val lang = pendingLang ?: return false
-        pendingLang = null
-        if (lang == Prefs.lang) return false // (picked and picked back before the screen took it)
-        Prefs.lang = lang
-        return true
-    }
-
-    /**
-     * A new theme (already in Prefs), accent or language ([pendingAccent], [pendingLang]): the screen as it is now is
-     * captured, then built again with the change (the language needs a new activity for its resources), and the
-     * picture fades out on top of it. The page and its scroll stay. A call while a capture is under way adds nothing:
-     * that capture takes every choice waiting when it answers.
-     */
-    fun restyle() {
-        if (restyling || isGone) return
-        if (pendingAccent == null && pendingLang == null && Theme.isDarkNow() == Palette.dark) return
-        restyling = true
-        capture { snap ->
-            restyling = false
-            // (stored before the check: a screen left while its picture was taken keeps the choice)
-            val newLocale = takePending()
-            if (isGone) return@capture
-            val y = built.getOrNull(current)?.scrollY ?: 0
-            if (newLocale) {
-                cover = snap
-                for (p in pages) p.onHide()
-                shell.languageChanged(Bundle().apply { putInt(SettingsActivity.EXTRA_PAGE, current); putInt(EXTRA_SCROLL, y) })
-                return@capture
-            }
-            for (p in pages) p.onHide()
-            Theme.refresh()
-            shell.windowLook(navBar)
-            build(current, y)
-            snap?.let { fadeCover(it) }
-        }
-    }
-
-    /** The screen's content as a picture (null when the copy fails or never answers: the change then just shows). */
-    private fun capture(done: (Bitmap?) -> Unit) {
-        val r = root
-        if (r.width == 0 || r.height == 0 || !r.isAttachedToWindow) { done(null); return }
-        val snap = try { Bitmap.createBitmap(r.width, r.height, Bitmap.Config.ARGB_8888) } catch (_: Throwable) { null }
-        if (snap == null) { done(null); return }
-        var answered = false
-        val once = { b: Bitmap? -> if (!answered) { answered = true; done(b) } }
-        val at = IntArray(2)
-        r.getLocationInWindow(at)
-        try {
-            PixelCopy.request(window, Rect(at[0], at[1], at[0] + r.width, at[1] + r.height), snap,
-                { result -> once(if (result == PixelCopy.SUCCESS) snap else null) }, main)
-            main.postDelayed({ once(null) }, 600L)
-        } catch (_: Throwable) {
-            once(null)
-        }
-    }
-
-    private fun fadeCover(snap: Bitmap) {
-        val c = ImageView(this).apply { setImageBitmap(snap); scaleType = ImageView.ScaleType.FIT_XY }
-        root.addView(c, MATCH, MATCH)
-        c.fadeTo(0f, Motion.LONG) { root.removeView(c) }
-    }
-
-    /** Scrolls [sv] to [y] once its page is laid out (before that a ScrollView clamps every position to 0). */
-    private fun scrollWhenLaidOut(sv: ScrollView, y: Int) {
-        sv.viewTreeObserver.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
-            override fun onPreDraw(): Boolean {
-                sv.viewTreeObserver.removeOnPreDrawListener(this)
-                sv.scrollTo(0, y)
-                return true
-            }
-        })
-    }
-
-    private val dotObserver: (UpdateManager.State) -> Unit = {
-        updateDot?.visibility = if (UpdateManager.hasUpdateBadge()) View.VISIBLE else View.GONE
-    }
-
-    private fun again() {
-        // Back from another screen (Maps after picking Home, Android's settings, the Play Store): what the pages show
-        // may have changed meanwhile. The other pages are built again when next shown, this one now; a theme or an
-        // accent changed elsewhere (the home screen's controls, the automatic theme at sunset) builds it all again.
-        Theme.refresh()
-        // (an accent or a language picked just before leaving, whose wait was cut by it: the whole screen again)
-        if (pendingAccent != null || pendingLang != null) { restyle(); return }
-        if (Palette.dark != builtDark || Palette.accent != builtAccent) { buildAgain(); return }
-        for (i in built.indices) if (i != current) built[i] = null
-        rebuild()
-    }
-
-    /** The whole screen again where it is: the theme or the accent is not the one it was built with. */
-    private fun buildAgain() {
-        for (p in pages) p.onHide()
-        shell.windowLook(navBar)
-        build(current, built.getOrNull(current)?.scrollY ?: 0)
+    override fun onTrip(on: Boolean) {
+        goQuiet()
+        buildFrame(on)
+        turnAway?.on()
+        subs.clear()
+        onList = false
+        go(current, false)
     }
 
     override fun onResume() {
@@ -424,17 +157,319 @@ class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
         UpdateManager.unobserve(dotObserver)
     }
 
-    override fun onHide() {
-        // (an accent or a language picked just before Back or Home, its restyle or the capture it waits on still to
-        // come: stored now, for the screen that comes back next, which looks at Prefs before this panel is gone)
-        if (isGone) takePending()
+    override fun onBack(): Boolean {
+        if (subs.isNotEmpty()) { pop(); return true }
+        if (onTripNow && !onList) { showList(); return true }
+        return false
+    }
+
+    override fun onLook() = catchUp()
+
+    /** A theme set by a path that does not walk this panel (a debug hook, an old screen). */
+    private fun catchUp() {
+        if (Palette.dark != builtDark) {
+            builtDark = Palette.dark
+            Look.apply(root)
+        }
     }
 
     override fun onDestroy() {
-        // every page lets go of its listeners (UpdateManager, the Wi-Fi log, the offline map would otherwise keep this
-        // dead panel alive)
-        if (::pages.isInitialized) for (p in pages) p.onHide()
-        takePending()
-        main.removeCallbacksAndMessages(null)
+        goQuiet()
+        turnAway?.off()
+    }
+
+    private val dotObserver: (UpdateManager.State) -> Unit = {
+        updateDot?.visibility = if (UpdateManager.hasUpdateBadge()) View.VISIBLE else View.GONE
+    }
+
+    // ------------------------------------------------------------------------------------------ the frame
+    private fun buildFrame(trip: Boolean) {
+        built = true
+        onTripNow = trip
+        builtDark = Palette.dark
+        root.removeAllViews()
+        holders.clear()
+        shownPage = null
+        shownView = null
+        pageTitle = null
+        navItems = emptyList()
+        indicator = null
+        indicatorSpring = null
+        indicatorPlaced = false
+        updateDot = null
+        turnAway?.off()
+        turnAway = null
+        if (trip) {
+            card = SurfaceCard(this, Surface.OVERLAY)
+            root.addView(card, Surface.OVERLAY.at(TRIP_X, TRIP_Y, TRIP_W, TRIP_H))
+            turnAway = TurnAway(card, reading(STEP))
+            return
+        }
+        root.addView(surfaceImage("room"), at(0, 0, 1024, 516))
+        val side = label(Type.pageTitle, { Palette.ink }).apply { setText(R.string.set_title) }
+        root.addView(side, Type.pageTitle.box(if (rtl) 704 else 24, 44, if (rtl) 296 else 296))
+        val title = label(Type.pageTitle, { Palette.ink })
+        pageTitle = title
+        root.addView(title, Type.pageTitle.box(if (rtl) 14 else 354, 44, if (rtl) 644 else 644))
+        card = SurfaceCard(this, Surface.CARD)
+        root.addView(card, Surface.CARD.at(if (rtl) 14 else 344, CARD_Y, CARD_W, CARD_H))
+
+        val nav = FrameLayout(this)
+        root.addView(nav, at(if (rtl) 704 else 14, CARD_Y, NAV_W, 7 * NAV_PITCH))
+        val plate = object : View(this) {
+            override fun hasOverlappingRendering() = false
+        }.apply { background = context.getDrawable(R.drawable.nav_on_58) }
+        nav.addView(plate, at(0, 0, NAV_W, NAV_H))
+        indicator = plate
+        indicatorSpring = Spring(0f, Tokens2.SPRING_dockPlate[0], Tokens2.SPRING_dockPlate[1], 0.5f) { y -> plate.translationY = y; tintNav(y) }
+        navItems = pages.mapIndexed { i, p ->
+            NavItem(p.iconRes, getString(p.titleRes)).also { item ->
+                item.setOnClickListener {
+                    Tones.tick(this)
+                    show(i, true)
+                }
+                nav.addView(item, at(0, i * NAV_PITCH, NAV_W, NAV_H))
+            }
+        }
+        // (a new version is on offer: its dot, on the page its row is on)
+        updateDot = View(this).look {
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Palette.accentInk) }
+        }.also { dot ->
+            dot.visibility = if (UpdateManager.hasUpdateBadge()) View.VISIBLE else View.GONE
+            navItems[SettingsActivity.PAGE_VEHICLE].addView(dot, FrameLayout.LayoutParams(10, 10, Gravity.CENTER_VERTICAL or (if (rtl) Gravity.LEFT else Gravity.RIGHT)).apply { leftMargin = 16; rightMargin = 16 })
+        }
+    }
+
+    /** One item of the side list: its plate, its glyph and its word take the sliding plate's colours by how much of it the plate covers. */
+    private inner class NavItem(icon: Int, title: String) : FrameLayout(this@SettingsPanel) {
+        private val tile = object : View(context) {
+            override fun hasOverlappingRendering() = false
+        }
+        private val tileFill = GradientDrawable().apply { cornerRadius = Tokens2.R_navPlate.toFloat() }
+        private val glyph = ImageView(context).apply { setImageResource(icon); scaleType = ImageView.ScaleType.FIT_CENTER }
+        private val word = context.label(Type.navItem, Palette.ink).apply { text = title }
+        private var share = 0f
+
+        init {
+            isClickable = true
+            val press = Tint(context, R.drawable.plate_18) { Palette.fillPress }
+            background = PressGesture.plate(press.drawable)
+            look { press.recolour(); paint() }
+            tile.background = tileFill
+            val edge = if (rtl) Gravity.RIGHT else Gravity.LEFT
+            addView(tile, FrameLayout.LayoutParams(38, 38, Gravity.CENTER_VERTICAL or edge).apply { leftMargin = 10; rightMargin = 10 })
+            addView(glyph, FrameLayout.LayoutParams(24, 24, Gravity.CENTER_VERTICAL or edge).apply { leftMargin = 17; rightMargin = 17 })
+            addView(word, FrameLayout.LayoutParams(MATCH, Type.navItem.viewH, Gravity.CENTER_VERTICAL).apply { leftMargin = 60; rightMargin = 60 })
+        }
+
+        fun cover(k: Float) {
+            if (k == share) return
+            share = k
+            paint()
+        }
+
+        private fun paint() {
+            val ink = Palette.mix(Palette.ink, Palette.onAccent, share)
+            glyph.setColorFilter(ink)
+            word.setTextColor(ink)
+            tileFill.setColor(Palette.mix(Palette.fill2, Palette.topLight, share))
+        }
+
+        override fun hasOverlappingRendering() = false
+    }
+
+    private fun tintNav(y: Float) {
+        for ((i, item) in navItems.withIndex()) item.cover((1f - abs(i * NAV_PITCH - y) / NAV_PITCH).coerceIn(0f, 1f))
+    }
+
+    private fun moveIndicator(index: Int, animate: Boolean) {
+        val s = indicatorSpring ?: return
+        val y = (index * NAV_PITCH).toFloat()
+        if (animate && indicatorPlaced) s.animateTo(y) else s.snapTo(y)
+        indicatorPlaced = true
+        tintNav(s.value)
+    }
+
+    /** [px] in the reading direction: left in Arabic. */
+    private fun reading(px: Float) = if (rtl) -px else px
+
+    // ------------------------------------------------------------------------------------------ the pages
+    /** A page number from outside, a sub-page's included. */
+    private fun go(code: Int, animate: Boolean) {
+        when (code) {
+            SettingsActivity.PAGE_UPDATE -> { show(SettingsActivity.PAGE_VEHICLE, false); open(pageForCode(code)) }
+            SettingsActivity.PAGE_PACK -> { show(SettingsActivity.PAGE_MAPS, false); open(pageForCode(code)) }
+            else -> show(code.coerceIn(0, pages.size - 1), animate)
+        }
+    }
+
+    private fun pageForCode(code: Int): Page = when (code) {
+        SettingsActivity.PAGE_UPDATE -> UpdatePage(this)
+        else -> PackPage(this)
+    }
+
+    /** Page [index] of the seven, what was over it gone. */
+    fun show(index: Int, animate: Boolean) {
+        val dir = if (animate && index < current) -1 else 1
+        current = index
+        subs.clear()
+        onList = false
+        moveIndicator(index, animate)
+        val page = pages[index]
+        if (page === shownPage) { goLive(); return }
+        pageTitle?.let { it.setText(page.titleRes); if (animate) it.enter(dx = reading(dir * STEP), dur = Tokens2.MS_pageSwap) }
+        present(page, dir, animate, sub = false)
+    }
+
+    /** A sub-page, in the same card. */
+    fun open(page: Page) {
+        subs.add(page)
+        holders.remove(page)
+        present(page, 1, shell.resumedNow, sub = true)
+    }
+
+    private fun pop() {
+        val off = subs.removeAt(subs.lastIndex)
+        val page = subs.lastOrNull() ?: if (onList) listPage else pages[current]
+        present(page, -1, shell.resumedNow, sub = subs.isNotEmpty())
+        holders.remove(off)
+    }
+
+    /** On a trip: the seven pages as a list. */
+    fun showList() {
+        subs.clear()
+        onList = true
+        present(listPage, -1, shell.resumedNow, sub = false)
+    }
+
+    /** The page's view, built now or kept: on a trip and for a sub-page with its head, in the room the page's rows alone. */
+    private fun holderFor(page: Page, sub: Boolean): View {
+        holders[page]?.takeIf { page.keep }?.let { return it }
+        val w = if (onTripNow) TRIP_W else CARD_W
+        val h = if (onTripNow) TRIP_H else CARD_H
+        val surface = if (onTripNow) Surface.OVERLAY else Surface.CARD
+        val hold = FrameLayout(this)
+        val head = onTripNow || sub
+        val top = if (head) HEAD else 0
+        if (head) {
+            val back = IconButton(this, R.drawable.ic_chev_left, 30, 56, 56, press = PressGesture.ICON, token = { Palette.ink2 }).apply {
+                contentDescription = getString(R.string.set_title)
+                setOnClickListener { Tones.tick(context); backTapped() }
+            }
+            hold.addView(back, at(if (rtl) w - 60 else 4, 8, 56, 56))
+            val t = label(Type.pageTitle, { Palette.ink }).apply { setText(page.titleRes) }
+            hold.addView(t, Type.pageTitle.box(60, 10, w - 120))
+        }
+        val content = page.build(this)
+        if (page.scrolls) {
+            val s = SnapScroll(this)
+            s.addView(content, FrameLayout.LayoutParams(MATCH, FrameLayout.LayoutParams.WRAP_CONTENT))
+            hold.addView(s, at(0, top, w, h - top))
+            val up = scrollFade(surface, true)
+            val down = scrollFade(surface, false)
+            hold.addView(up, at(8, top, w - 16, FADE))
+            hold.addView(down, at(8, h - FADE - 8, w - 16, FADE))
+            s.onMoved = {
+                up.visibility = if (s.roomAbove) View.VISIBLE else View.INVISIBLE
+                down.visibility = if (s.roomBelow) View.VISIBLE else View.INVISIBLE
+            }
+            up.visibility = View.INVISIBLE
+            down.visibility = View.INVISIBLE
+            hold.tag = s
+        } else hold.addView(content, at(0, top, w, h - top))
+        holders[page] = hold
+        return hold
+    }
+
+    private fun backTapped() {
+        if (subs.isNotEmpty()) pop()
+        else if (onTripNow && !onList) showList()
+        else finish()
+    }
+
+    private fun present(page: Page, dir: Int, animate: Boolean, sub: Boolean) {
+        goQuiet()
+        val old = shownView
+        val v = holderFor(page, sub)
+        shownPage = page
+        shownView = v
+        if (old !== v && old != null) {
+            if (animate) old.exit(dur = Tokens2.MS_pageSwap) { if (shownView !== old) card.removeView(old) }
+            else { old.animate().cancel(); old.setTag(R.id.aura_exiting, null); card.removeView(old) }
+        }
+        if (v.parent == null) card.addView(v, flp(MATCH, MATCH))
+        if (animate) v.enter(dx = reading(dir * STEP), dur = Tokens2.MS_pageSwap)
+        else {
+            v.animate().cancel()
+            v.setTag(R.id.aura_exiting, null)
+            v.alpha = 1f
+            v.translationX = 0f
+            v.translationY = 0f
+            v.visibility = View.VISIBLE
+        }
+        goLive()
+    }
+
+    private fun goLive() {
+        if (live) return
+        if (!shell.startedNow) return
+        live = true
+        shownPage?.onShow()
+    }
+
+    private fun goQuiet() {
+        if (!live) return
+        live = false
+        shownPage?.onHide()
+    }
+
+    /** The page on screen again, where it was scrolled to: a preference changed what it shows. */
+    fun rebuild() {
+        // (after the tap that asked for it has finished with the view it came from)
+        root.post {
+            val p = shownPage ?: return@post
+            if (isGone) return@post
+            val y = (shownView?.tag as? SnapScroll)?.scrollY ?: 0
+            holders.remove(p)
+            goQuiet()
+            val old = shownView
+            shownView = null
+            old?.animate()?.cancel()
+            card.removeView(old)
+            present(p, 0, false, sub = subs.isNotEmpty())
+            (shownView?.tag as? SnapScroll)?.let { s -> s.post { s.scrollTo(0, y) } }
+        }
+    }
+
+    /** A theme's choice: the control shows it landing, then the screen takes it. */
+    fun takeTheme() {
+        root.postDelayed({ com.abdllh.aura.ui.ThemeSwap.run(shell) { builtDark = Palette.dark } }, THEME_AFTER_MS)
+    }
+
+    /** A language's choice: the whole window again ([HomeActivity.languageChanged]), back on the page it came from. */
+    fun takeLanguage() {
+        goQuiet()
+        shell.languageChanged(Bundle().apply { putInt(SettingsActivity.EXTRA_PAGE, current) })
+    }
+
+    /** The seven, for the trip's list of pages. */
+    internal fun pagesForList(): List<Page> = pages
+
+    private companion object {
+        const val CARD_Y = 92
+        const val CARD_W = 666
+        const val CARD_H = 414
+        const val NAV_W = 306
+        const val NAV_H = 58
+        const val NAV_PITCH = 60
+        const val TRIP_X = 384
+        const val TRIP_Y = 44
+        const val TRIP_W = 628
+        const val TRIP_H = 462
+        const val HEAD = 64
+        const val TRIP_FILL = TRIP_H - HEAD
+        const val FADE = 28
+        const val STEP = 12f
+        const val THEME_AFTER_MS = 200L
     }
 }

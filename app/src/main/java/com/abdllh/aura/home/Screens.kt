@@ -164,8 +164,9 @@ object Screens {
 
     fun apps(c: Context) = open(c, APPS)
 
-    fun settings(c: Context, page: Int = SettingsActivity.PAGE_GENERAL) =
-        open(c, SETTINGS, Bundle().apply { putInt(SettingsActivity.EXTRA_PAGE, page) })
+    /** Settings, on a page; with none asked for, the last one (SPEC.md section 6.6). */
+    fun settings(c: Context, page: Int = -1) =
+        open(c, SETTINGS, if (page < 0) null else Bundle().apply { putInt(SettingsActivity.EXTRA_PAGE, page) })
 
     /** For a notification. */
     fun pending(c: Context, panel: String, request: Int): PendingIntent =
