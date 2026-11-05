@@ -268,13 +268,18 @@ internal class Logo(ctx: Context) : ImageView(ctx) {
         }
     }
 
-    private companion object {
-        val kept = HashMap<Int, Bitmap>()
-        var stepAdded = false
+    companion object {
+        private val kept = HashMap<Int, Bitmap>()
+        private var stepAdded = false
 
-        fun width() = if (Fonts.arabicUi) 87 else 155
+        private fun width() = if (Fonts.arabicUi) 87 else 155
 
-        fun bitmap(c: Context, night: Boolean): Bitmap? = synchronized(kept) {
+        /** This theme's, ahead of the first frame ([Chrome.warm]). */
+        fun prepare(c: Context) {
+            bitmap(c, Palette.dark)
+        }
+
+        private fun bitmap(c: Context, night: Boolean): Bitmap? = synchronized(kept) {
             val res = if (Fonts.arabicUi) { if (night) R.drawable.logo_amri_ar else R.drawable.logo_amri_ar_ink } else { if (night) R.drawable.logo_amri_en else R.drawable.logo_amri_en_ink }
             kept[res] ?: try {
                 val w = width()

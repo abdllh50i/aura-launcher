@@ -38,6 +38,8 @@ import java.util.Locale
  *      --ei panels 10 --ei gap 700 --es to settings       real panels, there and back, measured
  *      --es fly 1                                         the Flyer once, from Home's cover place to Music's
  *      --ez night true                                    the Night Panel
+ *      --es nightshow "600 م"                             the same with the mockup's numbers
+ *      --ez state true                                    where it all is, in the log
  * Frame times from Window.addOnFrameMetricsAvailableListener. own: what the app does for a frame (input, animation, layout, draw, sync, commands);
  * total also counts waiting and the swap, which on an emulator sharing a GPU say more about the host.
  */
@@ -79,6 +81,7 @@ class ChromeProbe : BroadcastReceiver() {
             val sq = android.graphics.Bitmap.createScaledBitmap(b, 204, 204, true)
             s.root.flyer.fly(sq, 278f, 338f, 84f, 16f, 92f, 48f, 204f, 20f, i.getIntExtra("ms", 320).toLong()) { Log.i(TAG, "flew") }
         }
+        if (i.getBooleanExtra("state", false)) Log.i(TAG, "state: ${ch?.debugState()} volume=${com.abdllh.aura.system.CarAudio.volume()}")
         val gap = i.getIntExtra("gap", 400).toLong()
         if (i.hasExtra("rows") && ch != null) rows(s, ch, i.getIntExtra("rows", 10), gap)
         if (i.hasExtra("plates") && ch != null) plates(s, ch, i.getIntExtra("plates", 10), gap)

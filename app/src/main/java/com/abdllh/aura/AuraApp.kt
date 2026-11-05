@@ -57,6 +57,7 @@ class AuraApp : Application() {
         if (BuildConfig.DEBUG) com.abdllh.aura.system.PrefTypes.check(this)
         Theme.refresh()
         Fonts.init(this)
+        if (com.abdllh.aura.chrome.Chrome.isOn(this)) com.abdllh.aura.chrome.Chrome.warm(this)
         if (BuildConfig.DEBUG) Palette.contrastFaults().forEach { android.util.Log.e("AuraPalette", it) }
         Snack.waitFor = { com.abdllh.aura.voice.AmriOverlay.showing }
         ThemeSwap.holdOff = {

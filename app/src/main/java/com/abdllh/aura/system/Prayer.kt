@@ -122,6 +122,7 @@ object Prayer {
         return of(lat, lon, nowUtc)
     }
 
+    @Synchronized
     fun of(lat: Double, lon: Double, nowUtc: Long): Next {
         val ramadan = PrayerTimes.isRamadan(nowUtc)
         var t = today

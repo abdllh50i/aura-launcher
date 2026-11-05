@@ -44,6 +44,7 @@ import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Recolours
 import com.abdllh.aura.ui.Snack
+import com.abdllh.aura.ui.Surfaces
 import com.abdllh.aura.ui.Theme
 import com.abdllh.aura.ui.Tokens2
 import com.abdllh.aura.ui.at
@@ -113,7 +114,7 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
         panel = shell.topPanel.ifEmpty { Screens.HOME }
         onHome = panel == Screens.HOME
         snapRows()
-        refreshAll(false)
+        // (what it shows comes when it is attached: refreshAll, before its first frame)
     }
 
     // ------------------------------------------------------------------------------------------ the panel on top
@@ -391,6 +392,9 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        // (a recreate puts back what was on top after this was built, and Front, which goes through it, hears no change: same name)
+        val top = shell.topPanel
+        if (top.isNotEmpty() && top != panel && !debugHeld) show(top, false)
         Front.addPanelListener(onPanel)
         DriveState.addListener(onDrive)
         Gear.addListener(onGear)
@@ -470,8 +474,13 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
     override fun hasOverlappingRendering() = false
 
     // ------------------------------------------------------------------------------------------ debug builds
+    private var debugHeld = false
+
     /** The same steps as a panel coming to the top, with no panel: for the gallery and the probe. */
-    internal fun debugShow(name: String, animate: Boolean = true) = show(name, animate)
+    internal fun debugShow(name: String, animate: Boolean = true) {
+        debugHeld = true
+        show(name, animate)
+    }
 
     /** A still picture of a row's change, [ms] after it started towards [name]. */
     internal fun debugHold(name: String, ms: Float) {
@@ -481,6 +490,10 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
     }
 
     internal val debugAnimating: Boolean get() = tweens.isRunning
+
+    /** Where everything has come to rest, for the log. */
+    internal fun debugState() = "panel=$panel top=${shell.topPanel} home=$onHome running=${tweens.isRunning} rowHome(a=${rowHome.alpha} vis=${rowHome.visibility} live=${rowHome.live}) " +
+        "rowDock(a=${rowDock.alpha} vis=${rowDock.visibility} live=${rowDock.live}) face=${voice.face} strip(home=${strip.homeFace} other=${strip.otherFace}) moving=${DriveState.moving} speed=$speedShown"
 
     /** All on and staying so, as the mockups draw them. */
     internal var debugStatus = false
@@ -519,6 +532,23 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
             if (on) attachIfOn(shell) else shell.root.chrome.removeAllViews()
         }
 
+        /**
+         * At the process's start, off the main thread: what the row's first frame needs. The first hardware bitmap of a process brings up a GL context of the uploader's on the calling thread
+         * (about 600 ms on a loaded emulator, against 12 ms for each one after it), the logo is cut down from a big file, and the prayer times are a hundred looks at the sun in code not yet warm.
+         */
+        fun warm(c: Context) {
+            val app = c.applicationContext
+            Thread({
+                try {
+                    for (stem in arrayOf("cap-left", "cap-dock", "cap-chip", "dock")) Surfaces.themed(app, stem)
+                    Logo.prepare(app)
+                    Prayer.next()
+                } catch (t: Throwable) {
+                    Log.w(TAG, "warm: $t")
+                }
+            }, "chrome-warm").start()
+        }
+
         /** From the window's start, before its first frame. */
         fun attachIfOn(shell: HomeActivity) {
             if (!isOn(shell) || of(shell) != null) return
@@ -531,8 +561,10 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
 
         /** Debug builds: the row in another order, built anew, for what the mockups draw and both orders' pictures. */
         internal fun debugOrder(shell: HomeActivity, order: List<Asked.Cell>) {
+            val was = of(shell)
             shell.root.chrome.removeAllViews()
             shell.root.chrome.addView(Chrome(shell, order), FrameLayout.LayoutParams(1024, 600))
+            was?.let { of(shell)?.debugShow(it.panel, false) }
         }
 
         /** The row is on screen, so a volume change shows there and needs no overlay. */
