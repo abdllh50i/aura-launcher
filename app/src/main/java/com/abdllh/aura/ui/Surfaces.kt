@@ -66,7 +66,7 @@ object Plates {
 }
 
 /**
- * Bitmaps that are not 9-patches. The big ones of assets/surfaces (the room, the dock, the capsules; kept out of aapt2's recompression) are
+ * Bitmaps that are not 9-patches. The big ones of assets/surfaces (the room, the capsules; kept out of aapt2's recompression) are
  * decoded [Bitmap.Config.HARDWARE], so they are not held twice, kept here while a screen wants them, at most one theme's at rest. The small
  * ones of res ([res]) are ordinary bitmaps: a hardware bitmap costs a buffer of its own and a trip through a GL context of the uploader's, on the
  * calling thread, to save 10 KB (one second each on the emulator, with several running; a page of 16 held its first frame for 17 s).
@@ -75,7 +75,7 @@ object Surfaces {
     private val kept = HashMap<String, Bitmap>()
     private val warm = ArrayList<Drawable>()
 
-    /** A file in assets/surfaces, by its generated name: `room-night`, `dock-day`, `cap-left-night`. */
+    /** A file in assets/surfaces, by its generated name: `room-night`, `cap-left-night`. */
     @Synchronized
     fun asset(ctx: Context, name: String): Bitmap? = kept[name] ?: decodeAsset(ctx, name, hardware = true)?.also { kept[name] = it }
 
@@ -107,7 +107,7 @@ object Surfaces {
         synchronized(warm) {
             if (warm.isEmpty()) for (s in Surface.values()) s.warm(ctx, warm)
         }
-        for (stem in arrayOf("room", "dock", "cap-left", "cap-dock", "cover-shadow", "wall-hole", "wall-gl")) themed(ctx, stem, night)
+        for (stem in arrayOf("room", "cap-left", "cap-dock", "cover-shadow", "wall-hole", "wall-gl")) themed(ctx, stem, night)
     }
 
     private fun decodeAsset(ctx: Context, name: String, hardware: Boolean): Bitmap? = try {

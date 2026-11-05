@@ -2,43 +2,34 @@ package com.abdllh.aura.chrome
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Outline
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.drawable.Drawable
 import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
-import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
 import com.abdllh.aura.R
 import com.abdllh.aura.system.CarAudio
 import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.IconButton
-import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.PressGesture
 import com.abdllh.aura.ui.Recolours
-import com.abdllh.aura.ui.Spring
 import com.abdllh.aura.ui.Tokens2
 import com.abdllh.aura.ui.Tones
 import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.at
-import com.abdllh.aura.ui.fadeTo
-import com.abdllh.aura.ui.look
 
 /**
- * The volume, hit 204 x 84, y 516..600, the same three views on every screen and above both rows, so it never fades (SPEC.md sections 1 and 5). Real volume through [CarAudio], a
- * step number and never a percentage, left to right in every language. A press on minus or plus takes its step at once, and held it repeats at 120 ms. The number takes no tap: a tap on
- * a 48 px cell between minus and plus would mute by slip on a rough road; held 400 ms it mutes. The number changes in place, and a 4 px bar shows for 2.2 s after a change.
+ * The volume, hit 204 x 84, y 516..600, the same three views on every screen. Real volume through [CarAudio], a step number and never a percentage, left to right in every language. A press on minus or plus
+ * takes its step at once, and held it repeats at 120 ms. The number takes no tap: a tap on a 48 px cell between minus and plus would mute by slip on a rough road; held 400 ms it mutes. The number changes in
+ * place; the bar that shows a change is [com.abdllh.aura.system.VolumeHud]'s, the same for every way of changing it.
  */
 internal class VolumeCluster(ctx: Context) : FrameLayout(ctx), Recolours {
     private val minus = IconButton(ctx, R.drawable.ic_minus, 34, 86, 84, centerDy = -2, centerDx = 7, token = { Palette.ink })
     private val plus = IconButton(ctx, R.drawable.ic_plus, 34, 70, 84, centerDy = -2, centerDx = 1, token = { Palette.ink })
     private val number = VolumeNumber(ctx) { toggleMute() }
-    private val bar = VolumeBar(ctx)
-    /** The last level shown unmuted; a mute going on or off is no change of level, and the bar stays down. */
-    private var level = -1
     /** The firmware tells of a mute about 300 ms late: the word is there at once, and what the unit says counts again after this. */
     private var wantMuted = false
     private var wantUntil = 0L
@@ -51,7 +42,6 @@ internal class VolumeCluster(ctx: Context) : FrameLayout(ctx), Recolours {
         addView(minus, at(0, 0, 86, 84))
         addView(plus, at(134, 0, 70, 84))
         addView(number, at(78, 0, VolumeNumber.W, 84))
-        addView(bar, at(28, 64, VolumeBar.W, 4))
         // (the row's own surfaces lie under this: blank parts of the cluster are not targets of their own, its three hits fill it)
     }
 
@@ -93,34 +83,16 @@ internal class VolumeCluster(ctx: Context) : FrameLayout(ctx), Recolours {
         wantUntil = SystemClock.uptimeMillis() + MUTE_GRACE_MS
         removeCallbacks(resync)
         postDelayed(resync, MUTE_GRACE_MS + 50)
-        sync(false)
+        sync()
     }
 
     private val resync = Runnable { sync() }
 
-    /** What the unit says now: the number in place; a new level shows the bar, unless [bar] says this is only a look at it (the window coming back). */
-    fun sync(showBar: Boolean = true) {
-        val muted = if (SystemClock.uptimeMillis() < wantUntil) wantMuted else CarAudio.muted()
-        val v = CarAudio.volume()
-        if (muted) {
-            number.set(if (level >= 0) level else v, true)
-            bar.hideNow()
-            return
-        }
-        number.set(v, false)
-        if (v != level) {
-            val first = level < 0
-            level = v
-            if (showBar && !first) bar.show(v.toFloat() / CarAudio.max().coerceAtLeast(1))
-        }
-    }
+    /** What the unit says now, in place. */
+    fun sync() = number.set(CarAudio.volume(), if (SystemClock.uptimeMillis() < wantUntil) wantMuted else CarAudio.muted())
 
     /** Debug builds: the mockups' numbers. */
-    fun hold(v: Int, muted: Boolean, fraction: Float) {
-        level = v
-        number.set(v, muted)
-        if (fraction >= 0f) bar.pin(fraction) else bar.hideNow()
-    }
+    fun hold(v: Int, muted: Boolean) = number.set(v, muted)
 
     override fun onDetachedFromWindow() {
         removeCallbacks(resync)
@@ -230,73 +202,5 @@ internal class VolumeNumber(ctx: Context, private val onHold: () -> Unit) : View
         private const val HIT_W = 48
         private const val MUTE_MIN_W = 44f
         private const val MUTE_R = 6f
-    }
-}
-
-/**
- * The 4 px bar inside the pill, x 28..188, y 580..584: `track` with an `ink` fill. Only transforms: the fill is the whole bar's width and slides under the rounded clip, its way on spring
- * 520/1, its alpha in 120 and out 140 after 2200 ms. Left to right always.
- */
-internal class VolumeBar(ctx: Context) : FrameLayout(ctx) {
-    private val fill = object : View(ctx) { override fun hasOverlappingRendering() = false }.look { setBackgroundColor(Palette.ink) }
-    private val glide = Spring(0f, Tokens2.SPRING_volumeBar[0], Tokens2.SPRING_volumeBar[1], restDelta = 0.002f) { f ->
-        fill.translationX = -(1f - f) * W
-    }
-    private var up = false
-    private val down = Runnable {
-        up = false
-        fadeTo(0f, Tokens2.MS_volumeOut, Motion.EXIT) { if (!up) visibility = INVISIBLE }
-    }
-
-    init {
-        look { setBackgroundColor(Palette.track) }
-        addView(fill, FrameLayout.LayoutParams(W, H))
-        outlineProvider = object : ViewOutlineProvider() {
-            override fun getOutline(v: View, o: Outline) = o.setRoundRect(0, 0, W, H, H / 2f)
-        }
-        clipToOutline = true
-        alpha = 0f
-        visibility = INVISIBLE
-    }
-
-    override fun hasOverlappingRendering() = false
-
-    fun show(f: Float) {
-        if (up || visibility == VISIBLE) glide.animateTo(f) else glide.snapTo(f)
-        visibility = VISIBLE
-        up = true
-        fadeTo(1f, Tokens2.MS_volumeIn, Motion.MOVE)
-        removeCallbacks(down)
-        postDelayed(down, Tokens2.MS_volumeHold)
-    }
-
-    fun hideNow() {
-        removeCallbacks(down)
-        if (!up && visibility != VISIBLE) return
-        up = false
-        animate().cancel()
-        alpha = 0f
-        visibility = INVISIBLE
-    }
-
-    /** Debug builds: there and stays. */
-    fun pin(f: Float) {
-        removeCallbacks(down)
-        animate().cancel()
-        glide.snapTo(f)
-        visibility = VISIBLE
-        alpha = 1f
-        up = true
-    }
-
-    override fun onDetachedFromWindow() {
-        removeCallbacks(down)
-        glide.cancel()
-        super.onDetachedFromWindow()
-    }
-
-    companion object {
-        const val W = 160
-        private const val H = 4
     }
 }

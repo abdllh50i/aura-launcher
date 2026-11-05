@@ -11,6 +11,7 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.SystemClock
 import android.util.Log
+import android.view.View
 import android.widget.FrameLayout
 import com.abdllh.aura.R
 import com.abdllh.aura.home.Actions
@@ -22,7 +23,6 @@ import com.abdllh.aura.home.Screens
 import com.abdllh.aura.media.MediaMonitor
 import com.abdllh.aura.media.NowPlaying
 import com.abdllh.aura.music.BtMusic
-import com.abdllh.aura.music.MusicPanel
 import com.abdllh.aura.music.PhoneLink
 import com.abdllh.aura.nav.CarLocation
 import com.abdllh.aura.nav.MapExtras
@@ -43,10 +43,12 @@ import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Recolours
 import com.abdllh.aura.ui.Snack
+import com.abdllh.aura.ui.Surface
 import com.abdllh.aura.ui.Surfaces
 import com.abdllh.aura.ui.Theme
 import com.abdllh.aura.ui.Tokens2
 import com.abdllh.aura.ui.at
+import com.abdllh.aura.ui.fadeTo
 import com.abdllh.aura.util.Fmt
 import com.abdllh.aura.util.Prefs
 import com.abdllh.aura.voice.Amri
@@ -54,20 +56,17 @@ import java.util.Date
 import kotlin.math.roundToInt
 
 /**
- * What stays over every panel (SPEC.md section 6.0): the [Strip], Home's [RowHome] and the [RowDock], which cross-fade, and above both the [VolumeCluster] and the
- * [VoiceButton], which never fade. Made once when the window starts, never rebuilt: the theme goes through in place ([Look]), a language change is a new window.
- *
- * The two rows are one row: the volume and the mic's place do not change, and the rest cross-fades in place in 160 ms (section 9), no slide. Only alpha, and no layer: a group's alpha goes into each thing it
- * draws. A change while one runs turns back from where it is.
+ * What stays over every panel: the [Strip], the one [Row] with the [VolumeCluster] and the [VoiceButton] on it, and on Maps the [SongCard]. Made once when the window starts, never rebuilt: the theme goes
+ * through in place ([Look]), a language change is a new window. The row is the same pixels on every screen and nothing of it moves when the screen changes; only the mark on the current tile goes over.
  *
  * Which panel is on top comes from [Front]; [show] is the whole of it, so a debug build can go through the same steps with no panel at all.
  */
 class Chrome private constructor(private val shell: HomeActivity) : FrameLayout(shell), Recolours {
     internal val strip = Strip(shell, { openControls() }, { shell.root.night.show() })
-    internal val rowHome = RowHome(shell) { open(it) }
-    internal val rowDock = RowDock(shell) { open(it) }
+    internal val row = Row(shell) { open(it) }
     internal val volume = VolumeCluster(shell)
     internal val voice = VoiceButton(shell) { voiceTap() }
+    internal val songCard = SongCard(shell)
 
     /** Maps tells when a search or a place card lies over its speed card: the strip takes the speed then. */
     var speedCardHidden = false
@@ -78,7 +77,6 @@ class Chrome private constructor(private val shell: HomeActivity) : FrameLayout(
         }
 
     private var panel = Screens.HOME
-    private var onHome = true
     private var appliedDark = Palette.dark
     private var trip = false
     private var song: NowPlaying? = null
@@ -90,116 +88,60 @@ class Chrome private constructor(private val shell: HomeActivity) : FrameLayout(
     private var receiving = false
     private var networkWatched = false
 
-    private val tweens = Tweens(onRest = { atRest() })
-    private val homeA = tweens.part(1f) { v -> rowHome.alpha = v }
-    private val dockA = tweens.part(0f) { v -> rowDock.alpha = v }
-    private val face = tweens.part(0f) { v -> voice.face = v }
-    private val stripTime = tweens.part(0f) { v -> strip.timeShown = v }
-    private val speedA = tweens.part(0f) { v -> strip.speed.alpha = v }
-
     init {
         // (from the left in every language, the seat and not the language: section 7; text inside goes its own way)
         layoutDirection = LAYOUT_DIRECTION_LTR
         addView(strip, at(0, 0, 1024, 48))
-        addView(rowHome, at(0, RowHome.TOP, 1024, 600 - RowHome.TOP))
-        addView(rowDock, at(0, RowDock.TOP, 1024, 600 - RowDock.TOP))
+        addView(row, at(0, Row.TOP, 1024, 600 - Row.TOP))
         addView(volume, at(0, 516, 204, 84))
         addView(voice, at(186, 502, VoiceButton.SIZE, VoiceButton.SIZE))
+        addView(songCard, Surface.PILL.at(SongCard.X, SongCard.Y, SongCard.W, SongCard.H))
+        songCard.onOpen = { Screens.music(context) }
         strip.speed.visibility = INVISIBLE
-        rowDock.glance.onOpen = { if (!MusicPanel.moreWhileLying()) Screens.music(context) }
-        panel = shell.topPanel.ifEmpty { Screens.HOME }
-        onHome = panel == Screens.HOME
-        snapRows()
+        strip.speed.alpha = 0f
+        show(shell.topPanel.ifEmpty { Screens.HOME }, false)
         // (what it shows comes when it is attached: refreshAll, before its first frame)
     }
 
     // ------------------------------------------------------------------------------------------ the panel on top
-    /** Panel [name] came to the top: the row, the plate, the glance and the strip's faces follow it. */
+    /** Panel [name] came to the top: the mark, the song's card and the strip's faces follow it. */
     internal fun show(name: String, animate: Boolean) {
         panel = name
-        val home = name == Screens.HOME
-        val rowChanges = home != onHome
-        if (rowChanges) {
-            onHome = home
-            rowChange(animate)
-        } else if (!home) {
-            if (animate) rowDock.slideTo(name) else rowDock.placeOn(name)
-        }
-        // (the mini's own crossfade only inside a dock that is there: coming with the row, it is already right)
-        refreshFaces(animate, mini = animate && !rowChanges && !home)
+        row.mark(name)
+        strip.time.fade(name != Screens.HOME, animate)
+        refreshFaces(animate)
     }
 
     private fun canMove() = shell.resumedNow && Prefs.screenAnimations && isShown
 
-    private fun rowChange(animate: Boolean) {
-        rowHome.live = onHome
-        rowDock.live = !onHome
-        rowHome.visibility = VISIBLE
-        rowDock.visibility = VISIBLE
-        if (!onHome) rowDock.placeOn(panel)
+    /** In or out in place; what is out is not drawn and takes no touch. */
+    private fun View.fade(on: Boolean, animate: Boolean) {
+        val target = if (on) 1f else 0f
+        if (alpha == target && (visibility == VISIBLE) == on) return
+        animate().cancel()
         if (!animate) {
-            snapRows()
+            alpha = target
+            visibility = if (on) VISIBLE else INVISIBLE
             return
         }
-        val row = Tokens2.MS_dockRow
-        val out = Tokens2.MS_homeOut
-        if (onHome) {
-            homeA.to(1f, 0L, row, Motion.MOVE)
-            dockA.to(0f, 0L, out, Motion.EXIT)
-            face.to(0f, 0L, row, Motion.MOVE)
-            stripTime.to(0f, 0L, out, Motion.EXIT)
-        } else {
-            homeA.to(0f, 0L, out, Motion.EXIT)
-            dockA.to(1f, 0L, row, Motion.MOVE)
-            face.to(1f, 0L, row, Motion.MOVE)
-            stripTime.to(1f, 0L, out, Motion.EXIT)
-        }
+        visibility = VISIBLE
+        fadeTo(target, Tokens2.MS_swap, Motion.MOVE) { if (!on) visibility = INVISIBLE }
     }
 
-    private fun snapRows() {
-        tweens.stop()
-        rowHome.live = onHome
-        rowDock.live = !onHome
-        val k = if (onHome) 0f else 1f
-        homeA.snap(1f - k)
-        dockA.snap(k)
-        face.snap(k)
-        stripTime.snap(k)
-        speedA.snap(if (speedShown) 1f else 0f) // (its own fade too, if it was on its way: all of it stopped above)
-        if (!onHome) rowDock.placeOn(panel)
-        atRest()
-    }
-
-    /** What has faded out is not drawn and takes no touch. */
-    private fun atRest() {
-        if (tweens.isRunning) return
-        rowHome.visibility = if (onHome) VISIBLE else INVISIBLE
-        rowDock.visibility = if (onHome) INVISIBLE else VISIBLE
-        if (speedA.value <= 0f && strip.speed.visibility != INVISIBLE) strip.speed.visibility = INVISIBLE
-    }
-
-    private fun refreshFaces(animate: Boolean, mini: Boolean = animate && !onHome) {
-        val moving = DriveState.moving
-        rowDock.glance.show(ChromeRules.mini(panel, song != null, shell.panels.top.overMaps), mini)
+    private fun refreshFaces(animate: Boolean) {
+        songCard.fade(ChromeRules.songCard(panel, song != null), animate)
         strip.setGear(if (Gear.canReports) Gear.current else null, Gear.sure)
-        val want = ChromeRules.stripSpeed(panel, moving, trip, speedCardHidden)
+        val want = ChromeRules.stripSpeed(panel, DriveState.moving, trip, speedCardHidden)
         if (want != speedShown && !debugSpeedHeld) {
             speedShown = want
-            if (want) {
-                strip.speed.visibility = VISIBLE
-                syncSpeed()
-            }
-            if (animate) speedA.to(if (want) 1f else 0f, 0L, Tokens2.MS_swap, Motion.MOVE)
-            else {
-                speedA.snap(if (want) 1f else 0f)
-                atRest()
-            }
+            if (want) syncSpeed()
+            strip.speed.fade(want, animate)
         }
     }
 
     private fun refreshAll(animate: Boolean) {
         trip = NavSession.state != NavSession.State.IDLE
-        volume.sync(false)
+        volume.sync()
         strip.setTime(Fmt.clock(Date(), Prefs.clock24))
         wifi = Actions.wifiConnected(context)
         syncStatus()
@@ -219,7 +161,7 @@ class Chrome private constructor(private val shell: HomeActivity) : FrameLayout(
 
     private fun bindSong(n: NowPlaying?, animate: Boolean) {
         song = n
-        if (n != null) rowDock.glance.setSong(n.title, n.art, n.playing, animate)
+        if (n != null) songCard.setSong(n.title, n.art, n.playing, animate)
     }
 
     // ------------------------------------------------------------------------------------------ the strip's data
@@ -301,13 +243,7 @@ class Chrome private constructor(private val shell: HomeActivity) : FrameLayout(
     private val onCarAudio: () -> Unit = { volume.sync() }
 
     private val receiver = object : BroadcastReceiver() {
-        override fun onReceive(c: Context, i: Intent) {
-            when (i.action) {
-                // muting (the wheel's key) sends only the second
-                VOLUME_CHANGED, STREAM_MUTE_CHANGED -> volume.sync()
-                else -> minute()
-            }
-        }
+        override fun onReceive(c: Context, i: Intent) = minute()
     }
 
     /**
@@ -327,11 +263,7 @@ class Chrome private constructor(private val shell: HomeActivity) : FrameLayout(
 
     // ------------------------------------------------------------------------------------------ opening what the row names
     internal fun open(name: String) {
-        if (name == panel) {
-            // (the selected Map cell is inert; the selected Music cell returns to the panel he came from: section 1)
-            if (name == Screens.MUSIC) shell.panels.back()
-            return
-        }
+        if (name == panel) return // (the screen he is on)
         when (name) {
             Screens.HOME -> shell.panels.show(Screens.HOME)
             Screens.MAPS -> if (!Actions.nav(context)) Snack.show(context, R.string.err_no_nav)
@@ -369,7 +301,6 @@ class Chrome private constructor(private val shell: HomeActivity) : FrameLayout(
         val top = shell.topPanel
         if (top.isNotEmpty() && top != panel && !debugHeld) show(top, false)
         Front.addPanelListener(onPanel)
-        shell.panels.onTopChanged = { refreshFaces(canMove()) }
         DriveState.addListener(onDrive)
         Gear.addListener(onGear)
         NavSession.addListener(onNav)
@@ -387,7 +318,6 @@ class Chrome private constructor(private val shell: HomeActivity) : FrameLayout(
 
     override fun onDetachedFromWindow() {
         Front.removePanelListener(onPanel)
-        shell.panels.onTopChanged = null
         DriveState.removeListener(onDrive)
         Gear.removeListener(onGear)
         NavSession.removeListener(onNav)
@@ -400,7 +330,6 @@ class Chrome private constructor(private val shell: HomeActivity) : FrameLayout(
         Amri.onLevel = null
         MediaMonitor.unobserve(onSong)
         Theme.changed = null
-        tweens.stop()
         removeCallbacks(fixGone)
         removeCallbacks(minuteNow)
         watchWindow(false)
@@ -423,8 +352,6 @@ class Chrome private constructor(private val shell: HomeActivity) : FrameLayout(
                     addAction(Intent.ACTION_TIME_TICK)
                     addAction(Intent.ACTION_TIME_CHANGED)
                     addAction(Intent.ACTION_TIMEZONE_CHANGED)
-                    addAction(VOLUME_CHANGED)
-                    addAction(STREAM_MUTE_CHANGED)
                 })
             } catch (_: Throwable) { }
             try {
@@ -458,18 +385,8 @@ class Chrome private constructor(private val shell: HomeActivity) : FrameLayout(
         show(name, animate)
     }
 
-    /** A still picture of a row's change, [ms] after it started towards [name]. */
-    internal fun debugHold(name: String, ms: Float) {
-        show(if (name == Screens.HOME) DEBUG_OTHER else Screens.HOME, false)
-        show(name, true)
-        tweens.holdAt(ms)
-    }
-
-    internal val debugAnimating: Boolean get() = tweens.isRunning
-
     /** Where everything has come to rest, for the log. */
-    internal fun debugState() = "panel=$panel top=${shell.topPanel} home=$onHome running=${tweens.isRunning} rowHome(a=${rowHome.alpha} vis=${rowHome.visibility} live=${rowHome.live}) " +
-        "rowDock(a=${rowDock.alpha} vis=${rowDock.visibility} live=${rowDock.live}) face=${voice.face} time=${strip.timeShown} moving=${DriveState.moving} speed=$speedShown"
+    internal fun debugState() = "panel=$panel top=${shell.topPanel} card=${songCard.visibility} moving=${DriveState.moving} speed=$speedShown"
 
     /** All on and staying so, as the mockups draw them. */
     internal var debugStatus = false
@@ -483,8 +400,9 @@ class Chrome private constructor(private val shell: HomeActivity) : FrameLayout(
     internal fun debugSpeed(v: Int?, limit: Int, over: Boolean, saher: String?) {
         debugSpeedHeld = true
         speedShown = true
+        strip.speed.animate().cancel()
         strip.speed.visibility = VISIBLE
-        speedA.snap(1f)
+        strip.speed.alpha = 1f
         strip.speed.set(v, limit, over, saher)
     }
 
@@ -494,9 +412,6 @@ class Chrome private constructor(private val shell: HomeActivity) : FrameLayout(
         private const val FIX_MAX_AGE_MS = 5000L
         private const val FIX_MS = 1000L
         private const val AFTER_FIX_MS = 200L
-        private const val VOLUME_CHANGED = "android.media.VOLUME_CHANGED_ACTION"
-        private const val STREAM_MUTE_CHANGED = "android.media.STREAM_MUTE_CHANGED_ACTION"
-        private const val DEBUG_OTHER = Screens.MAPS
         private const val SAME_TOUCH_MS = 700L
 
         /** Debug builds, until the window's next start: off for the gallery's pages, which draw their own (debug/GalleryPanel.kt, debug/ChromeProbe.kt). */
@@ -512,7 +427,7 @@ class Chrome private constructor(private val shell: HomeActivity) : FrameLayout(
             val app = c.applicationContext
             Thread({
                 try {
-                    for (stem in arrayOf("cap-left", "cap-dock", "dock", "wall-hole", "wall-gl", "wall")) Surfaces.themed(app, stem)
+                    for (stem in arrayOf("cap-left", "cap-dock", "wall-hole", "wall-gl", "wall")) Surfaces.themed(app, stem)
                     Prayer.next()
                 } catch (t: Throwable) {
                     Log.w(TAG, "warm: $t")
@@ -529,9 +444,6 @@ class Chrome private constructor(private val shell: HomeActivity) : FrameLayout(
         }
 
         fun of(shell: HomeActivity): Chrome? = shell.root.chrome.getChildAt(0) as? Chrome
-
-        /** The row is on screen, so a volume change shows there and needs no overlay. */
-        fun rowOnScreen(): Boolean = HomeActivity.current?.let { it.resumedNow && of(it) != null } == true
     }
 }
 

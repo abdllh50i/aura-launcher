@@ -1,20 +1,20 @@
 package com.abdllh.aura.chrome
 
 import com.abdllh.aura.home.Screens
-import kotlin.math.abs
 
 /**
- * What shows when, for what stays over every panel: the tables of SPEC.md sections 1, 5 and 6.0, as CHANGES.md section 2 leaves them, with no view in them.
+ * What shows when and where, for what stays over every panel, with no view in it.
  */
 internal object ChromeRules {
-    /** Between two centres of the row, and a cell's hit. */
-    const val CELL_W = 80
+    /** The tiles' capsule, on every screen. */
+    private const val CAPSULE_X = 292
+    private const val CAPSULE_W = 716
 
-    /**
-     * The mini player at the row's right end: on every screen a song plays. On the Music panel in full nothing, because the song is the whole screen; lying collapsed over the map ([musicLies]: moving, or on a
-     * trip, and until he brings it up again) it stays. Say if he wants it back on the panel: this is the one condition.
-     */
-    fun mini(panel: String, song: Boolean, musicLies: Boolean): Boolean = song && (panel != Screens.MUSIC || musicLies)
+    /** The centre x of the tile at [index] of the row's six: each in its sixth of the capsule, so they are evenly spaced and the hits fill it. */
+    fun tileX(index: Int, count: Int = 6): Int = CAPSULE_X + (CAPSULE_W * (2 * index + 1) + count) / (2 * count)
+
+    /** The song's card: on Maps, with a song. Everywhere else he has the Music tile or Home's widget. */
+    fun songCard(panel: String, song: Boolean): Boolean = song && panel == Screens.MAPS
 
     /**
      * The strip's speed: whenever the car is Moving and no speed card is on screen. Home on a trip; Home with no trip has it in the search's
@@ -28,13 +28,4 @@ internal object ChromeRules {
         panel == Screens.MUSIC -> false
         else -> !trip
     }
-
-    /** How much of a dock glyph of [GLYPH] px lies on the selected plate of [PLATE_W] px, by their centres: 0 to 1. */
-    fun coverage(glyphCentre: Float, plateCentre: Float): Float {
-        val inside = (GLYPH + PLATE_W) / 2f - abs(glyphCentre - plateCentre)
-        return (inside / GLYPH).coerceIn(0f, 1f)
-    }
-
-    const val GLYPH = 38
-    const val PLATE_W = 64
 }

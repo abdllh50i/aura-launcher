@@ -16,8 +16,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import com.abdllh.aura.R
-import com.abdllh.aura.chrome.RowDock
-import com.abdllh.aura.chrome.RowHome
+import com.abdllh.aura.chrome.Row
 import com.abdllh.aura.chrome.VoiceButton
 import com.abdllh.aura.chrome.VolumeCluster
 import com.abdllh.aura.home.HomeActivity
@@ -164,7 +163,6 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
             "wash" -> wash(s)
             "covers" -> covers(s)
             "dock" -> dockOrder(s)
-            "chrome-orders" -> chromeOrders(s)
             "r-chrome-wall" -> s.mapPlate("stage-hole")
             "r-chrome-drive" -> { s.mapPlate("drive-turn"); s.scrims() }
             "r-chrome-browse" -> { s.mapPlate("browse"); s.scrims() }
@@ -232,12 +230,11 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
         }, flp(MATCH, MATCH))
     }
 
-    private fun FrameLayout.room() = addView(ctx.surfaceImage("room"), at(0, 0, 1024, 516))
+    private fun FrameLayout.room() = addView(ctx.surfaceImage("room"), at(0, 0, 1024, 600))
 
     private fun FrameLayout.scrims() {
         addView(ctx.surfaceImage(R.drawable.scrim_col_night, R.drawable.scrim_col_day), at(0, 0, 396, 600))
         addView(ctx.surfaceImage(R.drawable.scrim_top_night, R.drawable.scrim_top_day), at(0, 0, 1024, 76))
-        addView(ctx.surfaceImage(R.drawable.scrim_bot_night, R.drawable.scrim_bot_day), at(0, 482, 1024, 34))
     }
 
     /** The status strip as the mockups draw it: only so the replicas read as whole screens. */
@@ -248,20 +245,11 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
         textR(Type.stripTime, "4:18 م", 1008, 0, { Palette.ink }).apply { textDirection = View.TEXT_DIRECTION_RTL }
     }
 
-    /** The bottom row in the mockups' places. [cells]: in order, from the first centre. [active]: its panel's name. */
-    private fun FrameLayout.dockRow(active: String?, cells: List<Asked.Cell> = Asked.ORDER_NEAREST) {
-        addView(ctx.surfaceImage("dock"), at(0, 500, 1024, 100))
-        addView(plateView(18) { Palette.fill }, at(16, 526, 184, 60))
-        addView(IconButton(ctx, R.drawable.ic_minus, 34, 86, 84, centerDy = -2, centerDx = 7, token = { Palette.ink }), at(0, 516, 86, 84))
-        icon(R.drawable.ic_vol, 24, 98, 530) { Palette.ink }
-        textC(Type.volNum, "12", 86, 554, 48) { Palette.ink }.apply { layoutDirection = View.LAYOUT_DIRECTION_LTR }
-        addView(IconButton(ctx, R.drawable.ic_plus, 34, 70, 84, centerDy = -2, centerDx = 1, token = { Palette.ink }), at(134, 516, 70, 84))
-        addView(ctx.surfaceImageRes(R.drawable.voice_disc), at(186, 502, 108, 108))
-        addView(IconButton(ctx, R.drawable.ic_mic, 32, 76, 84, centerDy = -2, centerDx = -2, token = { Palette.onAccent }), at(204, 516, 76, 84))
-        for ((i, c) in cells.withIndex()) {
-            val x = Asked.centreX(i) - 40
-            addView(IconButton(ctx, c.icon, 38, 80, 84, centerDy = -2, pressPlate = true).apply { this.active = c.panel == active }, at(x, 516, 80, 84))
-        }
+    /** The real row, with [active] as the screen it is on. */
+    private fun FrameLayout.dockRow(active: String) {
+        addView(Row(ctx) { }.apply { mark(active) }, at(0, Row.TOP, 1024, 600 - Row.TOP))
+        addView(VolumeCluster(ctx).apply { hold(12, false) }, at(0, 516, 204, 84))
+        addView(VoiceButton(ctx) { }, at(186, 502, VoiceButton.SIZE, VoiceButton.SIZE))
     }
 
     private fun Context.surfaceImageRes(res: Int): ImageView = ImageView(this).apply { setImageBitmap(Surfaces.res(context, res)) }
@@ -325,8 +313,7 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
         s.addView(ImageView(ctx).look { setImageResource(if (Palette.dark) R.drawable.map_edge_night else R.drawable.map_edge_day) }.apply { scaleType = ImageView.ScaleType.FIT_XY }, at(860, 124, 150, 200))
         s.addView(View(ctx).apply { background = ctx.getDrawable(R.drawable.tile_accent) }, at(14 - 16, 440 - 16, 90 + 32, 90 + 32))
         s.addView(ctx.surfaceImage(R.drawable.turn_glow_night, R.drawable.turn_glow_day), at(120, 430, 300, 156))
-        s.addView(ctx.surfaceImageRes(R.drawable.voice_disc), at(430, 440, 108, 108))
-        for ((i, n) in listOf(R.drawable.tile_map, R.drawable.tile_music, R.drawable.tile_phone, R.drawable.tile_apps, R.drawable.tile_settings).withIndex()) {
+        for ((i, n) in listOf(R.drawable.tile_home, R.drawable.tile_map, R.drawable.tile_music, R.drawable.tile_phone, R.drawable.tile_apps, R.drawable.tile_settings).withIndex()) {
             s.addView(ctx.surfaceImageRes(n), at(550 + 66 * i, 340, 60, 60))
         }
         for ((i, n) in listOf(R.drawable.apptile_blue, R.drawable.apptile_red, R.drawable.apptile_green, R.drawable.apptile_grey).withIndex()) {
@@ -410,13 +397,12 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
                 s.caption(x, y + h, if (row == 0) label else state, 150)
                 x += w + 14
             }
-            put(IconButton(ctx, R.drawable.ic_gear, 38, 72, 84, centerDy = -2, pressPlate = true), 72, 84, "dock cell", PressGesture.ICON)
             put(IconButton(ctx, R.drawable.ic_close, 28, 56, 56, token = { Palette.ink2 }), 56, 84, "close", PressGesture.ICON)
             put(IconButton(ctx, R.drawable.ic_pause, 36, 64, 80, IconButton.Kind.TONAL, plateToken = { Palette.fill }, plateRadius = 16), 64, 84, "mini 56", PressGesture.ICON)
             put(IconButton(ctx, R.drawable.ic_shuffle, 28, 76, 76, IconButton.Kind.TONAL, plateW = 76, plateH = 76), 76, 84, "tonal 76", PressGesture.ICON)
             put(IconButton(ctx, R.drawable.ic_plus, 30, 56, 56, IconButton.Kind.PILL, PressGesture.CONTROL), 88, 88, "map button", PressGesture.CONTROL)
             put(IconButton(ctx, R.drawable.ic_locate, 30, 56, 56, IconButton.Kind.PILL, PressGesture.CONTROL, token = { Palette.accentInk }), 88, 88, "locate", PressGesture.CONTROL)
-            put(IconButton(ctx, R.drawable.ic_nav, 38, 72, 84, IconButton.Kind.ACTIVE, centerDy = -2, pressPlate = true), 72, 84, "active", PressGesture.ICON)
+            put(IconButton(ctx, R.drawable.ic_nav, 38, 72, 84, IconButton.Kind.ACTIVE, centerDy = -2), 72, 84, "active", PressGesture.ICON)
             put(IconButton(ctx, R.drawable.ic_mic, 30, 76, 84, IconButton.Kind.TONAL, plateW = 64, plateH = 60, plateToken = { Palette.fill }, centerDy = -2), 76, 84, "voice", PressGesture.ICON)
             put(IconButton(ctx, R.drawable.ic_chev_right, 24, 56, 56, token = { Palette.ink3 }), 56, 84, "mirrors", PressGesture.ICON)
             y += 124
@@ -691,23 +677,8 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
 
     private fun dockOrder(s: FrameLayout) {
         s.mapPlate("browse")
-        s.head("The dock in the owner's order, Maps selected", 12, 460)
+        s.head("The row in the owner's order, on Maps", 12, 460)
         s.dockRow("maps")
-    }
-
-    /** The real rows: Home's and the dock's, one under the other, as they are at the two ends of the row's change. */
-    private fun chromeOrders(s: FrameLayout) {
-        fun block(y: Int, name: String, home: Boolean) {
-            s.caption(14, y, name, 900)
-            val row = FrameLayout(ctx)
-            if (home) row.addView(RowHome(ctx) { }, at(0, 0, 1024, 108))
-            else row.addView(RowDock(ctx) { }.apply { placeOn(Asked.ORDER_NEAREST[1].panel) }, at(0, 8, 1024, 100))
-            row.addView(VolumeCluster(ctx).apply { hold(12, false, -1f) }, at(0, 24, 204, 84))
-            row.addView(VoiceButton(ctx) { }.apply { face = if (home) 0f else 1f }, at(186, 10, VoiceButton.SIZE, VoiceButton.SIZE))
-            s.addView(row, at(0, y + 20, 1024, 108))
-        }
-        block(0, "Home's row", true)
-        block(130, "the dock", false)
     }
 
     // ------------------------------------------------------------------------------------------ replicas of the mockups

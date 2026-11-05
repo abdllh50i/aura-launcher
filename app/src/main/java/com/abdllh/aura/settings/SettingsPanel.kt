@@ -206,7 +206,7 @@ class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
             turnAway = TurnAway(card, STEP)
             return
         }
-        root.addView(surfaceImage("room"), at(0, 0, 1024, 516))
+        root.addView(surfaceImage("room"), at(0, 0, 1024, 600))
         val side = label(Type.pageTitle, { Palette.ink }).apply { setText(R.string.set_title) }
         root.addView(side, Type.pageTitle.box(if (rtl) 704 else 24, 46, 296))
         val title = label(Type.pageTitle, { Palette.ink })

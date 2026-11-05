@@ -107,7 +107,7 @@ class AppsPanel(shell: HomeActivity) : Panel(shell, Screens.APPS) {
         } else {
             host = root
             turnAway = null
-            root.addView(surfaceImage("room"), at(0, 0, 1024, 516))
+            root.addView(surfaceImage("room"), at(0, 0, 1024, 600))
             val title = label(Type.pageTitle, { Palette.ink }).apply { setText(R.string.dock_apps) }
             root.addView(title, Type.pageTitle.box(24, 46, 976))
         }

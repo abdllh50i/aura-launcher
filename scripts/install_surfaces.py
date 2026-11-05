@@ -6,7 +6,7 @@ What the design no longer has is not taken away here: delete it by hand (cap-chi
 
 Nothing is drawn here: gen_surfaces.py (in the design folder) bakes them. res/drawable-nodpi: every 9-patch as generated, and the
 small plain bitmaps with "-" as "_"; aapt2 keeps the guides. assets/surfaces: what a software Canvas reads (the wash's masks and
-frames) and what must not go through aapt2's recompression (the room, the dock, the capsules, the cover's shadow, the car's glow).
+frames) and what must not go through aapt2's recompression (the room, the capsules, the cover's shadow, the car's glow).
 The finished samples (wash-widget-*, wash-mini-*) are for the mockups and never ship: Backdrop makes the real ones, per song.
 The car's walls, frames and stage (assets/car of the design) belong to the car, section 10, and are not touched here.
 """
@@ -20,9 +20,9 @@ RES = os.path.join(HERE, "..", "app", "src", "main", "res", "drawable-nodpi")
 ASSETS = os.path.join(HERE, "..", "app", "src", "main", "assets", "surfaces")
 
 # plain bitmaps that go to res (those with a 9-patch come from drawable-nodpi, the same pixels with the guides)
-TO_RES = ["knob-33", "thumb-32", "tile-music", "tile-phone", "tile-apps", "tile-settings", "tile-map", "apptile-*", "voice-disc",
+TO_RES = ["knob-33", "thumb-32", "tile-home", "tile-music", "tile-phone", "tile-apps", "tile-settings", "tile-map", "apptile-*",
           "fade-*", "scrim-*", "turn-glow-*"]
-TO_ASSETS = ["wash-mask-*", "wash-frame-*", "cap-*", "room-*", "dock-*", "cover-shadow-*", "car-glow-*"]
+TO_ASSETS = ["wash-mask-*", "wash-frame-*", "cap-*", "room-*", "cover-shadow-*", "car-glow-*"]
 
 
 def main():

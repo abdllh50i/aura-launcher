@@ -23,15 +23,13 @@ import java.util.Locale
  * Debug builds: the chrome from outside (AuraChromeProbe in the log).
  *   am broadcast -n com.abdllh.aura/.debug.ChromeProbe --ez on true             the switch; off takes it away again
  *      --es show maps|music|phone|apps|settings|home      the steps of that panel coming to the top, with no panel
- *      --es hold home|maps --ef at 60                     a still picture, that many ms into the row's change
  *      --ef kmh 60                                        a fix each second at that speed, real path, until --ez nofix true
  *      --ez listen true|false --ef level .6               the voice's ring
- *      --ei vol 12 --ez mute false --ef bar .466          the mockups' numbers (bar -1: down)
+ *      --ei vol 12 --ez mute false                        the mockups' numbers
  *      --es time "4:18 م"
  *      --ez status true                                   GPS, Wi-Fi and phone all on
  *      --es speed 112,120,over,"400 م"                    the strip's speed, in its place
- *      --ei rows 20 --ei gap 400                          Home's row to the dock and back, measured
- *      --ei plates 20 --ei gap 400                        the plate from cell to cell, measured
+ *      --es song "title"                                  a song in the song's card, and the card up
  *      --ei rest 30                                       frames the window drew in that many seconds with nothing touched
  *      --ei panels 10 --ei gap 700 --es to settings       real panels, there and back, measured
  *      --es fly 1                                         the Flyer once, from Home's cover place to Music's
@@ -53,17 +51,19 @@ class ChromeProbe : BroadcastReceiver() {
             val a = v.split(",")
             ch?.debugSpeed(a[0].toIntOrNull(), a[1].toInt(), a.getOrNull(2) == "over", a.getOrNull(3))
         }
-        if (i.hasExtra("hold")) ch?.debugHold(i.getStringExtra("hold")!!, i.getFloatExtra("at", 0f))
         if (i.hasExtra("kmh")) Fake.go(i.getFloatExtra("kmh", 0f))
         if (i.getBooleanExtra("nofix", false)) Fake.stop()
         if (i.hasExtra("listen")) ch?.voice?.listening(i.getBooleanExtra("listen", false))
         if (i.hasExtra("level")) ch?.voice?.level(i.getFloatExtra("level", 0f))
-        if (i.hasExtra("vol")) ch?.volume?.hold(i.getIntExtra("vol", 12), i.getBooleanExtra("mute", false), i.getFloatExtra("bar", -1f))
+        if (i.hasExtra("vol")) ch?.volume?.hold(i.getIntExtra("vol", 12), i.getBooleanExtra("mute", false))
         i.getStringExtra("time")?.let { ch?.strip?.setTime(it) }
         i.getStringExtra("song")?.let { t ->
             val art = try { c.assets.open("gallery/sea.jpg").use { android.graphics.BitmapFactory.decodeStream(it) } } catch (_: Throwable) { null }
-            ch?.rowDock?.glance?.setSong(t, art, true, false)
-            ch?.rowDock?.glance?.show(true, false)
+            ch?.songCard?.apply {
+                setSong(t, art, true, false)
+                alpha = 1f
+                visibility = android.view.View.VISIBLE
+            }
         }
         if (i.getBooleanExtra("night", false)) s.root.night.show()
         i.getStringExtra("nightshow")?.let { s.root.night.debugHold("87", 120, it) }
@@ -74,8 +74,6 @@ class ChromeProbe : BroadcastReceiver() {
         }
         if (i.getBooleanExtra("state", false)) Log.i(TAG, "state: ${ch?.debugState()} volume=${com.abdllh.aura.system.CarAudio.volume()}")
         val gap = i.getIntExtra("gap", 400).toLong()
-        if (i.hasExtra("rows") && ch != null) rows(s, ch, i.getIntExtra("rows", 10), gap)
-        if (i.hasExtra("plates") && ch != null) plates(s, ch, i.getIntExtra("plates", 10), gap)
         if (i.hasExtra("panels")) panels(s, i.getIntExtra("panels", 5), gap, i.getStringExtra("to") ?: Screens.SETTINGS)
         if (i.hasExtra("rest")) rest(s, i.getIntExtra("rest", 30))
     }
@@ -111,22 +109,6 @@ class ChromeProbe : BroadcastReceiver() {
         fun stop() {
             kmh = -1f
             main.removeCallbacks(tick)
-        }
-    }
-
-    private fun rows(s: HomeActivity, ch: Chrome, rounds: Int, gap: Long) = run(s, "rows", rounds * 2, gap) { n ->
-        ch.debugShow(if (n % 2 == 0) Screens.MAPS else Screens.HOME)
-    }
-
-    private fun plates(s: HomeActivity, ch: Chrome, rounds: Int, gap: Long) {
-        ch.debugShow(Screens.MAPS, false)
-        val walk = arrayOf(Screens.MUSIC, Screens.SETTINGS, Screens.MAPS, Screens.APPS, Screens.HOME, Screens.PHONE)
-        var i = 0
-        run(s, "plates", rounds, gap) {
-            // (never Home itself here: that is the rows' change)
-            var to = walk[i++ % walk.size]
-            if (to == Screens.HOME) to = walk[i++ % walk.size]
-            ch.debugShow(to)
         }
     }
 

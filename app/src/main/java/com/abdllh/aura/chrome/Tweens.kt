@@ -9,7 +9,7 @@ import android.view.Choreographer
  * long (a panel's first draw) moves it on by two frames at most, so a slow frame costs a little time and never a jump. Not an animator, so the firmware's
  * animator scale does not touch it; whether things move at all is the caller's (the owner's switch).
  */
-internal class Tweens(private val onFrame: () -> Unit = {}, private val onRest: () -> Unit = {}) : Choreographer.FrameCallback {
+internal class Tweens(private val onRest: () -> Unit = {}) : Choreographer.FrameCallback {
     private val parts = ArrayList<Part>()
     private var running = false
     private var last = 0L
@@ -46,12 +46,7 @@ internal class Tweens(private val onFrame: () -> Unit = {}, private val onRest: 
 
         internal fun step(dt: Float) {
             t += dt
-            at(t)
-        }
-
-        /** Where it is [ms] after its [to] was called. */
-        internal fun at(ms: Float) {
-            val f = ((ms - delay) / dur).coerceIn(0f, 1f)
+            val f = ((t - delay) / dur).coerceIn(0f, 1f)
             value = if (f >= 1f) to else from + (to - from) * curve.getInterpolation(f)
             set(value)
             if (f >= 1f) live = false
@@ -75,13 +70,6 @@ internal class Tweens(private val onFrame: () -> Unit = {}, private val onRest: 
         Choreographer.getInstance().removeFrameCallback(this)
     }
 
-    /** Debug builds' still pictures of a move: every part where it is [ms] in, and nothing runs. */
-    fun holdAt(ms: Float) {
-        stop()
-        for (p in parts) if (p.live) { p.at(ms); p.live = true }
-        onFrame()
-    }
-
     override fun doFrame(ns: Long) {
         if (!running) return
         val dt = if (last == 0L) FRAME_MS else ((ns - last) / 1e6f).coerceIn(0f, MOST_MS)
@@ -91,7 +79,6 @@ internal class Tweens(private val onFrame: () -> Unit = {}, private val onRest: 
             p.step(dt)
             if (p.live) more = true
         }
-        onFrame()
         if (more) Choreographer.getInstance().postFrameCallback(this)
         else {
             running = false

@@ -321,7 +321,6 @@ internal class DriveColumn(panel: MapsPanel) : MapsPart(panel) {
         scrimCol = surfaceImage(R.drawable.scrim_col_night, R.drawable.scrim_col_day)
         layer.addView(scrimCol, at(0, 0, 396, 600))
         layer.addView(surfaceImage(R.drawable.scrim_top_night, R.drawable.scrim_top_day), at(0, 0, 1024, 76))
-        layer.addView(surfaceImage(R.drawable.scrim_bot_night, R.drawable.scrim_bot_day), at(0, 482, 1024, 34))
 
         turn = TurnCard(this)
         layer.addView(turn, Surface.CARD.at(16, 48, 364, 208))

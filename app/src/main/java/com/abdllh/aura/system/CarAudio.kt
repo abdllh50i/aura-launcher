@@ -1,8 +1,10 @@
 package com.abdllh.aura.system
 
+import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.database.ContentObserver
 import android.media.AudioManager
@@ -54,6 +56,17 @@ object CarAudio {
         if (app != null) return
         app = ctx.applicationContext
         nwd = Device.isNwd && try { ctx.packageManager.getApplicationInfo(SERVICE_PKG, 0); true } catch (_: Throwable) { false }
+        // (Android's own stream: the emulator's volume; and muting by the wheel's key sends only the second)
+        try {
+            ctx.applicationContext.registerReceiver(object : BroadcastReceiver() {
+                override fun onReceive(c: Context, i: Intent) { notifyChanged() }
+            }, IntentFilter().apply {
+                addAction("android.media.VOLUME_CHANGED_ACTION")
+                addAction("android.media.STREAM_MUTE_CHANGED_ACTION")
+            })
+        } catch (t: Throwable) {
+            Log.w(TAG, "receiver: $t")
+        }
         if (!nwd) return
         val cr = ctx.contentResolver
         val obs = object : ContentObserver(main) {
@@ -79,7 +92,7 @@ object CarAudio {
     /** Every audio parameter the firmware reports (type, value), on the main thread: 14 media, 15 navigation, 16 phone. */
     fun addParamListener(l: (Int, Int) -> Unit) { paramListeners.add(l) }
 
-    /** Did Aura's own screen change the volume or the mute just now (so a report of it is only the echo)? */
+    /** Did Aura itself change the volume or the mute just now (its row, its voice)? */
     fun changedByAura(withinMs: Long = 1500L): Boolean = android.os.SystemClock.elapsedRealtime() - selfAt < withinMs
 
     // ------------------------------------------------------------------------------------------ public API

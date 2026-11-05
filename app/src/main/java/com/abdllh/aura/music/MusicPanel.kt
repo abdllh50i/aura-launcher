@@ -1847,7 +1847,7 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         root.addView(washOld, at(0, 0, 1024, 600))
         root.addView(wash, at(0, 0, 1024, 600))
         room = lateImage("room").apply { visibility = View.INVISIBLE; alpha = 0f }
-        root.addView(room, at(0, 0, 1024, 516))
+        root.addView(room, at(0, 0, 1024, 600))
         content = FrameLayout(this)
         root.addView(content, at(0, 0, 1024, 600))
 
