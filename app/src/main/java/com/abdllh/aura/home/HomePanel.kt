@@ -19,6 +19,7 @@ import com.abdllh.aura.chrome.ChromeWords
 import com.abdllh.aura.chrome.Tweens
 import com.abdllh.aura.nav.CarLocation
 import com.abdllh.aura.nav.NavSession
+import com.abdllh.aura.nav.TripMemory
 import com.abdllh.aura.phone.Calls
 import com.abdllh.aura.system.CarAudio
 import com.abdllh.aura.system.DriveState
@@ -114,10 +115,6 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
     }
     private val navListener: () -> Unit = { navChanged() }
     private val driveListener: () -> Unit = { syncFace(canMove()) }
-    /** The step whose turn has been handed over to Maps. */
-    private var handedStep = -1
-    /** [handedStep] when the trip was ended, for End's undo. */
-    private var handedBefore = -1
     private var tripNow = false
 
     override val root: View get() = room
@@ -152,8 +149,7 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
     }
 
     private fun buildUi() {
-        // (the same trip and the same turn: if he had chosen Home for this turn, he still has)
-        card.onUndo = { tripNow = true; handedStep = handedBefore }
+        card.onUndo = { tripNow = true }
         room.addView(backdrop, at(CARD_X, CARD_Y, CARD_W, CARD_H))
         room.addView(wall, at(0, 0, 1024, 600))
         room.addView(stage, at(CarGlView.RECT_X.toInt(), CarGlView.RECT_Y.toInt(), CarGlView.RECT_W.toInt(), CarGlView.RECT_H.toInt()))
@@ -211,8 +207,6 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         clock.refresh()
         syncFace(false)
         tripNow = NavSession.state == NavSession.State.NAVIGATING
-        // (pressed Home with a turn near: he chose this, for this turn)
-        NavSession.progress?.let { p -> if (p.toNext < HAND_OVER_M) handedStep = p.next }
     }
 
     override fun onHide() {
@@ -288,9 +282,9 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
 
     // ------------------------------------------------------------------------------------------ parked, moving, on a trip
     private fun navChanged() {
-        // (a trip starting anywhere opens Maps, section 6.0: a place from the phone, the voice)
+        // (a trip starting anywhere opens Maps, section 6.0: a place from the phone, the voice. Nothing else ever takes him there by itself; one brought back after a restart has its pills here)
         val trip = NavSession.state == NavSession.State.NAVIGATING
-        if (trip && !tripNow && isTop) {
+        if (trip && !tripNow && isTop && !TripMemory.handingOver) {
             tripNow = true
             Screens.maps(this)
             return
@@ -298,7 +292,6 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         tripNow = trip
         syncFace(canMove())
         card.syncTrip()
-        handOver()
     }
 
     /** One source of Parked and Moving; a trip looks the same at a red light, with no strip speed, which the chrome knows. */
@@ -309,25 +302,10 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         val look = trip || moving
         card.setFace(if (trip) HomeCard.Face.TRIP else if (moving) HomeCard.Face.MOVING else HomeCard.Face.PARKED, animate)
         widget.movingNow = look
-        stage.locked = moving // (a trip at a red light has the moving look, and he may turn his car: it stands)
         if (look != movingLook) {
             movingLook = look
             val d = dimFor(look)
             if (animate) dimA.to(d, 0L, DIM_MS, Motion.MOVE) else dimA.snap(d)
-        }
-    }
-
-    /** Under 1 km to the turn, moving: Home hands over to Maps by itself, the same surface and a camera blend. It does not come back by itself; pressed again, it stays for this turn. */
-    private fun handOver() {
-        if (NavSession.state != NavSession.State.NAVIGATING) {
-            if (handedStep != -1) handedBefore = handedStep
-            handedStep = -1
-        }
-        if (!isTop || NavSession.state != NavSession.State.NAVIGATING || !DriveState.moving) return
-        val p = NavSession.progress ?: return
-        if (p.toNext < HAND_OVER_M && p.next != handedStep) {
-            handedStep = p.next
-            Screens.maps(this)
         }
     }
 
@@ -520,7 +498,6 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         card.setFace(if (trip) HomeCard.Face.TRIP else if (moving) HomeCard.Face.MOVING else HomeCard.Face.PARKED, false)
         val look = trip || moving
         widget.movingNow = look
-        stage.locked = moving
         movingLook = look
         dimA.snap(dimFor(look))
     }
@@ -540,7 +517,6 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         private const val HANDOFF_STIFFNESS = 80f
         private const val DIM_NIGHT = .55f
         private const val DIM_MS = 300L
-        private const val HAND_OVER_M = 1000.0
         private const val LOGO_X = 412
         private const val LOGO_W = 200
         private const val LOGO_CENTRE_Y = 296

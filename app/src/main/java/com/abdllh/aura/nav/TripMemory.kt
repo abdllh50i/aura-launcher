@@ -106,7 +106,9 @@ internal object TripMemory {
     private val main = Handler(Looper.getMainLooper())
     private var resuming = false
     private var asking = false
-    private var handingOver = false
+    /** The trip starting now is the kept one, back: nobody asked for a screen by this. */
+    var handingOver = false
+        private set
     private var listener: ((Location) -> Unit)? = null
 
     /** At the process's start: a trip was kept? When not, this is all it does. */
