@@ -170,8 +170,9 @@ object ArtLoader {
         }
     }
 
-    fun get(ctx: Context, t: Track, size: Int, done: (Bitmap?) -> Unit) {
-        val key = "${t.albumId}@$size"
+    /** [radius] above 0: rounded once at that size, on this loader's threads, so no list cover has a clip (SPEC.md section 4: row 56 r 12, album 120 r 16). */
+    fun get(ctx: Context, t: Track, size: Int, radius: Int = 0, done: (Bitmap?) -> Unit) {
+        val key = "${t.albumId}@$size r$radius"
         cache.get(key)?.let { done(it); return }
         if (key in none) { done(null); return }
         pending[key]?.let { it.add(done); return }
@@ -179,7 +180,8 @@ object ArtLoader {
         val c = ctx.applicationContext
         try {
             pool.execute(Decode(key, Runnable {
-                val b = load(c, t, size)
+                val raw = load(c, t, size)
+                val b = if (raw != null && radius > 0) try { Backdrop.round(c, raw, size, radius) } catch (_: Throwable) { raw } else raw
                 main.post {
                     if (b != null) cache.put(key, b) else none.add(key)
                     pending.remove(key)?.forEach { it(b) }

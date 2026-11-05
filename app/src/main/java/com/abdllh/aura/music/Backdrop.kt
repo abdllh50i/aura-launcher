@@ -25,15 +25,9 @@ import com.abdllh.aura.ui.Tokens2
 import java.util.concurrent.Executors
 
 /**
- * What a cover gives the music screen: its colour as a fill and as text, and the whole backdrop behind the screen as
- * one small picture.
- *
- * Until 1.12 the backdrop was four full-screen layers (the window's colour, a gradient, the cover scaled up from 18 px
- * and a translucent veil), filled on every frame the screen drew: the lyrics' glide, the playing row's bars, the
- * progress. On this GPU that was several milliseconds a frame before any content, and 18 texels stretched to 600 px
- * with bilinear filtering showed creases and blocks, not a blur. Now the same layers are worked out once per cover
- * into a picture of [W] texels across, blurred for real, and the screen's root draws that one picture as its background
- * (the window has none, in the one window of 2.0): one opaque fill a frame, two while a new cover crossfades in.
+ * What a cover gives the design: its colour, its washes and its rounded copies, once per song on one worker, nothing per frame (SPEC.md section 4, "Song colour, on the unit").
+ * Until 1.12 the backdrop was four full-screen layers filled on every frame; now it is one small picture, [W] texels across, that the panel stretches: one opaque fill a frame, two while
+ * a new cover crossfades in.
  */
 internal object Backdrop {
     /** Texels across; the height follows the screen's shape. Upscaled with filtering, a blurred picture stays smooth. */
@@ -42,29 +36,8 @@ internal object Backdrop {
     /** The theme as it was when the look was asked for (read on the main thread; the work runs on another). */
     class Theme(val dark: Boolean, val bg: Int, val card: Int, val accent: Int, val accentFg: Int, val aspect: Float)
 
-    /** [fill]: progress, play button, indicators, the bars. [text]: the cover's colour as a label or icon. */
-    class Look(val fill: Int, val text: Int, val back: Bitmap)
-
     private val worker = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
-
-    /** [look] off the main thread, then [done] on it. */
-    fun lookAsync(cover: Bitmap?, t: Theme, done: (Look) -> Unit) {
-        worker.execute {
-            val l = look(cover, t)
-            main.post { done(l) }
-        }
-    }
-
-    fun look(cover: Bitmap?, t: Theme): Look {
-        // (a cover that cannot be read here, a hardware one for instance, is a look without it rather than a crash)
-        val readable = try {
-            cover?.let { if (Build.VERSION.SDK_INT >= 26 && it.config == Bitmap.Config.HARDWARE) it.copy(Bitmap.Config.ARGB_8888, false) else it }
-        } catch (_: Throwable) { null }
-        val px = try { readable?.let { small(it, t.aspect) } } catch (_: Throwable) { null }
-        val (fill, text) = try { readable?.let { colours(swatch(it), t) } } catch (_: Throwable) { null } ?: (t.accent to t.accentFg)
-        return Look(fill, text, compose(px, fill, t))
-    }
 
     /** The whole cover at 12 × 12, unblurred, for its colour (the backdrop shows only its middle band). */
     private fun swatch(cover: Bitmap): IntArray {
@@ -132,35 +105,6 @@ internal object Backdrop {
     }
 
     /**
-     * The layers of before, worked out per texel in the order they were drawn: the theme's background; a wash of the
-     * cover's colour from the top start corner, gone by the middle of the diagonal; the cover at 0.9 (dark) or 0.55
-     * (light); a veil of the background, thin at the top and nearly whole at the bottom, so text reads on any cover.
-     */
-    private fun compose(cover: IntArray?, fill: Int, t: Theme): Bitmap {
-        val h = height(t.aspect)
-        val wash = Palette.mix(t.bg, fill, if (t.dark) 0.30f else 0.22f)
-        val art = if (t.dark) 0.9f else 0.55f
-        val v0 = if (t.dark) 0.35f else 0.45f
-        val v1 = if (t.dark) 0.62f else 0.70f
-        val v2 = if (t.dark) 0.88f else 0.90f
-        val a2 = t.aspect * t.aspect
-        val out = IntArray(W * h)
-        for (y in 0 until h) {
-            val v = (y + 0.5f) / h
-            val veil = if (v < 0.5f) v0 + (v1 - v0) * v / 0.5f else v1 + (v2 - v1) * (v - 0.5f) / 0.5f
-            for (x in 0 until W) {
-                val u = (x + 0.5f) / W
-                // where this texel falls along the top-left to bottom-right diagonal of the screen (0..1)
-                val d = (u * a2 + v) / (a2 + 1f)
-                var c = if (d < 0.5f) Palette.mix(wash, t.bg, d / 0.5f) else t.bg
-                if (cover != null) c = Palette.mix(c, cover[y * W + x] or 0xFF000000.toInt(), art)
-                out[y * W + x] = Palette.mix(c, t.bg, veil) or 0xFF000000.toInt()
-            }
-        }
-        return Bitmap.createBitmap(out, W, h, Bitmap.Config.ARGB_8888)
-    }
-
-    /**
      * The cover's most striking colour (pixels grouped by hue, each weighted by how saturated and bright it is; the
      * strongest group wins: an average of a blue-and-orange cover is a muddy grey-pink), made lively, then brought
      * just far enough from the background to be seen: as a fill 3:1 on the screen's background (a dark blue was 1.8:1
@@ -223,9 +167,30 @@ internal object Backdrop {
     fun washAsync(ctx: Context, cover: Bitmap?, night: Boolean, done: (Wash) -> Unit) {
         val app = ctx.applicationContext
         worker.execute {
-            val w = wash(app, cover, night)
+            val w = cached(cover, night) ?: wash(app, cover, night).also { keep(cover, it) }
             main.post { done(w) }
         }
+    }
+
+    // The song's two washes, one per theme, by the cover they came from: the panel, Home's widget, the mini and the theme's ready step all ask for the same song.
+    private var washOf: java.lang.ref.WeakReference<Bitmap>? = null
+    private var washNoCover = false
+    private val washes = arrayOfNulls<Wash>(2)
+
+    @Synchronized private fun cached(cover: Bitmap?, night: Boolean): Wash? {
+        val same = if (cover == null) washNoCover else washOf?.get() === cover
+        return if (same) washes[if (night) 1 else 0] else null
+    }
+
+    @Synchronized private fun keep(cover: Bitmap?, w: Wash) {
+        val same = if (cover == null) washNoCover else washOf?.get() === cover
+        if (!same) {
+            washOf = cover?.let { java.lang.ref.WeakReference(it) }
+            washNoCover = cover == null
+            washes[0] = null
+            washes[1] = null
+        }
+        washes[if (w.night) 1 else 0] = w
     }
 
     /** On the worker. Never throws for a bad cover: a song with no readable cover has the no-cover wash. */

@@ -54,6 +54,9 @@ abstract class Panel(val shell: HomeActivity, val name: String) : ContextWrapper
      */
     open val besideColumn: Boolean get() = false
 
+    /** Maps stays drawn under it just now, trip or not, as under [besideColumn]: Music lying collapsed while the car moves. It tells the stack when this changes ([PanelStack.panelChanged]). */
+    open val overMaps: Boolean get() = false
+
     /** A trip began or ended while this panel is on top ([besideColumn]: from its room to its card, and back). */
     open fun onTrip(on: Boolean) {}
 

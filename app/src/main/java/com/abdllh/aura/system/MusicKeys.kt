@@ -199,9 +199,10 @@ object MusicKeys {
             return
         }
         if (sameSource(bt) && Front.ownResumed && Front.panel == Screens.MUSIC) {
-            Log.i(TAG, "the music key inside Aura Music: the home screen")
+            Log.i(TAG, "the music key inside Aura Music: the panel he came from")
             openedAt = now
-            Screens.home(c, "music key")
+            val shell = com.abdllh.aura.home.HomeActivity.current
+            if (shell != null && shell.resumedNow) shell.panels.back() else Screens.home(c, "music key")
             return
         }
         openedAt = now
