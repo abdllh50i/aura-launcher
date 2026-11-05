@@ -15,6 +15,7 @@ import com.abdllh.aura.system.NwdBridge
 import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.Theme
 import com.abdllh.aura.ui.afterNextDraw
+import com.abdllh.aura.update.UpdateManager
 import com.abdllh.aura.util.LocaleHelper
 import com.abdllh.aura.util.Prefs
 
@@ -48,6 +49,8 @@ class HomeActivity : Activity() {
             if (::panels.isInitialized) {
                 panels.tick()
                 drawWatch.expect()
+                // (the shell's and not the home panel's: a whole drive may be spent on one panel, with no other screen ever opened)
+                UpdateManager.autoCheckIfDue()
             }
         }
     }

@@ -60,6 +60,8 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
     private lateinit var controls: ControlsSheet
     private lateinit var drawer: AppDrawer
     private var introPlayed = false
+    /** The entrance waits for its first frame. */
+    private var entranceDue = false
     /** Over the screen until its entrance starts, after a cold start on the light theme ([coverStart]). */
     private var startCover: View? = null
     private var builtAccent = 0
@@ -248,14 +250,17 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
             animateIn()
             room.postDelayed({ if (!isGone) drawer.prewarm() }, PREWARM_AFTER_MS)
             room.postDelayed({ if (!isGone) askLocationOnce() }, 2600)
-        }
-        // (not in the start's first seconds, and once it is there this is one look in a map)
-        shell.panels.prepareWhenQuiet(Screens.MUSIC, PREPARE_MUSIC_AFTER_MS)
+        } else if (!entranceDue) prepareAhead()
+    }
+
+    /** The kept panels ahead of time, so nothing is built in a tap (once they are there these are two looks in a map). */
+    private fun prepareAhead() {
+        if (Prefs.builtInMaps) shell.panels.prepareWhenQuiet(Screens.MAPS, MAPS_PANEL_AFTER_MS)
+        shell.panels.prepareWhenQuiet(Screens.MUSIC, MUSIC_PANEL_AFTER_MS)
     }
 
     override fun onTick() {
         if (::carPanel.isInitialized) carPanel.refresh()
-        UpdateManager.autoCheckIfDue() // (also with no other screen ever opened: a drive spent on this one)
     }
 
     /**
@@ -307,8 +312,10 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         for (i in 0 until dock.apps.childCount) dock.apps.getChildAt(i).translationY = 18.dp.toFloat()
 
         val r = room
+        entranceDue = true
         r.afterNextDraw {
             if (isGone) return@afterNextDraw
+            entranceDue = false
             for ((v, dy, delay) in cards) v.enter(dy = dy, delay = delay)
             mapPanel.animate().translationY(0f).setStartDelay(0L).setDuration(Motion.LONG).setInterpolator(Motion.EMPHASIZED).start()
             dock.animate().translationY(0f).setStartDelay(0L).setDuration(Motion.LONG).setInterpolator(Motion.EMPHASIZED).start()
@@ -328,8 +335,8 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
             com.abdllh.aura.nav.MapLib.preload(this) // (the map below will want it: off the main thread, and not before this frame)
             // (counted from here too: from onResume, the first frame's wait brought it into the middle of the entrance)
             r.postDelayed({ if (!isGone) shell.map.startForHome() }, LIVE_MAP_AFTER_MS)
-            // (Maps' panel ahead of time, with no entrance going on and the map up: its first open then has nothing to build)
-            if (Prefs.builtInMaps) r.postDelayed({ if (!isGone) shell.panels.prepare(Screens.MAPS) }, MAPS_PANEL_AFTER_MS)
+            // (counted from here as well, not from onResume: with no entrance going on, the map coming up, and never in a start's first seconds)
+            prepareAhead()
         }
     }
 
@@ -446,11 +453,11 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         const val DOCK_DP = 92
         /** The live map starts once the entrance has settled. */
         private const val LIVE_MAP_AFTER_MS = 700L
-        /** Maps' panel is built ahead of time once that has come. */
+        /** Maps' panel is built ahead of time once that has come ([PanelStack.prepareWhenQuiet]), */
         private const val MAPS_PANEL_AFTER_MS = 3000L
+        /** and then the music screen. */
+        private const val MUSIC_PANEL_AFTER_MS = 6000L
         /** The app drawer's cells are built while nothing else happens. */
         private const val PREWARM_AFTER_MS = 2500L
-        /** The music screen is built ahead of time ([PanelStack.prepareWhenQuiet]). */
-        private const val PREPARE_MUSIC_AFTER_MS = 6000L
     }
 }

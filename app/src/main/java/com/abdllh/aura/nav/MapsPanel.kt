@@ -141,7 +141,7 @@ class MapsPanel(shell: HomeActivity) : Panel(shell, Screens.MAPS) {
                     Trips.legacy(which).isNotBlank() -> { // an address typed in 1.0: find it once and keep the place
                         toast(getString(R.string.maps_searching))
                         Trips.findLegacy(which, arabic) { p ->
-                            if (!isTop) return@findLegacy
+                            if (isGone || isOff) return@findLegacy
                             if (p == null) { toast(getString(R.string.maps_no_results)); openSearch(); return@findLegacy }
                             driveTo(p)
                         }
@@ -759,8 +759,9 @@ class MapsPanel(shell: HomeActivity) : Panel(shell, Screens.MAPS) {
         routeStatus(getString(R.string.maps_routing))
         placeCard.reveal(true, 16f, delay = 60)
         routing = true
-        // (Back pressed meanwhile: no navigation the driver can no longer see starting)
-        val here = { isTop && selected?.pos == p.pos }
+        // (Back or the Home key meanwhile: no navigation the driver can no longer see starting. Something opened over this panel is
+        // another matter: he asked, it comes back to a trip, as it did with an activity under Music)
+        val here = { !isGone && !isOff && selected?.pos == p.pos }
         Trips.goTo(this, p, source = Trips.SCREEN, wanted = here) { outcome, _ ->
             routing = false
             when (outcome) {

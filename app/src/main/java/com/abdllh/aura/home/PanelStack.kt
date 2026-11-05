@@ -131,25 +131,41 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
 
     /**
      * [prepare], [afterMs] from now or at the first quiet moment after that: the home screen at rest on top of a resumed window,
-     * no sheet open, no finger on the screen for a while. A build holds the main thread once, so not under anything the owner is
-     * doing. At any other screen it is off: the home panel asks again at its next resume. A panel that could not be built is
-     * not tried again this way (each try would be that hold for nothing): only when it is asked for.
+     * no sheet open, no finger on the screen for a while, and one panel at a time, in the order asked. A build holds the main
+     * thread once, so not under anything the owner is doing. At any other screen it is off: the home panel asks again at its next
+     * resume. A panel that could not be built is not tried again this way (each try would be that hold for nothing): only when it is asked for.
      */
     fun prepareWhenQuiet(name: String, afterMs: Long) {
         if (built[name] != null || name in noAhead) return
-        quietFor = name
-        main.removeCallbacks(whenQuiet)
-        main.postDelayed(whenQuiet, afterMs)
+        quietFor[name] = SystemClock.uptimeMillis() + afterMs
+        lookAgain()
     }
 
-    private var quietFor: String? = null
-    private val whenQuiet = object : Runnable {
-        override fun run() {
-            val name = quietFor ?: return
-            if (built[name] != null || shell.isDestroyed || !shell.resumedNow || top !== home) return
-            val touched = SystemClock.uptimeMillis() - root.touchedAt < QUIET_AFTER_TOUCH_MS
-            if (leaving != null || root.sheetOpen || touched) main.postDelayed(this, QUIET_AGAIN_MS) else prepare(name)
+    /** What is to be built ahead of time, in the order asked, and not before when (uptimeMillis). */
+    private val quietFor = LinkedHashMap<String, Long>()
+    private var nextBuildAt = 0L
+    private val whenQuiet = Runnable { buildWhatIsDue() }
+
+    private fun lookAgain() {
+        main.removeCallbacks(whenQuiet)
+        val first = quietFor.values.minOrNull() ?: return
+        main.postAtTime(whenQuiet, maxOf(first, nextBuildAt))
+    }
+
+    private fun buildWhatIsDue() {
+        if (shell.isDestroyed || !shell.resumedNow || top !== home) return
+        quietFor.keys.removeAll { built[it] != null }
+        val now = SystemClock.uptimeMillis()
+        val due = quietFor.entries.firstOrNull { it.value <= now }?.key
+        if (due == null) { lookAgain(); return }
+        if (leaving != null || root.sheetOpen || now - root.touchedAt < QUIET_AFTER_TOUCH_MS) {
+            main.postDelayed(whenQuiet, QUIET_AGAIN_MS)
+            return
         }
+        quietFor.remove(due)
+        prepare(due)
+        nextBuildAt = SystemClock.uptimeMillis() + QUIET_AGAIN_MS
+        lookAgain()
     }
 
     /** Back: a sheet, what the top panel uses it for, or the top panel leaves. At Home: nothing else. */
