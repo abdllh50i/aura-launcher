@@ -20,8 +20,8 @@ import java.util.Locale
 /**
  * The one way to AMRI's own screens: nothing else in the app names their classes to start them. The callers say which
  * screen they want and with what, not how it is reached. A screen that is a panel of the home activity (the single window
- * of 2.0; [PANELS]) is shown in place when that window is in front, with no activity start at all, and otherwise through a
- * home intent that names it. The others are still activities, and [open] starts them, as every caller did by itself.
+ * of 2.0; [PANELS], all of them by now) is shown in place when that window is in front, with no activity start at all, and
+ * otherwise through a home intent that names it.
  *
  * The home screen is always reached through a home intent limited to this package, never by its class. The firmware
  * makes an activity of the home type only when no component was named in the start (ActivityRecord.setActivityType;

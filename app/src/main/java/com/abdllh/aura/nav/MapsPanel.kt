@@ -70,8 +70,11 @@ class MapsPanel(shell: HomeActivity) : Panel(shell, Screens.MAPS) {
     private val map: MapController get() = shell.map
     override val root = FrameLayout(this)
     override val keep: Boolean get() = true
-    // (the map's slot does not follow the keyboard, and the field is at the top, above it: this window never pans. See DEV.md, "One window")
-    override val softInput: Int get() = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN
+    // (the map's slot does not follow the keyboard, and the field is at the top, above it: this window never pans. See DEV.md, "One window".
+    // Only while the field has the focus: a mode of the whole panel made every move to and from it a relayout of the window, "Music and the map")
+    override val softInput: Int get() =
+        if (::input.isInitialized && input.hasFocus()) WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN
+        else super.softInput
     /** The map's own controls at the end side, faded away together while the keyboard is up. */
     private lateinit var controls: FrameLayout
     private lateinit var searchCard: LinearLayout
@@ -947,7 +950,10 @@ class MapsPanel(shell: HomeActivity) : Panel(shell, Screens.MAPS) {
             imeOptions = EditorInfo.IME_ACTION_SEARCH or EditorInfo.IME_FLAG_NO_EXTRACT_UI
             background = null
             setPadding(Space.XS.dp, 0, Space.XS.dp, 0)
-            setOnFocusChangeListener { _, f -> if (f) openSearch() }
+            setOnFocusChangeListener { _, f ->
+                shell.panels.softInputChanged(this@MapsPanel) // (before the keyboard)
+                if (f) openSearch()
+            }
             setOnClickListener { openSearch() }
             addTextChangedListener(object : TextWatcher {
                 override fun afterTextChanged(s: Editable?) {

@@ -297,14 +297,22 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
     }
 
     private fun applyTo(p: Panel) {
-        if (p.softInput != softInput) {
-            softInput = p.softInput
-            shell.window.setSoftInputMode(softInput)
-            root.followsKeyboard = softInput and android.view.WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST == android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
-        }
+        followSoftInput(p)
         shell.windowLook(p.navBar)
         Front.setPanel(p.name)
         if (shell.startedNow) shell.drawWatch.expect()
+    }
+
+    /** [p]'s [Panel.softInput] is another now (a field of it took the focus, or lost it): the window follows, if it is on top. */
+    fun softInputChanged(p: Panel) {
+        if (p === top) followSoftInput(p)
+    }
+
+    private fun followSoftInput(p: Panel) {
+        if (p.softInput == softInput) return
+        softInput = p.softInput
+        shell.window.setSoftInputMode(softInput)
+        root.followsKeyboard = softInput and android.view.WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST == android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
     }
 
     private inline fun call(p: Panel, what: String, block: () -> Unit): Boolean = try {
