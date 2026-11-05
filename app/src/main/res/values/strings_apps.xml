@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 2.0: the known apps' words on the Apps panel's grid (others keep their own names) -->
+    <string name="apps_yt">YouTube Music</string>
+    <string name="apps_radio">Radio</string>
+    <string name="apps_video">Video</string>
+    <string name="apps_car">Car settings</string>
+    <string name="apps_wheel">Steering wheel</string>
+    <string name="apps_tools">Tool box</string>
+    <string name="apps_files">Files</string>
+    <string name="apps_browser">Browser</string>
+    <string name="apps_clock">Clock</string>
+    <string name="apps_zlink">ZLink</string>
+    <string name="apps_camera">Camera</string>
+    <string name="apps_gallery">Gallery</string>
+    <string name="apps_cam360">360 camera</string>
+    <string name="apps_mycar">My car</string>
+    <string name="apps_phone">Phone</string>
+</resources>

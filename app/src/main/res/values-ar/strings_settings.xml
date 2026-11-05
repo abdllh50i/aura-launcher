@@ -4,4 +4,104 @@
     <string name="upd_notes_more">عرض الكل</string>
     <!-- Settings › Voice assistant: a command's words as the driver says them (each language its own quotes) -->
     <string name="voice_cmd_quoted">«%1$s»</string>
+
+    <!-- 2.0: the seven pages (SPEC.md section 6.6) -->
+    <string name="st_display">الشاشة والصوت</string>
+    <string name="st_maps">الخرائط</string>
+    <string name="st_music">الموسيقى</string>
+    <string name="st_phone">الجوال</string>
+    <string name="st_car">السيارة والنظام</string>
+    <string name="st_about">عن النظام</string>
+    <string name="st_parked_only">هذا وأنت واقف</string>
+
+    <string name="st_theme_auto">تلقائي</string>
+    <string name="st_theme_day">نهار</string>
+    <string name="st_theme_night">ليل</string>
+    <string name="st_map_view">طريقة العرض</string>
+    <string name="st_view_tilted">مائلة</string>
+    <string name="st_view_above">من فوق</string>
+    <string name="st_view_north">الشمال فوق</string>
+
+    <string name="st_offline_sub">السعودية كلها</string>
+    <string name="st_saher">تنبيه ساهر</string>
+    <string name="st_saher_sub">صوت واحد قبل الكاميرا</string>
+    <string name="st_places">أماكني</string>
+    <string name="st_places_sub">تفتح الخريطة</string>
+    <string name="st_places_none">ما حفظت شي</string>
+    <string name="st_place_home">البيت</string>
+    <string name="st_place_work">الدوام</string>
+    <string name="st_nav_amri_sub">بحث ومسارات وإرشاد مكتوب، بدون إنترنت</string>
+
+    <string name="st_pack_none">مو على الجهاز</string>
+    <string name="st_pack_offer">جاهزة للتحميل</string>
+    <string name="st_pack_newer">فيه أحدث</string>
+    <string name="st_pack_nospace">المساحة ما تكفي</string>
+    <string name="st_pack_going">يحمّل %1$s%%</string>
+    <string name="st_pack_paused">موقف · %1$s%%</string>
+    <string name="st_pack_ready">جاهزة · %1$s</string>
+    <string name="st_pack_stopped">ما كمل</string>
+    <string name="st_pack_of">%1$s من %2$s</string>
+    <string name="st_pack_here">تاخذ %1$s · بُنيت %2$s</string>
+    <string name="st_pack_free">الفاضي في الجهاز %1$s</string>
+    <string name="st_pack_check_first">شوف المتوفر</string>
+    <string name="st_pack_check">شوف إذا فيه أحدث</string>
+    <string name="st_pack_usb">من الفلاش</string>
+    <string name="st_pack_usb_go">انسخها من الفلاش</string>
+    <string name="st_pack_download">حمّلها</string>
+    <string name="st_pack_update">حدّثها</string>
+    <string name="st_pack_pause">وقّف</string>
+    <string name="st_pack_resume">كمّل</string>
+    <string name="st_pack_delete">احذف</string>
+    <string name="st_pack_cancel_title">تلغي تحميل الخريطة؟</string>
+    <string name="st_pack_cancel_text">يروح اللي نزل منها، والخريطة اللي شغالة تبقى زي ما هي.</string>
+    <string name="st_pack_cancel_btn">ألغه</string>
+    <string name="st_pack_delete_title">تحذف الخريطة؟</string>
+    <string name="st_pack_delete_text">الخريطة والبحث والمسارات يرجعون يعتمدون على النت، لين تحمّلها من جديد.</string>
+    <string name="st_pack_old">الخريطة القديمة</string>
+    <string name="st_pack_old_sub">تاخذ %1$s، وما عاد لها داعي</string>
+    <string name="st_pack_old_btn">امسحها</string>
+    <string name="st_pack_last">آخر تثبيت للخريطة</string>
+
+    <string name="st_lyrics_listen_sub">يرسل صوت من مايك السيارة لخادمك</string>
+    <string name="st_lyrics_key">مفتاح خادم الكلمات</string>
+    <string name="st_words_sub">فقط إذا وقتها حقيقي</string>
+    <string name="st_saved">محفوظ</string>
+    <string name="st_not_set">مو محدد</string>
+
+    <string name="st_wake">كلمة «عمري»</string>
+    <string name="st_wake_sub">يسمعك بدون ما تلمس الشاشة</string>
+    <string name="st_speak">يرد بالصوت</string>
+    <string name="st_six_times">6 مرات</string>
+    <string name="st_enrolled">مسجّل</string>
+
+    <string name="st_link_app">تطبيق عمري</string>
+    <string name="st_linked">مربوط</string>
+    <string name="st_unlinked">مو مربوط</string>
+    <string name="st_naghm">نغم</string>
+    <string name="st_naghm_on">يشغّل الأغاني</string>
+    <string name="st_naghm_off">مو متصل</string>
+    <string name="st_msg_text">عرض نص الرسالة وأنت واقف</string>
+    <string name="st_ring">نغمة الاتصال من عمري</string>
+
+    <string name="st_tick">صوت الضغط</string>
+    <string name="st_tick_sub">نقرة خفيفة لما تضغط صف أو زر في الشريط</string>
+    <string name="st_full_off">إطفاء كامل مع السيارة</string>
+    <string name="st_update">التحديث</string>
+    <string name="st_up_to_date">آخر نسخة</string>
+    <string name="st_update_new">نسخة %1$s</string>
+    <string name="st_update_going">يحدّث…</string>
+    <string name="st_lang">اللغة</string>
+    <string name="st_workshop">الورشة</string>
+    <string name="st_workshop_sub">الرجوع للنظام الأصلي من هنا</string>
+
+    <string name="st_version">النسخة</string>
+    <string name="st_licences">الرخص</string>
+    <string name="st_report">تقرير الجهاز</string>
+    <string name="st_report_sub">سرعة الرسم والذاكرة</string>
+    <string name="st_lic_app">نظام عمري</string>
+    <string name="st_lic_font">الخط: IBM Plex Sans Arabic</string>
+    <string name="st_lic_pack">بيانات الخريطة</string>
+    <string name="st_lic_cdla">رخصة CDLA Permissive 2.0</string>
+    <string name="st_lic_apache">رخصة Apache 2.0</string>
+    <string name="st_lic_ofl">رخصة خط الخريطة، OFL 1.1</string>
 </resources>

@@ -117,8 +117,11 @@ object OfflineMaps {
         }
     }
 
-    /** Going on with a download a restart interrupted (cancelled by any choice the user makes meanwhile). */
-    private val autoResume = Runnable { download() }
+    /**
+     * Going on with a download a restart interrupted (cancelled by any choice the user makes meanwhile). Not with a map pack in use: this old map is only what a unit with no pack has, and
+     * nothing on screen could stop it any more (Settings' page is the pack's now).
+     */
+    private val autoResume = Runnable { if (app?.let { com.abdllh.aura.nav.pack.PackPaths.current(it) } == null) download() }
 
     /** The offline map's store when search can use it. */
     fun searchStore(): TileStore? = store?.takeIf { status.phase == Phase.READY || PlaceIndex.ready(it) }

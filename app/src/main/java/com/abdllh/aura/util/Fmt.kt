@@ -42,16 +42,16 @@ object Fmt {
         return SimpleDateFormat(pattern, loc).format(Date(ms))
     }
 
+    /** A size as the design writes it: `713 ميجا`, `713 MB`, by thousands as a disk and a download are sold; the number before its unit whatever the line's direction (a Latin unit in an Arabic line came out `MB 713`). */
     fun bytes(n: Long): String {
         if (n < 0) return "-"
-        val kb = 1024.0
-        val mb = kb * 1024
-        val gb = mb * 1024
+        val arabic = Locale.getDefault().language == "ar"
         return when {
-            n >= gb -> String.format(Locale.ENGLISH, "%.2f GB", n / gb)
-            n >= mb -> String.format(Locale.ENGLISH, "%.1f MB", n / mb)
-            n >= kb -> String.format(Locale.ENGLISH, "%.0f KB", n / kb)
-            else -> "$n B"
+            n >= 1_000_000_000L -> String.format(Locale.ENGLISH, "%.1f %s", n / 1e9, if (arabic) "جيجا" else "GB")
+            n >= 100_000_000L -> String.format(Locale.ENGLISH, "%.0f %s", n / 1e6, if (arabic) "ميجا" else "MB")
+            n >= 1_000_000L -> String.format(Locale.ENGLISH, "%.1f %s", n / 1e6, if (arabic) "ميجا" else "MB")
+            n >= 1_000L -> String.format(Locale.ENGLISH, "%.0f %s", n / 1e3, if (arabic) "كيلو" else "KB")
+            else -> if (arabic) "$n بايت" else "$n B"
         }
     }
 

@@ -47,6 +47,8 @@ object Known {
 }
 
 object AppRepo {
+    const val AURA_MUSIC = "aura:music"
+    const val AURA_MAPS = "aura:maps"
     private val collator: Collator = Collator.getInstance()
     private val worker = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
@@ -101,8 +103,8 @@ object AppRepo {
             val sys = (ai.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
             out.add(AppInfo(ai.packageName, ai.name, ri.loadLabel(pm).toString(), sys))
         }
-        // Aura's own Maps and Music (they can be pinned to the dock like any app)
-        for ((id, res) in listOf(DockPins.MAPS to com.abdllh.aura.R.string.dock_nav, DockPins.MUSIC to com.abdllh.aura.R.string.dock_music)) {
+        // Aura's own Maps and Music: for the voice's "open ..."; the Apps panel leaves them out, they are in the dock
+        for ((id, res) in listOf(AURA_MAPS to com.abdllh.aura.R.string.dock_nav, AURA_MUSIC to com.abdllh.aura.R.string.dock_music)) {
             out.add(AppInfo(id, "", ctx.getString(res), true))
         }
         // ZLink kept off by Aura is disabled, so it has no launcher entry: it stays in the list (opening it turns it on)
@@ -122,8 +124,8 @@ object AppRepo {
 
     fun launch(ctx: Context, pkg: String): Boolean = try {
         when (pkg) {
-            DockPins.MUSIC -> { Screens.music(ctx); true }
-            DockPins.MAPS -> Actions.nav(ctx)
+            AURA_MUSIC -> { Screens.music(ctx); true }
+            AURA_MAPS -> Actions.nav(ctx)
             Known.ZLINK -> com.abdllh.aura.system.ZLinkGuard.open(ctx) // kept off by Aura: turned on first
             else -> {
                 val i = launchIntent(ctx, pkg)
@@ -187,8 +189,7 @@ object IconLoader {
         loading.incrementAndGet()
         pool.execute {
             val bmp = try {
-                // Aura's own apps ("aura:maps"...) and the known head-unit apps get Aura's coloured tile
-                DockTiles.bitmap(app, pkg, sizePx) ?: toBitmap(app.packageManager.getApplicationIcon(pkg), sizePx)
+                toBitmap(app.packageManager.getApplicationIcon(pkg), sizePx)
             } catch (_: Throwable) {
                 null
             }

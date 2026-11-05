@@ -31,6 +31,9 @@ import com.abdllh.aura.util.Dp
 import com.abdllh.aura.util.Prefs
 
 class AuraApp : Application() {
+    /** AMRI's language, for Android too: it sets the process's default locale from these at every configuration change ([com.abdllh.aura.util.LocaleHelper.appResources]). */
+    override fun getResources(): android.content.res.Resources = com.abdllh.aura.util.LocaleHelper.appResources(baseContext)
+
     override fun onCreate() {
         // Valhalla's process (nav/route/RouteProcess.kt): its crash is not the home screen's, and it has no use for any of this
         if (processName().endsWith(":route")) { super.onCreate(); return }
@@ -98,6 +101,10 @@ class AuraApp : Application() {
         com.abdllh.aura.system.WifiOnStart.init(this) // the Wi-Fi on when the car starts (the firmware's airplane mode off)
         Power.init(this) // after an "off now": the ACC-off behaviour goes back to the user's choice
         Front.init(this)
+        // the apps' list read once the start has settled, as the old drawer did: Apps' first open has its grid in its first frame, and the voice its names
+        android.os.Handler(mainLooper).postDelayed({
+            com.abdllh.aura.home.AppRepo.loadAsync(this) { com.abdllh.aura.system.IdleGc.request("app list", 3000L) }
+        }, 6000L)
         com.abdllh.aura.diag.TripRecorder.init(this) // (does nothing unless its switch is on)
         com.abdllh.aura.update.Rollback.prepare(this) // the way back in place, a while after the start
         if (!disabled) {

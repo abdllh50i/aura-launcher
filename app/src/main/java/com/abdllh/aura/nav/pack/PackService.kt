@@ -57,7 +57,7 @@ class PackService : Service() {
 
     private fun build(text: String): Notification {
         val s = PackManager.status
-        val open = PendingIntent.getActivity(this, 0, Intent(this, SettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_UPDATE_CURRENT)
+        val open = PendingIntent.getActivity(this, 0, Intent(this, SettingsActivity::class.java).putExtra(SettingsActivity.EXTRA_PAGE, SettingsActivity.PAGE_PACK).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_UPDATE_CURRENT)
         return Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_nav)
             .setContentTitle(LocaleHelper.wrap(this).getString(R.string.pack_title))
