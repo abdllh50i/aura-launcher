@@ -17,15 +17,17 @@ import java.util.concurrent.CopyOnWriteArrayList
  *  - no speed, gear D: Moving
  *  - between the two speeds: keeps what it was
  *
- * Starts Parked. [step] takes what is known now; the gear is only a gear read from the car, null when it is unknown or assumed.
+ * Starts Parked. [step] takes what is known now; the gear is only a gear read from the car, null when it is unknown or assumed. The 2 s want a second fix to say so: on the unit a fix comes every 2 s, so
+ * with the last fix's speed standing for the time between, one fix's jump at a standstill would be the whole 2 s by itself. [fresh]: [kmh] comes from a new fix, not from asking again.
  */
 class DriveRule {
     var moving = false
         private set
     private var fastSince = NEVER
+    private var fastFixes = 0
     private var slowSince = NEVER
 
-    fun step(kmh: Float?, gear: Gear.Pos?, now: Long): Boolean {
+    fun step(kmh: Float?, gear: Gear.Pos?, now: Long, fresh: Boolean = true): Boolean {
         val forward = gear == Gear.Pos.D || gear == Gear.Pos.R
         if (kmh == null) {
             fastSince = NEVER
@@ -36,8 +38,9 @@ class DriveRule {
         when {
             kmh >= FAST_KMH -> {
                 slowSince = NEVER
-                if (fastSince == NEVER) fastSince = now
-                if (now - fastSince >= FAST_MS) moving = true
+                if (fastSince == NEVER) { fastSince = now; fastFixes = 0 }
+                if (fresh) fastFixes++
+                if (now - fastSince >= FAST_MS && fastFixes >= 2) moving = true
             }
             kmh < SLOW_KMH -> {
                 fastSince = NEVER
@@ -55,7 +58,7 @@ class DriveRule {
 
     /** When [step] should be asked again if nothing new comes, on the clock [step] was given; [NEVER] when nothing is pending. */
     fun wakeAt(): Long = when {
-        !moving && fastSince != NEVER -> fastSince + FAST_MS
+        !moving && fastSince != NEVER && fastFixes >= 2 -> fastSince + FAST_MS // (with one fix only the next one can say)
         moving && slowSince != NEVER -> slowSince + SLOW_MS
         else -> NEVER
     }
@@ -114,17 +117,19 @@ object DriveState {
             kmh = l.speed * 3.6f
             main.postDelayed(fixGone, FIX_MAX_AGE_MS - age)
         }
-        ask()
+        askNow(true)
     }
 
     private val fixGone = Runnable { kmh = null; ask() }
 
     private val again = Runnable { ask() }
 
-    private val ask: () -> Unit = {
+    private val ask: () -> Unit = { askNow(false) }
+
+    private fun askNow(newFix: Boolean) {
         val was = rule.moving
         val now = SystemClock.elapsedRealtime()
-        rule.step(kmh, Gear.known, now)
+        rule.step(kmh, Gear.known, now, newFix)
         main.removeCallbacks(again)
         val wake = rule.wakeAt()
         if (wake != DriveRule.NEVER) main.postDelayed(again, (wake - now).coerceAtLeast(1L))

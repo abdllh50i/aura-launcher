@@ -98,9 +98,35 @@ class DriveRuleTest {
         assertFalse(r.step(0f, null, 15_000))
     }
 
+    @Test fun oneFixsJumpIsNotMovingHoweverLongItStands() {
+        // (the unit's GPS at 0.5 Hz: the last fix's speed stands for the 2 s to the next, and its timer asks again in them)
+        assertFalse(r.step(40f, null, 0))
+        assertEquals(DriveRule.NEVER, r.wakeAt())
+        assertFalse(r.step(40f, null, 2000, fresh = false))
+        assertFalse(r.step(40f, null, 4000, fresh = false))
+        assertFalse(r.step(0f, null, 4100))
+        assertFalse(r.moving)
+    }
+
+    @Test fun aCarDrivingOffAtHalfAHertzIsMovingInItsTwoSeconds() {
+        assertFalse(r.step(30f, null, 0))
+        // (the second fix a little early: its timer finishes the 2 s)
+        assertFalse(r.step(30f, null, 1990))
+        assertEquals(2000L, r.wakeAt())
+        assertTrue(r.step(30f, null, 2000, fresh = false))
+    }
+
+    @Test fun aCarDrivingOffAtHalfAHertzIsMovingWhenTheSecondFixIsLate() {
+        assertFalse(r.step(30f, null, 0))
+        assertFalse(r.step(30f, null, 2000, fresh = false))
+        assertTrue(r.step(30f, null, 2010))
+    }
+
     @Test fun whenItWantsToBeAskedAgain() {
         assertEquals(DriveRule.NEVER, r.wakeAt())
         r.step(20f, null, 100)
+        assertEquals(DriveRule.NEVER, r.wakeAt()) // (one fix: the next one says)
+        r.step(20f, null, 1100)
         assertEquals(2100L, r.wakeAt())
         r.step(20f, null, 2100)
         assertEquals(DriveRule.NEVER, r.wakeAt())

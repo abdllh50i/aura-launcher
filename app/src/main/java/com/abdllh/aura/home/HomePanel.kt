@@ -309,7 +309,7 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         card.setFace(if (trip) HomeCard.Face.TRIP else if (moving) HomeCard.Face.MOVING else HomeCard.Face.PARKED, animate)
         widget.setMoving(look, animate)
         clock.setMoving(look, animate)
-        stage.locked = look
+        stage.locked = moving // (a trip at a red light has the moving look, and he may turn his car: it stands)
         if (look != movingLook) {
             movingLook = look
             val d = dimFor(look)
@@ -521,7 +521,7 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         val look = trip || moving
         widget.setMoving(look, false)
         clock.setMoving(look, false)
-        stage.locked = look
+        stage.locked = moving
         movingLook = look
         dimA.snap(dimFor(look))
     }
