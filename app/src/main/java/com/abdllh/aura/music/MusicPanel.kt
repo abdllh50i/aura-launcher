@@ -1046,7 +1046,7 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
     }
 
     private fun syncRows() {
-        if (::emptyRows.isInitialized && noSong) for (r in emptyRows) r.set(rowTitle(r.row, full = false), if (r.row == SourceRow.NAGHM && !PhoneLink.connected) getString(R.string.music_from_iphone) else rowState(r.row), false)
+        if (::emptyRows.isInitialized && noSong) for (r in emptyRows) r.set(rowTitle(r.row, full = r.row != SourceRow.NAGHM), if (r.row == SourceRow.NAGHM && !PhoneLink.connected) getString(R.string.music_from_iphone) else rowState(r.row), false)
         if (sourceSheet?.isOpen == true) sourceSheet?.refresh()
     }
 
@@ -1127,7 +1127,8 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
     private fun playState(playing: Boolean, on: Boolean) {
         playBtn.setPlaying(playing)
         fullPlay.setPlaying(playing)
-        breathe(playing)
+        // (no song: the grey cover stands at its full size, nothing is paused)
+        breathe(playing || noSong)
         setTransport(on)
     }
 
@@ -1780,9 +1781,8 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
             kind = ABtn.Kind.TONAL
             icon(R.drawable.ic_play)
             setText(R.string.music_play_all)
-            setPadding(20, 0, 20, 0)
             setOnClickListener { group?.let { playFrom(it.tracks, 0) } }
-        }, lp(WRAP, ABtn.Size.M.height))
+        }, lp(PLAY_ALL_W, ABtn.Size.M.height))
         library.addView(crumb, at(8, 8, 612, 60))
 
         listHolder = FrameLayout(this)
@@ -1804,8 +1804,8 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         empty = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; visibility = View.GONE }
         emptyText = label(Type.stateTitle, { Palette.ink }, lines = 3, gravity = Gravity.CENTER)
         empty.addView(emptyText, lp(MATCH, WRAP).apply { setMargins(40, 0, 40, 0) })
-        emptyBtn = ABtn(this).apply { kind = ABtn.Kind.TONAL; setPadding(28, 0, 28, 0) }
-        empty.addView(emptyBtn, lp(WRAP, ABtn.Size.M.height).apply { topMargin = 18 })
+        emptyBtn = ABtn(this).apply { kind = ABtn.Kind.TONAL }
+        empty.addView(emptyBtn, lp(EMPTY_BTN_W, ABtn.Size.M.height).apply { topMargin = 18 })
         emptySpinner = Spinner(this, 24).apply { visibility = View.GONE }
         empty.addView(emptySpinner, lp(24, 24).apply { topMargin = 18 })
         library.addView(empty, at(0, 72, 628, 382))
@@ -1905,6 +1905,9 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         private const val COVER = 204
         /** Asked of the loader for the big cover. */
         private const val ART_PX = 600
+        /** Buttons in the library, wide enough for their word in either language: an exact width, a wrapped one lost its padding. */
+        private const val PLAY_ALL_W = 196
+        private const val EMPTY_BTN_W = 220
         /** The album cell's cover, its height, and the columns of the grid: 612 / 4. */
         private const val ALBUM = 120
         private const val ALBUM_H = 196
