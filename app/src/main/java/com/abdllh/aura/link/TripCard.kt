@@ -44,8 +44,11 @@ internal object TripCard {
     private var view: Card? = null
     private var attached = false
 
-    /** [ms] > 0: goes by itself after that, [onTimeout] then. A banner showing is changed in place. */
-    fun show(ctx: Context, caption: String, title: String, actions: List<Action>, ms: Long, onTimeout: (() -> Unit)?): Boolean {
+    fun show(ctx: Context, caption: String, title: String, sub: String?, actions: List<Action>, ms: Long, onTimeout: (() -> Unit)?): Boolean =
+        show(ctx, caption, title, sub, actions, ms, onTimeout, R.drawable.ic_pin)
+
+    /** [ms] > 0: goes by itself after that, [onTimeout] then. A banner showing is changed in place. [sub], when there is one, follows the caption on its line. */
+    fun show(ctx: Context, caption: String, title: String, sub: String?, actions: List<Action>, ms: Long, onTimeout: (() -> Unit)?, icon: Int): Boolean {
         val c = ctx.applicationContext
         if (!Settings.canDrawOverlays(c)) { Log.w(TAG, "no overlay permission"); return false }
         var v = view
@@ -53,7 +56,7 @@ internal object TripCard {
             remove()
             v = Card(LocaleHelper.wrap(c)).also { view = it }
         }
-        v.bind(caption, title, actions, ms, onTimeout)
+        v.bind(caption, title, sub, actions, ms, onTimeout, icon)
         if (attached) { v.stay(); return true }
         val lp = WindowManager.LayoutParams(
             Card.WINDOW_W, Card.WINDOW_H, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
@@ -102,7 +105,7 @@ internal object TripCard {
         val lang = Prefs.lang
         private val card = SurfaceCard(c, Surface.OVERLAY)
         private val plate = c.plateView(18) { Palette.fill2 }
-        private val glyph = c.iconView(R.drawable.ic_iphone, 30) { Palette.ink }
+        private val glyph = c.iconView(R.drawable.ic_pin, 30) { Palette.ink }
         private val from = c.label(Type.msgFrom, { Palette.ink2Move })
         private val name = c.label(Type.msgTitle, { Palette.ink })
         private val answer = ABtn(c).apply { size = ABtn.Size.ARRIVAL; setHeightOverride(ANSWER_H) }
@@ -136,8 +139,9 @@ internal object TripCard {
             card.addView(name, Type.msgTitle.box(left, 50, w))
         }
 
-        fun bind(caption: String, title: String, actions: List<Action>, ms: Long, after: (() -> Unit)?) {
-            from.text = caption
+        fun bind(caption: String, title: String, sub: String?, actions: List<Action>, ms: Long, after: (() -> Unit)?, icon: Int) {
+            glyph.setImageResource(icon)
+            from.text = if (sub.isNullOrBlank()) caption else "$caption · $sub"
             name.text = title
             val first = actions.firstOrNull { it.primary } ?: actions.firstOrNull()
             val second = actions.firstOrNull { it !== first }

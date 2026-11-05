@@ -74,6 +74,9 @@ object MapStyle {
     /** The image of a place's dot ([poiDot]), drawn in each kind's colour. */
     const val POI_DOT = "poi-dot"
 
+    /** The destination's pin ([destPin]). */
+    const val DEST_PIN = "dest-pin"
+
     /**
      * The pack's map fonts, IBM Plex Sans Arabic as glyphs (a modified form of it, so under a name without the reserved "Plex": tools/mapbuild/NOTICE-PACK.md): make_glyphs.py's --family, with
      * " Regular" and [PACK_HEAVY] the stacks of glyphs.db. The one place to change when the UI's font changes (with a new glyphs.db).
@@ -149,6 +152,55 @@ object MapStyle {
         }
         return Bitmap.createBitmap(px, size, size, Bitmap.Config.ARGB_8888).apply { density = DisplayMetrics.DENSITY_DEFAULT }
     }
+
+    /**
+     * The destination's pin, 40 x 52, as a signed distance field like [poiDot]: the map tints it and rings it with a halo, and icons in colours once drew black on the unit's tilted map.
+     * The boundary as a polygon, 3,808 pixels against 63 sides, once.
+     */
+    fun destPin(): Bitmap = pin ?: run {
+        val buffer = 8
+        val w = 40 + 2 * buffer
+        val h = 52 + 2 * buffer
+        val cx = w / 2.0
+        val r = 20.0
+        val cy = buffer + r
+        val tipY = buffer + 52.0
+        // the circle, from where the tip's tangents touch it round over the top, then the tip
+        val alpha = Math.acos(r / (tipY - cy))
+        val n = 62
+        val xs = DoubleArray(n + 1)
+        val ys = DoubleArray(n + 1)
+        for (i in 0 until n) {
+            val a = Math.PI / 2 + alpha + (2 * Math.PI - 2 * alpha) * i / (n - 1)
+            xs[i] = cx + r * Math.cos(a)
+            ys[i] = cy + r * Math.sin(a)
+        }
+        xs[n] = cx
+        ys[n] = tipY
+        val px = IntArray(w * h)
+        for (y in 0 until h) for (x in 0 until w) {
+            val mx = x + 0.5
+            val my = y + 0.5
+            var best = Double.MAX_VALUE
+            var inside = false
+            var j = n
+            for (i in 0..n) {
+                val ax = xs[j]; val ay = ys[j]; val bx = xs[i]; val by = ys[i]
+                val dx = bx - ax; val dy = by - ay
+                val t = (((mx - ax) * dx + (my - ay) * dy) / (dx * dx + dy * dy)).coerceIn(0.0, 1.0)
+                val d = hypot(mx - (ax + t * dx), my - (ay + t * dy))
+                if (d < best) best = d
+                if ((ay > my) != (by > my) && mx < ax + (my - ay) / dy * dx) inside = !inside
+                j = i
+            }
+            val signed = if (inside) -best else best
+            val a = (1.0 - (signed / buffer + 0.25)).coerceIn(0.0, 1.0)
+            px[y * w + x] = ((a * 255).toInt() shl 24) or 0xFFFFFF
+        }
+        Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888).apply { density = DisplayMetrics.DENSITY_DEFAULT }.also { pin = it }
+    }
+
+    private var pin: Bitmap? = null
 
     /** 3D buildings when zoomed in (fill-extrusion). */
     @JvmField var buildings3d = true
@@ -479,7 +531,7 @@ object MapStyle {
                "paint":{"line-color":"${c.turn}","line-width":${width(wTurn)}}}""",
             """{"id":"turn-head","type":"fill","source":"$SRC_TURN","filter":["==","${'$'}type","Polygon"],
                "paint":{"fill-color":"${c.turn}"}}"""
-        ) + dest(route, c.destRing, bold, c.place, c.placeHalo) + resultPins(bold, route)
+        ) + dest(route, c.destRing, regular, c.place, c.placeHalo) + resultPins(bold, route)
         val empty ="""{"type":"geojson","data":{"type":"FeatureCollection","features":[]}}"""
         val source = if (local) """"tiles":["${TileServer.tilesUrl}"],"minzoom":0,"maxzoom":14"""
             else """"url":"$TILES""""
@@ -510,18 +562,16 @@ object MapStyle {
     }
 
     /**
-     * The destination over everything else: a ringed dot in the route's colour with a soft halo, lying on the ground
-     * like the route it ends (an ellipse on the tilted map), so it reads as a place, not as a button.
+     * The destination over everything else (SPEC.md section 11): a plain pin, 40 x 52, in the route's colour with a ring, its tip on the place, a white eye in it, and the place's name
+     * at 22 px above it, ignoring collisions, so the name stays on screen wherever the car is.
      */
-    private fun dest(route: String, ring: String, bold: String, ink: String, halo: String): List<String> = listOf(
-        // (SPEC.md section 11: a plain pin, its name above it at 22 px, neither giving way to anything. An image in signed distance
-        // and a dot on it in the ring's colour: one colour each, so no coloured icon that a tilted map could draw black, DEV.md "Aura Maps")
+    private fun dest(route: String, ring: String, font: String, name: String, halo: String): List<String> = listOf(
         """{"id":"dest-pin","type":"symbol","source":"$SRC_DEST",
            "layout":{"icon-image":"$DEST_PIN","icon-anchor":"bottom","icon-offset":[0,8],"icon-allow-overlap":true,"icon-ignore-placement":true,"icon-pitch-alignment":"viewport","icon-rotation-alignment":"viewport",
-             "text-field":["coalesce",["get","name"],""],"text-font":$bold,"text-size":22,"text-anchor":"bottom","text-offset":[0,${-(DEST_PIN_H + 4) / 22.0}],"text-allow-overlap":true,"text-ignore-placement":true,"text-max-width":12},
-           "paint":{"icon-color":"$route","icon-halo-color":"$ring","icon-halo-width":2,"text-color":"$ink","text-halo-color":"$halo","text-halo-width":2}}""",
-        """{"id":"dest-dot","type":"symbol","source":"$SRC_DEST",
-           "layout":{"icon-image":"$POI_DOT","icon-size":1.1,"icon-anchor":"center","icon-offset":[0,${-(DEST_PIN_H - DEST_PIN_R) / 1.1}],"icon-allow-overlap":true,"icon-ignore-placement":true,"icon-pitch-alignment":"viewport","icon-rotation-alignment":"viewport"},
+           "text-field":["coalesce",["get","name"],""],"text-font":$font,"text-size":22,"text-anchor":"bottom","text-offset":[0,-2.5],"text-allow-overlap":true,"text-ignore-placement":true,"text-max-width":14},
+           "paint":{"icon-color":"$route","icon-halo-color":"$ring","icon-halo-width":1.6,"text-color":"$name","text-halo-color":"$halo","text-halo-width":2.2}}""",
+        """{"id":"dest-eye","type":"symbol","source":"$SRC_DEST",
+           "layout":{"icon-image":"$POI_DOT","icon-anchor":"center","icon-offset":[0,-32],"icon-size":1.0,"icon-allow-overlap":true,"icon-ignore-placement":true,"icon-pitch-alignment":"viewport","icon-rotation-alignment":"viewport"},
            "paint":{"icon-color":"#FFFFFF"}}"""
     )
 
@@ -535,46 +585,6 @@ object MapStyle {
              "text-field":["get","n"],"text-font":$bold,"text-size":18,"text-allow-overlap":true,"text-ignore-placement":true},
            "paint":{"icon-color":"$pin","icon-halo-color":"#FFFFFF","icon-halo-width":2.5,"text-color":"#FFFFFF"}}"""
     )
-
-    /** The destination's pin: [DEST_PIN_W] x [DEST_PIN_H] as seen, in signed distance, as [poiDot] is: a circle running down to a point. */
-    fun destPin(): Bitmap {
-        val buffer = 8f
-        val w = DEST_PIN_W + 2 * buffer.toInt()
-        val h = DEST_PIN_H + 2 * buffer.toInt()
-        val r = DEST_PIN_R.toFloat()
-        val cx = w / 2f
-        val cy = buffer + r
-        val tipY = buffer + DEST_PIN_H
-        // the tip's two tangents to the circle: the edge of the point
-        val dist = tipY - cy
-        val tanA = Math.acos((r / dist).toDouble()).toFloat()
-        val ox = r * kotlin.math.sin(tanA)
-        val oy = r * kotlin.math.cos(tanA)
-        fun toSegment(px: Float, py: Float, ax: Float, ay: Float, bx: Float, by: Float): Float {
-            val t = (((px - ax) * (bx - ax) + (py - ay) * (by - ay)) / ((bx - ax) * (bx - ax) + (by - ay) * (by - ay))).coerceIn(0f, 1f)
-            return hypot(px - ax - t * (bx - ax), py - ay - t * (by - ay))
-        }
-        val px = IntArray(w * h)
-        for (y in 0 until h) for (x in 0 until w) {
-            val fx = x + 0.5f
-            val fy = y + 0.5f
-            val dx = kotlin.math.abs(fx - cx)
-            // below where the tangents meet the circle the edge is the straight line to the tip, above it the circle
-            val below = fy > cy + oy
-            val toEdge = if (below) toSegment(dx, fy, ox, cy + oy, 0f, tipY) else hypot(dx, fy - cy) - r
-            val inside = if (below) fy <= tipY && dx <= ox * (tipY - fy) / (tipY - cy - oy) else toEdge <= 0f
-            val d = if (below) (if (inside) -toEdge else toEdge) else toEdge
-            val a = (1f - (d / buffer + 0.25f)).coerceIn(0f, 1f)
-            px[y * w + x] = ((a * 255).toInt() shl 24) or 0xFFFFFF
-        }
-        return Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888).apply { density = DisplayMetrics.DENSITY_DEFAULT }
-    }
-
-    /** The image of the destination's pin ([destPin]). */
-    const val DEST_PIN = "dest-pin"
-    private const val DEST_PIN_W = 36
-    private const val DEST_PIN_H = 48
-    private const val DEST_PIN_R = 18
 
     /**
      * The owner's additions, drawn without icons like the places (icon images once drew black on the unit's tilted

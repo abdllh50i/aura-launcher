@@ -7,6 +7,7 @@ import android.os.SystemClock
 import android.util.Log
 import android.view.View
 import com.abdllh.aura.BuildConfig
+import com.abdllh.aura.R
 import com.abdllh.aura.home.HomeActivity
 import com.abdllh.aura.system.SystemProps
 import com.abdllh.aura.ui.MapBackdropView
@@ -60,7 +61,7 @@ class MapController(private val shell: HomeActivity) {
     private var previewRoute: List<LatLon>? = null
     private var previewAlt: List<LatLon>? = null
     private var previewDest: LatLon? = null
-    private var previewDestName: String? = null
+    private var previewName: String? = null
     /** A trip is on the map. */
     private var tripShown = false
     /** The turn whose arrow is on the map (the route and the step's index). */
@@ -331,8 +332,8 @@ class MapController(private val shell: HomeActivity) {
             Front.MAPS -> {
                 m.setInteractive(true)
                 m.pictureFile = null
-                // (the column is at the left in both languages, section 1; map-*.json's browse: car at (701, 280))
-                m.setRoom(mapsSide, MAPS_ROOM_TOP, 0, MAPS_ROOM_BOTTOM, MAPS_NAV_TOP)
+                // (the column is on the left in both languages: seat, not language)
+                m.setRoom(mapsSide, MAPS_TOP, 0, MAPS_BOTTOM, MAPS_NAV_TOP)
             }
         }
         sync()
@@ -378,7 +379,7 @@ class MapController(private val shell: HomeActivity) {
                 tripShown = false
                 m.setRoute(previewRoute)
                 m.setRouteAlt(previewAlt)
-                m.setDestination(previewDest, previewDestName)
+                m.setDestination(previewDest, previewName)
                 m.setCamera(AuraMap.Camera.FOLLOW)
             } else if (!onMaps && m.camera != AuraMap.Camera.FOLLOW) m.setCamera(AuraMap.Camera.FOLLOW)
             return
@@ -388,7 +389,7 @@ class MapController(private val shell: HomeActivity) {
         val p = NavSession.progress
         m.setRouteAlt(null)
         m.setResults(emptyList())
-        m.setDestination(NavSession.destination?.pos, NavSession.destination?.name)
+        m.setDestination(NavSession.destination?.pos, NavSession.destination?.name?.takeIf { it != shell.getString(R.string.maps_dropped_pin) })
         val c = m.camera
         if (c != AuraMap.Camera.NAVIGATE && (!onMaps || (c != AuraMap.Camera.FREE && c != AuraMap.Camera.OVERVIEW))) m.setCamera(AuraMap.Camera.NAVIGATE)
         // only the part still ahead shows, from under the arrow on: the map cuts the line at the car as it draws it
@@ -413,10 +414,10 @@ class MapController(private val shell: HomeActivity) {
         if (!tripShown) map?.setRoute(points)
     }
 
-    /** The place shown; while a trip is on the map it waits for the trip's end. */
+    /** The place shown, with its name over the pin; while a trip is on the map it waits for the trip's end. */
     fun setDestination(p: LatLon?, name: String? = null) {
         previewDest = p
-        previewDestName = name
+        previewName = name
         if (!tripShown) map?.setDestination(p, name)
     }
 
@@ -447,9 +448,9 @@ class MapController(private val shell: HomeActivity) {
         /** The player covers the lower part of the home screen's card: the car stays in the middle of what is visible. */
         private const val HOME_NAV_TOP = 0.08
         private const val MAPS_NAV_TOP = 0.42
-        /** What the strip and the bottom row leave of the map on Maps (map-*.json's browse: padding top 40, bottom 80). */
-        private const val MAPS_ROOM_TOP = 40
-        private const val MAPS_ROOM_BOTTOM = 80
+        /** map-*.json `camera.browse`: what the strip and the row leave, so the car stands at (701, 280). The driving camera's top is [AuraMap]'s table. */
+        private const val MAPS_TOP = 40
+        private const val MAPS_BOTTOM = 80
         /** The turn's arrow is on the map from this far before it (its size is the map's: [AuraMap.setTurn]). */
         private const val TURN_ARROW_FROM_M = 900.0
         /** At this speed and above the car moves on a trip: a new theme or accent waits ([lookMayChange]). */

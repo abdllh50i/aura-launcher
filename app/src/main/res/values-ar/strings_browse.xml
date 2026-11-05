@@ -12,13 +12,11 @@
     <string name="browse_no_internet">ما فيه إنترنت</string>
     <string name="browse_nothing">ما لقينا شي بهالاسم</string>
     <string name="browse_set_place">ما انحفظ للحين، اضغط واختر مكانه</string>
-    <string name="browse_pick_home">اضغط مطوّل على مكان البيت في الخريطة أو ابحث عنه، ثم اضغط النجمة</string>
-    <string name="browse_pick_work">اضغط مطوّل على مكان الدوام في الخريطة أو ابحث عنه، ثم اضغط النجمة</string>
-    <string name="browse_from_iphone">وصل من الآيفون</string>
+    <string name="browse_pick_home">اضغط مطوّل على المكان أو ابحث عنه، ثم النجمة</string>
+    <string name="browse_pick_work">اضغط مطوّل على المكان أو ابحث عنه، ثم النجمة</string>
     <string name="browse_start_now">ابدأ الآن</string>
     <string name="browse_starts_in_1">يبدأ بعد ثانية</string>
     <string name="browse_starts_in_2">يبدأ بعد ثانيتين</string>
     <string name="browse_starts_in_n">يبدأ بعد %1$s ثوان</string>
-    <string name="browse_switch_route">بدّل الطريق</string>
     <string name="browse_haram_inside">الرحلة تبدأ أو تنتهي داخل حدود الحرم</string>
 </resources>

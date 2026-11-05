@@ -707,7 +707,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         if (turnLine === line && along > turnFrom + TURN_CUT_STEP_M && along < turnEnd) pushTurn()
     }
 
-    /** The place's pin, and its [name] above it. */
+    /** The pin, and [name] over it. */
     fun setDestination(p: LatLon?, name: String? = null) {
         if (p == dest && name == destName) return
         dest = p
@@ -718,9 +718,8 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
     private fun pushDest() {
         val s = style ?: return
         val d = dest
-        val json = if (d == null) EMPTY else org.json.JSONObject().put("type", "Feature")
-            .put("properties", org.json.JSONObject().put("name", destName.orEmpty()))
-            .put("geometry", org.json.JSONObject().put("type", "Point").put("coordinates", org.json.JSONArray().put(d.lon).put(d.lat))).toString()
+        val named = destName?.takeIf { it.isNotBlank() }?.let { org.json.JSONObject.quote(it) }
+        val json = if (d == null) EMPTY else """{"type":"Feature","properties":{${if (named != null) """"name":$named""" else ""}},"geometry":{"type":"Point","coordinates":[${d.lon},${d.lat}]}}"""
         try { s.getSourceAs<GeoJsonSource>(MapStyle.SRC_DEST)?.setGeoJson(json) } catch (_: Throwable) { }
     }
 

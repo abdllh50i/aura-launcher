@@ -10,6 +10,7 @@ import com.abdllh.aura.home.Actions
 import com.abdllh.aura.home.AppRepo
 import com.abdllh.aura.home.HomeActivity
 import com.abdllh.aura.home.Screens
+import com.abdllh.aura.nav.CarLocation
 import com.abdllh.aura.nav.Geo
 import com.abdllh.aura.nav.LatLon
 import com.abdllh.aura.nav.NavSession
@@ -195,16 +196,27 @@ internal object PlaceInbox {
     }
 
     // ------------------------------------------------------------------------------------------ the cards
-    private fun caption(c: Context, x: Incoming) = words(c).getString(if (x.voice) R.string.link_from_voice else R.string.browse_from_iphone)
+    private fun caption(c: Context, x: Incoming) = words(c).getString(if (x.voice) R.string.link_from_voice else R.string.link_from_phone)
+
+    private fun icon(x: Incoming) = if (x.voice) R.drawable.ic_mic else R.drawable.ic_iphone
+
+    /** The place's detail and how far it is from the car, whatever is known of them. */
+    private fun where(x: Incoming): String {
+        val arabic = Locale.getDefault().language == "ar"
+        val far = CarLocation.lastKnown()?.let { Units.distance(Geo.distance(it, x.place.pos), arabic) }
+        // (each part whole: an Arabic address beside "12 km" must not take the number into its own direction)
+        val bidi = android.text.BidiFormatter.getInstance(arabic)
+        return listOfNotNull(x.place.detail.ifBlank { null }, far).joinToString(" · ") { bidi.unicodeWrap(it) }
+    }
 
     private fun askCard(c: Context, x: Incoming) {
         val w = words(c)
-        val shown = TripCard.show(c, caption(c, x), x.place.name, listOf(
+        val shown = TripCard.show(c, caption(c, x), x.place.name, where(x), listOf(
             TripCard.Action(w.getString(R.string.link_start), true) { if (current === x) begin(c, x) },
             TripCard.Action(w.getString(R.string.link_no), false) { if (current === x) { tell(x, "ignored", null); note(x, "ignored"); finishWith(x) } }
-        ), ASK_MS) {
+        ), ASK_MS, {
             if (current === x) { tell(x, "expired", null); note(x, "expired"); finishWith(x) }
-        }
+        }, icon(x))
         if (!shown) { onTheMap(c, x); return }
         stage = Stage.ASKING
         tell(x, "card", JSONObject().put("kind", "ask"))
@@ -214,13 +226,14 @@ internal object PlaceInbox {
 
     private fun replaceCard(c: Context, x: Incoming) {
         val w = words(c)
-        val shown = TripCard.show(c, caption(c, x), x.place.name, listOf(
-            TripCard.Action(w.getString(R.string.browse_switch_route), true) { if (current === x) begin(c, x) },
-            TripCard.Action(w.getString(R.string.link_keep), false) { if (current === x) { tell(x, "ignored", JSONObject().put("kept", true)); note(x, "ignored"); finishWith(x) } }
-        ), REPLACE_MS) {
-            // nobody answered: the trip goes on
-            if (current === x) { tell(x, "ignored", JSONObject().put("kept", true).put("by", "timeout")); note(x, "ignored"); finishWith(x) }
-        }
+        val replace = { if (current === x) begin(c, x) }
+        val keep = { if (current === x) { tell(x, "ignored", JSONObject().put("kept", true)); note(x, "ignored"); finishWith(x) } }
+        // nobody answered: the trip goes on
+        val nobody = { if (current === x) { tell(x, "ignored", JSONObject().put("kept", true).put("by", "timeout")); note(x, "ignored"); finishWith(x) } }
+        val shown = TripCard.show(c, caption(c, x), x.place.name, null, listOf(
+            TripCard.Action(w.getString(R.string.link_replace), true) { replace() },
+            TripCard.Action(w.getString(R.string.link_keep), false) { keep() }
+        ), REPLACE_MS, { nobody() }, icon(x))
         if (!shown) { // no card can ask: the trip goes on
             tell(x, "ignored", JSONObject().put("kept", true).put("reason", "no_card"))
             note(x, "ignored")
@@ -253,8 +266,9 @@ internal object PlaceInbox {
         if (NavSession.state != NavSession.State.NAVIGATING) { TripCard.hide(); return }
         if (blocker() != null) { cardAway = true; return }
         val w = words(c)
-        TripCard.show(c, w.getString(if (phase == Trips.Phase.WAITING_FIX) R.string.browse_waiting_gps else R.string.browse_computing), x.place.name,
-            listOf(TripCard.Action(w.getString(R.string.link_cancel), false) { if (current === x) cancelled(x, "card") }), 0L, null)
+        TripCard.show(c, caption(c, x), x.place.name,
+            w.getString(if (phase == Trips.Phase.WAITING_FIX) R.string.maps_waiting_gps else R.string.maps_routing),
+            listOf(TripCard.Action(w.getString(R.string.link_cancel), false) { if (current === x) cancelled(x, "card") }), 0L, null, icon(x))
     }
 
     // ------------------------------------------------------------------------------------------ going
@@ -321,10 +335,10 @@ internal object PlaceInbox {
         stage = Stage.CANCEL_WINDOW
         // (nothing over the camera or a call's card: then the trip just runs, with its End button on the Maps screen)
         val busy = blocker()
-        val shown = busy == null && TripCard.show(c, caption(c, x), line,
-            listOf(TripCard.Action(w.getString(R.string.link_cancel), false) { if (current === x) cancelled(x, "card") }), CANCEL_MS) {
+        val shown = busy == null && TripCard.show(c, caption(c, x), line, where(x),
+            listOf(TripCard.Action(w.getString(R.string.link_cancel), false) { if (current === x) cancelled(x, "card") }), CANCEL_MS, {
             if (current === x) current = null
-        }
+        }, icon(x))
         if (shown) {
             main.removeCallbacks(tick)
             main.postDelayed(tick, 1000L)
@@ -355,7 +369,7 @@ internal object PlaceInbox {
         // (a call or reverse meanwhile: not over them; the phone has been told)
         if (blocker() != null) return
         if (onTrip) {
-            TripCard.show(c, caption(c, x), w.getString(R.string.link_failed_kept, x.place.name), emptyList(), FAILED_MS, null)
+            TripCard.show(c, caption(c, x), w.getString(R.string.link_failed_kept, x.place.name), null, emptyList(), FAILED_MS, null)
             return
         }
         // (the place's own card says it: no route, and try again)

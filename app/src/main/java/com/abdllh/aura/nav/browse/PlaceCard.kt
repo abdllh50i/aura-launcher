@@ -310,7 +310,7 @@ internal class FromPhoneCard(ctx: Context) : SurfaceCard(ctx, Surface.CARD) {
         addView(count, Type.placeSub.box(18, 134, 328))
         addView(cancel, at(8, 192, 170, 84))
         addView(startNow, at(186, 192, 170, 84))
-        head.setText(R.string.browse_from_iphone)
+        head.setText(R.string.link_from_phone)
     }
 
     fun setPlace(title: String) { name.text = android.text.BidiFormatter.getInstance(arabic).unicodeWrap(title) }
