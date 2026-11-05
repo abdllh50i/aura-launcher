@@ -204,7 +204,8 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
      */
     private inner class Drawn(private var skip: Int = 0) : MapView.OnDidFinishRenderingFrameListener {
         private var first = false
-        private var done = false
+        var done = false
+            private set
         private val late = Runnable { finish() }
         override fun onDidFinishRenderingFrame(fully: Boolean) {
             if (done) return
@@ -1063,6 +1064,8 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
 
     private fun measureFps(now: Long) {
         if (fpsCap <= 30 || camera != Camera.NAVIGATE) return
+        // (a surface coming back or a new style says nothing of how the map keeps up, and falling back lasts for the trip)
+        if (!firstFrame.done) { measureFrom = 0L; return }
         if (measureFrom == 0L) { measureFrom = now; renders = 0; return }
         val span = now - measureFrom
         if (span < 3000) return
