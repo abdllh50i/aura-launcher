@@ -79,6 +79,7 @@ class ShellRoot(ctx: Context) : FrameLayout(ctx) {
 
     override fun dispatchTouchEvent(e: MotionEvent): Boolean {
         touchedAt = SystemClock.uptimeMillis()
+        if (e.actionMasked == MotionEvent.ACTION_DOWN) com.abdllh.aura.ui.CarStage.windowDown(e.x, e.y)
         return super.dispatchTouchEvent(e)
     }
 

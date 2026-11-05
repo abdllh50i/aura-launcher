@@ -29,6 +29,8 @@ import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
+import java.nio.channels.FileChannel
+import java.util.zip.CRC32
 
 /**
  * `assets/car/car-stage.json` (SPEC.md section 10): where each of the 180 frames stands. Screen px: its lower hull (4 points, x ascending), which the shader's floor, shadow and
@@ -117,61 +119,166 @@ internal class CarLook(dark: Boolean) {
 }
 
 /**
+ * The bake's order: from [first], the showroom angle, coarse to fine: frames 32 apart, then 16, 8, 4, 2 and 1. What has been baked so covers the whole turn from its first frames, and each new
+ * one halves a gap, so a car with a part of its frames can already turn ([CarGlView] draws the nearest that is in).
+ */
+internal object CarBakeOrder {
+    fun of(count: Int, first: Int): IntArray {
+        val out = IntArray(count)
+        val seen = BooleanArray(count)
+        var at = 0
+        var stride = 32
+        while (stride >= 1) {
+            var d = 0
+            while (d < count) {
+                val i = Math.floorMod(first + d, count)
+                if (!seen[i]) { seen[i] = true; out[at++] = i }
+                d += stride
+            }
+            stride /= 2
+        }
+        return out
+    }
+}
+
+/**
  * The turntable's frames for the GPU: what ships is each frame's WebP, a 1 bit alpha marking the key K (assets/car/frames-<theme>). The first run only decodes, fills K where the alpha
- * is 0 and runs ETC1 on two threads, the current theme first, into no_backup/car-etc-<hash>.bin: 101,536 B a frame, 18.3 MB a theme, all of it resident in the GPU, so turning the car
- * costs no copies and no uploads. The other theme's file follows at leisure, so the change at dusk finds it ready.
+ * is 0 and runs ETC1, into no_backup/car-etc-<hash>.bin: 101,536 B a frame, 18.3 MB a theme, all of it resident in the GPU, so turning the car costs no copies and no uploads.
+ *
+ * On the unit a frame is about 380 ms of a core (its Screen check: ETC1 of 512 x 512 in 444 ms), so this can be met: it starts with the first start, whoever asks ([want]), on every core up to
+ * [MAX_THREADS] at background priority; it belongs to no view, so no panel, Screen check or new window costs it anything; and the file is good from its first frame on: each frame has its CRC in a table
+ * behind the frames, so a process that dies, or a unit that loses power, costs the frames on their way and no more. The table goes and the header comes when the last frame is in; only then is it the
+ * finished file [valid] knows, the same as ever. The theme that shows goes first, frame by frame, also if it changes in the middle; the other follows at leisure, so the change at dusk finds it ready.
+ * Who wants the frames gets each as it is ready ([watch]).
  */
 object CarEtc {
     private const val TAG = "AuraCar"
     private const val MAGIC = 0x32435445 // "ETC2": not the format, this file's second life (the key, no floor in the frames)
     const val HEADER = 32
     private const val VERSION = 3
-    private const val THREADS = 2
+    /** The unit's firmware says it has 8 cores and it has 4 (ro.sys.cputype QuadCore-T507, with /proc/cpuinfo doubled): more threads than this only wait for each other. */
+    private const val MAX_THREADS = 4
+    /** The first theme is drawing by now: no hurry for the other. */
+    private const val LEISURE_MS = 3000L
+    private const val ROOM_BESIDES = 64L * 1024 * 1024
+
+    /** Who wants a theme's frames: [ready] on its handler, for what is there when it asks and then for each frame as it comes. */
+    fun interface Frames {
+        fun ready(file: File, frames: IntArray)
+    }
+
+    /** Where one theme's bake stands. Under [lock]. */
+    private class Bake(val dark: Boolean) {
+        val name = if (dark) "night" else "day"
+        var file: File? = null
+        var done: BooleanArray? = null // (null: its file has not been looked at yet in this process)
+        var claimed = BooleanArray(0)
+        var baked = 0
+        var earlier = 0
+        var complete = false
+        var error: String? = null
+        var bakingMs = 0L
+    }
+
+    private class Watch(val dark: Boolean, val on: Handler, val to: Frames)
 
     private val lock = Object()
-    private val waiting = HashMap<Boolean, MutableList<(File?) -> Unit>>()
+    private val day = Bake(false)
+    private val night = Bake(true)
+    private val watches = ArrayList<Watch>()
+    private var wanted = true
     private var builder: Thread? = null
+    private var cleaned = false
+    private var order: IntArray? = null
+    private val threads = Runtime.getRuntime().availableProcessors().coerceIn(1, MAX_THREADS)
+
+    private fun bakeOf(dark: Boolean) = if (dark) night else day
 
     fun asset(dark: Boolean, i: Int) = "car/frames-${if (dark) "night" else "day"}/frame_%03d.webp".format(java.util.Locale.ROOT, i)
 
-    /** The frame file for [dark], built first if needed, then the other theme's at leisure. [done] runs on [on]: the file, or null when it cannot be had. */
-    fun ensure(ctx: Context, dark: Boolean, on: Handler, done: (File?) -> Unit) {
+    /** [dark] first from now on, and the bake goes if anything is left to bake; whoever asks again after a failure asks for another try. Any thread. */
+    fun want(ctx: Context, dark: Boolean) {
         val app = ctx.applicationContext
-        val t = CarTable.of(app)
-        if (t == null) { on.post { done(null) }; return }
-        val cb: (File?) -> Unit = { f -> on.post { done(f) } }
+        val t = CarTable.of(app) ?: return
         synchronized(lock) {
-            waiting.getOrPut(dark) { ArrayList() }.add(cb)
-            if (builder != null) return
-            builder = Thread({ work(app, t, dark) }, "car-etc").apply { isDaemon = true; start() }
+            wanted = dark
+            val a = bakeOf(dark)
+            val o = bakeOf(!dark)
+            a.error = null
+            if (builder == null && (!a.complete || (!o.complete && o.error == null))) {
+                builder = Thread({ work(app, t) }, "car-etc").apply { isDaemon = true; start() }
+            }
         }
     }
 
-    private fun work(ctx: Context, t: CarTable, firstDark: Boolean) {
+    /** [to] gets the frames of [dark], from now until [unwatch]; and [dark] goes first. Any thread. */
+    fun watch(ctx: Context, dark: Boolean, on: Handler, to: Frames) {
+        synchronized(lock) {
+            watches.add(Watch(dark, on, to))
+            val b = bakeOf(dark)
+            val f = b.file
+            val d = b.done
+            if (f != null && d != null && b.baked > 0) {
+                val now = d.indices.filter { d[it] }.toIntArray()
+                on.post { to.ready(f, now) }
+            }
+        }
+        want(ctx, dark)
+    }
+
+    fun unwatch(to: Frames) {
+        synchronized(lock) { watches.removeAll { it.to === to } }
+    }
+
+    /** The bake of [dark] stopped on an error, and nobody has asked again. */
+    fun failed(dark: Boolean): Boolean = synchronized(lock) { bakeOf(dark).error != null }
+
+    /** Where it stands, for the Screen check's report. Any thread. */
+    fun report(): JSONObject = synchronized(lock) {
+        fun of(b: Bake) = JSONObject()
+            .put("file", b.file?.name ?: JSONObject.NULL)
+            .put("looked", b.done != null)
+            .put("baked", b.baked)
+            .put("earlier", b.earlier)
+            .put("complete", b.complete)
+            .put("bakingMs", b.bakingMs)
+            .put("error", b.error ?: JSONObject.NULL)
+        JSONObject()
+            .put("threads", threads)
+            .put("coresSaid", Runtime.getRuntime().availableProcessors())
+            .put("running", builder != null)
+            .put("first", bakeOf(wanted).name)
+            .put("day", of(day))
+            .put("night", of(night))
+    }
+
+    // (under the lock)
+    private fun tell(b: Bake, f: File, frames: IntArray) {
+        for (w in watches) if (w.dark == b.dark) w.on.post { w.to.ready(f, frames) }
+    }
+
+    private fun work(ctx: Context, t: CarTable) {
         Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
-        var dark = firstDark
-        var otherDone = false
-        while (true) {
-            val f = try { fileFor(ctx, t, dark) } catch (e: Throwable) { Log.w(TAG, "frames: $e"); null }
-            val ok = f != null && (valid(f, t) || build(ctx, t, dark, f))
-            val cbs = synchronized(lock) { waiting.remove(dark) }
-            cbs?.forEach { cb -> cb(if (ok) f else null) }
-            if (dark != firstDark) otherDone = true
-            // whoever waits next; otherwise the other theme's file, once
-            val next: Boolean? = synchronized(lock) {
-                val k = waiting.keys.firstOrNull()
-                when {
-                    k != null -> k
-                    !otherDone -> !firstDark
-                    else -> { builder = null; null }
-                }
+        try {
+            var last: Bake? = null
+            while (true) {
+                val b = synchronized(lock) {
+                    val a = bakeOf(wanted)
+                    val o = bakeOf(!wanted)
+                    when {
+                        !a.complete && a.error == null -> a
+                        !o.complete && o.error == null -> o
+                        else -> { builder = null; null }
+                    }
+                } ?: return
+                if (last != null && last !== b && synchronized(lock) { b.dark != wanted }) Thread.sleep(LEISURE_MS)
+                last = b
+                bake(ctx, t, b)
             }
-            if (next == null) return
-            dark = next
-            if (next != firstDark && !otherDone && synchronized(lock) { waiting.isEmpty() }) {
-                Thread.sleep(3000) // the first theme is drawing by now: no hurry
-                synchronized(lock) { waiting.keys.firstOrNull() }?.let { dark = it }
-            }
+        } catch (e: Throwable) {
+            Log.w(TAG, "frames: $e")
+        } finally {
+            synchronized(lock) { if (builder === Thread.currentThread()) builder = null }
         }
     }
 
@@ -243,73 +350,196 @@ object CarEtc {
         null
     }
 
-    private fun build(ctx: Context, t: CarTable, dark: Boolean, f: File): Boolean {
+    /** One visit to a theme's bake: until it is whole, or the other theme is wanted more; what it has done stays either way. */
+    private fun bake(ctx: Context, t: CarTable, b: Bake) {
         val t0 = SystemClock.elapsedRealtime()
-        val dir = f.parentFile ?: return false
-        val size = HEADER + t.frameBytes.toLong() * t.count
-        if (dir.usableSpace < size + 64L * 1024 * 1024) { Log.w(TAG, "no room for the frames"); return false }
-        val tmp = File(f.path + ".tmp")
-        val k = CarLook(dark).k
-        return try {
-            RandomAccessFile(tmp, "rw").use { out ->
-                out.setLength(size)
+        try {
+            val f = open(ctx, t, b)
+            // (with nothing to bake not in a start's first second: then it waits for the other theme's turn, which reads that theme's name anyway)
+            if (!cleaned && synchronized(lock) { !b.complete || b.dark != wanted }) {
+                cleaned = true
+                clean(ctx, t)
+            }
+            val before = synchronized(lock) {
+                if (b.complete) return
+                b.claimed.fill(false)
+                b.baked
+            }
+            Log.i(TAG, "frames (${b.name}): $before of ${t.count} there, on $threads threads")
+            RandomAccessFile(f, "rw").use { out ->
                 val ch = out.channel
-                val workers = (0 until THREADS).map { part ->
-                    Thread({
-                        Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
-                        val px = IntArray(t.width * t.height)
-                        val rgb = ByteArray(px.size * 3)
-                        val inBuf = ByteBuffer.allocateDirect(rgb.size).order(ByteOrder.nativeOrder())
-                        val outBuf = ByteBuffer.allocateDirect(t.frameBytes).order(ByteOrder.nativeOrder())
-                        val o = BitmapFactory.Options().apply { inMutable = true; inPreferredConfig = Bitmap.Config.ARGB_8888 }
-                        var reuse: Bitmap? = null
-                        var i = part
-                        while (i < t.count) {
-                            val bytes = ctx.assets.open(asset(dark, i)).use { it.readBytes() }
-                            o.inBitmap = reuse
-                            val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o) ?: throw IllegalStateException("decode $i")
-                            if (bmp.width != t.width || bmp.height != t.height) throw IllegalStateException("frame $i size")
-                            reuse = bmp
-                            bmp.getPixels(px, 0, t.width, 0, 0, t.width, t.height)
-                            keyed(px, k, rgb)
-                            inBuf.clear(); inBuf.put(rgb); inBuf.flip()
-                            outBuf.clear()
-                            ETC1.encodeImage(inBuf, t.width, t.height, 3, t.width * 3, outBuf)
-                            outBuf.position(0); outBuf.limit(t.frameBytes)
-                            var at = HEADER + i.toLong() * t.frameBytes
-                            while (outBuf.hasRemaining()) at += ch.write(outBuf, at)
-                            i += THREADS
-                        }
-                    }, "car-etc-$part")
-                }
                 var failure: Throwable? = null
+                val workers = (0 until threads).map { part -> Thread({ encode(ctx, t, b, f, ch) }, "car-etc-$part") }
                 workers.forEach { it.setUncaughtExceptionHandler { _, e -> failure = e }; it.start() }
                 workers.forEach { it.join() }
                 failure?.let { throw it }
-                val head = ByteBuffer.allocate(HEADER).order(ByteOrder.LITTLE_ENDIAN)
-                head.putInt(MAGIC).putInt(t.count).putInt(t.width).putInt(t.height).putInt(t.frameBytes)
-                head.rewind()
-                ch.write(head, 0)
-                ch.force(false)
+                // (not all of them: the other theme is wanted first now, and this one's turn comes again)
+                if (synchronized(lock) { b.baked == t.count }) {
+                    finish(out, t)
+                    synchronized(lock) { b.complete = true }
+                    Log.i(TAG, "frames (${b.name}) built in ${b.bakingMs + SystemClock.elapsedRealtime() - t0} ms, ${b.earlier} of ${t.count} from an earlier run")
+                }
             }
-            if (!tmp.renameTo(f)) throw IllegalStateException("rename")
-            // older sets go: at most this one and the other theme's stay
-            val other = try { fileFor(ctx, t, !dark).name } catch (_: Throwable) { "" }
-            dir.listFiles()?.filter { it.name.startsWith("car-etc-") && it.name != f.name && it.name != other }?.forEach { it.delete() }
-            Log.i(TAG, "frames (${if (dark) "night" else "day"}) built in ${SystemClock.elapsedRealtime() - t0} ms")
-            true
         } catch (e: Throwable) {
-            Log.w(TAG, "frames: $e")
-            tmp.delete()
-            false
+            Log.w(TAG, "frames (${b.name}): $e")
+            synchronized(lock) { b.error = e.toString() }
+        } finally {
+            synchronized(lock) { b.bakingMs += SystemClock.elapsedRealtime() - t0 }
         }
+    }
+
+    /** A theme's file as it stands, and who waits for it told: finished, begun in an earlier run (each frame against its CRC), or a new one. */
+    private fun open(ctx: Context, t: CarTable, b: Bake): File {
+        val known = synchronized(lock) {
+            val k = b.file
+            if (k != null && b.done != null) return k
+            k
+        }
+        val f = known ?: fileFor(ctx, t, b.dark)
+        val done = BooleanArray(t.count)
+        val whole = valid(f, t)
+        when {
+            whole -> done.fill(true)
+            f.length() == fullSize(t) -> readMarks(f, t, done)
+            else -> {
+                val dir = f.parentFile ?: throw IllegalStateException("no folder")
+                if (dir.usableSpace < fullSize(t) + ROOM_BESIDES) throw IllegalStateException("no room for the frames")
+                RandomAccessFile(f, "rw").use { it.setLength(0L); it.setLength(fullSize(t)) }
+            }
+        }
+        val n = done.count { it }
+        synchronized(lock) {
+            b.file = f
+            b.done = done
+            b.claimed = BooleanArray(t.count)
+            b.baked = n
+            b.earlier = n
+            b.complete = whole
+            if (n > 0) tell(b, f, done.indices.filter { done[it] }.toIntArray())
+        }
+        return f
+    }
+
+    private fun marksAt(t: CarTable) = HEADER + t.frameBytes.toLong() * t.count
+
+    private fun fullSize(t: CarTable) = marksAt(t) + 4L * t.count
+
+    private fun readFully(ch: FileChannel, buf: ByteBuffer, from: Long) {
+        var at = from
+        while (buf.hasRemaining()) {
+            val n = ch.read(buf, at)
+            if (n <= 0) throw IllegalStateException("short read")
+            at += n
+        }
+        buf.flip()
+    }
+
+    /** Which frames an earlier run finished: a frame that did not reach the disk, whatever its mark says, does not match it, and is baked again. */
+    private fun readMarks(f: File, t: CarTable, done: BooleanArray) {
+        RandomAccessFile(f, "r").use { r ->
+            val ch = r.channel
+            val marks = ByteBuffer.allocate(4 * t.count).order(ByteOrder.LITTLE_ENDIAN)
+            readFully(ch, marks, marksAt(t))
+            val buf = ByteBuffer.allocateDirect(t.frameBytes)
+            val crc = CRC32()
+            for (i in 0 until t.count) {
+                val m = marks.getInt(4 * i)
+                if (m == 0) continue
+                buf.clear()
+                readFully(ch, buf, HEADER + i.toLong() * t.frameBytes)
+                crc.reset()
+                crc.update(buf)
+                if (crc.value.toInt() == m) done[i] = true
+            }
+        }
+    }
+
+    /** The next frame for a worker, or -1: none left, or the other theme comes first now. */
+    private fun claim(t: CarTable, b: Bake): Int = synchronized(lock) {
+        val first = bakeOf(wanted)
+        if (first !== b && !first.complete && first.error == null) return -1
+        val done = b.done ?: return -1
+        val o = order ?: CarBakeOrder.of(t.count, t.defaultFrame).also { order = it }
+        for (i in o) if (!done[i] && !b.claimed[i]) { b.claimed[i] = true; return i }
+        -1
+    }
+
+    /** A worker: decode, K, ETC1, the frame and its mark, and whoever waits told. */
+    private fun encode(ctx: Context, t: CarTable, b: Bake, f: File, ch: FileChannel) {
+        Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
+        // (emulator tests: a frame as long as on the unit)
+        val slow = if (BuildConfig.DEBUG) SystemProps.get("debug.aura.car.bakems").toLongOrNull() else null
+        val px = IntArray(t.width * t.height)
+        val rgb = ByteArray(px.size * 3)
+        val inBuf = ByteBuffer.allocateDirect(rgb.size).order(ByteOrder.nativeOrder())
+        val outBuf = ByteBuffer.allocateDirect(t.frameBytes).order(ByteOrder.nativeOrder())
+        val mark = ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN)
+        val crc = CRC32()
+        val k = CarLook(b.dark).k
+        val o = BitmapFactory.Options().apply { inMutable = true; inPreferredConfig = Bitmap.Config.ARGB_8888 }
+        var reuse: Bitmap? = null
+        try {
+            while (true) {
+                val i = claim(t, b)
+                if (i < 0) break
+                if (slow != null) Thread.sleep(slow)
+                val bytes = ctx.assets.open(asset(b.dark, i)).use { it.readBytes() }
+                o.inBitmap = reuse
+                val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o) ?: throw IllegalStateException("decode $i")
+                if (bmp.width != t.width || bmp.height != t.height) throw IllegalStateException("frame $i size")
+                reuse = bmp
+                bmp.getPixels(px, 0, t.width, 0, 0, t.width, t.height)
+                keyed(px, k, rgb)
+                inBuf.clear(); inBuf.put(rgb); inBuf.flip()
+                outBuf.clear()
+                ETC1.encodeImage(inBuf, t.width, t.height, 3, t.width * 3, outBuf)
+                outBuf.position(0); outBuf.limit(t.frameBytes)
+                crc.reset()
+                crc.update(outBuf)
+                outBuf.position(0)
+                var at = HEADER + i.toLong() * t.frameBytes
+                while (outBuf.hasRemaining()) at += ch.write(outBuf, at)
+                mark.clear()
+                mark.putInt(crc.value.toInt())
+                mark.flip()
+                ch.write(mark, marksAt(t) + 4L * i)
+                synchronized(lock) {
+                    b.done?.set(i, true)
+                    b.baked++
+                    tell(b, f, intArrayOf(i))
+                }
+            }
+        } finally {
+            reuse?.recycle()
+        }
+    }
+
+    /** The last frame is in. In this order: if the unit goes off in the middle, a look at the file finds either the marks, all good, or the finished file. */
+    private fun finish(out: RandomAccessFile, t: CarTable) {
+        val ch = out.channel
+        ch.force(false)
+        val head = ByteBuffer.allocate(HEADER).order(ByteOrder.LITTLE_ENDIAN)
+        head.putInt(MAGIC).putInt(t.count).putInt(t.width).putInt(t.height).putInt(t.frameBytes)
+        head.rewind()
+        ch.write(head, 0)
+        out.setLength(marksAt(t))
+        ch.force(true)
+    }
+
+    /** Older sets go: these two themes' files stay, begun or finished. */
+    private fun clean(ctx: Context, t: CarTable) {
+        val keep = listOf(day, night).map { b ->
+            synchronized(lock) { b.file }?.name ?: fileFor(ctx, t, b.dark).also { f -> synchronized(lock) { if (b.file == null) b.file = f } }.name
+        }
+        ctx.noBackupFilesDir.listFiles()?.filter { it.name.startsWith("car-etc-") && it.name !in keep }?.forEach { it.delete() }
     }
 }
 
 /**
  * The car over the wall (SPEC.md section 10), GL ES 2 on its own thread: the rest frame and the wall's crop go in first, so it draws from its first frame, before any frame is baked; the
- * 180 ETC1 frames follow one per message. Floor light, shadow and reflection are the shader's, so the floor is right at every angle. No stage in the frames, no CPU path. [CarStage] owns the
- * motion and calls [render]. Its own frame time says which program: over 24 ms for 30 frames the second, compiled with CHEAP_MIRROR; well under again, the first.
+ * 180 ETC1 frames follow one per message, each as soon as [CarEtc] has it, and until all are in the nearest that is in stands for one that is not, with its own numbers. Floor light, shadow and
+ * reflection are the shader's, so the floor is right at every angle. No stage in the frames, no CPU path. [CarStage] owns the motion and calls [render]. Its own frame time says which program: over
+ * 24 ms for 30 frames the second, compiled with CHEAP_MIRROR; well under again, the first.
  */
 class CarGlView(context: Context, dark: Boolean) : TextureView(context), TextureView.SurfaceTextureListener {
     class State {
@@ -335,9 +565,21 @@ class CarGlView(context: Context, dark: Boolean) : TextureView(context), Texture
     /** All the frames are in the GPU (main thread): the car can turn. */
     var onFramesIn: (() -> Unit)? = null
 
+    /** All the frames are in the GPU, or as many as ever will be ([uploadError]). */
     @Volatile var framesIn = false
         private set
-    /** Frames drawn per second while the car last turned (diagnostics). */
+    /** How many are in the GPU: from [COARSE_FRAMES] the car can turn, on what is in. */
+    @Volatile var framesCount = 0
+        private set
+    /** When the last one went in (elapsedRealtime; 0: not yet), for the Screen check's report. */
+    @Volatile var framesInAt = 0L
+        private set
+    /** What went wrong with the last frame that would not go in (diagnostics). */
+    @Volatile var uploadError: String? = null
+        private set
+    /**
+     * Frames drawn per second in the last run of draws closer than 100 ms apart (diagnostics): the car turning, but also the entrance's fade and the wall's, so this says nothing of whether it can turn.
+     */
     @Volatile var fps = 0f
         private set
     /** Under the frame time's pressure it draws the cheap mirror (diagnostics). */
@@ -380,10 +622,15 @@ class CarGlView(context: Context, dark: Boolean) : TextureView(context), Texture
     private var wallTex = 0
     private var quad: FloatBuffer? = null
     private var loadFile: RandomAccessFile? = null
+    private var loadPath: File? = null
     private var loadBuf: ByteBuffer? = null
-    private var loadOrder = IntArray(0)
-    private var loadAt = 0
+    private val loadQueue = ArrayDeque<Int>()
+    private var queued = BooleanArray(0)
+    private var pumping = false
+    private var loadOver = false
+    private var loadFailures = 0
     private var loadRun = 0
+    private var watching: CarEtc.Frames? = null
     private var lastSwap = 0L
     private var motionFrames = 0
     private var motionStart = 0L
@@ -470,6 +717,9 @@ class CarGlView(context: Context, dark: Boolean) : TextureView(context), Texture
     /** Is the GL drawing the car (any thread)? */
     val drawing: Boolean get() = showing && !failed
 
+    /** The GL path cannot be used at all (any thread). */
+    val broken: Boolean get() = failed
+
     // ------------------------------------------------------------------------------------------ TextureView
     override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) {
         surface = st; vw = w; vh = h
@@ -548,6 +798,7 @@ class CarGlView(context: Context, dark: Boolean) : TextureView(context), Texture
             wallTex = n[1]
             tex = IntArray(t.count)
             have = BooleanArray(t.count)
+            queued = BooleanArray(t.count)
             GLES20.glGenTextures(t.count, tex, 0)
             loaded = true
             applyLook()
@@ -655,7 +906,11 @@ class CarGlView(context: Context, dark: Boolean) : TextureView(context), Texture
         val t = table ?: return
         if (!loaded) return
         val dark = isDark
-        if (lookOfGl == dark) return
+        if (lookOfGl == dark) {
+            // (a change and its undo before this ran: what is in the GPU is right, and [setDark] has taken framesIn away)
+            framesIn = loadOver
+            return
+        }
         lookOfGl = dark
         look = CarLook(dark)
         full?.let { statics(it) }
@@ -668,70 +923,106 @@ class CarGlView(context: Context, dark: Boolean) : TextureView(context), Texture
         }
         closeLoad()
         have.fill(false)
+        queued.fill(false)
+        loadQueue.clear()
+        loadOver = false
+        loadFailures = 0
+        framesCount = 0
+        framesInAt = 0L
         framesIn = false
         // (the frames' textures keep their names: a new theme's upload replaces them, with no second set alive beside them beyond what is on its way)
         drawNow()
         val run = ++loadRun
         val h = gl ?: return
-        CarEtc.ensure(app, dark, h) { f ->
-            if (run == loadRun && f != null && loaded) startLoad(f, t, dark)
-        }
+        watching?.let { CarEtc.unwatch(it) }
+        val w = CarEtc.Frames { f, frames -> if (run == loadRun && loaded) takeFrames(f, frames, t) }
+        watching = w
+        CarEtc.watch(app, dark, h, w)
     }
 
-    /** The spin's frames first (78 to 108, for the entrance), then the nearest to where the car stands: one per message, so a draw waits for one at most. */
-    private fun startLoad(f: File, t: CarTable, dark: Boolean) {
-        if (dark != isDark) return
+    /** Frames that are ready, on their way to the GPU one per message, so a draw waits for one at most. A whole set at once (any start but the first): the spin's frames first (78 to 108, for the entrance), then the nearest to where the car stands. */
+    private fun takeFrames(f: File, frames: IntArray, t: CarTable) {
+        if (loadOver) return
         try {
-            closeLoad()
-            loadFile = RandomAccessFile(f, "r")
-            loadBuf = ByteBuffer.allocateDirect(t.frameBytes).order(ByteOrder.nativeOrder())
-            val spin = (t.defaultFrame downTo t.defaultFrame - SPIN_FRAMES).map { Math.floorMod(it, t.count) }
-            val rest = (0 until t.count).filter { it !in spin }.sortedBy { i -> Math.floorMod(i - t.defaultFrame, t.count).let { minOf(it, t.count - it) } }
-            loadOrder = (spin + rest).toIntArray()
-            loadAt = 0
-            gl?.post(loadNext)
+            if (loadFile == null || loadPath != f) {
+                closeLoad()
+                loadFile = RandomAccessFile(f, "r")
+                loadPath = f
+                loadBuf = ByteBuffer.allocateDirect(t.frameBytes).order(ByteOrder.nativeOrder())
+            }
         } catch (e: Throwable) {
             Log.w(TAG, "frames: $e")
+            uploadError = e.toString()
+            return
+        }
+        val inOrder = if (frames.size == 1) frames.asList() else {
+            val spin = (t.defaultFrame downTo t.defaultFrame - SPIN_FRAMES).map { Math.floorMod(it, t.count) }
+            val there = frames.toSet()
+            spin.filter { it in there } + frames.filter { it !in spin }.sortedBy { i -> Math.floorMod(i - t.defaultFrame, t.count).let { minOf(it, t.count - it) } }
+        }
+        for (i in inOrder) if (!have[i] && !queued[i]) { queued[i] = true; loadQueue.addLast(i) }
+        if (!pumping && loadQueue.isNotEmpty()) {
+            pumping = true
+            gl?.post(loadNext)
         }
     }
 
     private val loadNext: Runnable = object : Runnable {
         override fun run() {
-            val t = table ?: return
-            val r = loadFile ?: return
-            val buf = loadBuf ?: return
-            if (!loaded) return
+            val t = table
+            val r = loadFile
+            val buf = loadBuf
+            if (t == null || r == null || buf == null || !loaded || loadQueue.isEmpty()) { pumping = false; return }
+            val i = loadQueue.removeFirst()
             try {
-                if (loadAt < loadOrder.size) {
-                    val i = loadOrder[loadAt++]
-                    buf.clear()
-                    var at = CarEtc.HEADER + i.toLong() * t.frameBytes
-                    while (buf.hasRemaining()) { val n = r.channel.read(buf, at); if (n <= 0) throw IllegalStateException("short read"); at += n }
-                    buf.flip()
-                    params(tex[i], GLES20.GL_LINEAR)
-                    GLES20.glCompressedTexImage2D(GLES20.GL_TEXTURE_2D, 0, ETC1.ETC1_RGB8_OES, t.width, t.height, 0, t.frameBytes, buf)
-                    have[i] = true
-                    val err = GLES20.glGetError()
-                    if (err != GLES20.GL_NO_ERROR) throw IllegalStateException("upload: 0x" + Integer.toHexString(err))
-                    gl?.post(this)
+                var stale = 0
+                while (stale++ < 8 && GLES20.glGetError() != GLES20.GL_NO_ERROR) { /* (what an earlier call left says nothing of this frame) */ }
+                buf.clear()
+                var at = CarEtc.HEADER + i.toLong() * t.frameBytes
+                while (buf.hasRemaining()) { val n = r.channel.read(buf, at); if (n <= 0) throw IllegalStateException("short read"); at += n }
+                buf.flip()
+                params(tex[i], GLES20.GL_LINEAR)
+                GLES20.glCompressedTexImage2D(GLES20.GL_TEXTURE_2D, 0, ETC1.ETC1_RGB8_OES, t.width, t.height, 0, t.frameBytes, buf)
+                val err = GLES20.glGetError()
+                if (err != GLES20.GL_NO_ERROR) throw IllegalStateException("upload: 0x" + Integer.toHexString(err))
+                have[i] = true
+                framesCount++
+                if (framesCount == COARSE_FRAMES) Log.i(TAG, "GL car: $COARSE_FRAMES frames in, it can turn")
+                if (framesCount == t.count) {
+                    pumping = false
+                    loadDone(t)
                     return
                 }
-                closeLoad()
-                framesIn = true
-                Log.i(TAG, "GL car: all ${t.count} frames in")
-                main.post { onFramesIn?.invoke() }
-                if (thin == null) gl?.post { try { thin = program(true); full?.let { GLES20.glUseProgram(it.id) } } catch (e: Throwable) { Log.w(TAG, "cheap program: $e") } }
             } catch (e: Throwable) {
-                // what is in stays, and stands in for what is not
+                // what is in stays, and stands in for what is not; this one goes to the back, a few times, and then it is clear that it will not go
                 Log.w(TAG, "frames: $e")
-                closeLoad()
+                uploadError = e.toString()
+                if (++loadFailures >= LOAD_FAILURES) {
+                    pumping = false
+                    loadDone(t)
+                    return
+                }
+                loadQueue.addLast(i)
             }
+            gl?.post(this)
         }
+    }
+
+    private fun loadDone(t: CarTable) {
+        closeLoad()
+        loadQueue.clear()
+        loadOver = true
+        framesInAt = SystemClock.elapsedRealtime()
+        framesIn = true
+        Log.i(TAG, "GL car: all ${t.count} frames in" + if (framesCount != t.count) " but ${t.count - framesCount}" else "")
+        main.post { onFramesIn?.invoke() }
+        if (thin == null) gl?.post { try { thin = program(true); full?.let { GLES20.glUseProgram(it.id) } } catch (e: Throwable) { Log.w(TAG, "cheap program: $e") } }
     }
 
     private fun closeLoad() {
         try { loadFile?.close() } catch (_: Throwable) { }
         loadFile = null
+        loadPath = null
         loadBuf = null
     }
 
@@ -745,18 +1036,17 @@ class CarGlView(context: Context, dark: Boolean) : TextureView(context), Texture
         return true
     }
 
-    /** The texture of frame [i], or of the nearest frame that is in, or the rest frame while none is. */
-    private fun texOf(i: Int): Int {
-        val n = tex.size
-        val k = Math.floorMod(i, n)
-        if (have[k]) return tex[k]
+    /** What stands for frame [k]: itself, or the nearest frame that is in; -1 while none is, and the rest frame stands in. */
+    private fun standIn(k: Int): Int {
+        if (have[k]) return k
+        val n = have.size
         for (d in 1..n / 2) {
             val a = Math.floorMod(k - d, n)
-            if (have[a]) return tex[a]
+            if (have[a]) return a
             val b = Math.floorMod(k + d, n)
-            if (have[b]) return tex[b]
+            if (have[b]) return b
         }
-        return restTex
+        return -1
     }
 
     private fun uploadRest(i: Int, rgb: ByteArray, dark: Boolean) {
@@ -789,11 +1079,17 @@ class CarGlView(context: Context, dark: Boolean) : TextureView(context), Texture
         val bi = Math.floorMod(s.b, n)
         val p = if (cheap && thin != null) thin!! else full ?: return
         val crisp = s.rest && restFrame == ai && s.restMix > 0f
-        val texA = texOf(ai)
-        val texB = if (crisp) restTex else texOf(bi)
+        // what is drawn, and its numbers, each frame's: with all the frames in, the frames asked for
+        val sa = standIn(ai)
+        val sb = if (bi == ai) sa else standIn(bi)
+        val restAt = if (restFrame >= 0) restFrame else table.defaultFrame
         val mix = if (crisp) s.restMix else s.t
-        val near = if (s.t < .5f) ai else bi
-        val texM = if (crisp && s.restMix >= .5f) restTex else texOf(near)
+        val na = if (sa >= 0) sa else restAt
+        val nb = if (crisp) ai else if (sb >= 0) sb else restAt
+        val near = if (mix < .5f) na else nb
+        val texA = if (sa >= 0) tex[sa] else restTex
+        val texB = if (crisp || sb < 0) restTex else tex[sb]
+        val texM = if (mix < .5f) texA else texB
         try {
             GLES20.glViewport(0, 0, vw, vh)
             GLES20.glUseProgram(p.id)
@@ -807,13 +1103,12 @@ class CarGlView(context: Context, dark: Boolean) : TextureView(context), Texture
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, wallTex)
             GLES20.glUniform1f(p.t, mix)
             GLES20.glUniform1f(p.shown, s.shown)
-            val t = s.t
             GLES20.glUniform4f(
                 p.dolly,
-                table.zoom[ai] + (table.zoom[bi] - table.zoom[ai]) * t,
-                table.pivotX[ai] + (table.pivotX[bi] - table.pivotX[ai]) * t,
+                table.zoom[na] + (table.zoom[nb] - table.zoom[na]) * mix,
+                table.pivotX[na] + (table.pivotX[nb] - table.pivotX[na]) * mix,
                 table.pivotY,
-                table.dx[ai] + (table.dx[bi] - table.dx[ai]) * t
+                table.dx[na] + (table.dx[nb] - table.dx[na]) * mix
             )
             val hx = table.hullX[near]
             val hy = table.hullY[near]
@@ -872,9 +1167,16 @@ class CarGlView(context: Context, dark: Boolean) : TextureView(context), Texture
         showing = false
         loaded = false
         framesIn = false
+        framesCount = 0
+        framesInAt = 0L
         lookOfGl = null
         loadRun++
+        watching?.let { CarEtc.unwatch(it) }
+        watching = null
         closeLoad()
+        loadQueue.clear()
+        loadOver = false
+        loadFailures = 0
         if (display != EGL14.EGL_NO_DISPLAY) {
             try {
                 if (eglCtx != EGL14.EGL_NO_CONTEXT) {
@@ -907,6 +1209,10 @@ class CarGlView(context: Context, dark: Boolean) : TextureView(context), Texture
         const val RECT_H = 330f
         /** Frames from the showroom angle back to where the entrance's spin starts. */
         const val SPIN_FRAMES = 30
+        /** From this many frames in the GPU a finger can turn the car: the bake's first frames, 32 apart ([CarBakeOrder]), under a second on the unit. */
+        const val COARSE_FRAMES = 6
+        /** A frame that would not go in is tried again, and so many of those are the end of it: the car turns on what is in. */
+        private const val LOAD_FAILURES = 8
         private const val OVER_MS = 24L
         private const val OVER_FRAMES = 30
         private const val UNDER_MS = 18L

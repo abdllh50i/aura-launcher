@@ -22,6 +22,8 @@ import com.abdllh.aura.nav.Turn
  *      --es theme night|day|auto              through the real ThemeSwap, 700 ms
  *      --es lang ar|en                        the window again in that language; nothing else in this call
  *      --ez turn true                         where the turntable is, in the log
+ *      --ez car true                          what the Screen check's report says of the car, in the log
+ *      --ef fix 30                            a fix at that speed, km/h, in place of the receivers from now on (DriveState hears it)
  */
 class HomeProbe : BroadcastReceiver() {
     override fun onReceive(c: Context, i: Intent) {
@@ -53,5 +55,15 @@ class HomeProbe : BroadcastReceiver() {
         // (an emulator under load can stop drawing a window until its next relayout: DEV.md, "The gallery". On the unit this is not needed)
         p.root.requestLayout()
         if (i.getBooleanExtra("turn", false)) Log.i("AuraHomeProbe", "frames in ${p.debugStage.framesIn}, gl ${p.debugStage.gl?.drawing}, cheap ${p.debugStage.gl?.cheap}, fps ${p.debugStage.gl?.fps}")
+        if (i.getBooleanExtra("car", false)) Log.i("AuraHomeProbe", "car ${com.abdllh.aura.ui.CarStage.report()}")
+        if (i.hasExtra("fix")) {
+            com.abdllh.aura.nav.CarLocation.simulated = true
+            com.abdllh.aura.nav.CarLocation.publish(android.location.Location("gps").apply {
+                latitude = 24.7; longitude = 46.7; time = System.currentTimeMillis()
+                elapsedRealtimeNanos = android.os.SystemClock.elapsedRealtimeNanos()
+                accuracy = 1f
+                speed = i.getFloatExtra("fix", 0f) / 3.6f
+            })
+        }
     }
 }

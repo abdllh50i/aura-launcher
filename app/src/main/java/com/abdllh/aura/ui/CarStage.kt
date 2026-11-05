@@ -6,6 +6,10 @@ import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.os.Handler
+import android.os.Looper
+import android.os.Process
+import android.os.SystemClock
 import android.view.Choreographer
 import android.view.MotionEvent
 import android.view.VelocityTracker
@@ -16,6 +20,9 @@ import android.view.animation.PathInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import com.abdllh.aura.R
+import com.abdllh.aura.system.DriveState
+import org.json.JSONObject
+import java.lang.ref.WeakReference
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.floor
@@ -25,8 +32,9 @@ import kotlin.math.sign
 /**
  * The user's car on a turntable, on the wall (SPEC.md section 10): drawn by [CarGlView] in its rect, the wall's own pixels under it until its first frame. Drag sideways to turn it, flick to spin it;
  * it comes to rest with inertia and, after a few idle seconds, swings back to its showroom angle, frame 108, in both languages. Adjacent frames blend while it moves; at rest the
- * crisp copy of the frame fades in, in one step. Until the frames are in the GPU (the first run bakes them) it is the rest frame and a finger does nothing, with no word about it. While the car moves
- * the turntable is locked ([locked]). No frame goes to the GPU when nobody can take it: under another panel its thread would hang in the swap two frames later.
+ * crisp copy of the frame fades in, in one step. The first run bakes the frames ([CarEtc]): from its first few it turns on what is in, coarsely, and says how far it has come; before them a drag has that
+ * word alone, and nothing shows at rest. While the car moves the turntable is locked ([locked]), and a drag hears that too. No frame goes to the GPU when nobody can take it: under another panel its thread
+ * would hang in the swap two frames later.
  */
 class CarStage(context: Context) : FrameLayout(context) {
     private val table = CarTable.of(context)
@@ -42,6 +50,7 @@ class CarStage(context: Context) : FrameLayout(context) {
     private var vel = 0f
     private var dragging = false
     private var moved = false
+    private var answered = false
     private var downX = 0f
     private var downY = 0f
     private var lastX = 0f
@@ -76,12 +85,14 @@ class CarStage(context: Context) : FrameLayout(context) {
             redraw()
         }
 
-    /** The car moves: nobody turns it, and it goes back to its angle. */
+    /** The car moves ([DriveState.moving], and no guess of a gear or a trip standing at a light is that): nobody turns it, and it goes back to its angle. */
     var locked = false
         set(v) {
             if (v == field) return
             field = v
             if (v) {
+                lockedTimes++
+                lockedAt = SystemClock.elapsedRealtime()
                 removeCallbacks(goHome)
                 dragging = false
                 moved = false
@@ -142,6 +153,9 @@ class CarStage(context: Context) : FrameLayout(context) {
             g.onFramesIn = { lastFps = g.fps }
         }
         look { recolour() }
+        now = WeakReference(this)
+        // (the frames do not wait for the GL view, whose surface comes only with Home on screen: a start into another panel bakes them too)
+        if (table != null) context.applicationContext.let { app -> Handler(Looper.getMainLooper()).postDelayed({ CarEtc.want(app, Palette.dark) }, BAKE_AFTER_MS) }
     }
 
     /** [onFirstFrame]: the car's first frame is up, or will not be. Once. */
@@ -299,28 +313,82 @@ class CarStage(context: Context) : FrameLayout(context) {
     }
 
     // ------------------------------------------------------------------------------------------ touch: a drag anywhere in the rect; a tap does nothing
+    /** Enough frames are in for a finger to turn it: all of them, or the first of a bake, which go round the whole turn. */
+    private fun turnable(): Boolean = gl?.let { it.framesIn || it.framesCount >= CarGlView.COARSE_FRAMES } == true
+
+    private fun percent(): Int = (gl?.framesCount ?: 0) * 100 / n
+
+    /** The word for a drag on frames that are not all in. Once per drag, a Snack, nothing at rest. */
+    private fun sayNotReady() {
+        val dark = Palette.dark
+        if (gl == null || gl.broken || CarEtc.failed(dark)) {
+            CarEtc.want(context, dark) // (a drag is asking again)
+            Snack.show(context, R.string.car_turn_failed)
+        } else {
+            Snack.show(context, context.getString(R.string.car_turn_wait, percent().toString())) // (Western digits, as everywhere)
+        }
+    }
+
+    /** A drag while it cannot turn has its answer too, once. */
+    private fun refuse() {
+        if (locked) {
+            noteDrag("locked")
+            Snack.show(context, R.string.car_turn_moving)
+        } else {
+            noteDrag(if (gl == null || gl.broken || CarEtc.failed(Palette.dark)) "failed" else "wait")
+            sayNotReady()
+        }
+    }
+
+    private fun noteDrag(how: String) {
+        lastDragAt = SystemClock.elapsedRealtime()
+        lastDragHow = how
+        lastDragFrames = gl?.framesCount ?: 0
+        synchronized(dragCounts) { dragCounts[how] = (dragCounts[how] ?: 0) + 1 }
+    }
+
     override fun onTouchEvent(e: MotionEvent): Boolean {
-        if (table == null || locked || !framesIn) return true
+        if (table == null) return true
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                stageDowns++
+                lastDownAt = SystemClock.elapsedRealtime()
+                moved = false
+                answered = false
+                downX = e.x; downY = e.y; lastX = e.x
+                if (locked || !turnable()) {
+                    dragging = false
+                    return true
+                }
                 removeCallbacks(goHome)
                 stopAnim()
                 vel = 0f
                 dragTo = pos
                 dragging = true
-                moved = false
-                downX = e.x; downY = e.y; lastX = e.x
                 vt?.recycle()
                 vt = VelocityTracker.obtain().also { it.addMovement(e) }
             }
             MotionEvent.ACTION_MOVE -> {
+                val sideways = abs(e.x - downX) > slop && abs(e.x - downX) > abs(e.y - downY)
+                if (!dragging) {
+                    if (sideways && !answered) {
+                        answered = true
+                        refuse()
+                    }
+                    return true
+                }
                 vt?.addMovement(e)
-                if (!dragging) return true
-                if (!moved && abs(e.x - downX) > slop && abs(e.x - downX) > abs(e.y - downY)) {
+                if (!moved && sideways) {
                     moved = true
                     lastX = e.x
                     parent?.requestDisallowInterceptTouchEvent(true)
                     kick()
+                    if (framesIn) noteDrag("turned")
+                    else {
+                        // it turns, on what is in: the steps it takes need saying as well
+                        noteDrag("coarse")
+                        sayNotReady()
+                    }
                 }
                 if (moved) {
                     dragTo += (e.x - lastX) * framesPerPx
@@ -349,6 +417,7 @@ class CarStage(context: Context) : FrameLayout(context) {
                 vt?.recycle(); vt = null
             }
             MotionEvent.ACTION_CANCEL -> {
+                if (!dragging) return true
                 dragging = false
                 vt?.recycle(); vt = null
                 animatePos(dragTo.roundToInt().toFloat(), 200, DecelerateInterpolator()) { scheduleHome() }
@@ -405,10 +474,68 @@ class CarStage(context: Context) : FrameLayout(context) {
         private const val FOLLOW = 24f            // per second: how fast the car catches up with the finger
         private const val REST_MS = 120L
         private const val SPIN_MS = 1100L
+        /** The bake starts by this time after the stage is built, if the GL view has not asked by then (its first frame comes before that with Home on screen). */
+        private const val BAKE_AFTER_MS = 2000L
+        /** Of the GL rect's height: the row of Home lies over the rest, and what it takes is its own. */
+        private const val ROW_OVER_RECT = 26
 
-        /** Diagnostics: is the GPU drawing the car, and how fast it drew while the car last turned. */
+        /**
+         * Diagnostics: has the GL view drawn at all (its first frame is the rest frame: with no frame baked this is true), and how fast its last run of draws went (the entrance's fade is one).
+         * Whether the car can turn is in [report].
+         */
         @Volatile var gpuDrawing = false
         @Volatile var lastFps = 0f
+
+        // what the next Screen check tells of a drag, whoever made it (main thread writes)
+        private var now: WeakReference<CarStage>? = null
+        @Volatile private var windowDowns = 0
+        @Volatile private var stageDowns = 0
+        @Volatile private var lastDownAt = 0L
+        @Volatile private var lastDragAt = 0L
+        @Volatile private var lastDragHow = ""
+        @Volatile private var lastDragFrames = 0
+        @Volatile private var lockedTimes = 0
+        @Volatile private var lockedAt = 0L
+        private val dragCounts = HashMap<String, Int>()
+
+        /** A finger came down on the window, from its root, before anything took it: on the car, with the car on screen, it should reach the stage ([stageDowns] in the report). */
+        fun windowDown(x: Float, y: Float) {
+            val s = now?.get() ?: return
+            if (x >= CarGlView.RECT_X && x < CarGlView.RECT_X + CarGlView.RECT_W && y >= CarGlView.RECT_Y && y < CarGlView.RECT_Y + CarGlView.RECT_H - ROW_OVER_RECT && s.isShown) windowDowns++
+        }
+
+        /** Can the car turn, and if not why: the Screen check's report (Collect) answers this by itself. Any thread. */
+        fun report(): JSONObject {
+            val s = now?.get()
+            val g = s?.gl
+            val t = SystemClock.elapsedRealtime()
+            fun ago(at: Long): Any = if (at == 0L) JSONObject.NULL else (t - at) / 1000
+            val inAt = g?.framesInAt ?: 0L
+            return JSONObject()
+                .put("processUpSec", (t - Process.getStartElapsedRealtime()) / 1000)
+                .put("bake", CarEtc.report())
+                .put("framesInGpu", g?.framesCount ?: 0)
+                .put("of", s?.n ?: 0)
+                .put("allIn", g?.framesIn == true)
+                .put("allInSecAfterProcess", if (inAt == 0L) JSONObject.NULL else (inAt - Process.getStartElapsedRealtime()) / 1000)
+                .put("uploadError", g?.uploadError ?: JSONObject.NULL)
+                .put("canTurn", s?.turnable() == true)
+                .put("glDrawing", g?.drawing == true)
+                .put("glBroken", g?.broken == true)
+                .put("frameNow", s?.let { Math.floorMod(it.pos.roundToInt(), it.n) } ?: JSONObject.NULL)
+                .put("locked", s?.locked == true)
+                .put("moving", DriveState.moving)
+                .put("lockedTimes", lockedTimes)
+                .put("lockedSecAgo", ago(lockedAt))
+                .put("windowDownsOnCar", windowDowns)
+                .put("stageDowns", stageDowns)
+                .put("lastDownSecAgo", ago(lastDownAt))
+                .put("lastDrag", if (lastDragAt == 0L) JSONObject.NULL else JSONObject()
+                    .put("secAgo", ago(lastDragAt))
+                    .put("how", lastDragHow)
+                    .put("framesInThen", lastDragFrames))
+                .put("drags", synchronized(dragCounts) { JSONObject(dragCounts as Map<*, *>) })
+        }
 
         /** There was a line here for how a start's car came on screen, by which of the old paths: there is one path now. */
         fun startNote(c: Context): String = ""

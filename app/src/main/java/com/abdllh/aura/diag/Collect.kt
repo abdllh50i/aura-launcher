@@ -294,7 +294,9 @@ internal object Collect {
             first("^Janky frames:\\s*(.*)$", gfx)?.let { o.put("hwuiJanky", it) }
         }
         o.put("mali", maliMemory())
+        // (these two say that the GL view has drawn, and how fast its last run of draws went, which the entrance's fade is too: with no frame baked they can read true and 60. Whether it turns is "car")
         o.put("carFps", Num.of(CarStage.lastFps.toDouble())).put("carOnGpu", CarStage.gpuDrawing)
+        o.put("car", CarStage.report())
         com.abdllh.aura.system.CrashGuard.lastCrash(c)?.let { o.put("lastCrash", Num.cut(it, 1500)) }
         return o
     }
@@ -303,7 +305,7 @@ internal object Collect {
     fun logs(c: Context): JSONObject {
         val o = JSONObject()
         val pkg = c.packageName
-        o.put("displayed", Num.lines(Sh.text("logcat -d -s ActivityTaskManager:I ActivityManager:I AuraCar:I | grep -E 'Displayed $pkg|GPU car' | tail -n 40 | cut -c1-160")))
+        o.put("displayed", Num.lines(Sh.text("logcat -d -s ActivityTaskManager:I ActivityManager:I AuraCar:I | grep -E 'Displayed $pkg|AuraCar' | tail -n 40 | cut -c1-160")))
         o.put("tombstones", Num.lines(Sh.text("ls -l /data/tombstones 2>/dev/null | tail -n 14")))
         o.put("ourTombstones", Sh.text("for f in \$(ls -t /data/tombstones/tombstone_* 2>/dev/null | head -n 12); do " +
             "if head -n 10 \"\$f\" | grep -q '>>> $pkg'; then echo \"== \$f\"; head -n 34 \"\$f\" | cut -c1-180; fi; done | head -c 12000", 8000))

@@ -502,6 +502,7 @@ object ScreenCheck {
         r.put("started", utc.format(Date(startedAt))).put("startedMs", startedAt).put("tookSec", tookMs / 1000)
         r.put("realUnit", Device.isNwd)
         if (stopped != null) r.put("stopped", stopped)
+        r.put("carAtEnd", com.abdllh.aura.ui.CarStage.report()) // (d_memory.car is from the check's first seconds)
         r.put("d_logs", part { Collect.logs(app) })
         val tests = JSONObject()
         val gl = JSONObject()
