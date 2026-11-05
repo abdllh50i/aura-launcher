@@ -151,7 +151,7 @@ internal object Backdrop {
     /** The margin of [Wash.widget] and [Wash.mini] round the card: `wash-*` of the design. */
     const val CARD_MARGIN = 30
     private const val WASH_W = 364
-    private const val WIDGET_H = 182
+    private const val WIDGET_H = 184
     private const val MINI_H = 80
     private const val ASPECT = 1024f / 600f
 
@@ -328,8 +328,7 @@ internal object Backdrop {
     }
 
     /**
-     * A cover rounded once, at its displayed size, so no cover uses clipToOutline: `DST_IN` with the plate drawn at that size. Big 204 r
-     * 20, widget 84 r 16, moving widget 72 r 14, mini 52 r 12, glance 44 r 12, row 56 r 12, album 120 r 16. Only on a worker.
+     * A cover rounded once, at its displayed size, so no cover uses clipToOutline: `DST_IN` with the plate drawn at that size. Only on a worker.
      */
     fun round(ctx: Context, cover: Bitmap, size: Int, radius: Int): Bitmap {
         var b = if (Build.VERSION.SDK_INT >= 26 && cover.config == Bitmap.Config.HARDWARE) cover.copy(Bitmap.Config.ARGB_8888, false) else cover

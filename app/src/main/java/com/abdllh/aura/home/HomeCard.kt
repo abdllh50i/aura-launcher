@@ -1,8 +1,5 @@
 package com.abdllh.aura.home
 
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.drawable.Drawable
 import android.location.Location
 import android.os.SystemClock
 import android.text.SpannableStringBuilder
@@ -17,20 +14,16 @@ import com.abdllh.aura.R
 import com.abdllh.aura.nav.CarLocation
 import com.abdllh.aura.nav.Instructions
 import com.abdllh.aura.nav.NavSession
-import com.abdllh.aura.nav.Place
-import com.abdllh.aura.nav.Places
 import com.abdllh.aura.nav.RoadWatch
 import com.abdllh.aura.nav.Route
 import com.abdllh.aura.nav.Turn
 import com.abdllh.aura.nav.Units
-import com.abdllh.aura.settings.SettingsActivity
 import com.abdllh.aura.ui.ABtn
 import com.abdllh.aura.ui.AText
 import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.LimitSign
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.PressGesture
-import com.abdllh.aura.ui.Recolours
 import com.abdllh.aura.ui.Surface
 import com.abdllh.aura.ui.SurfaceCard
 import com.abdllh.aura.ui.Tint
@@ -44,9 +37,6 @@ import com.abdllh.aura.ui.look
 import com.abdllh.aura.ui.plateView
 import com.abdllh.aura.ui.withUnit
 import com.abdllh.aura.util.Prefs
-import kotlin.math.ceil
-import kotlin.math.max
-import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
@@ -61,8 +51,6 @@ internal class HomeCard(private val shell: HomeActivity, private val host: HomeH
     private val tap = View(shell)
     private val edge = View(shell)
     private val searchFace = SurfaceCard(shell, Surface.PILL)
-    private val chipsParked = group()
-    private val chipsMoving = group()
     private val speedFace = SurfaceCard(shell, Surface.PILL)
     private var shownOver = false
     private val speedNumber: AText = shell.label(SPEED_ROLE, { if (shownOver) Palette.overInk else Palette.ink }).apply {
@@ -84,7 +72,7 @@ internal class HomeCard(private val shell: HomeActivity, private val host: HomeH
         setPadding(0, 0, 0, 4)
         setText(R.string.home_end)
     }
-    /** After End, in the chips' slot and the ETA pill's own rect: the trip has ended, and `رجّعها` where End was, for 5 s. */
+    /** After End, in the ETA pill's own rect: the trip has ended, and `رجّعها` where End was, for 5 s. */
     private val endedFace = group()
     private val undo = ABtn(shell).apply {
         kind = ABtn.Kind.PRIMARY
@@ -93,10 +81,9 @@ internal class HomeCard(private val shell: HomeActivity, private val host: HomeH
         setText(R.string.home_undo)
     }
     private val faces = HomeFaces(listOf(searchFace, speedFace, tripFace), searchFace)
-    private val chipFaces = HomeFaces(listOf(chipsParked, chipsMoving, endedFace), chipsParked)
-    private var chipsShown = ""
+    private val endedFaces = HomeFaces(listOf(endedFace), null)
     private var face = Face.PARKED
-    private class Kept(val place: Place, val route: Route)
+    private class Kept(val place: com.abdllh.aura.nav.Place, val route: Route)
     private var kept: Kept? = null
     private val undoGone = Runnable { clearUndo(true) }
 
@@ -119,34 +106,31 @@ internal class HomeCard(private val shell: HomeActivity, private val host: HomeH
         tap.background = PressGesture.plate(press.drawable)
         tap.isClickable = true
         tap.setOnClickListener { openMaps(false) }
-        addView(tap, at(12, 44, 364, 268))
+        addView(tap, at(CARD_X, CARD_Y, CARD_W, CARD_H))
         // (a ring only, its middle empty: top light and ring over the hole)
         edge.look {
             background = context.getDrawable(if (Palette.dark) R.drawable.map_edge_night else R.drawable.map_edge_day)
             press.recolour()
         }
-        addView(edge, at(12, 44, 364, 268))
+        addView(edge, at(CARD_X, CARD_Y, CARD_W, CARD_H))
 
         // the search pill
-        searchFace.addView(shell.iconView(R.drawable.ic_search, 24) { Palette.ink2 }, at(if (ar) 310 else 14, 12, 24, 24))
-        searchFace.addView(shell.label(Type.homeSearch, { Palette.ink2 }).apply { setText(R.string.home_where_to) }, Type.homeSearch.box(if (ar) 14 else 46, 10, 288))
+        searchFace.addView(shell.iconView(R.drawable.ic_search, 26) { Palette.ink2 }, at(if (ar) 306 else 16, 13, 26, 26))
+        searchFace.addView(shell.label(Type.search, { Palette.ink2 }).apply { setText(R.string.home_where_to) }, Type.search.box(if (ar) 16 else 52, 10, 280))
         searchFace.setOnClickListener { openMaps(true) }
         pressable(searchFace, PressGesture.SURFACE)
-        addView(searchFace, Surface.PILL.at(20, 52, 348, 48))
+        addView(searchFace, Surface.PILL.at(PILL_X, PILL_Y, PILL_W, 52))
 
         // the speed in the search's slot
-        speedFace.addView(overPlate, at(0, 0, 348, 48))
-        speedFace.addView(speedSign, at(4, 2, HOME_LIMIT.px, HOME_LIMIT.px))
-        speedFace.addView(speedNumber, SPEED_ROLE.box(56, 0, 280))
-        addView(speedFace, Surface.PILL.at(20, 52, 348, 48))
-
-        addView(chipsParked, MATCH_WINDOW())
-        addView(chipsMoving, MATCH_WINDOW())
+        speedFace.addView(overPlate, at(0, 0, PILL_W, 52))
+        speedFace.addView(speedSign, at(4, 4, HOME_LIMIT.px, HOME_LIMIT.px))
+        speedFace.addView(speedNumber, SPEED_ROLE.box(56, 2, 280))
+        addView(speedFace, Surface.PILL.at(PILL_X, PILL_Y, PILL_W, 52))
 
         // the trip's two pills, the tile at the reading edge and End on the driver's side as the mockup has them
         addView(tripFace, MATCH_WINDOW())
-        tripFace.addView(turnPill, Surface.PILL.at(20, 52, 348, 64))
-        tripFace.addView(etaPill, Surface.PILL.at(20, 240, 348, 64))
+        tripFace.addView(turnPill, Surface.PILL.at(PILL_X, PILL_Y, PILL_W, 64))
+        tripFace.addView(etaPill, Surface.PILL.at(PILL_X, ETA_Y, PILL_W, 64))
         val tileX = if (ar) 292 else 8
         turnPill.addView(turnTile, at(tileX, 8, 48, 48))
         turnPill.addView(turnGlyph, at(tileX + 6, 14, 36, 36))
@@ -162,7 +146,7 @@ internal class HomeCard(private val shell: HomeActivity, private val host: HomeH
             contentDescription = shell.getString(R.string.home_end)
             setOnTouchListener { _, e -> endGesture.onTouch(e); false }
             setOnClickListener { endTrip() }
-        }, at(12, 232, 122, 80))
+        }, at(END_HIT_X, END_HIT_Y, 122, 80))
         // what End leaves: the same rect, the same hit
         addView(endedFace, MATCH_WINDOW())
         val endedPill = SurfaceCard(shell, Surface.PILL)
@@ -171,14 +155,14 @@ internal class HomeCard(private val shell: HomeActivity, private val host: HomeH
             textDirection = TEXT_DIRECTION_LOCALE
             setText(R.string.home_trip_ended)
         }, Type.chipPrayer.box(111, 16, 229))
-        endedFace.addView(endedPill, Surface.PILL.at(20, 240, 348, 64))
+        endedFace.addView(endedPill, Surface.PILL.at(PILL_X, ETA_Y, PILL_W, 64))
         val undoGesture = PressGesture(undo, PressGesture.CONTROL)
         endedFace.addView(View(shell).apply {
             isClickable = true
             contentDescription = shell.getString(R.string.home_undo)
             setOnTouchListener { _, e -> undoGesture.onTouch(e); false }
             setOnClickListener { undoEnd() }
-        }, at(12, 232, 122, 80))
+        }, at(END_HIT_X, END_HIT_Y, 122, 80))
         look {
             turnGlyph.setColorFilter(Palette.onAccent)
             // (what is in spans has its colour in the text)
@@ -187,7 +171,6 @@ internal class HomeCard(private val shell: HomeActivity, private val host: HomeH
             shownEta = ""
             lastTrip?.invoke()
         }
-        refreshPlaces()
     }
 
     private fun group() = object : FrameLayout(shell) {
@@ -206,19 +189,14 @@ internal class HomeCard(private val shell: HomeActivity, private val host: HomeH
         val was = face
         face = f
         faces.show(when (f) { Face.PARKED -> searchFace; Face.MOVING -> speedFace; Face.TRIP -> tripFace }, animate)
-        chipFaces.show(chipsNow(), animate)
+        syncEnded(animate)
         if (was != f) {
             syncSpeed()
             syncTrip()
         }
     }
 
-    private fun chipsNow(): View? = when {
-        face == Face.TRIP -> null
-        kept != null -> endedFace
-        face == Face.PARKED -> chipsParked
-        else -> chipsMoving
-    }
+    private fun syncEnded(animate: Boolean) = endedFaces.show(if (kept != null && face != Face.TRIP) endedFace else null, animate)
 
     /** Home is on top: fixes, the road and the trip. Off when it is not: a hidden view asks for no frame. */
     fun listen(on: Boolean) {
@@ -230,7 +208,6 @@ internal class HomeCard(private val shell: HomeActivity, private val host: HomeH
             CarLocation.last?.let { takeFix(it) }
             syncSpeed()
             syncTrip()
-            refreshPlaces()
         } else {
             CarLocation.removeListener(onFix)
             RoadWatch.removeListener(onRoad)
@@ -350,105 +327,20 @@ internal class HomeCard(private val shell: HomeActivity, private val host: HomeH
     private fun clearUndo(animate: Boolean) {
         removeCallbacks(undoGone)
         kept = null
-        chipFaces.show(chipsNow(), animate)
+        syncEnded(animate)
     }
 
     private fun undoEnd() {
         val k = kept ?: return
         removeCallbacks(undoGone)
-        kept = null // (no chips on the way: this slot goes straight back to the trip's)
+        kept = null // (this rect goes straight back to the trip's)
         onUndo?.invoke()
         NavSession.start(shell, k.place, k.route, remember = false)
-    }
-
-    // ------------------------------------------------------------------------------------------ the chips
-    /** Home, Work and the last destination, as they are saved now; laid out again only when a name changed. */
-    fun refreshPlaces() {
-        if (debugHeld) return
-        val l = Places.recents.firstOrNull()
-        val key = l?.name.orEmpty()
-        if (key == chipsShown && chipsParked.childCount > 0) return
-        chipsShown = key
-        val names = ArrayList<Chip>()
-        names.add(Chip(R.drawable.ic_home, shell.getString(R.string.home_chip_home)) { go("home") })
-        names.add(Chip(R.drawable.ic_work, shell.getString(R.string.home_chip_work)) { go("work") })
-        if (l != null) names.add(Chip(R.drawable.ic_bag, l.name) { goPlace(l) })
-        buildChips(chipsParked, names, true)
-        buildChips(chipsMoving, names, false)
-    }
-
-    private class Chip(val icon: Int, val name: String, val act: () -> Unit)
-
-    /**
-     * Flex by the mockup's CSS: each chip its content and padding, and the rest of the 348 shared out equally, with a gap of 6; a long name is cut at 120 (150 at `chip`) and only the third gives way. From the
-     * reading edge in each language.
-     */
-    private fun buildChips(row: FrameLayout, names: List<Chip>, disc: Boolean) {
-        row.removeAllViews()
-        val role = if (disc) Type.homeChip else Type.chip
-        val p = Paint().apply { typeface = Fonts.of(role, !disc); textSize = role.sp; Fonts.tune(this) }
-        val pad = if (ar) 8 else 4
-        val gap = if (ar) 6 else 4
-        val most = if (disc) 120 else 150
-        val textW = names.map { min(ceil(p.measureText(it.name)).toInt() + 2, most) }
-        val base = textW.map { it + 2 * pad + if (disc) 26 + gap else 0 }
-        val total = 348 - 6 * (names.size - 1)
-        val free = total - base.sum()
-        val widths = if (free >= 0) {
-            val share = free / names.size
-            base.mapIndexed { i, b -> b + share + if (i == names.lastIndex) free - share * names.size else 0 }
-        } else {
-            base.mapIndexed { i, b -> if (i == names.lastIndex) max(60, b + free) else b }
-        }
-        var left = 20
-        val order = if (ar) names.indices.reversed() else names.indices
-        for (i in order) {
-            val w = widths[i]
-            val c = names[i]
-            val chip = SurfaceCard(shell, Surface.PILL)
-            val content = textW[i] + if (disc) 26 + gap else 0
-            val start = (w - content) / 2
-            if (disc) {
-                chip.addView(DiscGlyph(shell, c.icon), at(if (ar) start + content - 26 else start, 11, 26, 26))
-                chip.addView(shell.label(role, { Palette.ink }).apply { text = c.name; gravity = Gravity.CENTER_HORIZONTAL or Gravity.TOP }, role.box(if (ar) start else start + 26 + gap, 10, textW[i]))
-            } else {
-                chip.addView(shell.label(role, { Palette.ink }, moving = true).apply { text = c.name; gravity = Gravity.CENTER_HORIZONTAL or Gravity.TOP }, role.box(start, 8, textW[i]))
-            }
-            chip.setOnClickListener { c.act() }
-            pressable(chip, PressGesture.CONTROL)
-            row.addView(chip, Surface.PILL.at(left, 256, w, 48))
-            left += w + 6
-        }
     }
 
     private fun openMaps(search: Boolean) {
         if (!Prefs.builtInMaps) { if (!Actions.nav(context)) host.toast(context.getString(R.string.err_no_nav)); return }
         if (search) Screens.mapsSearch(context) else Screens.maps(context)
-    }
-
-    /** Home or Work: the place card for it; unsaved, the pick flow on Maps. With an external navigation app the saved address is handed over. */
-    private fun go(which: String) {
-        val label = if (which == "home") R.string.home_home else R.string.home_work
-        if (Prefs.builtInMaps) {
-            val saved = if (which == "home") Places.home else Places.work
-            val legacy = if (which == "home") Prefs.homeAddress else Prefs.workAddress
-            when {
-                saved != null -> goPlace(saved)
-                legacy.isBlank() -> Screens.mapsPick(context, which)
-                else -> Screens.mapsGo(context, which)
-            }
-            return
-        }
-        if (AppRepo.navPackage(context) == null) { host.toast(context.getString(R.string.err_no_nav)); return }
-        if (!Actions.driveWithApp(context, which)) {
-            // no such place yet: it is chosen with a pin on AMRI's map (Settings → Navigation)
-            host.toast(context.getString(R.string.home_set_address_hint, context.getString(label)), outlives = true)
-            host.openSettings(SettingsActivity.PAGE_NAVIGATION)
-        }
-    }
-
-    private fun goPlace(p: Place) {
-        Screens.mapsPlace(context, p.pos.lat, p.pos.lon, p.name, p.detail, true)
     }
 
     // ------------------------------------------------------------------------------------------ debug builds: the mockups' numbers
@@ -478,38 +370,18 @@ internal class HomeCard(private val shell: HomeActivity, private val host: HomeH
         Turn.REROUTE -> R.drawable.ic_reroute
     }
 
-    internal fun debugChips(third: String) {
-        debugHeld = true
-        val names = ArrayList<Chip>()
-        names.add(Chip(R.drawable.ic_home, shell.getString(R.string.home_chip_home)) { })
-        names.add(Chip(R.drawable.ic_work, shell.getString(R.string.home_chip_work)) { })
-        names.add(Chip(R.drawable.ic_bag, third) { })
-        buildChips(chipsParked, names, true)
-        buildChips(chipsMoving, names, false)
-    }
-
-    /** A blue disc 26 with a white glyph 18: one view, no children. */
-    private class DiscGlyph(ctx: android.content.Context, icon: Int) : View(ctx), Recolours {
-        private val p = Paint(Paint.ANTI_ALIAS_FLAG)
-        private val glyph: Drawable = ctx.getDrawable(icon)!!.mutate().also { it.setBounds(4, 4, 22, 22) }
-
-        init { onLook() }
-
-        override fun onLook() {
-            p.color = Palette.accent
-            glyph.setTint(Palette.onAccent)
-            invalidate()
-        }
-
-        override fun hasOverlappingRendering() = false
-
-        override fun onDraw(c: Canvas) {
-            c.drawCircle(13f, 13f, 13f, p)
-            glyph.draw(c)
-        }
-    }
-
     private companion object {
+        const val CARD_X = 16
+        const val CARD_Y = 48
+        const val CARD_W = 364
+        const val CARD_H = 264
+        const val PILL_X = 24
+        const val PILL_Y = 56
+        const val PILL_W = 348
+        const val ETA_Y = 240
+        /** End's hit, 122 x 80 round its 100 x 58 at (27, 243). */
+        const val END_HIT_X = 16
+        const val END_HIT_Y = 232
         /** The number in the search's slot: `chipPrayer`'s weight at 34, as the mockup. */
         val SPEED_ROLE = Type.Role("homeSpeed", 34, 600, 48, 34)
         val HOME_LIMIT = LimitSign.Spec(44, Type.Role("homeLimit", 19, 600, 44, 19), 3f, 3f, -0.4f, 19f)

@@ -107,7 +107,7 @@ object Surfaces {
         synchronized(warm) {
             if (warm.isEmpty()) for (s in Surface.values()) s.warm(ctx, warm)
         }
-        for (stem in arrayOf("room", "dock", "cap-left", "cap-dock", "cap-chip", "cover-shadow", "wall-hole", "wall-gl")) themed(ctx, stem, night)
+        for (stem in arrayOf("room", "dock", "cap-left", "cap-dock", "cover-shadow", "wall-hole", "wall-gl")) themed(ctx, stem, night)
     }
 
     private fun decodeAsset(ctx: Context, name: String, hardware: Boolean): Bitmap? = try {

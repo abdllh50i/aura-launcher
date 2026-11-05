@@ -1,8 +1,6 @@
 package com.abdllh.aura.chrome
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
@@ -20,7 +18,6 @@ import com.abdllh.aura.ui.LimitSign
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.PressGesture
 import com.abdllh.aura.ui.Recolours
-import com.abdllh.aura.ui.ThemeSwap
 import com.abdllh.aura.ui.Tokens2
 import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.at
@@ -29,14 +26,12 @@ import com.abdllh.aura.ui.label
 import com.abdllh.aura.ui.look
 
 /**
- * The status strip, 1024 x 40 (SPEC.md section 5): what is linked at the left, then the gear, then the speed when no speed card shows; the time at the right. Two
- * faces in alpha: gear row and logo on Home, gear badge and time elsewhere. All in their places from the start and never laid out again; a label's text changes
- * inside a fixed box. [homeFace] and [otherFace] are the two faces' alpha, which [Chrome] moves.
+ * The status strip, 1024 x 40 (CHANGES.md section 1): what is linked at the left, then the speed when no speed card shows; the time at the right, on every panel but Home, whose clock is its own. A car that
+ * really reports its gear ([Gear.canReports]; his does not) has a badge after the icons, and the speed moves over. All in their places from the start and never laid out again; a label's text changes
+ * inside a fixed box. [timeShown] is the time's alpha, which [Chrome] moves.
  */
 internal class Strip(ctx: Context, onControls: () -> Unit, onNight: () -> Unit) : FrameLayout(ctx) {
     private val status = StatusIcons(ctx, onControls, onNight)
-    private val gearRow = GearRow(ctx)
-    private val logo = Logo(ctx)
     private val badge = GearBadge(ctx)
     private val time: AText = ctx.label(Type.stripTime, { Palette.ink }).apply {
         gravity = Gravity.RIGHT or Gravity.TOP
@@ -45,39 +40,26 @@ internal class Strip(ctx: Context, onControls: () -> Unit, onNight: () -> Unit) 
     val speed = StripSpeed(ctx)
 
     init {
-        addView(status, at(0, 0, 126, 48))
-        addView(gearRow, at(128, 0, 102, 40))
-        addView(badge, at(128, 5, 30, 30))
-        addView(speed, at(240, 2, 320, 36))
-        addView(logo, FrameLayout.LayoutParams(logo.w, 26, Gravity.RIGHT or Gravity.TOP).apply { rightMargin = 24; topMargin = 7 })
+        addView(status, at(0, 0, AFTER_ICONS, 48))
+        addView(badge, at(AFTER_ICONS, 5, 30, 30))
+        addView(speed, at(AFTER_ICONS, 2, 320, 36))
         addView(time, Type.stripTime.box(TIME_RIGHT - TIME_W, 0, TIME_W))
     }
 
-    var homeFace = 1f
+    var timeShown = 0f
         set(v) {
             field = v
-            gearRow.fadeTo(v)
-            logo.fadeTo(v)
+            time.alpha = v
+            val want = if (v > 0f) VISIBLE else INVISIBLE
+            if (time.visibility != want) time.visibility = want
         }
-
-    var otherFace = 0f
-        set(v) {
-            field = v
-            badge.fadeTo(v)
-            time.fadeTo(v)
-        }
-
-    private fun View.fadeTo(a: Float) {
-        alpha = a
-        val want = if (a > 0f) VISIBLE else INVISIBLE
-        if (visibility != want) visibility = want
-    }
 
     fun setStatus(gps: Boolean, wifi: Boolean, phone: Boolean) = status.set(gps, wifi, phone)
 
-    fun setGear(g: Gear.Pos?, sure: Boolean, moving: Boolean) {
-        gearRow.set(g, sure, moving)
+    /** [g] null: the car does not report its gear, and nothing shows for it. */
+    fun setGear(g: Gear.Pos?, sure: Boolean) {
         badge.set(g, sure)
+        speed.translationX = if (g != null) AFTER_BADGE else 0f
     }
 
     fun setTime(s: CharSequence) {
@@ -87,14 +69,15 @@ internal class Strip(ctx: Context, onControls: () -> Unit, onNight: () -> Unit) 
     override fun hasOverlappingRendering() = false
 
     private companion object {
-        const val TIME_RIGHT = 1010
+        const val AFTER_ICONS = 118
+        const val AFTER_BADGE = 40f
+        const val TIME_RIGHT = 1008
         const val TIME_W = 220
     }
 }
 
 /**
- * The strip's left end, x 0..126, y 0..48: GPS, Wi-Fi, phone at x 16, 50, 84 (22 px, off forms in `ink3`), then the small chevron that says they open Controls. A tap
- * or a drag down opens Controls, a long press is the Night Panel.
+ * The strip's left end, x 0..118, y 0..48: GPS, Wi-Fi, phone at x 16, 50, 84 (22 px, off forms in `ink3`). A tap or a drag down opens Controls, a long press is the Night Panel.
  */
 internal class StatusIcons(ctx: Context, private val onControls: () -> Unit, private val onNight: () -> Unit) : FrameLayout(ctx), Recolours {
     private inner class One(private val on: Int, private val off: Int, x: Int) {
@@ -116,7 +99,6 @@ internal class StatusIcons(ctx: Context, private val onControls: () -> Unit, pri
     private val gps = One(R.drawable.ic_gps, R.drawable.ic_gps_off, 16)
     private val wifi = One(R.drawable.ic_wifi, R.drawable.ic_wifi_off, 50)
     private val phone = One(R.drawable.ic_iphone, R.drawable.ic_iphone_off, 84)
-    private val chevron = ImageView(ctx).apply { setImageResource(R.drawable.ic_chev_down) }
     private val gesture = PressGesture(this, PressGesture.ICON)
     private val slop = ViewConfiguration.get(ctx).scaledTouchSlop
     private var downY = 0f
@@ -128,7 +110,6 @@ internal class StatusIcons(ctx: Context, private val onControls: () -> Unit, pri
     }
 
     init {
-        addView(chevron, at(106, 11, 18, 18))
         set(gps = false, wifi = false, phone = false)
         onLook()
     }
@@ -143,7 +124,6 @@ internal class StatusIcons(ctx: Context, private val onControls: () -> Unit, pri
         gps.tint()
         wifi.tint()
         phone.tint()
-        chevron.setColorFilter(Palette.ink3)
     }
 
     override fun hasOverlappingRendering() = false
@@ -181,45 +161,7 @@ internal class StatusIcons(ctx: Context, private val onControls: () -> Unit, pri
     }
 }
 
-/** P R N D at (128, 1): cells 30, 24, 24, 24, the current one `ink`, the others `ink3`; moving, at the badge's size in the same cells. One view that draws them; the lever's letters never mirror. */
-internal class GearRow(ctx: Context) : View(ctx), Recolours {
-    private val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; Fonts.tune(this) }
-    private var gear: Gear.Pos? = null
-    private var sure = true
-    private var moving = false
-
-    fun set(g: Gear.Pos?, sure: Boolean, moving: Boolean) {
-        if (g == gear && sure == this.sure && moving == this.moving) return
-        gear = g
-        this.sure = sure
-        this.moving = moving
-        invalidate()
-    }
-
-    override fun onLook() = invalidate()
-
-    override fun hasOverlappingRendering() = false
-
-    override fun onDraw(c: Canvas) {
-        val g = gear ?: return
-        val role = if (moving) Type.gearBadge else Type.gearRow
-        p.typeface = Fonts.of(role)
-        p.textSize = role.sp
-        val y = (if (moving) 5 else 1) + role.baseline
-        for (i in LETTERS.indices) {
-            // (an assumed gear between the two: it has no word in the design for the row; the badge's is `ink3`, and here all four would then be the same)
-            p.color = if (i != g.ordinal) Palette.ink3 else if (sure) Palette.ink else Palette.ink2
-            c.drawText(LETTERS[i], CENTRES[i], y, p)
-        }
-    }
-
-    private companion object {
-        val LETTERS = arrayOf("P", "R", "N", "D")
-        val CENTRES = floatArrayOf(15f, 42f, 66f, 90f)
-    }
-}
-
-/** The gear on every screen but Home: 30 x 30, radius 9, `fill2`. Unknown: nothing. Assumed: `ink3`. */
+/** The gear of a car that reports it, on every screen: 30 x 30, radius 9, `fill2`. Unknown: nothing. Assumed: `ink3`. */
 internal class GearBadge(ctx: Context) : View(ctx), Recolours {
     private val plate = Paint(Paint.ANTI_ALIAS_FLAG)
     private val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; Fonts.tune(this) }
@@ -251,50 +193,7 @@ internal class GearBadge(ctx: Context) : View(ctx), Recolours {
 }
 
 /**
- * The logo, 26 high, its right edge at x 1000, in this language and theme. The drawables are 4 to 6 times that size for Settings' About: drawn straight, the GPU's
- * bilinear filter would skip most of their pixels, so each is cut down once to its real size, by halves, and kept.
- */
-internal class Logo(ctx: Context) : ImageView(ctx) {
-    val w = width()
-
-    init {
-        scaleType = ScaleType.FIT_XY
-        look { setImageBitmap(bitmap(context, Palette.dark)) }
-        // (the other theme's is cut on the swap's worker, not in its frame)
-        if (!stepAdded) {
-            stepAdded = true
-            val app = ctx.applicationContext
-            ThemeSwap.readySteps.add { night, done -> bitmap(app, night); done() }
-        }
-    }
-
-    companion object {
-        private val kept = HashMap<Int, Bitmap>()
-        private var stepAdded = false
-
-        private fun width() = if (Fonts.arabicUi) 87 else 155
-
-        /** This theme's, ahead of the first frame ([Chrome.warm]). */
-        fun prepare(c: Context) {
-            bitmap(c, Palette.dark)
-        }
-
-        private fun bitmap(c: Context, night: Boolean): Bitmap? = synchronized(kept) {
-            val res = if (Fonts.arabicUi) { if (night) R.drawable.logo_amri_ar else R.drawable.logo_amri_ar_ink } else { if (night) R.drawable.logo_amri_en else R.drawable.logo_amri_en_ink }
-            kept[res] ?: try {
-                val w = width()
-                var b = BitmapFactory.decodeResource(c.resources, res, BitmapFactory.Options().apply { inScaled = false; inSampleSize = 2 })
-                while (b.width > w * 2) b = Bitmap.createScaledBitmap(b, b.width / 2, b.height / 2, true)
-                Bitmap.createScaledBitmap(b, w, 26, true).also { kept[res] = it }
-            } catch (_: Throwable) {
-                null
-            }
-        }
-    }
-}
-
-/**
- * The speed in the strip, from x 240 (SPEC.md section 5): the limit sign 34, then the number; over the limit a plate behind the number in `overFill`, the number `overInk`;
+ * The speed in the strip, from x 118 (CHANGES.md section 1): the limit sign 34, then the number; over the limit a plate behind the number in `overFill`, the number `overInk`;
  * a Saher camera within reach, `cam` and its distance beside it. No GPS: a dash, no sign. Everything stays where it was laid out: what has no sign moves the number by
  * translation, the number is drawn, the distance is a label in a fixed box, so a new speed redraws this one small view.
  */

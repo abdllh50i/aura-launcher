@@ -17,7 +17,6 @@ import com.abdllh.aura.chrome.Chrome
 import com.abdllh.aura.home.HomeActivity
 import com.abdllh.aura.home.Screens
 import com.abdllh.aura.nav.CarLocation
-import com.abdllh.aura.ui.Asked
 import java.util.Locale
 
 /**
@@ -28,9 +27,7 @@ import java.util.Locale
  *      --ef kmh 60                                        a fix each second at that speed, real path, until --ez nofix true
  *      --ez listen true|false --ef level .6               the voice's ring
  *      --ei vol 12 --ez mute false --ef bar .466          the mockups' numbers (bar -1: down)
- *      --es word "المغرب 4:56" --es left "بعد 38 د" --es icon sunset  the same
  *      --es time "4:18 م"
- *      --es order spec|nearest                            the row built anew in that order
  *      --ez status true                                   GPS, Wi-Fi and phone all on
  *      --es speed 112,120,over,"400 م"                    the strip's speed, in its place
  *      --ei rows 20 --ei gap 400                          Home's row to the dock and back, measured
@@ -48,7 +45,6 @@ class ChromeProbe : BroadcastReceiver() {
     override fun onReceive(c: Context, i: Intent) {
         val s = HomeActivity.current ?: return
         if (i.hasExtra("on")) Chrome.debugOn(s, i.getBooleanExtra("on", false))
-        i.getStringExtra("order")?.let { Chrome.debugOrder(s, if (it == "spec") Asked.ORDER_SPEC else Asked.ORDER_NEAREST) }
         val ch = Chrome.of(s)
         if (i.hasExtra("status")) ch?.debugStatus = i.getBooleanExtra("status", false)
         i.getStringExtra("show")?.let { ch?.debugShow(it) }
@@ -63,24 +59,18 @@ class ChromeProbe : BroadcastReceiver() {
         if (i.hasExtra("listen")) ch?.voice?.listening(i.getBooleanExtra("listen", false))
         if (i.hasExtra("level")) ch?.voice?.level(i.getFloatExtra("level", 0f))
         if (i.hasExtra("vol")) ch?.volume?.hold(i.getIntExtra("vol", 12), i.getBooleanExtra("mute", false), i.getFloatExtra("bar", -1f))
-        i.getStringExtra("word")?.let { w ->
-            val left = i.getStringExtra("left") ?: ""
-            val icon = c.resources.getIdentifier("ic_" + (i.getStringExtra("icon") ?: "sunset"), "drawable", c.packageName)
-            ch?.rowHome?.setPrayer(w, left, icon)
-            ch?.rowDock?.glance?.setPrayer(w, icon, i.getBooleanExtra("quiet", false))
-        }
         i.getStringExtra("time")?.let { ch?.strip?.setTime(it) }
         i.getStringExtra("song")?.let { t ->
             val art = try { c.assets.open("gallery/sea.jpg").use { android.graphics.BitmapFactory.decodeStream(it) } } catch (_: Throwable) { null }
             ch?.rowDock?.glance?.setSong(t, art, true, false)
-            ch?.rowDock?.glance?.face(true, false)
+            ch?.rowDock?.glance?.show(true, false)
         }
         if (i.getBooleanExtra("night", false)) s.root.night.show()
         i.getStringExtra("nightshow")?.let { s.root.night.debugHold("87", 120, it) }
         i.getStringExtra("fly")?.let {
             val b = c.assets.open("gallery/sea.jpg").use { st -> android.graphics.BitmapFactory.decodeStream(st) }
             val sq = android.graphics.Bitmap.createScaledBitmap(b, 204, 204, true)
-            s.root.flyer.fly(sq, 278f, 338f, 84f, 16f, 92f, 48f, 204f, 20f, i.getIntExtra("ms", 320).toLong()) { Log.i(TAG, "flew") }
+            s.root.flyer.fly(sq, 212f, 340f, 152f, 20f, 92f, 48f, 204f, 20f, i.getIntExtra("ms", 320).toLong()) { Log.i(TAG, "flew") }
         }
         if (i.getBooleanExtra("state", false)) Log.i(TAG, "state: ${ch?.debugState()} volume=${com.abdllh.aura.system.CarAudio.volume()}")
         val gap = i.getIntExtra("gap", 400).toLong()

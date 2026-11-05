@@ -349,11 +349,11 @@ class MapController(private val shell: HomeActivity) {
         sync()
     }
 
-    /** `map-*.json`'s camera: home, the car at (192, 179), 48 px; home on a trip, heading up, flat, the car at (192, 218), 40 px; both at zoom 14.6. */
+    /** `map-*.json`'s camera: home, the car at (198, 210), 48 px; home on a trip, heading up, flat, the car at (198, 222), 40 px; both at zoom 14.6. */
     private fun placeHome(m: AuraMap) {
         val trip = NavSession.state == NavSession.State.NAVIGATING
         if (m.flatNav != trip) m.flatNav = trip
-        if (trip) m.setRoom(0, 0, HOME_TRIP_RIGHT, HOME_TRIP_BOTTOM, 0.0)
+        if (trip) m.setRoom(HOME_LEFT, 0, HOME_RIGHT, HOME_TRIP_BOTTOM, 0.0)
         else m.setRoom(HOME_LEFT, HOME_TOP, HOME_RIGHT, HOME_BOTTOM, 0.0)
     }
 
@@ -476,12 +476,11 @@ class MapController(private val shell: HomeActivity) {
         private const val TAG = "AuraMap"
         private const val HOLDER = "shell"
         // the home screen's padding, by map-night.json's camera: left, top, right, bottom
-        private const val HOME_LEFT = 14
-        private const val HOME_TOP = 44
-        private const val HOME_RIGHT = 654
-        private const val HOME_BOTTOM = 286
-        private const val HOME_TRIP_RIGHT = 640
-        private const val HOME_TRIP_BOTTOM = 164
+        private const val HOME_LEFT = 16
+        private const val HOME_TOP = 108
+        private const val HOME_RIGHT = 644
+        private const val HOME_BOTTOM = 288
+        private const val HOME_TRIP_BOTTOM = 156
         // the sprite from above, px; the tilted views fill its view
         private const val CAR_HOME_PX = 48
         private const val CAR_HOME_TRIP_PX = 40

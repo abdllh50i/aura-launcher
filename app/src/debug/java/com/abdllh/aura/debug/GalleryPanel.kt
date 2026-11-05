@@ -240,7 +240,7 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
     private fun FrameLayout.room() = addView(ctx.surfaceImage("room"), at(0, 0, 1024, 516))
 
     private fun FrameLayout.scrims() {
-        addView(ctx.surfaceImage(R.drawable.scrim_col_night, R.drawable.scrim_col_day), at(0, 0, 392, 600))
+        addView(ctx.surfaceImage(R.drawable.scrim_col_night, R.drawable.scrim_col_day), at(0, 0, 396, 600))
         addView(ctx.surfaceImage(R.drawable.scrim_top_night, R.drawable.scrim_top_day), at(0, 0, 1024, 76))
         addView(ctx.surfaceImage(R.drawable.scrim_bot_night, R.drawable.scrim_bot_day), at(0, 482, 1024, 34))
     }
@@ -250,18 +250,13 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
         icon(R.drawable.ic_gps, 22, 16, 9) { Palette.ink2 }
         icon(R.drawable.ic_wifi, 22, 50, 9) { Palette.ink2 }
         icon(R.drawable.ic_iphone, 22, 84, 9) { Palette.ink2 }
-        icon(R.drawable.ic_chev_down, 18, 106, 11) { Palette.ink3 }
-        addView(View(ctx).apply {
-            look { background = GradientDrawable().apply { cornerRadius = Tokens2.R_gear.toFloat(); setColor(Palette.fill2) } }
-        }, at(128, 5, 30, 30))
-        textC(Type.gearBadge, "P", 128, 5, 30) { Palette.ink }
-        textR(Type.stripTime, "4:18 م", 1010, 0, { Palette.ink }).apply { textDirection = View.TEXT_DIRECTION_RTL }
+        textR(Type.stripTime, "4:18 م", 1008, 0, { Palette.ink }).apply { textDirection = View.TEXT_DIRECTION_RTL }
     }
 
     /** The bottom row in the mockups' places. [cells]: in order, from the first centre. [active]: its panel's name. */
-    private fun FrameLayout.dockRow(active: String?, cells: List<Asked.Cell> = Asked.ORDER_SPEC, prayer: Boolean = true) {
+    private fun FrameLayout.dockRow(active: String?, cells: List<Asked.Cell> = Asked.ORDER_NEAREST) {
         addView(ctx.surfaceImage("dock"), at(0, 500, 1024, 100))
-        addView(plateView(18) { Palette.fill }, at(12, 526, 188, 60))
+        addView(plateView(18) { Palette.fill }, at(16, 526, 184, 60))
         addView(IconButton(ctx, R.drawable.ic_minus, 34, 86, 84, centerDy = -2, centerDx = 7, token = { Palette.ink }), at(0, 516, 86, 84))
         icon(R.drawable.ic_vol, 24, 98, 530) { Palette.ink }
         textC(Type.volNum, "12", 86, 554, 48) { Palette.ink }.apply { layoutDirection = View.LAYOUT_DIRECTION_LTR }
@@ -269,13 +264,8 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
         addView(ctx.surfaceImageRes(R.drawable.voice_disc), at(186, 502, 108, 108))
         addView(IconButton(ctx, R.drawable.ic_mic, 32, 76, 84, centerDy = -2, centerDx = -2, token = { Palette.onAccent }), at(204, 516, 76, 84))
         for ((i, c) in cells.withIndex()) {
-            val x = Asked.centreX(i) - 36
-            addView(IconButton(ctx, c.icon, 38, 72, 84, centerDy = -2, pressPlate = true).apply { this.active = c.panel == active }, at(x, 516, 72, 84))
-        }
-        if (prayer) {
-            addView(plateView(18) { Palette.fill }, at(952, 530, 52, 52))
-            icon(R.drawable.ic_sunset, 30, 963, 541) { Palette.ink }
-            textR(Type.chipPrayer, "المغرب 4:56", 940, 540, { Palette.ink })
+            val x = Asked.centreX(i) - 40
+            addView(IconButton(ctx, c.icon, 38, 80, 84, centerDy = -2, pressPlate = true).apply { this.active = c.panel == active }, at(x, 516, 80, 84))
         }
     }
 
@@ -713,29 +703,23 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
 
     private fun dockOrder(s: FrameLayout) {
         s.mapPlate("browse")
-        s.head("The dock in the owner's second order (Asked.DOCK), Maps selected", 12, 460)
-        s.dockRow("maps", Asked.DOCK)
+        s.head("The dock in the owner's order, Maps selected", 12, 460)
+        s.dockRow("maps")
     }
 
-    /** Both orders of the dock, the real rows: Home's and the dock's, one under the other, as they are at the two ends of the row's change. */
+    /** The real rows: Home's and the dock's, one under the other, as they are at the two ends of the row's change. */
     private fun chromeOrders(s: FrameLayout) {
-        fun block(y: Int, name: String, order: List<Asked.Cell>, home: Boolean) {
+        fun block(y: Int, name: String, home: Boolean) {
             s.caption(14, y, name, 900)
             val row = FrameLayout(ctx)
-            if (home) row.addView(RowHome(ctx, order) { }.apply { setPrayer("المغرب 4:56", "بعد 38 د", R.drawable.ic_sunset) }, at(0, 0, 1024, 110))
-            else row.addView(RowDock(ctx, order) { }.apply {
-                placeOn(order[1].panel)
-                glance.setPrayer("الفجر 4:28", R.drawable.ic_sunrise, true)
-                shift(1f)
-            }, at(0, 10, 1024, 100))
-            row.addView(VolumeCluster(ctx).apply { hold(12, false, -1f) }, at(0, 26, 204, 84))
-            row.addView(VoiceButton(ctx) { }.apply { face = if (home) 0f else 1f }, at(186, 12, VoiceButton.SIZE, VoiceButton.SIZE))
-            s.addView(row, at(0, y + 20, 1024, 110))
+            if (home) row.addView(RowHome(ctx) { }, at(0, 0, 1024, 108))
+            else row.addView(RowDock(ctx) { }.apply { placeOn(Asked.ORDER_NEAREST[1].panel) }, at(0, 8, 1024, 100))
+            row.addView(VolumeCluster(ctx).apply { hold(12, false, -1f) }, at(0, 24, 204, 84))
+            row.addView(VoiceButton(ctx) { }.apply { face = if (home) 0f else 1f }, at(186, 10, VoiceButton.SIZE, VoiceButton.SIZE))
+            s.addView(row, at(0, y + 20, 1024, 108))
         }
-        block(0, "Asked.ORDER_NEAREST, the default: Home's row", Asked.ORDER_NEAREST, true)
-        block(130, "the dock: each tile one cell to the right, with the home cell in the room left: the row's change moves them there", Asked.ORDER_NEAREST, false)
-        block(280, "Asked.ORDER_SPEC, SPEC.md's: Home's row", Asked.ORDER_SPEC, true)
-        block(410, "the dock: each tile where it is, the home cell at the far end: the row's change only fades", Asked.ORDER_SPEC, false)
+        block(0, "Home's row", true)
+        block(130, "the dock", false)
     }
 
     // ------------------------------------------------------------------------------------------ replicas of the mockups
@@ -749,7 +733,7 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
         for ((i, e) in side.withIndex()) s.addView(NavItemDemo(e.first, e.second, i == page), at(704, 92 + 60 * i, 306, 58))
         s.textR(Type.pageTitle, title, 658, 44, { Palette.ink })
         s.strip()
-        s.dockRow("settings", prayer = false)
+        s.dockRow("settings")
     }
 
     private inner class NavItemDemo(icon: Int, title: String, on: Boolean) : FrameLayout(ctx) {
@@ -818,7 +802,7 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
             c.icon(t.first, 28, tx + 34, 252) { if (t.third) Palette.onAccent else Palette.ink }
             c.addView(ctx.label(Type.controlLabel, { Palette.ink }, lines = 2, gravity = Gravity.CENTER_HORIZONTAL).apply { text = t.second }, at(tx, 296 + Type.controlLabel.viewTop, 97, 66))
         }
-        s.dockRow("maps", prayer = true)
+        s.dockRow("maps")
     }
 
     private fun songRow(c: FrameLayout, y: Int, title: String, sub: String, dur: String, on: Boolean, art: String) {

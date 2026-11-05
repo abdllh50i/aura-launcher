@@ -15,6 +15,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import com.abdllh.aura.R
 import com.abdllh.aura.chrome.Chrome
+import com.abdllh.aura.chrome.ChromeWords
 import com.abdllh.aura.chrome.Tweens
 import com.abdllh.aura.nav.CarLocation
 import com.abdllh.aura.nav.NavSession
@@ -22,6 +23,7 @@ import com.abdllh.aura.phone.Calls
 import com.abdllh.aura.system.CarAudio
 import com.abdllh.aura.system.DriveState
 import com.abdllh.aura.system.NwdBridge
+import com.abdllh.aura.system.Prayer
 import com.abdllh.aura.ui.CarGlView
 import com.abdllh.aura.ui.CarStage
 import com.abdllh.aura.ui.Fonts
@@ -49,7 +51,7 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * The home screen, direction 4 of the design, at the bottom of the stack (SPEC.md sections 6.1, 6.7, 10): one picture of the wall with two holes in it, one over the one map (the map card's corners and
+ * The home screen, direction 4 of the design, at the bottom of the stack (SPEC.md sections 6.1, 6.7, 10, CHANGES.md section 3): one picture of the wall with two holes in it, one over the one map (the map card's corners and
  * its shadow are the wall's) and one the car's GL view stands in; the clock, the map card and the music widget over it, and the row in the chrome. Parked, moving and on a trip it is the same views:
  * [HomeCard] and [HomeWidget] have faces in alpha, built and laid out once, and nothing moves by layout. A panel that recolours in place: nothing here is rebuilt for a theme.
  *
@@ -254,7 +256,6 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         CarAudio.addListener(carAudio)
         resumedNow = true
         clock.refresh()
-        card.refreshPlaces()
         if (controls.isOpen) controls.refresh()
         UpdateManager.autoCheckIfDue()
         if (!introPlayed) {
@@ -307,8 +308,7 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         val moving = DriveState.moving
         val look = trip || moving
         card.setFace(if (trip) HomeCard.Face.TRIP else if (moving) HomeCard.Face.MOVING else HomeCard.Face.PARKED, animate)
-        widget.setMoving(look, animate)
-        clock.setMoving(look, animate)
+        widget.movingNow = look
         stage.locked = moving // (a trip at a red light has the moving look, and he may turn his car: it stands)
         if (look != movingLook) {
             movingLook = look
@@ -466,7 +466,7 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         from.alpha = 0f
         target.alpha = 0f
         target.postDelayed({ target.animate().alpha(1f).setDuration(FLIGHT_LAND_MS).setStartDelay(0L).start() }, ms - FLIGHT_LAND_MS)
-        shell.root.flyer.fly(b, fromAt[0].toFloat(), fromAt[1].toFloat(), from.width.toFloat(), Tokens2.R_coverWidget.toFloat(), at[0].toFloat(), at[1].toFloat(), target.width.toFloat(), radius.toFloat(), ms, Motion.MOVE) {
+        shell.root.flyer.fly(b, fromAt[0].toFloat(), fromAt[1].toFloat(), from.width.toFloat(), HomeWidget.COVER_R.toFloat(), at[0].toFloat(), at[1].toFloat(), target.width.toFloat(), radius.toFloat(), ms, Motion.MOVE) {
             from.alpha = 1f
             target.alpha = 1f
         }
@@ -483,7 +483,7 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         to.getLocationInWindow(toAt)
         source.alpha = 0f
         to.alpha = 0f
-        shell.root.flyer.fly(b, at[0].toFloat(), at[1].toFloat(), source.width.toFloat(), radius.toFloat(), toAt[0].toFloat(), toAt[1].toFloat(), to.width.toFloat(), Tokens2.R_coverWidget.toFloat(), ms, Motion.MOVE) {
+        shell.root.flyer.fly(b, at[0].toFloat(), at[1].toFloat(), source.width.toFloat(), radius.toFloat(), toAt[0].toFloat(), toAt[1].toFloat(), to.width.toFloat(), HomeWidget.COVER_R.toFloat(), ms, Motion.MOVE) {
             source.alpha = 1f
             to.alpha = 1f
         }
@@ -519,8 +519,7 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         debugFaceHeld = true
         card.setFace(if (trip) HomeCard.Face.TRIP else if (moving) HomeCard.Face.MOVING else HomeCard.Face.PARKED, false)
         val look = trip || moving
-        widget.setMoving(look, false)
-        clock.setMoving(look, false)
+        widget.movingNow = look
         stage.locked = moving
         movingLook = look
         dimA.snap(dimFor(look))
@@ -534,10 +533,10 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         internal var current: HomePanel? = null
             private set
 
-        private const val CARD_X = 12
-        private const val CARD_Y = 44
+        private const val CARD_X = 16
+        private const val CARD_Y = 48
         private const val CARD_W = 364
-        private const val CARD_H = 268
+        private const val CARD_H = 264
         private const val HANDOFF_STIFFNESS = 80f
         private const val DIM_NIGHT = .55f
         private const val DIM_MS = 300L
@@ -576,25 +575,23 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
 }
 
 /**
- * The clock and the date, right edge at x 1000 in both languages (SPEC.md sections 3 and 6.1): the time with no suffix, in Western digits, and the date in both calendars, `الثلاثاء، 3 نوفمبر · 23 جمادى الأولى`,
- * the Hijri by Umm al-Qura as the Kingdom counts it. Moving, the date stays, at 24 px: two labels in alpha, and the clock 2 px lower. A new minute is a new text in a fixed box.
+ * The clock, the date and the next prayer, right edge at x 1008 in both languages (CHANGES.md section 3): the time with no suffix, in Western digits, one date line, `الخميس، 5 نوفمبر`, and a quiet line under it,
+ * `المغرب 4:56`. The same parked and moving. A new minute is a new text in a fixed box.
  */
 internal class HomeClock(ctx: Context) : FrameLayout(ctx) {
-    private val dateParked = ctx.label(Type.dateHome, { Palette.ink }).apply { rightEdge() }
-    private val dateMoving = ctx.label(Type.search, { Palette.ink2Move }, moving = true).apply { rightEdge() }
+    private val date = ctx.label(Type.dateHome, { Palette.ink }).apply { rightEdge() }
+    private val prayer = ctx.label(Type.prayerHome, { Palette.ink2 }).apply { rightEdge() }
     private val time = ctx.label(Type.clockHome, { Palette.ink }).apply {
         rightEdge()
         textDirection = TEXT_DIRECTION_LTR
         digitSpacing(-1f)
     }
-    private val faces = HomeFaces(listOf(dateParked, dateMoving), dateParked)
-    private var movingNow = false
     private var debugHeld = false
 
     init {
-        addView(dateParked, Type.dateHome.box(RIGHT - W, 40, W))
-        addView(dateMoving, Type.search.box(RIGHT - W, 40, W))
-        addView(time, Type.clockHome.box(RIGHT - W, 70, W))
+        addView(time, Type.clockHome.box(TIME_RIGHT - W, 8, W))
+        addView(date, Type.dateHome.box(RIGHT - W, 88, W))
+        addView(prayer, Type.prayerHome.box(RIGHT - W, 122, W))
         refresh()
     }
 
@@ -606,47 +603,32 @@ internal class HomeClock(ctx: Context) : FrameLayout(ctx) {
 
     override fun hasOverlappingRendering() = false
 
-    fun setMoving(on: Boolean, animate: Boolean) {
-        if (on == movingNow) return
-        movingNow = on
-        faces.show(if (on) dateMoving else dateParked, animate)
-        time.translationY = if (on) MOVING_DY else 0f
-    }
-
     fun refresh() {
         if (debugHeld) return
         val now = Date()
-        set(Fmt.time(now, Prefs.clock24), line(now))
+        val next = Prayer.next()
+        set(Fmt.time(now, Prefs.clock24), line(now), "${context.getString(ChromeWords.prayer(next.prayer))} ${Fmt.time(Date(next.atUtc), Prefs.clock24)}")
     }
 
-    private fun set(t: String, d: String) {
+    private fun set(t: String, d: String, p: String) {
         if (t != time.text.toString()) time.text = t
-        if (d != dateParked.text.toString()) {
-            dateParked.text = d
-            dateMoving.text = d
-        }
+        if (d != date.text.toString()) date.text = d
+        if (p != prayer.text.toString()) prayer.text = p
     }
 
-    private fun line(now: Date): String {
-        val arabic = Fonts.arabicUi
-        val day = if (arabic) SimpleDateFormat("EEEE، d MMMM", Fmt.locale()).format(now) else SimpleDateFormat("EEE, d MMM", Locale.ENGLISH).format(now)
-        return try {
-            val f = android.icu.text.SimpleDateFormat("d MMMM", android.icu.util.ULocale(if (arabic) "ar_SA@calendar=islamic-umalqura;numbers=latn" else "en@calendar=islamic-umalqura"))
-            "$day · ${f.format(now)}"
-        } catch (_: Throwable) {
-            day
-        }
-    }
+    private fun line(now: Date): String =
+        if (Fonts.arabicUi) SimpleDateFormat("EEEE، d MMMM", Fmt.locale()).format(now) else SimpleDateFormat("EEE, d MMM", Locale.ENGLISH).format(now)
 
-    internal fun debugHold(t: String, d: String) {
+    internal fun debugHold(t: String, d: String, p: String) {
         debugHeld = true
-        set(t, d)
+        set(t, d, p)
     }
 
     private companion object {
-        const val RIGHT = 1000
+        const val RIGHT = 1008
+        /** The digits' own side bearing: their ink ends at [RIGHT]. */
+        const val TIME_RIGHT = 1011
         const val W = 400
-        const val MOVING_DY = 2f
     }
 }
 

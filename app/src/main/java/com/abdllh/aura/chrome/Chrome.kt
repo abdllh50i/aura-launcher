@@ -35,7 +35,6 @@ import com.abdllh.aura.system.Front
 import com.abdllh.aura.system.Gear
 import com.abdllh.aura.system.Prayer
 import com.abdllh.aura.system.PrayerTimes
-import com.abdllh.aura.ui.Asked
 import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.Look
 import com.abdllh.aura.ui.Modal
@@ -57,16 +56,15 @@ import kotlin.math.roundToInt
  * What stays over every panel (SPEC.md section 6.0): the [Strip], Home's [RowHome] and the [RowDock], which cross-fade, and above both the [VolumeCluster] and the
  * [VoiceButton], which never fade. Made once when the window starts, never rebuilt: the theme goes through in place ([Look]), a language change is a new window.
  *
- * The two rows are one row: the volume and the mic's place do not change, and the rest cross-fades in 160 ms (section 9). In the order where Home's tiles each stand one cell to the left of their dock
- * cell ([ChromeRules.shifts]), that part of the row moves by the cell in the same 160 ms on the same curve, tiles and glyphs at the same x at every frame, so the eye follows one row that makes room for
- * the home cell, which fades in where it is. Only alpha and translation, and no layer: a group's alpha goes into each thing it draws. A change while one runs turns back from where it is.
+ * The two rows are one row: the volume and the mic's place do not change, and the rest cross-fades in place in 160 ms (section 9), no slide. Only alpha, and no layer: a group's alpha goes into each thing it
+ * draws. A change while one runs turns back from where it is.
  *
  * Which panel is on top comes from [Front]; [show] is the whole of it, so a debug build can go through the same steps with no panel at all.
  */
-class Chrome private constructor(private val shell: HomeActivity, order: List<Asked.Cell>) : FrameLayout(shell), Recolours {
+class Chrome private constructor(private val shell: HomeActivity) : FrameLayout(shell), Recolours {
     internal val strip = Strip(shell, { openControls() }, { shell.root.night.show() })
-    internal val rowHome = RowHome(shell, order) { open(it) }
-    internal val rowDock = RowDock(shell, order) { open(it) }
+    internal val rowHome = RowHome(shell) { open(it) }
+    internal val rowDock = RowDock(shell) { open(it) }
     internal val volume = VolumeCluster(shell)
     internal val voice = VoiceButton(shell) { voiceTap() }
 
@@ -94,10 +92,8 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
     private val tweens = Tweens(onRest = { atRest() })
     private val homeA = tweens.part(1f) { v -> rowHome.alpha = v }
     private val dockA = tweens.part(0f) { v -> rowDock.alpha = v }
-    private val shift = tweens.part(0f) { k -> rowHome.shift(k); rowDock.shift(k) }
     private val face = tweens.part(0f) { v -> voice.face = v }
-    private val stripHome = tweens.part(1f) { v -> strip.homeFace = v }
-    private val stripOther = tweens.part(0f) { v -> strip.otherFace = v }
+    private val stripTime = tweens.part(0f) { v -> strip.timeShown = v }
     private val speedA = tweens.part(0f) { v -> strip.speed.alpha = v }
 
     init {
@@ -109,7 +105,7 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
         addView(volume, at(0, 516, 204, 84))
         addView(voice, at(186, 502, VoiceButton.SIZE, VoiceButton.SIZE))
         strip.speed.visibility = INVISIBLE
-        rowDock.glance.onTitle = { openPlayer() }
+        rowDock.glance.onOpen = { Screens.music(context) }
         panel = shell.topPanel.ifEmpty { Screens.HOME }
         onHome = panel == Screens.HOME
         snapRows()
@@ -128,8 +124,8 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
         } else if (!home) {
             if (animate) rowDock.slideTo(name) else rowDock.placeOn(name)
         }
-        // (the glance's own crossfade only inside a dock that is there: coming with the row, it is already the right face)
-        refreshFaces(animate, glance = animate && !rowChanges && !home)
+        // (the mini's own crossfade only inside a dock that is there: coming with the row, it is already right)
+        refreshFaces(animate, mini = animate && !rowChanges && !home)
     }
 
     private fun canMove() = shell.resumedNow && Prefs.screenAnimations && isShown
@@ -149,17 +145,13 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
         if (onHome) {
             homeA.to(1f, 0L, row, Motion.MOVE)
             dockA.to(0f, 0L, out, Motion.EXIT)
-            shift.to(0f, 0L, row, Motion.MOVE)
             face.to(0f, 0L, row, Motion.MOVE)
-            stripHome.to(1f, Tokens2.MS_columnDelay, Tokens2.MS_cardIn, Motion.ENTER)
-            stripOther.to(0f, 0L, out, Motion.EXIT)
+            stripTime.to(0f, 0L, out, Motion.EXIT)
         } else {
             homeA.to(0f, 0L, out, Motion.EXIT)
             dockA.to(1f, 0L, row, Motion.MOVE)
-            shift.to(1f, 0L, row, Motion.MOVE)
             face.to(1f, 0L, row, Motion.MOVE)
-            stripHome.to(0f, 0L, out, Motion.EXIT)
-            stripOther.to(1f, 0L, out, Motion.EXIT)
+            stripTime.to(1f, 0L, out, Motion.EXIT)
         }
     }
 
@@ -170,10 +162,8 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
         val k = if (onHome) 0f else 1f
         homeA.snap(1f - k)
         dockA.snap(k)
-        shift.snap(k)
         face.snap(k)
-        stripHome.snap(1f - k)
-        stripOther.snap(k)
+        stripTime.snap(k)
         speedA.snap(if (speedShown) 1f else 0f) // (its own fade too, if it was on its way: all of it stopped above)
         if (!onHome) rowDock.placeOn(panel)
         atRest()
@@ -187,10 +177,10 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
         if (speedA.value <= 0f && strip.speed.visibility != INVISIBLE) strip.speed.visibility = INVISIBLE
     }
 
-    private fun refreshFaces(animate: Boolean, glance: Boolean = animate && !onHome) {
+    private fun refreshFaces(animate: Boolean, mini: Boolean = animate && !onHome) {
         val moving = DriveState.moving
-        rowDock.glance.face(ChromeRules.glance(panel, trip, song != null) == ChromeRules.Glance.MINI, glance)
-        strip.setGear(Gear.current, Gear.sure, moving)
+        rowDock.glance.show(ChromeRules.mini(panel, song != null, !moving, trip), mini)
+        strip.setGear(if (Gear.canReports) Gear.current else null, Gear.sure)
         val want = ChromeRules.stripSpeed(panel, moving, trip, speedCardHidden)
         if (want != speedShown && !debugSpeedHeld) {
             speedShown = want
@@ -214,18 +204,6 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
         syncStatus()
         bindSong(MediaMonitor.current, false)
         refreshFaces(animate)
-        refreshPrayer()
-    }
-
-    // ------------------------------------------------------------------------------------------ the next prayer
-    private fun refreshPrayer() {
-        val n = Prayer.next()
-        val word = "${context.getString(ChromeWords.prayer(n.prayer))} ${Fmt.time(Date(n.atUtc), Prefs.clock24)}"
-        val left = if (ChromeRules.leftInMinutes(n.minutes)) context.getString(R.string.chrome_left_minutes, n.minutes.toString())
-        else context.getString(R.string.chrome_left_hours, ChromeRules.leftHours(n.minutes).toString())
-        val icon = ChromeWords.prayerIcon(n.prayer)
-        rowHome.setPrayer(word, left, icon)
-        rowDock.glance.setPrayer(word, icon, ChromeRules.prayerQuiet(DriveState.moving, n.minutes))
     }
 
     // ------------------------------------------------------------------------------------------ the song
@@ -241,13 +219,6 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
     private fun bindSong(n: NowPlaying?, animate: Boolean) {
         song = n
         if (n != null) rowDock.glance.setSong(n.title, n.art, n.playing, animate)
-    }
-
-    private fun openPlayer() {
-        // (as today's card: the app that plays, or the player of its own)
-        val pkg = song?.sourcePkg
-        if (pkg == null || pkg == MediaMonitor.SOURCE_BT || pkg == context.packageName || !AppRepo.isInstalled(context, pkg)) Screens.music(context)
-        else if (!AppRepo.launch(context, pkg)) Screens.music(context)
     }
 
     // ------------------------------------------------------------------------------------------ the strip's data
@@ -308,7 +279,6 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
         // (the car starts moving: a dialog goes as Cancel, section 6.0's event table)
         if (DriveState.moving) Modal.dismissAll()
         refreshFaces(canMove())
-        refreshPrayer()
     }
 
     private val onNav: () -> Unit = {
@@ -349,10 +319,7 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
         postDelayed(minuteNow, if (gps) ((FIX_MS + AFTER_FIX_MS - since % FIX_MS) % FIX_MS) else 0L)
     }
 
-    private val minuteNow = Runnable {
-        strip.setTime(Fmt.clock(Date(), Prefs.clock24))
-        refreshPrayer()
-    }
+    private val minuteNow = Runnable { strip.setTime(Fmt.clock(Date(), Prefs.clock24)) }
 
     /** The clock's form changed in Settings: now, not at the next minute. */
     fun clockChanged() = minute()
@@ -499,7 +466,7 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
 
     /** Where everything has come to rest, for the log. */
     internal fun debugState() = "panel=$panel top=${shell.topPanel} home=$onHome running=${tweens.isRunning} rowHome(a=${rowHome.alpha} vis=${rowHome.visibility} live=${rowHome.live}) " +
-        "rowDock(a=${rowDock.alpha} vis=${rowDock.visibility} live=${rowDock.live}) face=${voice.face} strip(home=${strip.homeFace} other=${strip.otherFace}) moving=${DriveState.moving} speed=$speedShown"
+        "rowDock(a=${rowDock.alpha} vis=${rowDock.visibility} live=${rowDock.live}) face=${voice.face} time=${strip.timeShown} moving=${DriveState.moving} speed=$speedShown"
 
     /** All on and staying so, as the mockups draw them. */
     internal var debugStatus = false
@@ -536,14 +503,13 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
 
         /**
          * At the process's start, off the main thread: what the row's first frame needs. The first hardware bitmap of a process brings up a GL context of the uploader's on the calling thread
-         * (about 600 ms on a loaded emulator, against 12 ms for each one after it), the logo is cut down from a big file, and the prayer times are a hundred looks at the sun in code not yet warm.
+         * (about 600 ms on a loaded emulator, against 12 ms for each one after it), and the prayer times are a hundred looks at the sun in code not yet warm.
          */
         fun warm(c: Context) {
             val app = c.applicationContext
             Thread({
                 try {
-                    for (stem in arrayOf("cap-left", "cap-dock", "cap-chip", "dock", "wall-hole", "wall-gl", "wall")) Surfaces.themed(app, stem)
-                    Logo.prepare(app)
+                    for (stem in arrayOf("cap-left", "cap-dock", "dock", "wall-hole", "wall-gl", "wall")) Surfaces.themed(app, stem)
                     Prayer.next()
                 } catch (t: Throwable) {
                     Log.w(TAG, "warm: $t")
@@ -555,26 +521,18 @@ class Chrome private constructor(private val shell: HomeActivity, order: List<As
         fun attach(shell: HomeActivity) {
             if (of(shell) != null) return
             val t0 = SystemClock.uptimeMillis()
-            shell.root.chrome.addView(Chrome(shell, Asked.DOCK), FrameLayout.LayoutParams(1024, 600))
+            shell.root.chrome.addView(Chrome(shell), FrameLayout.LayoutParams(1024, 600))
             Log.i(TAG, "built in ${SystemClock.uptimeMillis() - t0} ms")
         }
 
         fun of(shell: HomeActivity): Chrome? = shell.root.chrome.getChildAt(0) as? Chrome
-
-        /** Debug builds: the row in another order, built anew, for what the mockups draw and both orders' pictures. */
-        internal fun debugOrder(shell: HomeActivity, order: List<Asked.Cell>) {
-            val was = of(shell)
-            shell.root.chrome.removeAllViews()
-            shell.root.chrome.addView(Chrome(shell, order), FrameLayout.LayoutParams(1024, 600))
-            was?.let { of(shell)?.debugShow(it.panel, false) }
-        }
 
         /** The row is on screen, so a volume change shows there and needs no overlay. */
         fun rowOnScreen(): Boolean = HomeActivity.current?.let { it.resumedNow && of(it) != null } == true
     }
 }
 
-/** The row's words: what a panel is called, what a prayer is called and its icon. */
+/** The row's words: what a panel is called; Home's clock asks what a prayer is called. */
 internal object ChromeWords {
     fun nameOf(panel: String): Int = when (panel) {
         Screens.HOME -> R.string.chrome_home
@@ -591,13 +549,5 @@ internal object ChromeWords {
         PrayerTimes.Prayer.ASR -> R.string.chrome_asr
         PrayerTimes.Prayer.MAGHRIB -> R.string.chrome_maghrib
         PrayerTimes.Prayer.ISHA -> R.string.chrome_isha
-    }
-
-    /** `sunrise` for Fajr, `sun` for Dhuhr and Asr, `sunset` for Maghrib, `moon` for Isha. */
-    fun prayerIcon(p: PrayerTimes.Prayer): Int = when (p) {
-        PrayerTimes.Prayer.FAJR -> R.drawable.ic_sunrise
-        PrayerTimes.Prayer.DHUHR, PrayerTimes.Prayer.ASR -> R.drawable.ic_sun
-        PrayerTimes.Prayer.MAGHRIB -> R.drawable.ic_sunset
-        PrayerTimes.Prayer.ISHA -> R.drawable.ic_moon
     }
 }

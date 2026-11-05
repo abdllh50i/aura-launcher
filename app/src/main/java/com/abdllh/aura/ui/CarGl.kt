@@ -33,20 +33,23 @@ import java.nio.channels.FileChannel
 import java.util.zip.CRC32
 
 /**
- * `assets/car/car-stage.json` (SPEC.md section 10): where each of the 180 frames stands. Screen px: its lower hull (4 points, x ascending), which the shader's floor, shadow and
- * mirror stand on, and the small dolly (zoom, dx, pivot) that keeps a broadside car inside the free area. Frame 108, the showroom angle, has zoom 1 and dx 0.
+ * The frames (SPEC.md section 10): `assets/car/car-stage.json` is what each of the 180 stands on in the frame's own px, its lower hull (4 points, x ascending), which the shader's floor, shadow and mirror
+ * stand on. It goes into the bake's name ([CarEtc]), so it stays as it was baked. Where they stand on the screen is `car-place.json`, read at draw time (CHANGES.md section 3): the car has more room at one
+ * smaller scale, and each frame's small [dx] keeps a broadside car inside the free area. Screen px = ([x] + [dx], [y]) + [scale] * frame px; frame 108, the showroom angle, has dx 0.
  */
-class CarTable private constructor(j: JSONObject) {
+class CarTable private constructor(j: JSONObject, place: JSONObject) {
     val width = j.getJSONArray("textureSize").getInt(0)
     val height = j.getJSONArray("textureSize").getInt(1)
     val box = j.getJSONArray("textureBox").let { a -> FloatArray(4) { a.getDouble(it).toFloat() } }
-    val pivotY = j.getDouble("pivotY").toFloat()
     val defaultFrame = j.getInt("defaultFrame")
     val count: Int
     val frameBytes: Int get() = ETC1.getEncodedDataSize(width, height)
-    val zoom: FloatArray
+    val scale = (place.getDouble("scale") / j.getDouble("scale")).toFloat()
+    val x = place.getJSONArray("origin").getDouble(0).toFloat() - j.getJSONArray("origin").getDouble(0).toFloat() * scale
+    val y = place.getJSONArray("origin").getDouble(1).toFloat() - j.getJSONArray("origin").getDouble(1).toFloat() * scale
+    /** The one height on screen and in the frame that is the same: the shader's dolly turns round it. */
+    val pivotY = y / (1f - scale)
     val dx: FloatArray
-    val pivotX: FloatArray
     val hullX: Array<FloatArray>
     val hullY: Array<FloatArray>
     /** Its two lowest points, lowest first: x, y, x, y. */
@@ -54,19 +57,14 @@ class CarTable private constructor(j: JSONObject) {
 
     init {
         val f = j.getJSONArray("frames")
+        val d = place.getJSONArray("dx")
         count = f.length()
-        zoom = FloatArray(count)
-        dx = FloatArray(count)
-        pivotX = FloatArray(count)
+        dx = FloatArray(count) { d.getDouble(it).toFloat() }
         hullX = Array(count) { FloatArray(4) }
         hullY = Array(count) { FloatArray(4) }
         spot = Array(count) { FloatArray(4) }
         for (i in 0 until count) {
-            val o = f.getJSONObject(i)
-            zoom[i] = o.getDouble("zoom").toFloat()
-            dx[i] = o.getDouble("dx").toFloat()
-            pivotX[i] = o.getDouble("pivotX").toFloat()
-            val h = o.getJSONArray("hull")
+            val h = f.getJSONObject(i).getJSONArray("hull")
             val pts = ArrayList<FloatArray>(4)
             for (k in 0 until 4) {
                 val p = h.getJSONArray(k)
@@ -91,7 +89,8 @@ class CarTable private constructor(j: JSONObject) {
             if (!tried) {
                 tried = true
                 one = try {
-                    CarTable(JSONObject(ctx.assets.open("car/car-stage.json").use { it.readBytes().toString(Charsets.UTF_8) }))
+                    fun read(name: String) = JSONObject(ctx.assets.open("car/$name").use { it.readBytes().toString(Charsets.UTF_8) })
+                    CarTable(read("car-stage.json"), read("car-place.json"))
                 } catch (t: Throwable) {
                     Log.w("AuraCar", "no car table: $t")
                     null
@@ -1103,13 +1102,7 @@ class CarGlView(context: Context, dark: Boolean) : TextureView(context), Texture
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, wallTex)
             GLES20.glUniform1f(p.t, mix)
             GLES20.glUniform1f(p.shown, s.shown)
-            GLES20.glUniform4f(
-                p.dolly,
-                table.zoom[na] + (table.zoom[nb] - table.zoom[na]) * mix,
-                table.pivotX[na] + (table.pivotX[nb] - table.pivotX[na]) * mix,
-                table.pivotY,
-                table.dx[na] + (table.dx[nb] - table.dx[na]) * mix
-            )
+            GLES20.glUniform4f(p.dolly, table.scale, 0f, table.pivotY, table.x + table.dx[na] + (table.dx[nb] - table.dx[na]) * mix)
             val hx = table.hullX[near]
             val hy = table.hullY[near]
             val sp = table.spot[near]
@@ -1203,9 +1196,9 @@ class CarGlView(context: Context, dark: Boolean) : TextureView(context), Texture
         /** Longest the GL thread's start waits for the report that the window's frame is on the screen. */
         private const val FRAME_WAIT_MS = 1000L
         /** The view on screen (SPEC.md section 10). */
-        const val RECT_X = 384f
+        const val RECT_X = 392f
         const val RECT_Y = 186f
-        const val RECT_W = 640f
+        const val RECT_W = 632f
         const val RECT_H = 330f
         /** Frames from the showroom angle back to where the entrance's spin starts. */
         const val SPIN_FRAMES = 30

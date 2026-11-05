@@ -164,7 +164,11 @@ class CarStage(context: Context) : FrameLayout(context) {
     /** With no GL at all the car is its rest frame and no floor: its alpha is K, so the wall shows round it. */
     private fun showFallback() {
         val t = table ?: return
-        val f = fallback ?: ImageView(context).also { fallback = it; addView(it, at((t.box[0] - CarGlView.RECT_X).toInt(), (t.box[1] - CarGlView.RECT_Y).toInt(), t.width, t.height)) }
+        val f = fallback ?: ImageView(context).also {
+            fallback = it
+            it.scaleType = ImageView.ScaleType.FIT_XY
+            addView(it, at((t.x + t.scale * t.box[0] - CarGlView.RECT_X).toInt(), (t.y + t.scale * t.box[1] - CarGlView.RECT_Y).toInt(), (t.scale * t.width).toInt(), (t.scale * t.height).toInt()))
+        }
         under.visibility = VISIBLE
         try {
             f.setImageBitmap(context.assets.open("car/rest-${if (Palette.dark) "night" else "day"}.webp").use { BitmapFactory.decodeStream(it) })
@@ -476,8 +480,6 @@ class CarStage(context: Context) : FrameLayout(context) {
         private const val SPIN_MS = 1100L
         /** The bake starts by this time after the stage is built, if the GL view has not asked by then (its first frame comes before that with Home on screen). */
         private const val BAKE_AFTER_MS = 2000L
-        /** Of the GL rect's height: the row of Home lies over the rest, and what it takes is its own. */
-        private const val ROW_OVER_RECT = 26
 
         /**
          * Diagnostics: has the GL view drawn at all (its first frame is the rest frame: with no frame baked this is true), and how fast its last run of draws went (the entrance's fade is one).
@@ -501,7 +503,7 @@ class CarStage(context: Context) : FrameLayout(context) {
         /** A finger came down on the window, from its root, before anything took it: on the car, with the car on screen, it should reach the stage ([stageDowns] in the report). */
         fun windowDown(x: Float, y: Float) {
             val s = now?.get() ?: return
-            if (x >= CarGlView.RECT_X && x < CarGlView.RECT_X + CarGlView.RECT_W && y >= CarGlView.RECT_Y && y < CarGlView.RECT_Y + CarGlView.RECT_H - ROW_OVER_RECT && s.isShown) windowDowns++
+            if (x >= CarGlView.RECT_X && x < CarGlView.RECT_X + CarGlView.RECT_W && y >= CarGlView.RECT_Y && y < CarGlView.RECT_Y + CarGlView.RECT_H && s.isShown) windowDowns++
         }
 
         /** Can the car turn, and if not why: the Screen check's report (Collect) answers this by itself. Any thread. */

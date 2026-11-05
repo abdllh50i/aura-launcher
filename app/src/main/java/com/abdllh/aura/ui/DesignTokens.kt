@@ -129,9 +129,8 @@ abstract class ColorTokens {
 /** The text roles of section 3 by name, Type.dist: [size px, weight, line box px, size px when the UI is English, weight at night on moving screens]. */
 abstract class TypeRoles {
     @JvmField val clockHome = Type.Role("clockHome", 72, 500, 78, 72, 500)
-    @JvmField val dateHome = Type.Role("dateHome", 22, 500, 30, 21, 500)
+    @JvmField val dateHome = Type.Role("dateHome", 24, 500, 32, 22, 500)
     @JvmField val stripTime = Type.Role("stripTime", 24, 500, 40, 24, 500)
-    @JvmField val gearRow = Type.Role("gearRow", 22, 500, 38, 20, 500)
     @JvmField val gearBadge = Type.Role("gearBadge", 24, 600, 30, 24, 600)
     @JvmField val search = Type.Role("search", 24, 400, 32, 24, 400)
     @JvmField val chip = Type.Role("chip", 24, 500, 32, 24, 500)
@@ -146,7 +145,7 @@ abstract class TypeRoles {
     @JvmField val hint = Type.Role("hint", 28, 400, 38, 26, 500)
     @JvmField val speed = Type.Role("speed", 52, 500, 56, 52, 500)
     @JvmField val speedUnit = Type.Role("speedUnit", 24, 400, 26, 24, 500)
-    @JvmField val limit = Type.Role("limit", 28, 600, 68, 28, 600)
+    @JvmField val limit = Type.Role("limit", 30, 600, 76, 30, 600)
     @JvmField val saherLabel = Type.Role("saherLabel", 24, 400, 32, 24, 400)
     @JvmField val saherValue = Type.Role("saherValue", 30, 500, 40, 28, 500)
     @JvmField val etaValue = Type.Role("etaValue", 32, 500, 40, 30, 500)
@@ -162,8 +161,8 @@ abstract class TypeRoles {
     @JvmField val musicTitle = Type.Role("musicTitle", 30, 500, 40, 28, 500)
     @JvmField val musicSub = Type.Role("musicSub", 24, 400, 32, 24, 400)
     @JvmField val musicTime = Type.Role("musicTime", 24, 400, 30, 24, 400)
-    @JvmField val lyric = Type.Role("lyric", 31, 500, 44, 28, 500)
-    @JvmField val lyricNow = Type.Role("lyricNow", 38, 500, 58, 34, 500)
+    @JvmField val lyric = Type.Role("lyric", 36, 500, 52, 32, 500)
+    @JvmField val lyricNow = Type.Role("lyricNow", 46, 500, 66, 42, 500)
     @JvmField val lyricFull = Type.Role("lyricFull", 36, 500, 52, 32, 500)
     @JvmField val lyricFullNow = Type.Role("lyricFullNow", 46, 500, 66, 42, 500)
     @JvmField val lyricDrive = Type.Role("lyricDrive", 26, 500, 34, 24, 500)
@@ -188,8 +187,6 @@ abstract class TypeRoles {
     @JvmField val stateBody = Type.Role("stateBody", 24, 400, 32, 22, 400)
     @JvmField val attribution = Type.Role("attribution", 14, 400, 18, 14, 400)
     @JvmField val chipPrayer = Type.Role("chipPrayer", 26, 600, 32, 24, 600)
-    @JvmField val chipPrayerSub = Type.Role("chipPrayerSub", 24, 400, 32, 24, 400)
-    @JvmField val homeSearch = Type.Role("homeSearch", 22, 400, 28, 21, 400)
     @JvmField val homeChip = Type.Role("homeChip", 21, 500, 28, 20, 500)
     @JvmField val laneNote = Type.Role("laneNote", 24, 400, 32, 24, 400)
     @JvmField val exit = Type.Role("exit", 24, 400, 32, 24, 400)
@@ -213,6 +210,9 @@ abstract class TypeRoles {
     @JvmField val tabLabel = Type.Role("tabLabel", 24, 500, 32, 22, 500)
     @JvmField val nightPanel = Type.Role("nightPanel", 96, 500, 110, 96, 500)
     @JvmField val nightDist = Type.Role("nightDist", 64, 500, 80, 64, 500)
+    @JvmField val prayerHome = Type.Role("prayerHome", 24, 400, 32, 22, 400)
+    @JvmField val musicTitleBig = Type.Role("musicTitleBig", 44, 500, 66, 40, 500)
+    @JvmField val musicSubBig = Type.Role("musicSubBig", 28, 400, 38, 26, 400)
 }
 
 object Tokens2 {
@@ -358,14 +358,14 @@ object Tokens2 {
     const val R_coverMini = 12
 
     const val STRIP_H = 40
-    const val CONTENT_TOP = 44
-    const val CONTENT_BOTTOM = 506
-    const val MARGIN_X = 12
-    const val GUTTER = 8
-    const val COLUMN_X = 12
+    const val CONTENT_TOP = 48
+    const val CONTENT_BOTTOM = 504
+    const val MARGIN_X = 16
+    const val GUTTER = 12
+    const val COLUMN_X = 16
     const val COLUMN_W = 364
-    const val FREE_X = 384
-    const val FREE_W = 628
+    const val FREE_X = 392
+    const val FREE_W = 616
     const val DOCK_Y = 516
     const val DOCK_H = 84
     const val ROW_CENTRE_Y = 556
@@ -373,12 +373,12 @@ object Tokens2 {
     const val X_volNum = 110
     const val X_volPlus = 170
     const val X_voice = 240
-    const val X_settings = 334
-    const val X_apps = 406
-    const val X_phone = 478
-    const val X_music = 550
-    const val X_map = 622
-    const val X_home = 694
+    const val X_home = 328
+    const val X_map = 408
+    const val X_music = 488
+    const val X_phone = 568
+    const val X_apps = 648
+    const val X_settings = 728
     const val TOUCH_MIN = 48
     const val TOUCH_FREQUENT = 76
 
