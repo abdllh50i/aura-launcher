@@ -44,6 +44,8 @@ class HomeProbe : BroadcastReceiver() {
             p.debugCard.debugTrip(d, i.getStringExtra("road") ?: "", i.getStringExtra("eta") ?: "", i.getStringExtra("left") ?: "", Turn.SLIGHT_RIGHT)
         }
         i.getStringExtra("time")?.let { t -> p.debugClock.debugHold(t, i.getStringExtra("date") ?: "") }
+        // (an emulator under load can stop drawing a window until its next relayout: DEV.md, "The gallery". On the unit this is not needed)
+        p.root.requestLayout()
         if (i.getBooleanExtra("turn", false)) Log.i("AuraHomeProbe", "frames in ${p.debugStage.framesIn}, gl ${p.debugStage.gl?.drawing}, cheap ${p.debugStage.gl?.cheap}, fps ${p.debugStage.gl?.fps}")
     }
 }

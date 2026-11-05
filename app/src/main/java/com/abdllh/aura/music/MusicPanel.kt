@@ -88,6 +88,7 @@ import kotlin.math.abs
 class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
     override val opaque: Boolean get() = true
     override val keep: Boolean get() = true
+    override val flightCover: View? get() = if (::art.isInitialized) art else null
 
     private enum class Tab { SONGS, ALBUMS, ARTISTS, FOLDERS }
 

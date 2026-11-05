@@ -376,13 +376,20 @@ internal class HomeWidget(ctx: Context, private val host: HomeHost) : FrameLayou
 
     private fun setCovers(b: Bitmap?, cut: Boolean) {
         if (b == null) {
+            flying = null
             cover84.setImageDrawable(Backdrop.noArt(context, 84, Tokens2.R_coverWidget))
             cover72.setImageDrawable(Backdrop.noArt(context, 72, COVER_72_R))
             return
         }
         Backdrop.roundAsync(context, b, 84, Tokens2.R_coverWidget) { r -> if (shownArt === b) place(cover84, r, cut) }
         Backdrop.roundAsync(context, b, 72, COVER_72_R) { r -> if (shownArt === b) place(cover72, r, cut) }
+        Backdrop.roundAsync(context, b, com.abdllh.aura.chrome.Flyer.SIZE, Tokens2.R_coverBig) { r -> if (shownArt === b) flying = r }
     }
+
+    /** The cover's flight: a square copy at the big cover's size, and where it flies from. Parked, with a cover. */
+    private var flying: Bitmap? = null
+    val flightBitmap: Bitmap? get() = if (shownArt != null && !movingNow) flying else null
+    val flightView: View? get() = if (shownArt != null && !movingNow && np != null) cover84 else null
 
     /** Crossfade 240, from 98 %, parked. A cut while moving, under the fade. */
     private fun place(v: ImageView, r: Bitmap, cut: Boolean) {

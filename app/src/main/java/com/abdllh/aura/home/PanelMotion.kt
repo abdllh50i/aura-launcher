@@ -28,6 +28,9 @@ object PanelMotion {
     private const val OVER_DELAY_MS = 60L
     /** and leaves before it is back. */
     private const val OVER_OUT_MS = 120L
+    /** The cover's flight: to Music, and every other. */
+    private const val FLIGHT_FAR_MS = 320L
+    private const val FLIGHT_MS = 240L
 
     interface Move {
         /** [to] comes over [under], which is still drawn; [done] when it is at rest. */
@@ -60,7 +63,10 @@ object PanelMotion {
             val home = (under as? PanelFrame)?.panel as? HomePanel
             var left = 2
             val one = { if (--left == 0) done() }
-            if (home != null) home.leaving(overMap, one) else one()
+            if (home != null) {
+                home.leaving(overMap, one)
+                (to as? PanelFrame)?.panel?.let { p -> home.flyOut(p.flightCover, p.flightRadius, if (other == Screens.MUSIC) FLIGHT_FAR_MS else FLIGHT_MS) }
+            } else one()
             val dy = if (other == Screens.MUSIC) 0f else RISE_DP
             val delay = if (overMap) Tokens2.MS_columnDelay else 0L
             val ms = if (other == Screens.MUSIC) WALL_MS else OPEN_MS
@@ -83,7 +89,10 @@ object PanelMotion {
             val one = { if (--left == 0) done() }
             from.setTag(R.id.aura_exiting, true)
             from.setLayerType(View.LAYER_TYPE_HARDWARE, null)
-            if (home != null) home.returning(overMap, one) else one()
+            if (home != null) {
+                home.returning(overMap, one)
+                (from as? PanelFrame)?.panel?.let { p -> home.flyBack(p.flightCover, p.flightRadius, FLIGHT_MS) }
+            } else one()
             from.exit(dy = if (other == Screens.MUSIC) 0f else RISE_DP, dur = if (other == Screens.MAPS) Tokens2.MS_homeOut else CLOSE_MS, end = one)
         }
 

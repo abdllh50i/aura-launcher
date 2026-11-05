@@ -16,11 +16,11 @@ import android.widget.FrameLayout
 import com.abdllh.aura.R
 import com.abdllh.aura.nav.CarLocation
 import com.abdllh.aura.nav.Instructions
-import com.abdllh.aura.nav.ManeuverView
 import com.abdllh.aura.nav.NavSession
 import com.abdllh.aura.nav.Place
 import com.abdllh.aura.nav.Places
 import com.abdllh.aura.nav.RoadWatch
+import com.abdllh.aura.nav.Turn
 import com.abdllh.aura.nav.Units
 import com.abdllh.aura.settings.SettingsActivity
 import com.abdllh.aura.ui.ABtn
@@ -74,7 +74,7 @@ internal class HomeCard(private val shell: HomeActivity, private val host: HomeH
     private val turnPill = SurfaceCard(shell, Surface.PILL)
     private val etaPill = SurfaceCard(shell, Surface.PILL)
     private val turnTile = shell.plateView(Tokens2.R_mid) { Palette.accent }
-    private val turnGlyph = ManeuverView(shell).apply { color = Palette.onAccent }
+    private val turnGlyph = android.widget.ImageView(shell).apply { scaleType = android.widget.ImageView.ScaleType.FIT_CENTER; setColorFilter(Palette.onAccent) }
     private val turnText: AText = shell.label(Type.chipPrayer, { Palette.ink }, moving = true).apply { textDirection = TEXT_DIRECTION_LOCALE }
     private val etaText: AText = shell.label(Type.chipPrayer, { Palette.ink }, moving = true).apply { textDirection = TEXT_DIRECTION_LOCALE }
     private val end = ABtn(shell).apply {
@@ -149,7 +149,7 @@ internal class HomeCard(private val shell: HomeActivity, private val host: HomeH
             setOnClickListener { endTrip() }
         }, at(12, 232, 122, 80))
         look {
-            turnGlyph.color = Palette.onAccent
+            turnGlyph.setColorFilter(Palette.onAccent)
             // (what is in spans has its colour in the text)
             shownSpeed = ""
             lastSpeed?.invoke()
@@ -252,7 +252,7 @@ internal class HomeCard(private val shell: HomeActivity, private val host: HomeH
         val key = r to p.next
         if (key != shownTurnKey) {
             shownTurnKey = key
-            turnGlyph.show(step)
+            turnGlyph.setImageResource(turnIcon(Instructions.turn(step)))
         }
         val dest = NavSession.destination?.name?.takeIf { it != shell.getString(R.string.maps_dropped_pin) }
         val guide = r.guide?.takeIf { it.arabic == ar }
@@ -396,10 +396,25 @@ internal class HomeCard(private val shell: HomeActivity, private val host: HomeH
         showSpeed(v, limit, over)
     }
 
-    internal fun debugTrip(dist: String, road: String, at: String, left: String, turn: com.abdllh.aura.nav.Turn) {
+    internal fun debugTrip(dist: String, road: String, at: String, left: String, turn: Turn) {
         debugHeld = true
-        turnGlyph.turn = turn
+        turnGlyph.setImageResource(turnIcon(turn))
         showTrip(dist, road, at, left)
+    }
+
+    /** The tile's glyph, of the one icon family, as the mockup has it: this pill's 36 px says which way, and Maps has the roundabout at its real angle. */
+    private fun turnIcon(t: Turn): Int = when (t) {
+        Turn.STRAIGHT -> R.drawable.ic_go_straight
+        Turn.SLIGHT_LEFT -> R.drawable.ic_slight_left
+        Turn.LEFT -> R.drawable.ic_turn_left
+        Turn.SHARP_LEFT -> R.drawable.ic_sharp_left
+        Turn.UTURN -> R.drawable.ic_uturn_left
+        Turn.SLIGHT_RIGHT -> R.drawable.ic_slight_right
+        Turn.RIGHT -> R.drawable.ic_turn_right
+        Turn.SHARP_RIGHT -> R.drawable.ic_sharp_right
+        Turn.ROUNDABOUT -> R.drawable.ic_round_right
+        Turn.ARRIVE -> R.drawable.ic_arrive
+        Turn.REROUTE -> R.drawable.ic_reroute
     }
 
     internal fun debugChips(third: String) {

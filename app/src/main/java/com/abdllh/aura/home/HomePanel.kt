@@ -429,6 +429,44 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         }
     }
 
+    /**
+     * The one thing that travels far (section 9): the cover from the widget to [target], a square copy of it on one layer ([com.abdllh.aura.chrome.Flyer]), [target] hidden until the last 60 ms, in which it comes up under
+     * the flyer. Parked, with a cover and a panel that has a place for it; otherwise the panels simply fade.
+     */
+    internal fun flyOut(target: View?, radius: Int, ms: Long) {
+        val b = widget.flightBitmap ?: return
+        val from = widget.flightView ?: return
+        if (target == null || !target.isShown || target.width == 0) return
+        val at = IntArray(2)
+        target.getLocationInWindow(at)
+        val fromAt = IntArray(2)
+        from.getLocationInWindow(fromAt)
+        from.alpha = 0f
+        target.alpha = 0f
+        target.postDelayed({ target.animate().alpha(1f).setDuration(FLIGHT_LAND_MS).setStartDelay(0L).start() }, ms - FLIGHT_LAND_MS)
+        shell.root.flyer.fly(b, fromAt[0].toFloat(), fromAt[1].toFloat(), from.width.toFloat(), Tokens2.R_coverWidget.toFloat(), at[0].toFloat(), at[1].toFloat(), target.width.toFloat(), radius.toFloat(), ms, Motion.MOVE) {
+            from.alpha = 1f
+            target.alpha = 1f
+        }
+    }
+
+    /** The same way back: from where [source] stands to the widget, whose cover comes up when it lands. */
+    internal fun flyBack(source: View?, radius: Int, ms: Long) {
+        val b = widget.flightBitmap ?: return
+        val to = widget.flightView ?: return
+        if (source == null || source.width == 0) return
+        val at = IntArray(2)
+        source.getLocationInWindow(at)
+        val toAt = IntArray(2)
+        to.getLocationInWindow(toAt)
+        source.alpha = 0f
+        to.alpha = 0f
+        shell.root.flyer.fly(b, at[0].toFloat(), at[1].toFloat(), source.width.toFloat(), radius.toFloat(), toAt[0].toFloat(), toAt[1].toFloat(), to.width.toFloat(), Tokens2.R_coverWidget.toFloat(), ms, Motion.MOVE) {
+            source.alpha = 1f
+            to.alpha = 1f
+        }
+    }
+
     // ------------------------------------------------------------------------------------------ HomeHost
     override fun openControls() {
         controls.open()
@@ -490,6 +528,7 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         private const val WALL_DELAY_MS = 40L
         private const val WALL_MS = 240L
         private const val CAR_OUT_MS = 100L
+        private const val FLIGHT_LAND_MS = 60L
         /** The live map starts once the entrance has settled. */
         private const val LIVE_MAP_AFTER_MS = 700L
         /** Maps' panel is built ahead of time once that has come. */
