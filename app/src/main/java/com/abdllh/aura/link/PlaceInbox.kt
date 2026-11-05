@@ -6,8 +6,6 @@ import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import com.abdllh.aura.R
-import com.abdllh.aura.home.Actions
-import com.abdllh.aura.home.AppRepo
 import com.abdllh.aura.home.HomeActivity
 import com.abdllh.aura.home.Screens
 import com.abdllh.aura.nav.CarLocation
@@ -302,7 +300,6 @@ internal object PlaceInbox {
     // ------------------------------------------------------------------------------------------ going
     /** [holdMs]: nobody has said yes to it: once its route is there it counts down that long on its card ([Trips.Phase.READY]). */
     private fun begin(c: Context, x: Incoming, holdMs: Long = 0L) {
-        if (handedOver(c, x)) return
         stage = Stage.TRIP
         cardAway = false
         main.removeCallbacks(tick)
@@ -325,17 +322,6 @@ internal object PlaceInbox {
     private fun tellPhase(x: Incoming, phase: Trips.Phase) {
         if (phase == Trips.Phase.READY) tell(x, "card", JSONObject().put("kind", "countdown").put("ms", countdownMs))
         else tell(x, if (phase == Trips.Phase.WAITING_FIX) "waiting_fix" else "routing", JSONObject().put("place", x.place.toJson()))
-    }
-
-    /** The navigation app chosen in Settings, when it is not AMRI Maps. It says nothing back: told "handed", not "started". */
-    private fun handedOver(c: Context, x: Incoming): Boolean {
-        if (Prefs.builtInMaps) return false
-        val pkg = AppRepo.navPackage(c) ?: return false
-        if (!Actions.driveWithApp(c, x.place.pos)) return false
-        tell(x, "handed", JSONObject().put("app", pkg))
-        note(x, "handed")
-        finishWith(x)
-        return true
     }
 
     private fun trip(): JSONObject {
@@ -440,7 +426,7 @@ internal object PlaceInbox {
         if (!x.voice) PhoneServer.navEvent(x.id, state, extra)
     }
 
-    /** Kept for Settings → About: the owner's photo of that page is the only report from the road. */
+    /** Kept for GET /v1/diag and the Screen check's report: reports from the road are all there is. */
     private fun note(x: Incoming, state: String) {
         try {
             Prefs.raw.edit().putString(KEY_LAST, JSONObject().put("at", System.currentTimeMillis()).put("name", x.place.name)
@@ -452,22 +438,12 @@ internal object PlaceInbox {
     /** As kept, for GET /v1/diag. */
     val lastRaw: String get() = Prefs.raw.getString(KEY_LAST, "").orEmpty()
 
-    /** "18:22، الراشد مول، عبر الشبكة (بدأت)", or "" when none ever came. */
-    fun lastLine(c: Context): String = try {
-        val o = JSONObject(Prefs.raw.getString(KEY_LAST, "{}") ?: "{}")
-        if (!o.has("at")) "" else {
-            val state = o.optString("state")
-            val w = when {
-                state == "started" -> R.string.link_note_started
-                state.startsWith("failed") -> R.string.link_note_failed
-                state == "cancelled" -> R.string.link_note_cancelled
-                state == "ignored" || state == "expired" || state == "replaced" -> R.string.link_note_not_started
-                state == "handed" -> R.string.link_note_handed
-                else -> R.string.link_note_received
-            }
-            c.getString(R.string.link_note, PhoneServer.clock(o.getLong("at")), o.optString("name"), c.getString(w))
+    /** "18:22 started", or "" when none ever came: when and how, not where (the Screen check's report holds no place). */
+    val lastOutcome: String
+        get() = try {
+            val o = JSONObject(Prefs.raw.getString(KEY_LAST, "{}") ?: "{}")
+            if (!o.has("at")) "" else "${PhoneServer.clock(o.getLong("at"))} ${o.optString("state")}"
+        } catch (_: Throwable) {
+            ""
         }
-    } catch (_: Throwable) {
-        ""
-    }
 }

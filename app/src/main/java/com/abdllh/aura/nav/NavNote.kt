@@ -3,7 +3,7 @@ package com.abdllh.aura.nav
 import com.abdllh.aura.util.Prefs
 
 /**
- * The last things navigation did on its own, for Settings → About (the owner's photo of that page is the only way to learn
+ * The last things navigation did on its own, for the Screen check's report (the owner's photo of that page is the only way to learn
  * what happens on the unit): a late route taken, the route left and by which sign, a trip resumed or not and why. Three
  * lines, newest first.
  */

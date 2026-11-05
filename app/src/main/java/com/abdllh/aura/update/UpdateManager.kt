@@ -111,7 +111,7 @@ object UpdateManager {
      * A wall clock that jumped backwards never suppresses a check.
      */
     fun autoCheckIfDue() {
-        if (!Prefs.updateAuto || busy) return
+        if (busy) return
         val now = System.currentTimeMillis()
         val lastOk = Prefs.lastUpdateCheck
         val lastTry = Prefs.lastUpdateAttempt
@@ -150,15 +150,6 @@ object UpdateManager {
 
     fun cancel() {
         cancelled = true
-    }
-
-    /** The update source or channel changed: what was known about "the newest release" no longer applies. */
-    fun forget() {
-        Prefs.availableTag = ""
-        Prefs.releaseCache = ""
-        Prefs.lastUpdateCheck = 0L
-        Prefs.lastUpdateAttempt = 0L
-        synchronized(lock) { if (!busy) post(State.Idle) }
     }
 
     /** Download the available release, verify it, and hand it to the installer. */

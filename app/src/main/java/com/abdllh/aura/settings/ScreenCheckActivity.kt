@@ -43,9 +43,9 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Settings › About › Screen check: one button, a progress line with a cancel while it runs ([ScreenCheck] does the
- * work), and the last report, in two columns of short rows the owner can photograph. A page of its own and not an
- * eighth page of the sidebar: seven fill the screen. The trip recorder's switch is here too ([TripRecorder]).
+ * Settings › Car and system › Screen check: one button, a progress line with a cancel while it runs ([ScreenCheck] does the
+ * work), and the last report, in two columns of short rows the owner can photograph. A page of its own and not a page
+ * of the sidebar. The trip recorder's switch is here too ([TripRecorder]).
  */
 class ScreenCheckActivity : Activity() {
     private val main = Handler(Looper.getMainLooper())
@@ -399,7 +399,7 @@ internal class ReportText(private val c: Context, private val r: JSONObject) {
     }
 
     fun sections(): List<ReportSection> = listOf(summary(), device(), capacity(), gpu(), fill(), memory(), map("surface", R.string.diag_sec_map_surface), map("texture", R.string.diag_sec_map_texture),
-        motion(), voice(), network(), gps(), car(), settings(), trip(), tests())
+        motion(), voice(), network(), gps(), car(), settings(), notes(), trip(), tests())
 
     /** The map engine's probe, in a line: the whole of it goes to the server. */
     private fun routeLine(): String? {
@@ -657,6 +657,22 @@ internal class ReportText(private val c: Context, private val r: JSONObject) {
         (r.at("k_settings", "system") as? JSONObject)?.let { g ->
             for (k in g.keys().asSequence().sorted()) if (!g.isNull(k)) row(k, g.opt(k)?.toString()?.take(60))
         }
+    }
+
+    /** What the unit noted by itself, at any time and not in this run: what Settings' workshop used to show, by their names in the code. */
+    private fun notes() = ReportSection(s(R.string.diag_sec_notes)).apply {
+        fun all(o: JSONObject?) {
+            if (o == null) return
+            for (k in o.keys().asSequence().sorted()) {
+                val v = o.opt(k)
+                row(k, if (v is JSONArray) (0 until v.length()).joinToString("\n") { v.optString(it) }.takeIf { it.isNotBlank() } else v?.toString()?.takeIf { it.isNotBlank() })
+            }
+        }
+        all(r.at("k_settings", "notes") as? JSONObject)
+        row("wayback", (r.at("k_settings", "wayback") as? JSONObject)?.toString())
+        row("guardLog", (r.at("k_settings", "guardLog") as? JSONArray)?.let { g -> (maxOf(0, g.length() - 6) until g.length()).joinToString("\n") { g.optString(it) } }?.takeIf { it.isNotBlank() })
+        row("wifi", (r.at("h_network", "keeper") as? JSONObject)?.toString())
+        row("wifiLog", (r.at("h_network", "keeperLog") as? JSONArray)?.let { g -> (maxOf(0, g.length() - 6) until g.length()).joinToString("\n") { g.optString(it) } }?.takeIf { it.isNotBlank() })
     }
 
     private fun trip() = ReportSection(s(R.string.diag_sec_trip)).apply {

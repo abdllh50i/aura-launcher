@@ -19,7 +19,7 @@ import kotlin.math.max
  * - refused only when nearer to the learned sound than [ALPHA] times its distance to the nearest recording;
  * - a wake that is confirmed (a request followed and was done) takes away every learned sound about as close to it as
  *   the recordings are ([BETA]): one real call outvotes a mistake;
- * - at most [MAX] (the oldest that never refused anything goes first), and Settings → Voice assistant forgets them.
+ * - at most [MAX] (the oldest that never refused anything goes first), and teaching the voice again clears them.
  * Simulated on the test corpus (docs/notes-1.13-amri.md): of ten real "عمري" answered with silence about four (the
  * weak ones) were learned and cost 4 points of true accepts until the next confirmed wakes brought them back; false
  * wakes heard again later woke 30% of the time instead of 50%.

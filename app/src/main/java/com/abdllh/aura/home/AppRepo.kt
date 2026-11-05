@@ -10,7 +10,6 @@ import android.graphics.drawable.Drawable
 import android.os.Handler
 import android.os.Looper
 import android.util.LruCache
-import com.abdllh.aura.util.Prefs
 import java.text.Collator
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
@@ -32,18 +31,10 @@ object Known {
     const val FILES = "com.nwd.filemanager"
     const val AUX = "com.nwd.auxin"
     const val STOCK_LAUNCHER = "com.android.launcher"
-    const val MAPS = "com.google.android.apps.maps"
-
-    val NAV_CANDIDATES = listOf(
-        MAPS, "com.waze", "ru.yandex.yandexnavi", "com.sygic.aura", "com.here.app.maps",
-        "app.organicmaps", "net.osmand", "net.osmand.plus", "com.mapswithme.maps.pro", "com.tomtom.gplay.navapp"
-    )
 
     /** Activities that live inside the stock launcher package (NWD tools). */
     const val ACT_TOOLBOX = "com.nwd.android.toolsmanager.ToolsManagerActivity"
     const val ACT_WHEEL = "com.nwd.wheel.learning.MainActivity"
-    const val ACT_REBOOT = "com.nwd.tools.reboot.RebootActivity"
-    const val ACT_LOCK = "com.nwd.android.lock.screen.ui.LockScreenActivity"
 }
 
 object AppRepo {
@@ -136,39 +127,12 @@ object AppRepo {
         false
     }
 
-    /** The app's name as the launcher shows it. */
-    fun label(ctx: Context, pkg: String): String = try {
-        val pm = ctx.packageManager
-        pm.getApplicationLabel(pm.getApplicationInfo(pkg, PackageManager.MATCH_DISABLED_COMPONENTS)).toString()
-    } catch (_: Throwable) {
-        pkg
-    }
-
     fun launchComponent(ctx: Context, pkg: String, cls: String): Boolean = try {
         com.abdllh.aura.system.HomeGuard.launching(pkg)
         ctx.startActivity(Intent().setComponent(ComponentName(pkg, cls)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         true
     } catch (_: Throwable) {
         false
-    }
-
-    /** The user's preferred navigation app, or the first installed one from the known list. */
-    fun navPackage(ctx: Context): String? {
-        val chosen = Prefs.navPackage
-        if (chosen.isNotEmpty() && isInstalled(ctx, chosen)) return chosen
-        return Known.NAV_CANDIDATES.firstOrNull { isInstalled(ctx, it) }
-    }
-
-    fun installedNavApps(ctx: Context): List<AppInfo> {
-        val pm = ctx.packageManager
-        return Known.NAV_CANDIDATES.filter { isInstalled(ctx, it) }.mapNotNull { p ->
-            try {
-                val ai = pm.getApplicationInfo(p, 0)
-                AppInfo(p, "", pm.getApplicationLabel(ai).toString(), (ai.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0)
-            } catch (_: Throwable) {
-                null
-            }
-        }
     }
 }
 

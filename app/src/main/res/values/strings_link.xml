@@ -19,16 +19,6 @@
     <string name="link_scan_hint">Scan the code with the phone\'s camera: it opens the control page in Safari.</string>
     <string name="link_manual">Or open %1$s and type the code %2$s</string>
     <string name="link_code_left">The code ends in %1$s</string>
-    <!-- About -->
-    <string name="link_about_place">Last place from the phone</string>
-    <string name="link_last_request">last request %1$s</string>
-    <string name="link_note">%1$s, %2$s, over the network (%3$s)</string>
-    <string name="link_note_received">received</string>
-    <string name="link_note_started">started</string>
-    <string name="link_note_failed">no route</string>
-    <string name="link_note_cancelled">cancelled</string>
-    <string name="link_note_not_started">not started</string>
-    <string name="link_note_handed">handed to the navigation app</string>
     <!-- The card -->
     <string name="link_from_phone">From your iPhone</string>
     <string name="link_from_voice">You asked for</string>

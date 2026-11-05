@@ -11,7 +11,6 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
-import com.abdllh.aura.util.Prefs
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.ConnectException
@@ -26,7 +25,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /**
- * Keeps the car's Wi-Fi internet working, and keeps a log of what happened to it (shown in Settings).
+ * Keeps the car's Wi-Fi internet working, and keeps a log of what happened to it (in the Screen check's report).
  *
  * The internet usually comes from the phone's hotspot. While a Wi-Fi network is connected it is probed every 20 s
  * (bound to that network). When the web does not answer twice in a row, a quick diagnosis says why:
@@ -72,7 +71,7 @@ object WifiKeeper {
     private val PUBLIC_IPS = listOf("8.8.8.8", "1.1.1.1")
 
     enum class Cause { LINK, NO_DATA, DNS, V6, WEB }
-    enum class State { OFF, NO_WIFI, CHECKING, ONLINE, OFFLINE, PAUSED }
+    enum class State { NO_WIFI, CHECKING, ONLINE, OFFLINE, PAUSED }
 
     /** A log line: [type] is start / join / leave / online / back / lost / fix, with up to two values. */
     class Event(val at: Long, val type: String, val a: String = "", val b: String = "")
@@ -98,50 +97,15 @@ object WifiKeeper {
     @Volatile var ssid = ""; private set
     @Volatile var rssi = 0; private set
 
-    /** How long the internet has been down, in seconds (0 while it works). Main thread. */
-    fun downSeconds(): Long = if (downSince > 0) (SystemClock.elapsedRealtime() - downSince) / 1000 else 0L
-
-    /** Called on the main thread when the state or the log changes (the settings page, while it is showing). */
-    var listener: (() -> Unit)? = null
-
-    /** The user's switch (on by default). */
-    var enabled: Boolean
-        get() = Prefs.raw.getBoolean("wifiKeeper", true)
-        set(v) { Prefs.raw.edit().putBoolean("wifiKeeper", v).apply() }
-
     /** Something else owns the Wi-Fi right now (ZLink in use): no probing, no restarts. */
     @Volatile var paused = false
 
     // Asks Android to keep the Wi-Fi chip out of power saving. The unit's AIC8800 driver ignores that request (its
     // power-management handler does nothing and power saving stays on), so on the K2501 this lock changes nothing;
-    // kept for units whose driver honours it. An ordinary high-performance Wi-Fi lock: released when the option is off.
+    // kept for units whose driver honours it. An ordinary high-performance Wi-Fi lock.
     private var perfLock: WifiManager.WifiLock? = null
 
     fun log(): List<Event> = synchronized(events) { ArrayList(events) }
-
-    /** Applies the switch: the power-saving lock with it (the probing checks the switch itself). */
-    fun apply(c: Context) {
-        try {
-            if (enabled) {
-                val l = perfLock ?: (c.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager)
-                    .createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "aura:wifi").apply { setReferenceCounted(false) }
-                    .also { perfLock = it }
-                if (!l.isHeld) l.acquire()
-            } else {
-                perfLock?.let { if (it.isHeld) it.release() }
-            }
-        } catch (t: Throwable) {
-            Log.w(TAG, "wifi lock: $t")
-        }
-        checkNow()
-    }
-
-    /** A probe right away (the settings page's button, the switch). */
-    fun checkNow() {
-        if (app == null) return
-        main.removeCallbacks(tick)
-        main.post(tick)
-    }
 
     /**
      * After ZLink (it turned the Wi-Fi client off or used the radio for the phone's link): Wi-Fi back on if it was on,
@@ -170,7 +134,15 @@ object WifiKeeper {
         app = c
         io.execute { load(c) } // goes before the history saved by add(): the io thread runs in order
         add(Event(System.currentTimeMillis(), "start"))
-        apply(c)
+        try {
+            val l = (c.getSystemService(Context.WIFI_SERVICE) as WifiManager)
+                .createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "aura:wifi").apply { setReferenceCounted(false) }
+                .also { perfLock = it }
+            if (!l.isHeld) l.acquire()
+        } catch (t: Throwable) {
+            Log.w(TAG, "wifi lock: $t")
+        }
+        main.post(tick)
         try {
             val cm = c.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
             cm.registerNetworkCallback(NetworkRequest.Builder().addTransportType(NetworkCapabilities.TRANSPORT_WIFI).build(), callback, main)
@@ -195,7 +167,7 @@ object WifiKeeper {
         while (true) {
             try { Thread.sleep(BEAT_MS) } catch (_: InterruptedException) { return }
             val n = net
-            if (n == null || !enabled || paused) { on = null; misses = 0; continue }
+            if (n == null || paused) { on = null; misses = 0; continue }
             if (n != on) { // a new network: the phone's addresses (gateway, DNS: one on a hotspot), not armed yet
                 on = n; to = null; misses = 0
                 candidates = try {
@@ -237,7 +209,7 @@ object WifiKeeper {
      * minutes: beyond that the 20 s probes and their growing pauses decide.
      */
     private fun frozen(n: Network) {
-        if (n != net || !enabled || paused || !hadInternet) return
+        if (n != net || paused || !hadInternet) return
         val now = SystemClock.elapsedRealtime()
         if (now - lastFixAt < BEAT_MIN_GAP_MS) return
         while (beatFixes.isNotEmpty() && now - beatFixes.first() > 10 * 60_000L) beatFixes.removeFirst()
@@ -269,8 +241,6 @@ object WifiKeeper {
                 hadInternet = false; fixes = 0; nextFixAt = 0L
                 downSince = 0L; cause = null
                 add(Event(System.currentTimeMillis(), "join", ssid, rssi.toString()))
-            } else {
-                changed()
             }
             schedule(3000L) // know quickly whether this one has internet
         }
@@ -283,8 +253,6 @@ object WifiKeeper {
             if (SystemClock.elapsedRealtime() - lastFixAt >= QUIET_AFTER_FIX_MS) {
                 downSince = 0L; cause = null
                 add(Event(System.currentTimeMillis(), "leave"))
-            } else {
-                changed()
             }
         }
     }
@@ -299,9 +267,8 @@ object WifiKeeper {
     private val tick = Runnable {
         val n = net
         when {
-            n == null -> { setState(State.NO_WIFI); schedule(PROBE_EVERY_MS) }
-            !enabled -> { setState(State.OFF); schedule(PROBE_EVERY_MS) }
-            paused -> { setState(State.PAUSED); schedule(PROBE_EVERY_MS) }
+            n == null -> { state = State.NO_WIFI; schedule(PROBE_EVERY_MS) }
+            paused -> { state = State.PAUSED; schedule(PROBE_EVERY_MS) }
             probing -> Unit // its result schedules the next one
             else -> {
                 probing = true
@@ -490,8 +457,8 @@ object WifiKeeper {
         if (com.abdllh.aura.BuildConfig.DEBUG) Log.d(TAG, "probe $n web=${r.web} cause=${r.cause} had=$hadInternet fails=$fails fixes=$fixes")
         // a network that came meanwhile gets its own first look soon (its quick check found this one running)
         if (n != net) { schedule(if (net != null) 1000L else PROBE_EVERY_MS); return }
-        // switched off, or ZLink took the Wi-Fi, while this check ran: nothing more to do with it
-        if (!enabled || paused) { schedule(PROBE_EVERY_MS); return }
+        // ZLink took the Wi-Fi while this check ran: nothing more to do with it
+        if (paused) { schedule(PROBE_EVERY_MS); return }
         readWifi()
         val now = SystemClock.elapsedRealtime()
         if (r.web) {
@@ -503,7 +470,6 @@ object WifiKeeper {
             when {
                 wasDown > 0 -> add(Event(System.currentTimeMillis(), "back", ((now - wasDown) / 1000).toString()))
                 !hadInternet -> add(Event(System.currentTimeMillis(), "online", ssid))
-                else -> changed()
             }
             hadInternet = true
             revalidate(n)
@@ -521,10 +487,7 @@ object WifiKeeper {
             // what the outage looks like before anything is restarted, then the restart
             if (fixes == 0) snapshot(n) { if (fixable && net == n && cause != null) maybeFix(SystemClock.elapsedRealtime()) }
             else if (fixable) maybeFix(now)
-        } else {
-            changed()
-            if (fixable) maybeFix(now)
-        }
+        } else if (fixable) maybeFix(now)
         schedule(PROBE_EVERY_MS)
     }
 
@@ -626,16 +589,6 @@ object WifiKeeper {
         }
     }
 
-    private fun setState(s: State) {
-        if (state == s) return
-        state = s
-        changed()
-    }
-
-    private fun changed() {
-        listener?.invoke()
-    }
-
     // ------------------------------------------------------------------------------------------------------ the log
     /** A line from elsewhere ([WifiOnStart]). Main thread. */
     fun record(type: String, a: String = "") = add(Event(System.currentTimeMillis(), type, a))
@@ -647,7 +600,6 @@ object WifiKeeper {
         }
         val c = app
         if (c != null) io.execute { save(c, log()) } // the list as it is then (with the loaded history in it)
-        changed()
     }
 
     private fun file(c: Context) = File(c.filesDir, "wifi-log.txt")
@@ -678,7 +630,6 @@ object WifiKeeper {
                 events.addAll(0, loaded.takeLast(LOG_MAX))
                 while (events.size > LOG_MAX) events.removeAt(0)
             }
-            main.post { changed() }
         } catch (t: Throwable) {
             Log.w(TAG, "load log: $t")
         }

@@ -4,16 +4,14 @@ import android.animation.ValueAnimator
 import android.content.Context
 import android.provider.Settings
 import android.util.Log
-import com.abdllh.aura.util.Prefs
 import java.io.File
 
 /**
  * Screen changes that move instead of cutting. This firmware's SettingsProvider writes Android's window and transition
  * animation scales as 0 at the first start (def_window_animation_scale / def_window_transition_scale = 0%, AOSP has
- * 100%), so every screen change on the unit was a cut. While the owner's switch is on (Settings → Display & sound),
- * AMRI puts them at 1 — Android's own default — where it finds 0 or nothing, and keeps the values it found in
- * files/anim-scales; switched off, or AMRI no longer the home screen, they are put back. The installers' restore puts
- * them back from the same file.
+ * 100%), so every screen change on the unit was a cut. AMRI puts them at 1 — Android's own default — where it finds 0
+ * or nothing, and keeps the values it found in files/anim-scales; with AMRI no longer the home screen they are put back.
+ * The installers' restore puts them back from the same file.
  *
  * Inside AMRI's process the animator scale is also kept at 1 ([ensureAnimators]): the stock launcher does the same
  * (com.launcher.AnimationDriver resets ValueAnimator's scale when it finds 0).
@@ -23,9 +21,10 @@ object Animations {
     private val KEYS = listOf("window_animation_scale", "transition_animation_scale")
     private const val FILE = "anim-scales"
 
-    fun apply(ctx: Context): Boolean = update(ctx, Prefs.screenAnimations)
+    /** Whatever the switch that was once here last said. */
+    fun apply(ctx: Context): Boolean = update(ctx, true)
 
-    /** Gives the firmware's values back (AMRI is no longer the home screen); the owner's choice itself is kept. */
+    /** Gives the firmware's values back (AMRI is no longer the home screen). */
     fun release(ctx: Context): Boolean = update(ctx, false)
 
     private fun update(ctx: Context, on: Boolean): Boolean {

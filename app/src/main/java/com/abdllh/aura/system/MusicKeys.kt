@@ -12,7 +12,7 @@ import com.abdllh.aura.media.MediaMonitor
 import com.abdllh.aura.util.Prefs
 
 /**
- * "Music buttons open Aura Music" (Settings → Display & sound → Music; on by default): when the stock Bluetooth music
+ * Music buttons open Aura Music, while AMRI is the home screen (its switch went in 2.0.0-beta.3): when the stock Bluetooth music
  * screen or the stock music player comes up — the steering wheel's music button, the CAN box, the source key, the
  * app list — Aura Music opens on top of it, on the same source, right away. The same button pressed again inside
  * Aura Music goes out to the home screen (1.7), as it leaves the stock screen on the stock system. The firmware
@@ -42,11 +42,10 @@ import com.abdllh.aura.util.Prefs
  * itself ([key]), with no stock screen under it. KernelService reads the rules once, when it starts: the change works
  * from the unit's next start (until then, and for every other way a stock music screen comes up — the MODE key's
  * round of sources, a CAN box that starts the screen itself, the ignition, the app list — the answer above stays).
- * The file is kept as KeyRuleConfig.xml.pre-aura, which the switch going off and the ROM's restore put back.
+ * The file is kept as KeyRuleConfig.xml.pre-aura, which the kill switch and the ROM's restore put back.
  */
 object MusicKeys {
     private const val TAG = "AuraMusicKeys"
-    private const val KEY = "musicKeysAura"
     private const val PAIR_MS = 1500L
     private const val RULES = "/data/nwdappconfig/app/KeyRuleConfig.xml"
     private const val KEY_RULES = "musicKeyRulesOut" // "on" while the two keys are out of the firmware's rules
@@ -66,7 +65,7 @@ object MusicKeys {
     /** Until then (elapsedRealtime) the music keys open nothing: the screen check is asking for the wheel's keys. */
     @Volatile var quietUntil = 0L
 
-    /** How the music button last reached AMRI, for Settings → About ("" when it never did). */
+    /** How the music button last reached AMRI, for the Screen check's report ("" when it never did). */
     val note: String get() = Prefs.raw.getString(KEY_NOTE, "").orEmpty()
 
     private var app: Context? = null
@@ -74,10 +73,8 @@ object MusicKeys {
     private var a2dpMuteAt = -1_000_000L // the stock music player's (not Aura's)
     private var openedAt = -1_000_000L
 
-    /** The user's switch (on by default). */
-    var enabled: Boolean
-        get() = Prefs.raw.getBoolean(KEY, true)
-        set(v) { Prefs.raw.edit().putBoolean(KEY, v).apply() }
+    /** The kill switch: the firmware's own screens and keys. */
+    private val off get() = SystemProps.get(Device.DISABLED_PROP) == "1"
 
     fun init(ctx: Context) {
         if (app != null) return
@@ -101,19 +98,17 @@ object MusicKeys {
     private val unit get() = Device.isNwd || (com.abdllh.aura.BuildConfig.DEBUG && SystemProps.get("debug.aura.unit") == "1")
 
     /**
-     * Brings the firmware's key rules in line with the switch: the two music keys out of them while it is on, the
-     * rules as they were when it is off (or when AMRI is not the home screen). [done]: true when it worked.
+     * Brings the firmware's key rules in line: the two music keys out of them, the rules as they were when AMRI is
+     * not the home screen.
      */
-    fun applyRules(done: ((Boolean) -> Unit)? = null) {
-        if (!unit) { done?.invoke(true); return }
+    fun applyRules() {
+        if (!unit) return
         worker.execute {
-            val ok = try {
-                if (enabled && SystemProps.get(Device.DISABLED_PROP) != "1") takeKeys() else giveKeysBack()
+            try {
+                if (off) giveKeysBack() else takeKeys()
             } catch (t: Throwable) {
                 Log.w(TAG, "rules: $t")
-                false
             }
-            done?.invoke(ok)
         }
     }
 
@@ -191,8 +186,8 @@ object MusicKeys {
         keyAt = now
         note("key ${if (bt) KEY_BT_MUSIC else KEY_MUSIC}")
         if (com.abdllh.aura.phone.Calls.busy || Gear.current == Gear.Pos.R) return
-        if (!enabled || SystemProps.get(Device.DISABLED_PROP) == "1") {
-            // the switch went off since the unit started (the rules come back at its next start): the stock screen,
+        if (off) {
+            // the kill switch went on since the unit started (the rules come back at its next start): the stock screen,
             // as the firmware would have opened it
             com.abdllh.aura.home.AppRepo.launchComponent(c, if (bt) Known.BT_MUSIC else Known.MUSIC,
                 (if (bt) Known.BT_MUSIC else Known.MUSIC) + ".home_horizontalActivity")
@@ -238,8 +233,8 @@ object MusicKeys {
                     "com.music.action.STOP_QQ_MUSIC" -> qqStopAt = now
                     "com.bt.ACTION_A2DP_MUTE" -> a2dpMuteAt = now
                     "com.nwd.ACTION_MEDIA_PLAY" -> {
-                        // off, or Aura is not the home app (the kill switch): the stock screens stay
-                        if (!enabled || SystemProps.get(Device.DISABLED_PROP) == "1") return
+                        // Aura is not the home app (the kill switch): the stock screens stay
+                        if (off) return
                         when (i.getIntExtra("extra_app_id", -1)) {
                             15 -> if (now - qqStopAt < PAIR_MS) open(c, bt = true)
                             2 -> if (now - a2dpMuteAt < PAIR_MS) open(c, bt = false)
@@ -257,7 +252,7 @@ object MusicKeys {
      * when the screen came up before this process did (the unit coming on with that source).
      */
     fun stockScreen(c: Context, bt: Boolean) {
-        if (!enabled || SystemProps.get(Device.DISABLED_PROP) == "1") return
+        if (off) return
         open(c, bt)
     }
 
@@ -266,7 +261,7 @@ object MusicKeys {
         val c = app ?: return@Runnable
         Front.read()
         val bt = Front.pkg == Known.BT_MUSIC
-        if (enabled && !Front.ownResumed && (bt || Front.pkg == Known.MUSIC)) open(c, bt)
+        if (!Front.ownResumed && (bt || Front.pkg == Known.MUSIC)) open(c, bt)
     }
 
     private fun open(c: Context, bt: Boolean) {

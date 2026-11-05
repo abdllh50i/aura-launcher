@@ -37,7 +37,7 @@ import com.abdllh.aura.update.UpdateManager
 import kotlin.math.abs
 
 /**
- * Settings (SPEC.md section 6.6): the room, a side list of seven pages on the reading side, one card 666 x 414 that holds the page, or a sub-page with back at its reading edge. The panel
+ * Settings (SPEC.md section 6.6): the room, a side list of six pages on the reading side, one card 666 x 414 that holds the page, or a sub-page with back at its reading edge. The panel
  * stays built, each page with it, and a theme comes by [Look]: no picture, nothing is built again.
  * (A class name is left for whoever starts it from outside: [SettingsActivity], which also has the page numbers.)
  */
@@ -73,7 +73,7 @@ class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
     val fillH: Int get() = CARD_H
     val controlW: Int get() = 440
 
-    private val pages: List<Page> = listOf(DisplayPage(this), MapsPage(this), MusicPage(this), AmriPage(this), PhonePage(this), CarPage(this), AboutPage(this))
+    private val pages: List<Page> = listOf(DisplayPage(this), MapsPage(this), MusicPage(this), AmriPage(this), PhonePage(this), CarPage(this))
     private var current = 0
     /** Sub-pages over the current page. */
     private val subs = ArrayList<Page>()
@@ -171,7 +171,7 @@ class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
         root.addView(card, Surface.CARD.at(if (rtl) 16 else 332, CARD_Y, CARD_W, CARD_H))
 
         val nav = FrameLayout(this)
-        root.addView(nav, at(if (rtl) 704 else 16, CARD_Y, NAV_W, 7 * NAV_PITCH))
+        root.addView(nav, at(if (rtl) 704 else 16, CARD_Y, NAV_W, pages.size * NAV_PITCH))
         val plate = object : View(this) {
             override fun hasOverlappingRendering() = false
         }.apply { background = context.getDrawable(R.drawable.nav_on_58) }
@@ -260,11 +260,11 @@ class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
     }
 
     private fun pageForCode(code: Int): Page = when (code) {
-        SettingsActivity.PAGE_UPDATE -> UpdatePage(this)
+        SettingsActivity.PAGE_UPDATE -> UpdatePage()
         else -> PackPage(this)
     }
 
-    /** Page [index] of the seven, what was over it gone. */
+    /** Page [index] of the six, what was over it gone. */
     fun show(index: Int, animate: Boolean) {
         val dir = if (animate && index < current) -1 else 1
         current = index
@@ -407,10 +407,12 @@ class SettingsPanel(shell: HomeActivity) : Panel(shell, Screens.SETTINGS) {
         root.postDelayed({ com.abdllh.aura.ui.ThemeSwap.run(shell) { builtDark = Palette.dark } }, THEME_AFTER_MS)
     }
 
-    /** A language's choice: the whole window again ([HomeActivity.languageChanged]), back on the page it came from. */
+    /** A language's choice: the control shows it landing, then the whole window again ([HomeActivity.languageChanged]), back on the page it came from. */
     fun takeLanguage() {
-        goQuiet()
-        shell.languageChanged(Bundle().apply { putInt(SettingsActivity.EXTRA_PAGE, current) })
+        root.postDelayed({
+            goQuiet()
+            shell.languageChanged(Bundle().apply { putInt(SettingsActivity.EXTRA_PAGE, current) })
+        }, THEME_AFTER_MS)
     }
 
     private companion object {

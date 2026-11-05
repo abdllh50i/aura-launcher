@@ -78,7 +78,7 @@ object PhoneLink {
         private set
     var lyricsTitle = ""
         private set
-    /** For Settings → About: the link's last news (kept across restarts, for reports from the unit). */
+    /** For the Screen check's report: the link's last news (kept across restarts, for reports from the unit). */
     val note: String get() = com.abdllh.aura.util.Prefs.raw.getString("phoneLinkNote", "").orEmpty()
     private fun note(what: String) {
         try {

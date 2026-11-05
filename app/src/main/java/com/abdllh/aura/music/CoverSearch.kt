@@ -40,11 +40,6 @@ object CoverSearch {
     /** Main thread: the catalogue's length of the covers in [mem], and whether YouTube Music's catalogue gave it. */
     private val lengths = HashMap<String, Pair<Int, Boolean>>()
 
-    /** The user's switch (on by default: without it Bluetooth songs have no picture at all). */
-    var enabled: Boolean
-        get() = Prefs.raw.getBoolean("btCoverOnline", true)
-        set(v) { Prefs.raw.edit().putBoolean("btCoverOnline", v).apply() }
-
     /** A catalogue's answer: the cover's address and the song's length (0 when it gave none); [yt]: YouTube Music's. */
     private class Hit(val url: String, val sec: Int, val yt: Boolean = false)
 
@@ -66,10 +61,9 @@ object CoverSearch {
         if (norm(title).isEmpty()) { done(null, 0, false, false); return }
         mem.get(key)?.let { val l = lengths[key]; done(it, l?.first ?: 0, l?.second ?: false, false); return }
         val c = ctx.applicationContext
-        val online = enabled
         io.execute {
             lastFailed = false
-            val r = try { fromDisk(c, key) ?: if (online) fromNetwork(c, key, title, artist) else null } catch (t: Throwable) {
+            val r = try { fromDisk(c, key) ?: fromNetwork(c, key, title, artist) } catch (t: Throwable) {
                 Log.w(TAG, "cover for '$artist - $title': $t")
                 lastFailed = true
                 null
@@ -87,7 +81,7 @@ object CoverSearch {
     private var failure = ""    // io thread: why YouTube Music could not be asked, for the note
     @Volatile private var lastFailed = false
 
-    /** The last lookup and how it went, for Settings → About ("" when there was none yet). */
+    /** The last lookup and how it went, for the Screen check's report ("" when there was none yet). */
     val note: String get() = Prefs.raw.getString("coverNote", "").orEmpty()
 
     private fun note(what: String) {

@@ -30,7 +30,7 @@ import java.util.Locale
  * when it starts; [firstArgs]).
  *
  * Nothing here may take the home screen down or leave it stuck. A panel that cannot be built or throws from a callback is
- * dropped, the panel under it comes back and Settings → About says so ([failedNote]); only the home panel's own failures go
+ * dropped, the panel under it comes back and the Screen check's report says so ([failedNote]); only the home panel's own failures go
  * through, since that is a crash the crash guard counts and answers. A move that does not end is ended ([MOVE_LIMIT_MS]),
  * and everything at rest is reached from one place ([settle]), wherever a move stopped.
  */
@@ -45,7 +45,7 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
     private val asked = HashMap<Int, Panel>()
     private val windows = ArrayList<Owned>()
     private var firstArgs: Bundle? = null
-    /** For Settings → About: how long each panel's first open took, how long its build ahead of time, and who could not. */
+    /** For the Screen check's report: how long each panel's first open took, how long its build ahead of time, and who could not. */
     private val firstOpen = HashMap<String, Long>()
     private val builtAhead = HashMap<String, Long>()
     private val noAhead = HashSet<String>()
@@ -483,11 +483,11 @@ class PanelStack(private val shell: HomeActivity, private val home: Panel) {
         private const val ONE_LEVEL = 1f / 255f
         private const val HIDE_AFTER_MS = 2000L
 
-        /** The last panel opened, and how long that took (for Settings → About). */
+        /** The last panel opened, and how long that took (for the Screen check's report). */
         @Volatile var lastOpen = ""
             private set
 
-        /** The last panel that failed, kept across starts (for Settings → About): a healthy unit has no such line. */
+        /** The last panel that failed, kept across starts (for the Screen check's report): a healthy unit has no such line. */
         fun failedNote(c: Context): String =
             try { c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_FAILED, "").orEmpty() } catch (_: Throwable) { "" }
     }

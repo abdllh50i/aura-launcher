@@ -23,7 +23,7 @@ import java.io.File
  * again on every boot. Aura keeps it at 0; opening ZLink from Aura puts the original value back first (the firmware
  * enables ZLink again), and once the user is back on the home screen with no phone link running — or the car is
  * switched off, or the unit restarts — it goes back to 0 and the Wi-Fi client is brought back.
- * Switching the option off restores the original setting (stock behaviour).
+ * The kill switch restores the original setting (stock behaviour); no other switch is left for it (2.0.0-beta.3).
  */
 object ZLinkGuard {
     private const val TAG = "AuraZLink"
@@ -32,7 +32,6 @@ object ZLinkGuard {
     private const val RECHECK = "recheck_phone_connect_style"
     private const val NONE = 0
     private const val CARPLAY = 3
-    private const val PREF_ON = "zlinkGuard"
     private const val PREF_ORIG = "zlinkOrigStyle"  // the value before Aura changed it (absent: never changed)
     private const val PREF_SESSION = "zlinkSession" // boot id of a session the user opened, "" = none
     private const val PREF_WIFI = "zlinkWifiWasOn"
@@ -40,11 +39,6 @@ object ZLinkGuard {
 
     private val main = Handler(Looper.getMainLooper())
     private var app: Context? = null
-
-    /** The user's switch (on by default: the owner asked for ZLink to stay off). */
-    var enabled: Boolean
-        get() = Prefs.raw.getBoolean(PREF_ON, true)
-        set(v) { Prefs.raw.edit().putBoolean(PREF_ON, v).apply() }
 
     /** The user opened ZLink and is (or may be) using it: it has the Wi-Fi radio. */
     val inSession: Boolean get() = Prefs.raw.getString(PREF_SESSION, "").orEmpty().isNotEmpty()
@@ -70,16 +64,16 @@ object ZLinkGuard {
         apply(c)
     }
 
-    /** Brings the firmware setting in line with the switch. */
+    /** Off while AMRI is the home screen (the owner asked for ZLink to stay off), the firmware's own setting with the kill switch on. */
     fun apply(c: Context) {
         if (!available(c)) return
-        if (enabled) { if (!inSession) setOff(c) } else restore(c)
+        if (SystemProps.get(Device.DISABLED_PROP) != "1") { if (!inSession) setOff(c) } else restore(c)
     }
 
     /** Opens ZLink for the user (after switching the phone link back on when it is off). */
     fun open(ctx: Context): Boolean {
         val c = ctx.applicationContext
-        if (!available(c) || !enabled) return launch(ctx)
+        if (!available(c)) return launch(ctx)
         startSession(c)
         if (launchIntent(c) != null) return launch(ctx)
         val orig = Prefs.raw.getInt(PREF_ORIG, CARPLAY)
@@ -130,7 +124,7 @@ object ZLinkGuard {
     private fun endSession(c: Context) {
         main.removeCallbacks(homeCheck)
         Prefs.raw.edit().putString(PREF_SESSION, "").apply()
-        if (enabled) setOff(c)
+        apply(c)
         WifiKeeper.paused = false
         WifiKeeper.restoreAfterZLink(c, Prefs.raw.getBoolean(PREF_WIFI, true))
     }

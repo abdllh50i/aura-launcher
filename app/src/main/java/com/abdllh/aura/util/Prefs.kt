@@ -20,10 +20,8 @@ object Prefs {
         get() = Palette.DEFAULT_ACCENT
         set(v) { sp.edit().putInt("accent", v).apply() }
 
-    /** The 30 ms tick under a row's or a dock cell's press (SPEC.md section 15). */
-    var pressTick: Boolean
-        get() = sp.getBoolean("pressTick", true)
-        set(v) { sp.edit().putBoolean("pressTick", v).apply() }
+    /** The 30 ms tick under a row's or a dock cell's press (SPEC.md section 15). Its switch went in 2.0.0-beta.3: on, unless it was switched off before that. */
+    val pressTick: Boolean get() = sp.getBoolean("pressTick", true)
 
     /** "auto" | "dark" | "light" (see [com.abdllh.aura.ui.Theme]) */
     var theme: String
@@ -39,48 +37,12 @@ object Prefs {
         get() = sp.getBoolean("clock24", false)
         set(v) { sp.edit().putBoolean("clock24", v).apply() }
 
-    var navPackage: String
-        get() = sp.getString("navPackage", "") ?: ""
-        set(v) { sp.edit().putString("navPackage", v).apply() }
-
     /** Home and work as typed up to 1.2: only read now (a unit may still hold one; the first use keeps it as a place, Places). */
     val homeAddress: String get() = sp.getString("homeAddress", "") ?: ""
     val workAddress: String get() = sp.getString("workAddress", "") ?: ""
 
-    /** Hide Android's top status bar system-wide (swipe down to show it). */
-    var hideStatusBar: Boolean
-        get() = sp.getBoolean("hideStatusBar", true)
-        set(v) { sp.edit().putBoolean("hideStatusBar", v).apply() }
-
-    /** Screen changes animate (the firmware ships with Android's animation scales at 0: see system/Animations). */
-    var screenAnimations: Boolean
-        get() = sp.getBoolean("screenAnimations", true)
-        set(v) { sp.edit().putBoolean("screenAnimations", v).apply() }
-
-    /**
-     * Use Aura's built-in maps for the Maps button and Home/Work (false = an installed navigation app). 2.0 has no "automatic" any more
-     * (SPEC.md section 6.6): one stored as false with no app named reads as AMRI, and what is stored stays as it was.
-     */
-    var builtInMaps: Boolean
-        get() = sp.getBoolean("builtInMaps", true) || navPackage.isEmpty()
-        set(v) { sp.edit().putBoolean("builtInMaps", v).apply() }
-
-    /** How the driving map looks at the road: [VIEW_TILTED], [VIEW_ABOVE], [VIEW_NORTH] (Settings › الشاشة والصوت). */
-    var mapView: String
-        get() = sp.getString("mapView", VIEW_TILTED) ?: VIEW_TILTED
-        set(v) { sp.edit().putString("mapView", v).apply() }
-    const val VIEW_TILTED = "tilted"
-    const val VIEW_ABOVE = "above"
-    const val VIEW_NORTH = "north"
-
-    /** The one tone before a Saher camera (Settings › الخرائط; SPEC.md section 15). */
-    var saherTone: Boolean
-        get() = sp.getBoolean("saherTone", true)
-        set(v) { sp.edit().putBoolean("saherTone", v).apply() }
-
-    var dockLabels: Boolean
-        get() = sp.getBoolean("dockLabels", false)
-        set(v) { sp.edit().putBoolean("dockLabels", v).apply() }
+    /** Screen changes animate. Its switch went in 2.0.0-beta.3 and a stored "off" must not hold with no way back: on, whatever the file says (system/Animations). */
+    val screenAnimations: Boolean get() = true
 
     // ---- updater
     var updateRepo: String
@@ -92,13 +54,8 @@ object Prefs {
         get() = sp.getString("apiBase", "") ?: ""
         set(v) { sp.edit().putString("apiBase", v.trim()).apply() }
 
-    var updateAuto: Boolean
-        get() = sp.getBoolean("updateAuto", true)
-        set(v) { sp.edit().putBoolean("updateAuto", v).apply() }
-
-    var updateBeta: Boolean
-        get() = sp.getBoolean("updateBeta", false)
-        set(v) { sp.edit().putBoolean("updateBeta", v).apply() }
+    /** Betas on offer: chosen in a version that had the switch, or a beta is what runs (nothing else could bring the next one). */
+    val updateBeta: Boolean get() = sp.getBoolean("updateBeta", false) || BuildConfig.VERSION_NAME.contains('-')
 
     /** Time of the last *successful* check. */
     var lastUpdateCheck: Long

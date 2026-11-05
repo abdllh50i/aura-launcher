@@ -25,9 +25,9 @@ function Settings([int]$page) {
 Prefs "dark" "en";   Shot "home-dark"
 & $adb -s $Serial shell "input tap 42 514" | Out-Null; Start-Sleep -Milliseconds 1200; Shot "controls"
 & $adb -s $Serial shell "input keyevent KEYCODE_BACK" | Out-Null; Start-Sleep -Milliseconds 600
-Settings 1;          Shot "update-en"
+Settings 100;        Shot "update-en"
 Prefs "light" "en";  Shot "home-light"
 Prefs "dark" "ar";   Shot "home-ar"
-Settings 1;          Shot "update-ar"
+Settings 100;        Shot "update-ar"
 Prefs "auto" "system"
 "done -> $dir"

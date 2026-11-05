@@ -1,8 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="panel_failed">This screen could not open</string>
-    <string name="about_panel_open">Last screen opened</string>
-    <string name="about_panel_failed">Screen that last failed to open</string>
-    <string name="about_map_state">The map at this start</string>
-    <string name="about_window_lost">Screen stopped drawing, last time</string>
 </resources>

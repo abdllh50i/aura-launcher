@@ -10,14 +10,14 @@ import java.io.File
 import java.util.concurrent.Executors
 
 /**
- * Android's own notifications kept off the screen, and the phone's messages shown instead (Settings → Display & sound
- * → Notifications).
+ * Android's own notifications kept off the screen, whatever the switch once here last said, and the phone's messages shown
+ * instead (Settings → Phone).
  *
  * The unit's apps post notifications like those of any Android device (the Play Store's updates, "USB debugging",
  * Google's services...), and Android shows each one at the top over whatever is in front: a heads-up card over the map
  * or the music. The owner wants none of them. Two things keep them away: Android's heads-up cards are switched off
  * (Settings.Global heads_up_notifications_enabled, what Android's own developer option writes; the value from before is
- * kept and put back when the switch goes off or AMRI stops being the home screen), and AMRI's notification listener
+ * kept and put back when AMRI stops being the home screen), and AMRI's notification listener
  * ([com.abdllh.aura.media.AuraNotificationListener]) takes every notification another app posts away the moment it is posted. One an app keeps up while
  * it runs (ongoing: a foreground service, a download) cannot be taken away; it stays in the shade, which nothing opens
  * on this screen.
@@ -31,7 +31,6 @@ import java.util.concurrent.Executors
  */
 object Notices {
     private const val TAG = "AuraNotices"
-    private const val KEY_HIDE = "hideAndroidNotices"
     private const val KEY_MESSAGES = "showPhoneMessages"
     private const val KEY_TEXT = "showMessageText"
     /** The heads-up setting from before AMRI switched it off (no file: AMRI has not touched it). */
@@ -39,11 +38,6 @@ object Notices {
     private const val HEADS_UP = "heads_up_notifications_enabled"
 
     private val worker = Executors.newSingleThreadExecutor() // the root shell: one change at a time, never on main
-
-    /** Android's notifications off the screen (on by default). */
-    var hideAndroid: Boolean
-        get() = Prefs.raw.getBoolean(KEY_HIDE, true)
-        set(v) { Prefs.raw.edit().putBoolean(KEY_HIDE, v).apply() }
 
     /** Messages (WhatsApp and the other messaging apps on the unit) shown as AMRI's card (on by default). */
     var showMessages: Boolean
@@ -57,16 +51,13 @@ object Notices {
 
     private fun listener(c: Context) = ComponentName(c.packageName, com.abdllh.aura.media.AuraNotificationListener::class.java.name)
 
-    /** Brings the unit in line with the switches (at every start of AMRI, and when one changes). */
+    /** At every start of AMRI, and when the kill switch goes off. */
     fun apply(ctx: Context) {
         val c = ctx.applicationContext
-        val hide = hideAndroid
-        val listen = hide || showMessages
         worker.execute {
             try {
-                headsUp(c, off = hide)
-                // (with both switches off it stays allowed and does nothing: the media sessions may still need it)
-                if (listen) allowListener(c, true)
+                headsUp(c, off = true)
+                allowListener(c, true)
             } catch (t: Throwable) {
                 Log.w(TAG, "apply: $t")
             }

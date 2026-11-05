@@ -23,7 +23,7 @@ import java.util.concurrent.Executors
 
 /**
  * The phone call going on, if any (the phone's, over Bluetooth): who, and whether it rings, is being dialled or is
- * being talked on; and what to do about it. [CallBanner] shows it (Settings → Display & sound → Calls; on by default)
+ * being talked on; and what to do about it. [CallBanner] shows it (the only call window while AMRI is the home screen)
  * in place of the stock window.
  *
  * Calls are the Bluetooth service's (com.bt.bc03, the same one as the phone's music: [BtMusic]); it tells everybody
@@ -41,12 +41,11 @@ import java.util.concurrent.Executors
  * The stock window is com.nwd.android.phone's FloatBar service: the phone app asks it (broadcast
  * com.nwd.android.phone.createFloat) for its small call dialog, drawn in one of the firmware's own top window layers
  * (type 2402), above anything an app may add. So it is turned off the way the stock volume bar is ([StockCallWindow]):
- * the component disabled through the root shell, enabled again by the switch, the kill switch and the ROM's restore.
+ * the component disabled through the root shell, enabled again by the kill switch and the ROM's restore.
  * The phone app itself stays as it is: its dialler, its contacts, its call log, the panel's answer / hang-up keys.
  */
 object Calls {
     private const val TAG = "AuraCalls"
-    private const val KEY = "callCard"
     /** Debug builds (the emulator has no Bluetooth module): --es state ring|dial|talk|end [--es number] [--es name] */
     private const val ACTION_DEBUG = "com.abdllh.aura.debug.CALL"
     private const val ENDED_MS = 1500L
@@ -70,11 +69,6 @@ object Calls {
     /** When the call was answered (elapsedRealtime). */
     var talkingSince = 0L
         private set
-
-    /** The user's switch (on by default): AMRI's card, not the stock window. */
-    var enabled: Boolean
-        get() = Prefs.raw.getBoolean(KEY, true)
-        set(v) { Prefs.raw.edit().putBoolean(KEY, v).apply() }
 
     internal val unit get() = Device.isNwd || (BuildConfig.DEBUG && SystemProps.get("debug.aura.unit") == "1")
     val available get() = unit
@@ -240,9 +234,9 @@ object Calls {
      * not told again (null) is the one already known.
      */
     private fun set(next: State, num: String?, who: String?) {
-        // switched off, or the stock window is still there (no root shell yet, no leave to draw over apps): it shows
-        // the call, not AMRI — never the two together
-        if (!enabled || context?.let { StockCallWindow.shows(it) } == true) {
+        // the stock window is still there (no root shell yet, no leave to draw over apps): it shows the call, not AMRI —
+        // never the two together
+        if (context?.let { StockCallWindow.shows(it) } == true) {
             if (state != State.IDLE) { main.removeCallbacks(forget); state = State.IDLE; changed() }
             return
         }
@@ -295,7 +289,7 @@ internal object StockCallWindow {
                 // (not in the middle of a call: the change restarts the phone app's process)
                 var waited = 0
                 while (Calls.busy && waited++ < 120) Thread.sleep(5000L)
-                if (Calls.enabled && SystemProps.get(Device.DISABLED_PROP) != "1") takeOver(c) else giveBack(c)
+                if (SystemProps.get(Device.DISABLED_PROP) != "1") takeOver(c) else giveBack(c)
             } catch (t: Throwable) {
                 Log.w(TAG, "apply: $t")
                 false

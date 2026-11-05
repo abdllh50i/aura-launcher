@@ -164,26 +164,26 @@ private fun trailingLp(v: View): LinearLayout.LayoutParams = if (v is AuraSwitch
     marginEnd = -AuraSwitch.OUTSET
 } else lp(WRAP, WRAP).apply { marginStart = GAP }
 
-private fun Context.titles(title: CharSequence?, subtitle: CharSequence?, live: AText? = null): LinearLayout = LinearLayout(this).apply {
+private fun Context.titles(title: CharSequence?, subtitle: CharSequence?): LinearLayout = LinearLayout(this).apply {
     orientation = LinearLayout.VERTICAL
     // (line boxes 32 and 26 one under the other; a label's view is 1.5 em tall, which the margins take off)
     if (title != null) addView(label(Type.rowLabel, { Palette.ink }, lines = 2).apply { text = title }, lp(MATCH, WRAP).apply { topMargin = -2; bottomMargin = -2 })
-    val sub = live ?: if (subtitle.isNullOrEmpty()) null else label(Type.rowHint, { Palette.ink2 }, lines = 3).apply { text = subtitle }
+    val sub = if (subtitle.isNullOrEmpty()) null else label(Type.rowHint, { Palette.ink2 }, lines = 3).apply { text = subtitle }
     if (sub != null) addView(sub, lp(MATCH, WRAP).apply { topMargin = -2; bottomMargin = -2 })
 }
 
 /**
  * A row with a control under its title (a status with its buttons): the head as in [settingRow], [body] below it. Without a [title]
- * it is the body alone, in the row's insets. [live]: a subtitle the caller keeps changing (a status), in place of [subtitle].
+ * it is the body alone, in the row's insets.
  */
-fun Context.block(icon: Int?, title: CharSequence?, subtitle: CharSequence?, body: View?, live: AText? = null): SettingRow =
+fun Context.block(icon: Int?, title: CharSequence?, subtitle: CharSequence?, body: View?): SettingRow =
     SettingRow(this, if (icon != null) INSET + ICON + ICON_GAP else INSET).apply {
         orientation = LinearLayout.VERTICAL
         setPaddingRelative(INSET, Space.L, INSET, Space.L)
         if (title != null) {
             val head = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; clipChildren = false }
             if (icon != null) head.addView(iconView(icon, ICON) { Palette.ink2 }, lp(ICON, ICON).apply { marginEnd = ICON_GAP })
-            head.addView(titles(title, subtitle, live), lp(0, WRAP, 1f))
+            head.addView(titles(title, subtitle), lp(0, WRAP, 1f))
             addView(head, lp(MATCH, WRAP))
         }
         if (body != null) addView(body, lp(MATCH, WRAP).apply { if (title != null) topMargin = Space.M })
@@ -303,28 +303,7 @@ fun Context.sliderControl(slider: AuraSlider, start: View? = null, end: View? = 
     if (end != null) addView(end, end.layoutParams ?: lp(WRAP, WRAP))
 }
 
-/** A slider inline with its title, its value before it in the reading order (the slider's own icons, if any, by [sliderControl]). */
-fun Context.sliderRow(title: CharSequence, slider: AuraSlider, valueView: AText): SettingRow {
-    valueView.gravity = Gravity.CENTER
-    valueView.layoutParams = lp(VALUE_W, Type.rowValue.viewH)
-    return controlRow(title, sliderControl(slider, start = valueView))
-}
-
-private const val VALUE_W = 34
 private const val VALUE_MAX = 300
-
-/** A multi-line note inside a page: `rowHint` in `ink2`, the row's insets, a step under what is above it. */
-fun LinearLayout.addNote(text: CharSequence) {
-    addView(context.hint(text), lp(MATCH, WRAP).apply { topMargin = Space.XS; bottomMargin = Space.M })
-}
-
-/** A section inside the panel's one card: its title in `sectionHead`, with a hairline over it when there is something above. */
-fun LinearLayout.addPart(title: CharSequence) {
-    if (childCount > 0) addView(View(context).apply { look { setBackgroundColor(Palette.line) } }, lp(MATCH, 1).apply { topMargin = Space.M; leftMargin = INSET; rightMargin = INSET })
-    val t = context.label(Type.sectionHead, { Palette.ink2 }).apply { text = title }
-    t.setPaddingRelative(INSET, 0, INSET, 0)
-    addView(t, lp(MATCH, Type.sectionHead.viewH).apply { topMargin = Space.L; bottomMargin = Space.XS })
-}
 
 fun Context.hint(text: CharSequence): AText = label(Type.rowHint, { Palette.ink2 }, lines = 0).apply {
     this.text = text

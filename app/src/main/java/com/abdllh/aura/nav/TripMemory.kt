@@ -21,7 +21,7 @@ import java.io.File
  * The trip being driven, kept on disk so that it outlives the process: an update installed on the way, a crash, and (the
  * owner powers the unit off with the car) a fuel stop. Written when a trip starts and once a minute while it runs, gone when
  * it ends. At the next start of the process [resume] brings it back with a new route from where the car is then, if
- * [TripRule] agrees it is still the same drive, and says what it did in Settings → About ([NavNote]). In the same boot (an
+ * [TripRule] agrees it is still the same drive, and says what it did in the Screen check's report ([NavNote]). In the same boot (an
  * update, a crash) the trip just goes on. After a power-off the car has been parked: it may well be the end of the drive, so
  * the card asks first ([ASK_MS], no answer is no), and nothing is said until he answers yes.
  *

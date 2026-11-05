@@ -1,13 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- فحص الشاشة (الإعدادات › حول): زر واحد، حوالي 3 دقايق، وتقرير يتصوّر وينرسل لخادم المالك -->
+<!-- فحص الشاشة (الإعدادات › السيارة والنظام): زر واحد، حوالي 3 دقايق، وتقرير يتصوّر وينرسل لخادم المالك -->
 <resources>
     <string name="diag_title">فحص الشاشة</string>
-    <string name="diag_about_sub">يقيس الذاكرة والرسم والخريطة على هالجهاز، ويعطيك تقرير تصوّره. ما يشتغل إلا إذا ضغطت زره.</string>
     <string name="diag_intro">يقيس اللي يقدر عليه هالجهاز فعلًا: الذاكرة، ورسم الشاشة، والخريطة والحركة فوقها. ياخذ حوالي 3 دقايق والشاشة تتبدل خلالها. وقّف السيارة أول.</string>
     <string name="diag_start_send">شغّل الفحص وأرسل التقرير لخادمك</string>
     <string name="diag_start_keep">شغّل الفحص (بدون إرسال: ما فيه خادم مضبوط)</string>
     <string name="diag_privacy">ما يشتغل شي ولا ينرسل شي إلا إذا ضغطت الزر. التقرير ما فيه مفتاح خادمك ولا مكان بيتك وعملك ولا أرقامك ولا رسايلك ولا أسماء أغانيك.</string>
-    <string name="diag_no_server">خادم الكلمات مو مضبوط، فالتقرير يبقى هنا على الجهاز وتشوفه في هالصفحة. تضبطه من الشاشة والصوت › الموسيقى.</string>
+    <string name="diag_no_server">خادم الكلمات مو مضبوط، فالتقرير يبقى هنا على الجهاز وتشوفه في هالصفحة. تضبطه من الموسيقى › خادم الكلمات.</string>
     <string name="diag_running_sub">وقّف السيارة وخلها. لا تطفيها إذا تقدر.</string>
     <string name="diag_starting">يبدأ…</string>
     <string name="diag_cancel">إلغاء</string>
@@ -225,6 +224,7 @@
     <string name="diag_hwui_textures">صور HWUI</string>
     <string name="diag_bt_on">البلوتوث</string>
     <string name="diag_sec_settings">الإعدادات على هالجهاز</string>
+    <string name="diag_sec_notes">اللي سجّله الجهاز</string>
     <string name="diag_system_language">لغة النظام</string>
     <string name="diag_s_route">محرك الخريطة الجديد</string>
     <string name="diag_route">محرك الخريطة الجديد</string>

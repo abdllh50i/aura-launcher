@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="about_nav">Navigation, last events</string>
     <string name="trip_resume_caption">Your last trip</string>
     <string name="trip_resume_q">Go on to %1$s?</string>
     <string name="trip_resume_yes">Go on</string>

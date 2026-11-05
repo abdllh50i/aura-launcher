@@ -2,25 +2,28 @@ package com.abdllh.aura.settings
 
 import android.content.Context
 import android.content.Intent
-import android.provider.Settings
 import android.view.View
 import com.abdllh.aura.BuildConfig
 import com.abdllh.aura.R
-import com.abdllh.aura.home.AppRepo
-import com.abdllh.aura.home.Known
 import com.abdllh.aura.home.Screens
 import com.abdllh.aura.link.Pairing
 import com.abdllh.aura.link.PhoneServer
+import com.abdllh.aura.music.LyricsServer
 import com.abdllh.aura.music.PhoneLink
+import com.abdllh.aura.nav.CameraMark
+import com.abdllh.aura.nav.MapExtras
 import com.abdllh.aura.nav.Places
 import com.abdllh.aura.nav.pack.PackManager
 import com.abdllh.aura.phone.Calls
 import com.abdllh.aura.phone.Ringtone
 import com.abdllh.aura.system.Controls
+import com.abdllh.aura.system.Device
 import com.abdllh.aura.system.Notices
 import com.abdllh.aura.system.Power
-import com.abdllh.aura.system.SystemProps
+import com.abdllh.aura.system.WifiOnStart
+import com.abdllh.aura.ui.ABtn
 import com.abdllh.aura.ui.AuraSlider
+import com.abdllh.aura.ui.Confirm
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Segmented
 import com.abdllh.aura.ui.Snack
@@ -33,10 +36,11 @@ import com.abdllh.aura.voice.Amri
 import com.abdllh.aura.voice.VoiceSetup
 
 /*
- * The seven pages of SPEC.md section 6.6, each its rows in the panel's one card, and the small sub-pages they open. What did not stay on them is in [WorkshopPage], with its pref untouched.
+ * The six pages, each its few rows in the panel's one card, and the sub-pages they open. A switch that left holds the safe value in the code of what it switched, and what the old workshop only showed
+ * is in the Screen check's report (docs/DEV.md, "Far fewer settings").
  */
 
-// ---------------------------------------------------------------------------------------------- الشاشة والصوت
+// ---------------------------------------------------------------------------------------------- الشاشة
 class DisplayPage(private val act: SettingsPanel) : Page(R.string.st_display, R.drawable.ic_screen) {
     override val scrolls: Boolean get() = false
     private var shownAgain: (() -> Unit)? = null
@@ -62,19 +66,21 @@ class DisplayPage(private val act: SettingsPanel) : Page(R.string.st_display, R.
             Prefs.theme = modes[i]
             act.takeTheme()
         }
-        val views = listOf(Prefs.VIEW_TILTED, Prefs.VIEW_ABOVE, Prefs.VIEW_NORTH)
-        val view = Segmented(ctx, listOf(ctx.getString(R.string.st_view_tilted), ctx.getString(R.string.st_view_above), ctx.getString(R.string.st_view_north)),
-            equal = true, maxW = act.controlW) { i -> Prefs.mapView = views[i] }
+        val language = Segmented(ctx, listOf("العربية", "English"), equal = true, maxW = act.controlW) { i ->
+            Prefs.lang = if (i == 0) "ar" else "en"
+            act.takeLanguage()
+        }
         shownAgain = {
             bright.setProgress(Controls.brightnessPercent(ctx), false)
             theme.select(modes.indexOf(Prefs.theme).coerceAtLeast(0), false)
-            view.select(views.indexOf(Prefs.mapView).coerceAtLeast(0), false)
+            // (the window's direction is the language it speaks, also for a stored "system")
+            language.select(if (act.rtl) 0 else 1, false)
         }
         shownAgain?.invoke()
         return ctx.rows(
             ctx.controlRow(ctx.getString(R.string.ctl_brightness), ctx.sliderControl(bright, dim, sun), act.controlW),
             ctx.controlRow(ctx.getString(R.string.set_theme), theme, act.controlW),
-            ctx.controlRow(ctx.getString(R.string.st_map_view), view, act.controlW),
+            ctx.controlRow(ctx.getString(R.string.st_lang), language, act.controlW),
             ctx.switchRow(null, ctx.getString(R.string.set_clock24), null, Prefs.clock24) {
                 Prefs.clock24 = it
                 com.abdllh.aura.chrome.Chrome.of(act.shell)?.clockChanged()
@@ -87,32 +93,38 @@ class DisplayPage(private val act: SettingsPanel) : Page(R.string.st_display, R.
 // ---------------------------------------------------------------------------------------------- الخرائط
 class MapsPage(private val act: SettingsPanel) : Page(R.string.st_maps, R.drawable.ic_map) {
     override val scrolls: Boolean get() = false
+    override val keep: Boolean get() = false // (the places and the marked cameras change on the map)
     private var offline: ValueChevron? = null
-    private var navApp: ValueChevron? = null
-    private var places: ValueChevron? = null
-    private val packHeard: () -> Unit = { showPack() }
+    private val packHeard: () -> Unit = { offline?.value = packWord(act) }
 
     override fun onShow() {
         PackManager.removeListener(packHeard)
         PackManager.addListener(packHeard)
-        showPack()
-        navApp?.value = navAppName(act)
-        places?.value = placesWord(act)
+        packHeard()
     }
 
     override fun onHide() { PackManager.removeListener(packHeard) }
 
-    private fun showPack() { offline?.value = packWord(act) }
-
     override fun build(ctx: Context): View {
         offline = ctx.valueChevron(packWord(ctx))
-        navApp = ctx.valueChevron(navAppName(ctx))
-        places = ctx.valueChevron(placesWord(ctx))
+        val marked = MapExtras.mine.size
         return ctx.rows(
-            ctx.settingRow(null, ctx.getString(R.string.off_section), ctx.getString(R.string.st_offline_sub), offline) { act.open(PackPage(act)) },
-            ctx.switchRow(null, ctx.getString(R.string.st_saher), ctx.getString(R.string.st_saher_sub), Prefs.saherTone) { Prefs.saherTone = it },
-            ctx.settingRow(null, ctx.getString(R.string.set_nav_app), null, navApp) { act.open(NavAppPage(act)) },
-            ctx.settingRow(null, ctx.getString(R.string.st_places), ctx.getString(R.string.st_places_sub), places) { act.open(PlacesPage()) },
+            ctx.settingRow(null, ctx.getString(R.string.off_section), null, offline) { act.open(PackPage(act)) },
+            // (chosen on the map: the row only opens it, and comes back here)
+            ctx.settingRow(null, ctx.getString(R.string.st_place_home), null, ctx.valueChevron(placeWord(ctx, "home"))) { Screens.mapsPick(ctx, "home") },
+            ctx.settingRow(null, ctx.getString(R.string.st_place_work), null, ctx.valueChevron(placeWord(ctx, "work"))) { Screens.mapsPick(ctx, "work") },
+            ctx.switchRow(null, ctx.getString(R.string.set_mark_camera), null, CameraMark.enabled) { CameraMark.enabled = it },
+            // (only with something marked: a camera that went from the road would beep there for ever, once the button's own undo has gone)
+            if (marked == 0) null else ctx.settingRow(null, ctx.getString(R.string.set_my_cameras, "$marked"), null, ABtn(ctx).apply {
+                kind = ABtn.Kind.TONAL
+                setText(R.string.set_my_cameras_clear)
+                setOnClickListener {
+                    Confirm.show(ctx, ctx.getString(R.string.set_my_cameras_clear_title), ctx.getString(R.string.set_my_cameras_clear_text), ctx.getString(R.string.set_my_cameras_clear)) {
+                        MapExtras.clearMine()
+                        act.rebuild()
+                    }
+                }
+            }),
             fill = act.fillH
         )
     }
@@ -130,84 +142,33 @@ internal fun packWord(c: Context, s: PackManager.Status = PackManager.status): S
     PackManager.State.FAILED -> c.getString(R.string.st_pack_stopped)
 }
 
-private fun navAppName(c: Context): String =
-    if (Prefs.builtInMaps) c.getString(R.string.amri_name) else AppRepo.label(c, Prefs.navPackage)
-
-private fun placesWord(c: Context): String {
-    val out = ArrayList<String>()
-    if (Places.home != null || Prefs.homeAddress.isNotBlank()) out.add(c.getString(R.string.st_place_home))
-    if (Places.work != null || Prefs.workAddress.isNotBlank()) out.add(c.getString(R.string.st_place_work))
-    return if (out.isEmpty()) c.getString(R.string.st_places_none) else out.joinToString(" · ")
-}
-
-/** Which app the map's buttons open. AMRI first; `تلقائي` is gone, and a stored one reads as AMRI ([Prefs.builtInMaps]). */
-class NavAppPage(private val act: SettingsPanel) : Page(R.string.set_nav_app) {
-    override val keep: Boolean get() = false
-
-    override fun build(ctx: Context): View {
-        val col = ctx.pageColumn()
-        val tick = { on: Boolean -> if (on) ctx.iconView(R.drawable.ic_check, 26) { Palette.accentInk } else null }
-        val builtIn = Prefs.builtInMaps
-        val apps = AppRepo.installedNavApps(ctx)
-        val rows = ArrayList<View?>()
-        rows.add(ctx.settingRow(null, ctx.getString(R.string.amri_name), ctx.getString(R.string.st_nav_amri_sub), tick(builtIn)) {
-            if (builtIn) return@settingRow
-            Prefs.builtInMaps = true
-            act.rebuild()
-        })
-        for (a in apps) {
-            val on = !builtIn && a.pkg == Prefs.navPackage
-            // (the firmware's navigation-app property, written again by a tap on the chosen app: something may have reset it since)
-            val push = { SystemProps.set("persist.sys.navi_set_by_app", a.pkg) }
-            rows.add(ctx.settingRow(null, a.label, null, tick(on)) {
-                if (on) { push(); return@settingRow }
-                Prefs.navPackage = a.pkg
-                Prefs.builtInMaps = false
-                push()
-                act.rebuild()
-            })
-        }
-        col.addView(ctx.rows(*rows.toTypedArray()))
-        // Google's own map, roads and shops, without internet: only its app can keep them (how, in one place)
-        if (AppRepo.isInstalled(ctx, Known.MAPS)) col.addNote(ctx.getString(R.string.set_nav_google_hint))
-        return col
-    }
-}
-
-/** Home and Work: chosen on the map (the row only opens it, and comes back here). Saved values untouched. */
-class PlacesPage : Page(R.string.st_places) {
-    override val keep: Boolean get() = false
-
-    override fun build(ctx: Context): View {
-        fun row(title: Int, which: String): View {
-            val saved = if (which == "home") Places.home else Places.work
-            val legacy = if (which == "home") Prefs.homeAddress else Prefs.workAddress
-            return ctx.settingRow(null, ctx.getString(title), (saved?.name ?: legacy).ifBlank { ctx.getString(R.string.home_tap_to_set) }, ctx.chevron()) {
-                Screens.mapsPick(ctx, which)
-            }
-        }
-        val col = ctx.pageColumn()
-        col.addView(ctx.rows(row(R.string.st_place_home, "home"), row(R.string.st_place_work, "work")))
-        col.addNote(ctx.getString(R.string.set_places_hint))
-        return col
-    }
+private fun placeWord(c: Context, which: String): String {
+    val saved = if (which == "home") Places.home else Places.work
+    val legacy = if (which == "home") Prefs.homeAddress else Prefs.workAddress
+    return (saved?.name ?: legacy).ifBlank { c.getString(R.string.home_tap_to_set) }
 }
 
 // ---------------------------------------------------------------------------------------------- الموسيقى
 class MusicPage(private val act: SettingsPanel) : Page(R.string.st_music, R.drawable.ic_music) {
     override val scrolls: Boolean get() = false
-    override val keep: Boolean get() = false // (whether the switch can be on follows the microphone's permission)
+    override val keep: Boolean get() = false // (whether the switch can be on follows the microphone's permission, and the server's row what was typed on its page)
 
-    override fun build(ctx: Context): View {
-        val lyrics = LyricsCard(act, ctx)
-        return ctx.rows(
-            lyrics.listenRow,
-            lyrics.keyRow,
-            // (the word being sung lights on the lyrics' lit line; off: whole lines)
-            ctx.switchRow(null, ctx.getString(R.string.kar_words), ctx.getString(R.string.st_words_sub), com.abdllh.aura.music.Words.on) { on -> com.abdllh.aura.music.Words.on = on },
-            fill = act.fillH
-        )
-    }
+    override fun build(ctx: Context): View = ctx.rows(
+        // (shown on only where it can work: without the microphone's permission it hears nothing)
+        ctx.switchRow(null, ctx.getString(R.string.lyr_srv_listen), ctx.getString(R.string.st_lyrics_listen_sub), LyricsServer.listen && Amri.hasMicPermission(ctx)) { on ->
+            when {
+                !on -> LyricsServer.listen = false
+                !LyricsServer.configured -> { Snack.show(ctx, R.string.lyr_srv_listen_needs); act.rebuild() }
+                else -> act.withMic { LyricsServer.listen = true }
+            }
+        },
+        // (the word being sung lights on the lyrics' lit line; off: whole lines)
+        ctx.switchRow(null, ctx.getString(R.string.kar_words), null, com.abdllh.aura.music.Words.on) { on -> com.abdllh.aura.music.Words.on = on },
+        ctx.settingRow(null, ctx.getString(R.string.lyr_srv_title), null, ctx.valueChevron(ctx.getString(if (LyricsServer.configured) R.string.st_saved else R.string.st_not_set))) {
+            act.open(LyricsServerPage())
+        },
+        fill = act.fillH
+    )
 }
 
 // ---------------------------------------------------------------------------------------------- عمري
@@ -216,12 +177,11 @@ class AmriPage(private val act: SettingsPanel) : Page(R.string.amri_name, R.draw
     override val keep: Boolean get() = false
 
     override fun build(ctx: Context): View {
-        // what the unit's firmware lacks, from the Play Store: requests need a speech recogniser, spoken answers a voice
-        val needGoogle = !Amri.canRecognize(ctx)
-        val needVoice = !VoiceSetup.hasVoice(ctx)
         val enrolled = VoiceSetup.enrolled(ctx)
+        val sens = Segmented(ctx, listOf(ctx.getString(R.string.voice_sens_strict), ctx.getString(R.string.voice_sens_normal), ctx.getString(R.string.voice_sens_relaxed)),
+            equal = true, maxW = act.controlW) { i -> Amri.sensitivity = i }.apply { select(Amri.sensitivity, animate = false) }
         return ctx.rows(
-            ctx.switchRow(null, ctx.getString(R.string.st_wake), ctx.getString(R.string.st_wake_sub), Amri.enabled && enrolled) { on ->
+            ctx.switchRow(null, ctx.getString(R.string.st_wake), null, Amri.enabled && enrolled) { on ->
                 if (!on) { Amri.enabled = false; return@switchRow }
                 // on only with the microphone and the owner's voice
                 act.withMic {
@@ -229,13 +189,12 @@ class AmriPage(private val act: SettingsPanel) : Page(R.string.amri_name, R.draw
                     else VoiceSetup.enroll(act.shell) { ok -> if (ok) Amri.enabled = true; act.rebuild() }
                 }
             },
-            ctx.switchRow(null, ctx.getString(R.string.st_speak), null, Amri.spoken) { Amri.spoken = it },
             ctx.settingRow(null, ctx.getString(R.string.voice_enroll), null, ctx.valueChevron(ctx.getString(if (enrolled) R.string.st_enrolled else R.string.st_six_times))) {
                 // (set even when it already was: the setter starts the listener with the new recordings)
                 act.withMic { VoiceSetup.enroll(act.shell) { ok -> if (ok) Amri.enabled = true; act.rebuild() } }
             },
-            if (!needGoogle) null else ctx.settingRow(null, ctx.getString(R.string.voice_get_google), null, ctx.chevron()) { VoiceSetup.openStore(ctx, VoiceSetup.GOOGLE_APP) },
-            if (!needVoice) null else ctx.settingRow(null, ctx.getString(R.string.voice_get_tts), null, ctx.chevron()) { VoiceSetup.openStore(ctx, VoiceSetup.GOOGLE_TTS) },
+            ctx.settingRow(null, ctx.getString(R.string.voice_try), null, ctx.chevron()) { act.withMic { Amri.wake(ctx) } },
+            ctx.controlRow(ctx.getString(R.string.voice_sens), sens, act.controlW),
             fill = act.fillH
         )
     }
@@ -296,31 +255,31 @@ class LinkPage : Page(R.string.link_title) {
 class CarPage(private val act: SettingsPanel) : Page(R.string.st_car, R.drawable.ic_car) {
     override val scrolls: Boolean get() = false
     private var update: ValueChevron? = null
-    private var language: ValueChevron? = null
     private val updateHeard: (UpdateManager.State) -> Unit = { s -> update?.value = updateWord(act, s) }
 
-    override fun onShow() {
-        UpdateManager.observe(updateHeard)
-        language?.value = languageWord(act)
-    }
+    override fun onShow() { UpdateManager.observe(updateHeard) }
 
     override fun onHide() { UpdateManager.unobserve(updateHeard) }
 
     override fun build(ctx: Context): View {
         update = ctx.valueChevron("")
-        language = ctx.valueChevron(languageWord(ctx))
         return ctx.rows(
+            ctx.settingRow(null, ctx.getString(R.string.st_update), null, update) { act.open(UpdatePage()) },
+            ctx.switchRow(null, ctx.getString(R.string.set_wifi_on_start), null, WifiOnStart.enabled) { on ->
+                WifiOnStart.enabled = on
+                if (on) WifiOnStart.ensure("switch")
+            },
             if (!Power.available && !BuildConfig.DEBUG) null
             else ctx.switchRow(null, ctx.getString(R.string.st_full_off), null, Power.fullOffOnAccOff) { on ->
                 Power.fullOffOnAccOff = on
                 Power.apply(ctx)
             },
-            ctx.settingRow(null, ctx.getString(R.string.st_update), null, update) { act.open(UpdatePage(act)) },
-            ctx.settingRow(null, ctx.getString(R.string.st_lang), null, language) { act.open(LanguagePage(act)) },
-            ctx.settingRow(null, ctx.getString(R.string.v_android_settings), null, ctx.valueChevron("")) {
-                try { ctx.startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Throwable) { Snack.show(ctx, R.string.err_app_missing) }
+            ctx.settingRow(null, ctx.getString(R.string.wayback_title), null, ctx.chevron()) { act.open(WaybackPage(act)) },
+            // the numbers from this unit, and what the workshop's lines used to say: nothing runs until its button is pressed
+            ctx.settingRow(null, ctx.getString(R.string.diag_title), null, ctx.chevron()) {
+                ctx.startActivity(Intent(ctx, ScreenCheckActivity::class.java))
             },
-            ctx.settingRow(null, ctx.getString(R.string.st_workshop), ctx.getString(R.string.st_workshop_sub), ctx.valueChevron("")) { act.open(WorkshopPage(act)) },
+            ctx.settingRow(null, ctx.getString(R.string.st_about), null, ctx.valueChevron("${BuildConfig.VERSION_NAME} · ${Device.model}")) { act.open(LicencesPage(act)) },
             fill = act.fillH
         )
     }
@@ -333,50 +292,6 @@ private fun updateWord(c: Context, s: UpdateManager.State): String = when (s) {
     is UpdateManager.State.Failed -> c.getString(R.string.upd_failed)
     is UpdateManager.State.UpToDate -> c.getString(R.string.st_up_to_date)
     else -> BuildConfig.VERSION_NAME
-}
-
-private fun languageWord(c: Context): String = when (Prefs.lang) {
-    "ar" -> "العربية"
-    "en" -> "English"
-    else -> c.getString(R.string.lang_system)
-}
-
-/** The language: a whole new window, as it has always been ([SettingsPanel.takeLanguage]). */
-class LanguagePage(private val act: SettingsPanel) : Page(R.string.st_lang) {
-    override val keep: Boolean get() = false
-
-    override fun build(ctx: Context): View {
-        fun row(code: String, name: String): View {
-            val on = Prefs.lang == code
-            return ctx.settingRow(null, name, null, if (on) ctx.iconView(R.drawable.ic_check, 26) { Palette.accentInk } else null) {
-                if (on) return@settingRow
-                Prefs.lang = code
-                act.takeLanguage()
-            }
-        }
-        return ctx.rows(row("system", ctx.getString(R.string.lang_system)), row("ar", "العربية"), row("en", "English"))
-    }
-}
-
-// ---------------------------------------------------------------------------------------------- عن النظام
-class AboutPage(private val act: SettingsPanel) : Page(R.string.st_about, R.drawable.ic_info) {
-    override val scrolls: Boolean get() = false
-    override val keep: Boolean get() = false // (whose map it is follows the pack)
-
-    override fun build(ctx: Context): View {
-        // the credit whole, as the map's data asks, for the data that draws: the pack's is too long for a row's far end. On its own line, reading left to right in Arabic as well.
-        val credit = "⁦${com.abdllh.aura.nav.MapStyle.attribution(null)}⁩"
-        return ctx.rows(
-            ctx.settingRow(null, ctx.getString(R.string.st_version), null, ctx.valueText("AMRI OS ${BuildConfig.VERSION_NAME}")),
-            ctx.settingRow(null, ctx.getString(R.string.st_maps), credit),
-            ctx.settingRow(null, ctx.getString(R.string.st_licences), null, ctx.valueChevron("")) { act.open(LicencesPage(act)) },
-            // the first real numbers from this unit: a page of its own, nothing runs until its button is pressed
-            ctx.settingRow(null, ctx.getString(R.string.st_report), ctx.getString(R.string.st_report_sub), ctx.valueChevron("")) {
-                ctx.startActivity(Intent(ctx, ScreenCheckActivity::class.java))
-            },
-            fill = act.fillH
-        )
-    }
 }
 
 /** A view that scrolls, with no bar and no glow (the Screen check's page, which is an activity of its own). */

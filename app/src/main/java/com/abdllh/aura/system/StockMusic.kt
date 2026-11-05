@@ -7,14 +7,14 @@ import com.abdllh.aura.util.Prefs
 import java.util.concurrent.Executors
 
 /**
- * Optional, user-switched (Settings → Display & sound → Music): "Aura Music instead of the stock music app".
- * When the user turns it on, com.nwd.android.music.ui is disabled and the firmware's music source (app id 2:
+ * "Aura Music instead of the stock music app", for a unit where the owner switched that on in an older version (the switch
+ * went in 2.0.0-beta.3; on his unit it is on): com.nwd.android.music.ui is disabled and the firmware's music source (app id 2:
  * Music/Media/Mode keys, USB insertion, resume after ignition) is pointed at Aura Music through the firmware's own
  * override file /data/nwdappconfig/app/replace_source_list.xml (read by KernelService at start and on
  * com.nwd.ACTION_REPLACE_SOURCE_LIST_CHANGE). Both need root, so they go through the unit's adbd ([LocalAdb]).
- * Turning it off puts both back as they were (a list that was there before is restored; the stock app is enabled
- * again unless it had been disabled before). Nothing happens unless the user switched the option on at some point;
- * the ROM installer's restore undoes it as well.
+ * With the kill switch on both go back as they were (a list that was there before is restored; the stock app is enabled
+ * again unless it had been disabled before), and come again when it goes off: that is the way back now that no switch
+ * is left. Nothing happens on a unit that never had the option on; the ROM installer's restore undoes it as well.
  */
 object StockMusic {
     private const val TAG = "AuraStockMusic"
@@ -31,25 +31,16 @@ object StockMusic {
 
     private val worker = Executors.newSingleThreadExecutor() // one change at a time, in the order asked
 
-    /** The user's choice (off unless switched on in Settings). */
-    var enabled: Boolean
-        get() = Prefs.raw.getBoolean(KEY, false)
-        set(v) { Prefs.raw.edit().putBoolean(KEY, v).apply() }
-
-    /** Is the stock app present on this unit at all (the option is only shown then)? */
-    fun available(c: Context) = Device.isNwd && installed(c)
-
-    /** Brings the unit in line with the user's choice; [done] gets true when it worked (called on a worker thread). */
-    fun apply(ctx: Context, done: ((Boolean) -> Unit)? = null) {
-        if (!Device.isNwd) { done?.invoke(false); return }
+    /** Brings the unit in line with the stored choice and the kill switch. */
+    fun apply(ctx: Context) {
+        if (!Device.isNwd) return
         val c = ctx.applicationContext
         worker.execute {
-            val want = enabled // the latest choice: a quick on/off/on ends where the switch ends
+            val want = Prefs.raw.getBoolean(KEY, false) && SystemProps.get(Device.DISABLED_PROP) != "1"
             // never touched: nothing to check (no root shell on every start for users who never used the option)
-            if (!want && Prefs.raw.getString(APPLIED, "") != "on") { done?.invoke(true); return@execute }
+            if (!want && Prefs.raw.getString(APPLIED, "") != "on") return@execute
             val ok = try { if (want) replace(c) else restore(c) } catch (t: Throwable) { Log.w(TAG, "apply: $t"); false }
             if (ok) Prefs.raw.edit().putString(APPLIED, if (want) "on" else "off").apply()
-            done?.invoke(ok)
         }
     }
 

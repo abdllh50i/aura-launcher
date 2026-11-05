@@ -35,7 +35,6 @@ class PackPage(private val act: SettingsPanel) : Page(R.string.off_section) {
     private lateinit var note: com.abdllh.aura.ui.AText
     private lateinit var main: ABtn
     private lateinit var second: ABtn
-    private lateinit var third: ABtn
     private lateinit var old: SettingRow
     private lateinit var oldWord: com.abdllh.aura.ui.AText
     private val heard: () -> Unit = { show() }
@@ -45,8 +44,10 @@ class PackPage(private val act: SettingsPanel) : Page(R.string.off_section) {
         PackManager.removeListener(heard)
         PackManager.addListener(heard)
         show()
-        // (once a visit, with nothing going on and nothing known: what can be offered is what he came to see)
-        if (!asked && PackManager.status.state == State.NONE) {
+        // (once a visit, with nothing going on: what can be offered is what he came to see, and there is no button to ask again. With a map on the unit
+        // only with the internet on: no word of a missing internet on a page whose map works)
+        val s = PackManager.status.state
+        if (!asked && (s == State.NONE || ((s == State.INSTALLED || s == State.NO_SPACE) && com.abdllh.aura.update.UpdateManager.isOnline()))) {
             asked = true
             PackManager.checkUpdate()
         }
@@ -76,10 +77,8 @@ class PackPage(private val act: SettingsPanel) : Page(R.string.off_section) {
         val buttons = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         main = ABtn(ctx).apply { kind = ABtn.Kind.PRIMARY }
         second = ABtn(ctx).apply { kind = ABtn.Kind.TONAL }
-        third = ABtn(ctx).apply { kind = ABtn.Kind.TONAL }
         buttons.addView(main, lp(WRAP, WRAP))
         buttons.addView(second, lp(WRAP, WRAP).apply { marginStart = Space.M })
-        buttons.addView(third, lp(WRAP, WRAP).apply { marginStart = Space.M })
         box.addView(buttons, lp(MATCH, WRAP).apply { topMargin = Space.L })
         col.addView(box, lp(MATCH, WRAP))
 
@@ -130,7 +129,6 @@ class PackPage(private val act: SettingsPanel) : Page(R.string.off_section) {
 
         main.visibility = View.GONE
         second.visibility = View.GONE
-        third.visibility = View.GONE
         when (s.state) {
             State.NONE -> {
                 button(main, R.string.st_pack_check_first, ABtn.Kind.PRIMARY) { PackManager.checkUpdate() }
@@ -142,7 +140,7 @@ class PackPage(private val act: SettingsPanel) : Page(R.string.off_section) {
                 if (s.usbOffer != null) button(if (s.offer != null) second else main, R.string.st_pack_usb_go, if (s.offer != null) ABtn.Kind.TONAL else ABtn.Kind.PRIMARY) { PackManager.startUsb() }
                 else button(second, R.string.st_pack_usb, ABtn.Kind.TONAL) { PackManager.scanUsb() }
             }
-            State.NO_SPACE -> button(main, R.string.st_pack_check, ABtn.Kind.TONAL) { PackManager.checkUpdate() }
+            State.NO_SPACE -> {}
             State.FETCHING, State.WAITING, State.TRIP_HOLD, State.VERIFYING -> {
                 button(main, R.string.st_pack_pause, ABtn.Kind.TONAL) { PackManager.pause() }
                 button(second, R.string.btn_cancel, ABtn.Kind.TONAL) { cancel() }
@@ -156,9 +154,8 @@ class PackPage(private val act: SettingsPanel) : Page(R.string.off_section) {
                 if (s.stagingId != null) button(second, R.string.btn_cancel, ABtn.Kind.TONAL) { cancel() }
             }
             State.INSTALLED -> {
-                button(main, R.string.st_pack_check, ABtn.Kind.TONAL) { PackManager.checkUpdate() }
-                button(second, R.string.st_pack_usb, ABtn.Kind.TONAL) { PackManager.scanUsb() }
-                button(third, R.string.st_pack_delete, ABtn.Kind.DANGER) { delete(trip) }
+                button(main, R.string.st_pack_usb, ABtn.Kind.TONAL) { PackManager.scanUsb() }
+                button(second, R.string.st_pack_delete, ABtn.Kind.DANGER) { delete(trip) }
             }
         }
         old.visibility = if (s.oldMapBytes > 0) View.VISIBLE else View.GONE

@@ -19,9 +19,8 @@ import java.util.concurrent.Executors
  *    while key_white_window_state is 1, read when the service starts. The car settings' "Assistive touch" option sends
  *    HIDE_THE_LISTVIEW (removes the dot) or DISPLAY_LISTVIEW (opens the panel); stopping the service removes the dot and
  *    its panels (onDestroy).
- * Off = both off, now and at the next start. On = the CAN menu back (the assistive touch stays the car settings' own
- * option). AMRI turns them off once (the owner switched the circle on by accident and asked for it to go) and offers
- * the switch in Settings › Display & sound.
+ * AMRI turns both off once, now and at the next start (the owner switched the circle on by accident and asked for it to
+ * go). Back on: the car settings' own options, which AMRI leaves alone after that.
  */
 object AssistiveBall {
     private const val TAG = "AuraBall"
@@ -37,56 +36,32 @@ object AssistiveBall {
     private val main = Handler(Looper.getMainLooper())
     private val worker = Executors.newSingleThreadExecutor()
 
-    val available: Boolean
-        get() = Device.isNwd || com.abdllh.aura.BuildConfig.DEBUG && SystemProps.get("debug.aura.ball") == "1" // emulator tests
-
-    /** Either circle is switched on. */
-    fun shown(ctx: Context): Boolean = canMenuOn(ctx) || assistiveOn(ctx)
-
-    private fun canMenuOn(ctx: Context): Boolean = try {
-        Settings.System.getInt(ctx.contentResolver, CAN_KEY, 0) == 1
-    } catch (_: Throwable) {
-        false
-    }
-
-    /** The car settings app also wrote "open" for on in some versions. */
-    private fun assistiveOn(ctx: Context): Boolean = try {
-        Settings.System.getString(ctx.contentResolver, KEY)?.trim().let { it == "1" || it == "open" }
-    } catch (_: Throwable) {
-        false
-    }
-
-    /** Shows or removes the circle now, and keeps the choice for the next start; [done] (worker thread): done as root. */
-    fun set(ctx: Context, on: Boolean, done: ((Boolean) -> Unit)? = null) {
-        val c = ctx.applicationContext
+    /** Removes the circles now and for the next start; [done] (worker thread): done as root. */
+    private fun off(c: Context, done: (Boolean) -> Unit) {
         val svc = "${Device.STOCK_LAUNCHER}/$SERVICE"
         worker.execute {
             // as root: private system settings, and another app's service
-            val cmd = if (on) "settings put system $CAN_KEY 1; am broadcast -a $CAN_SHOW >/dev/null 2>&1"
-                else "settings put system $CAN_KEY 0; am broadcast -a $CAN_SHOW >/dev/null 2>&1; " +
-                    "settings put system $KEY 0; am broadcast -a $HIDE -p ${Device.STOCK_LAUNCHER} >/dev/null 2>&1; " +
-                    "am stopservice -n $svc >/dev/null 2>&1"
-            val r = LocalAdb.run(cmd)
-            Log.i(TAG, "${if (on) "on" else "off"}: ${r.ok} ${r.output}")
-            if (!r.ok) main.post { fallback(c, on) } // no root shell: what an app may do itself
-            done?.invoke(r.ok)
+            val r = LocalAdb.run("settings put system $CAN_KEY 0; am broadcast -a $CAN_SHOW >/dev/null 2>&1; " +
+                "settings put system $KEY 0; am broadcast -a $HIDE -p ${Device.STOCK_LAUNCHER} >/dev/null 2>&1; " +
+                "am stopservice -n $svc >/dev/null 2>&1")
+            Log.i(TAG, "off: ${r.ok} ${r.output}")
+            if (!r.ok) main.post { fallback(c) } // no root shell: what an app may do itself
+            done(r.ok)
         }
     }
 
     /** Without the root shell: the settings if the system lets AMRI write them, then the broadcasts and the service. */
-    private fun fallback(c: Context, on: Boolean) {
+    private fun fallback(c: Context) {
         try {
-            Settings.System.putInt(c.contentResolver, CAN_KEY, if (on) 1 else 0)
-            if (!on) Settings.System.putInt(c.contentResolver, KEY, 0)
+            Settings.System.putInt(c.contentResolver, CAN_KEY, 0)
+            Settings.System.putInt(c.contentResolver, KEY, 0)
         } catch (t: Throwable) {
             Log.w(TAG, "fallback settings: $t")
         }
         try {
             c.sendBroadcast(Intent(CAN_SHOW))
-            if (!on) {
-                c.sendBroadcast(Intent(HIDE).setPackage(Device.STOCK_LAUNCHER))
-                c.stopService(Intent().setClassName(Device.STOCK_LAUNCHER, SERVICE))
-            }
+            c.sendBroadcast(Intent(HIDE).setPackage(Device.STOCK_LAUNCHER))
+            c.stopService(Intent().setClassName(Device.STOCK_LAUNCHER, SERVICE))
         } catch (t: Throwable) {
             Log.w(TAG, "fallback: $t")
         }
@@ -97,11 +72,11 @@ object AssistiveBall {
      * a root shell that is not up yet, tries again at the next start; three tries at most).
      */
     fun offOnce(ctx: Context) {
-        if (!available || Prefs.raw.getBoolean(PREF_OFF_ONCE, false)) return
+        if (!Device.isNwd || Prefs.raw.getBoolean(PREF_OFF_ONCE, false)) return
         // a little after the start: the launcher's own start-up (its CAN service draws the menu) is over by then
         val c = ctx.applicationContext
         main.postDelayed({
-            set(c, false) { ok ->
+            off(c) { ok ->
                 val tries = Prefs.raw.getInt(PREF_OFF_TRIES, 0) + 1
                 Prefs.raw.edit().putInt(PREF_OFF_TRIES, tries).putBoolean(PREF_OFF_ONCE, ok || tries >= 3).apply()
             }

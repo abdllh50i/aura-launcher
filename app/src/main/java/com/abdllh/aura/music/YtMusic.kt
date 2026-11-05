@@ -337,7 +337,7 @@ object YtMusic {
 
     private var app: Context? = null
 
-    /** How the last hand-over went, for Settings → About ("" when there never was one). */
+    /** How the last hand-over went, for the Screen check's report ("" when there never was one). */
     val note: String get() = com.abdllh.aura.util.Prefs.raw.getString("ytNote", "").orEmpty()
 
     private fun note(what: String) {

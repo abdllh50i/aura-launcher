@@ -19,16 +19,6 @@
     <string name="link_scan_hint">امسح الرمز بكاميرا الجوال وتفتح لك صفحة التحكم في سفاري.</string>
     <string name="link_manual">أو افتح %1$s واكتب الرمز %2$s</string>
     <string name="link_code_left">الرمز ينتهي بعد %1$s</string>
-    <!-- حول -->
-    <string name="link_about_place">آخر وجهة من الجوال</string>
-    <string name="link_last_request">آخر طلب %1$s</string>
-    <string name="link_note">%1$s، %2$s، عبر الشبكة (%3$s)</string>
-    <string name="link_note_received">وصلت</string>
-    <string name="link_note_started">بدأت</string>
-    <string name="link_note_failed">ما لقى طريق</string>
-    <string name="link_note_cancelled">انلغت</string>
-    <string name="link_note_not_started">ما بدأت</string>
-    <string name="link_note_handed">راحت لتطبيق الملاحة</string>
     <!-- البطاقة -->
     <string name="link_from_phone">وصل من الآيفون</string>
     <string name="link_from_voice">طلبت</string>

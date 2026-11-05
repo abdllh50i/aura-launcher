@@ -31,7 +31,7 @@ import com.abdllh.aura.util.dp
 /**
  * "A camera here", on the maps: one press while passing a speed camera marks it where the car is ([MapExtras.addMine]);
  * from then on it is on the map and announced like the ones the editor published. A strip beside the button says what
- * happened, and takes it back when tapped. Shown while its switch is on (Settings → Navigation).
+ * happened, and takes it back when tapped. Shown while its switch is on (Settings → Maps).
  * [small]: the home screen's map.
  */
 class CameraMark(ctx: Context, small: Boolean = false) : LinearLayout(ctx) {

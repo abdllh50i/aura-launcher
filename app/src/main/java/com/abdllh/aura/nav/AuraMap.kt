@@ -1092,14 +1092,11 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         if (camera != Camera.NAVIGATE || carPos == null) return false
         val v = speedKmh
         var z = zoomFor(v)
-        // (the owner's choice in Settings: leaning towards the road, from straight above, or from above with north up)
-        val view = com.abdllh.aura.util.Prefs.mapView
-        val tilted = view == com.abdllh.aura.util.Prefs.VIEW_TILTED
-        var tilt = if (tilted) NAV_TILT else 0.0
+        var tilt = NAV_TILT
         val ahead = turnAt - drawnAlong
         val span = if (ringSpan.isNaN()) 0.0 else ringSpan
         val near = turnLine != null && onRoute && ahead > -15 - span && ahead < max(120.0, v / 3.6 * 7)
-        if (near) { z = max(z, 16.9); if (tilted) tilt = NAV_TILT_TURN }
+        if (near) { z = max(z, 16.9); tilt = NAV_TILT_TURN }
         z = (z + navZoomOffset).coerceIn(12.0, 19.0)
         val k = ((v - 40) / 50).coerceIn(0.0, 1.0)
         var l = roomL
@@ -1113,13 +1110,13 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
         } else if (driveShape) {
             t = DRIVE_TOP_SLOW + (DRIVE_TOP_FAST - DRIVE_TOP_SLOW) * k
             if (leftAhead) l = LEFT_SHIFT
-            if (arriving) { z = 17.0; if (tilted) tilt = NAV_TILT_TURN; t = ARRIVE_TOP }
+            if (arriving) { z = 17.0; tilt = NAV_TILT_TURN; t = ARRIVE_TOP }
             else if (near && !ringSpan.isNaN()) ringFit()?.let { f ->
                 z = f[0]; l = f[1]; r = f[2]; t = f[3]; bottom = f[4]
-                if (tilted) tilt = NAV_TILT_RING
+                tilt = NAV_TILT_RING
             }
         } else t = roomT + (mapView.height - roomT - roomB).coerceAtLeast(0.0) * navTopPadding * (0.95 + 0.19 * k)
-        val b = if (view == com.abdllh.aura.util.Prefs.VIEW_NORTH) 0.0 else lookBearing(v)
+        val b = lookBearing(v)
         if (!steerReady) {
             navZoom = z; navTilt = tilt; navT = t; navL = l; navR = r; navB = bottom; camBearing = b
             steerReady = true
@@ -1800,7 +1797,7 @@ object MapGuard {
     /** How many times the process went down with the map up, in this boot. */
     private fun liveFails(c: Context): Int = spLive(c).let { if (it.getString(KEY_LIVE_BOOT, "") == bootId()) it.getInt(KEY_LIVE_FAILS, 0) else 0 }
 
-    /** Why the home screen has no live map (for Settings → About); empty when it may have one. */
+    /** Why the home screen has no live map (for the Screen check's report); empty when it may have one. */
     fun whyNot(c: Context): String = try {
         val live = liveFails(c)
         when {
