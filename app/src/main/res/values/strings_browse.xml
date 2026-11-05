@@ -11,7 +11,6 @@
     <string name="browse_retry">Try again</string>
     <string name="browse_no_internet">No internet</string>
     <string name="browse_nothing">Nothing found by that name</string>
-    <string name="browse_set_place">Not saved yet, tap to choose it</string>
     <string name="browse_pick_home">Hold the place or search for it, then tap the star</string>
     <string name="browse_pick_work">Hold the place or search for it, then tap the star</string>
     <string name="browse_start_now">Start now</string>

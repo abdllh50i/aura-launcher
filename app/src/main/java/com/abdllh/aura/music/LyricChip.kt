@@ -54,7 +54,7 @@ internal class LyricChip(ctx: Context) : SurfaceCard(ctx, Surface.PILL) {
         it.oneLine(Type.lyricChip)
         it.alignStart = true
         it.alpha = 0f
-        // (room for the word's pill at the line's ends: the text keeps its 592)
+        // (room for the word's pill at the line's ends: the text keeps its 580)
         it.setPadding(PILL_ROOM, 0, PILL_ROOM, 0)
         addView(it, Type.lyricChip.box(SIDE - PILL_ROOM, 0, TEXT_W + 2 * PILL_ROOM))
     }

@@ -760,7 +760,7 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
         credit.text = MapStyle.attribution(pts.first())
     }
 
-    /** With an empty query, his places as the panel opens (section 5): Home, Work and the last place he drove to, each straight to a trip. Not saved yet: its row says so, and opens the pick flow. [note] above them. */
+    /** With an empty query, his places as the panel opens (section 5): Home, Work and the last place he drove to, each straight to a trip. Home or Work not saved yet: the pick flow says how. [note] above them. */
     private fun showSuggestions(note: String? = null) {
         val home = Trips.saved("home")
         val work = Trips.saved("work")
@@ -774,7 +774,7 @@ internal class BrowseCards(panel: MapsPanel) : MapsPart(panel) {
     }
 
     private fun placeRow(title: String, icon: Int, which: String, saved: Place?) =
-        ResultLine(title, if (saved == null) getString(R.string.browse_set_place) else "", null, 0, icon) {
+        ResultLine(title, "", null, 0, icon) {
             closeSearch()
             if (saved != null) driveTo(saved) else { pickFor = which; showPickHint() }
         }

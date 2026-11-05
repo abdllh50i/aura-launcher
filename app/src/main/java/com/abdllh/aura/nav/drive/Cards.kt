@@ -38,18 +38,20 @@ import com.abdllh.aura.ui.plateView
  */
 internal class SpeedCard(ctx: Context) : SurfaceCard(ctx, Surface.CARD) {
     private val ar = Fonts.arabicUi
-    private val plate = ctx.plateView(Tokens2.R_card) { Palette.overFill }
-    private val number = ctx.line(Type.speed, { Palette.ink })
-    private val unit = ctx.line(Type.speedUnit, { Palette.ink2Move })
-    private val sign = LimitSign(ctx)
-    private val chip = SaherChip(ctx).apply { visibility = View.INVISIBLE }
     private var over = false
     private var overK = 0f
+    private val plate = ctx.plateView(Tokens2.R_card) { Palette.overFill }
+    private val number = ctx.line(Type.speed, { numberInk(overK) })
+    private val unit = ctx.line(Type.speedUnit, { unitInk(overK) })
+    private val sign = LimitSign(ctx)
+    private val chip = SaherChip(ctx).apply { visibility = View.INVISIBLE }
     private val tweens = Tweens()
     private val overPart = tweens.part(0f) { k ->
         overK = k
         plate.alpha = k
-        colour()
+        number.setTextColor(numberInk(k))
+        unit.setTextColor(unitInk(k))
+        chip.overK = k
     }
 
     init {
@@ -62,12 +64,6 @@ internal class SpeedCard(ctx: Context) : SurfaceCard(ctx, Surface.CARD) {
         number.digitSpacing(-0.5f)
         unit.setText(R.string.maps_kmh)
         sign.visibility = View.INVISIBLE
-        look { colour() }
-    }
-
-    private fun colour() {
-        number.setTextColor(Palette.mix(Palette.ink, Palette.overInk, overK))
-        unit.setTextColor(Palette.mix(Palette.ink2Move, Palette.overUnit, overK))
     }
 
     /** [kmh] null: no fix, `—` and no sign. [limit] 0: none known, no sign. */
@@ -85,16 +81,20 @@ internal class SpeedCard(ctx: Context) : SurfaceCard(ctx, Surface.CARD) {
         }
     }
 
-    /** The chip: a camera or a bump within reach ([distance]), or none ([distance] null). */
+    /** The chip: a camera or a bump within reach ([distance]), or none ([distance] null). Over the limit it is hot whatever the distance: by day the plain red glyph would be lost on the red card. */
     fun saher(distance: String?, isBump: Boolean, isHot: Boolean) {
-        if (distance != null) chip.set(isBump, distance, isHot)
+        if (distance != null) chip.set(isBump, distance, isHot || over)
         chip.showCard(distance != null, dy = 0f)
     }
 }
 
+/** The colours of what lies on the speed card, [k] of the way to over the limit: pale at night, solid red by day. */
+private fun numberInk(k: Float) = Palette.mix(Palette.ink, Palette.overInk, k)
+private fun unitInk(k: Float) = Palette.mix(Palette.ink2Move, Palette.overUnit, k)
+
 /**
  * Saher or a bump inside the speed card, 142 x 76, `plate-18` in `fill`: the glyph and its word, the distance under them. A camera 400 m or nearer is hot: a `red` plate with a white glyph comes over the plain glyph.
- * A bump always has its `warn` plate.
+ * A bump always has its `warn` plate. Its words take the card's colours over the limit, as the number does.
  */
 private class SaherChip(ctx: Context) : FrameLayout(ctx) {
     private val ar = Fonts.arabicUi
@@ -103,8 +103,14 @@ private class SaherChip(ctx: Context) : FrameLayout(ctx) {
     private val plateTint = Tint(ctx, Plates.res(Tokens2.R_small)) { if (bump) Palette.warn else Palette.red }
     private val plate = object : View(ctx) { override fun hasOverlappingRendering() = false }.apply { background = plateTint.drawable }
     private val glyph = ImageView(ctx)
-    private val word = ctx.line(Type.saherLabel, { Palette.ink2Move })
-    private val value = ctx.line(Type.saherValue, { Palette.ink })
+    var overK = 0f
+        set(k) {
+            field = k
+            word.setTextColor(unitInk(k))
+            value.setTextColor(numberInk(k))
+        }
+    private val word = ctx.line(Type.saherLabel, { unitInk(overK) })
+    private val value = ctx.line(Type.saherValue, { numberInk(overK) })
     private var hot = false
 
     init {
