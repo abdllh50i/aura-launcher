@@ -114,6 +114,7 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
     private val driveListener: () -> Unit = { syncFace(canMove()) }
     /** The step whose turn has been handed over to Maps. */
     private var handedStep = -1
+    private var tripNow = false
 
     override val root: View get() = room
     override val opaque: Boolean get() = false // (the map shows in its card, so it stays awake)
@@ -203,6 +204,7 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         widget.listen(true)
         clock.refresh()
         syncFace(false)
+        tripNow = NavSession.state == NavSession.State.NAVIGATING
         // (pressed Home with a turn near: he chose this, for this turn)
         NavSession.progress?.let { p -> if (p.toNext < HAND_OVER_M) handedStep = p.next }
     }
@@ -278,6 +280,14 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
 
     // ------------------------------------------------------------------------------------------ parked, moving, on a trip
     private fun navChanged() {
+        // (a trip starting anywhere opens Maps, section 6.0: a place from the phone, the voice)
+        val trip = NavSession.state == NavSession.State.NAVIGATING
+        if (trip && !tripNow && isTop) {
+            tripNow = true
+            Screens.maps(this)
+            return
+        }
+        tripNow = trip
         syncFace(canMove())
         card.syncTrip()
         handOver()
@@ -285,6 +295,7 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
 
     /** One source of Parked and Moving; a trip looks the same at a red light, with no strip speed, which the chrome knows. */
     private fun syncFace(animate: Boolean) {
+        if (debugFaceHeld) return
         val trip = NavSession.state == NavSession.State.NAVIGATING
         val moving = DriveState.moving
         val look = trip || moving
@@ -358,7 +369,8 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
             carK.to(1f, (CAR_AT_MS - since).coerceAtLeast(0L), CAR_MS, Motion.ENTER)
             if (entranceOn) stage.spinIn()
         }
-        stage.onFirstFrame = { glUp = true; if (drawnAt != 0L) carIn() }
+        if (stage.gl?.drawing == true) glUp = true // (it was up already, under a panel the window started with)
+        else stage.onFirstFrame = { glUp = true; if (drawnAt != 0L) carIn() }
         r.afterNextDraw {
             if (isGone) return@afterNextDraw
             drawnAt = android.os.SystemClock.uptimeMillis()
@@ -491,7 +503,10 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
     internal val debugClock: HomeClock get() = clock
     internal val debugStage: CarStage get() = stage
 
+    private var debugFaceHeld = false
+
     internal fun debugFace(moving: Boolean, trip: Boolean) {
+        debugFaceHeld = true
         card.setFace(if (trip) HomeCard.Face.TRIP else if (moving) HomeCard.Face.MOVING else HomeCard.Face.PARKED, false)
         val look = trip || moving
         widget.setMoving(look, false)

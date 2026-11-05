@@ -183,7 +183,7 @@ internal class HomeWidget(ctx: Context, private val host: HomeHost) : FrameLayou
                 }
                 prepared = null
                 preparedFor = null
-                setCovers(shownArt, cut = true) // (a song with no cover: its plate is the theme's)
+                if (shownArt == null) setCovers(null, cut = true) // (a song with no cover: its plate is the theme's)
             }
         }
         bind(null)
