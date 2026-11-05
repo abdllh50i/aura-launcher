@@ -48,6 +48,8 @@ class BootHome : Activity() {
         super.onCreate(savedInstanceState)
         startedAt = SystemClock.elapsedRealtime()
         showWall()
+        // (debug: its picture stays, for a look at it. Nothing else here can be seen once the storage is open)
+        if (com.abdllh.aura.BuildConfig.DEBUG && intent.getBooleanExtra("hold", false)) return
         try {
             registerReceiver(unlocked, IntentFilter(Intent.ACTION_USER_UNLOCKED))
             registered = true

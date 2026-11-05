@@ -19,11 +19,16 @@ import com.abdllh.aura.nav.Turn
  *      --es dist "2.4 كم" --es road "..." --es eta "7:38 م" --es left "5 دقائق"     the trip's pills
  *      --es third "الجبيل مول"                the third chip
  *      --es time 4:18 --es date "..."         the clock
+ *      --es theme night|day|auto              through the real ThemeSwap, 700 ms
  *      --ez turn true                         where the turntable is, in the log
  */
 class HomeProbe : BroadcastReceiver() {
     override fun onReceive(c: Context, i: Intent) {
         val p = HomePanel.current ?: return
+        i.getStringExtra("theme")?.let { t ->
+            com.abdllh.aura.util.Prefs.theme = if (t == "night") "dark" else if (t == "day") "light" else "auto"
+            com.abdllh.aura.ui.ThemeSwap.run(p.shell)
+        }
         if (i.getBooleanExtra("nosong", false)) p.debugWidget.debugSong(null, null, -1f)
         i.getStringExtra("song")?.let { title ->
             val art = i.getStringExtra("art")?.let { n -> c.assets.open("gallery/$n.jpg").use { BitmapFactory.decodeStream(it) } }

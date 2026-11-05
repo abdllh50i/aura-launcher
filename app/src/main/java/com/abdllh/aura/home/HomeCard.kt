@@ -95,6 +95,8 @@ internal class HomeCard(private val shell: HomeActivity, private val host: HomeH
     private var shownTurn = ""
     private var shownEta = ""
     private var debugHeld = false
+    private var lastSpeed: (() -> Unit)? = null
+    private var lastTrip: (() -> Unit)? = null
 
     init {
         // the map under it takes no touches: a tap anywhere opens Maps, and the press shows as a plate at once
@@ -146,7 +148,14 @@ internal class HomeCard(private val shell: HomeActivity, private val host: HomeH
             setOnTouchListener { _, e -> endGesture.onTouch(e); false }
             setOnClickListener { endTrip() }
         }, at(12, 232, 122, 80))
-        look { turnGlyph.color = Palette.onAccent }
+        look {
+            turnGlyph.color = Palette.onAccent
+            // (what is in spans has its colour in the text)
+            shownSpeed = ""
+            lastSpeed?.invoke()
+            shownEta = ""
+            lastTrip?.invoke()
+        }
         refreshPlaces()
     }
 
@@ -216,6 +225,7 @@ internal class HomeCard(private val shell: HomeActivity, private val host: HomeH
     }
 
     private fun showSpeed(v: Int?, limit: Int, over: Boolean) {
+        lastSpeed = { showSpeed(v, limit, over) }
         val text = v?.toString() ?: "—"
         val isOver = over && v != null
         val hasSign = v != null && limit > 0
@@ -253,6 +263,7 @@ internal class HomeCard(private val shell: HomeActivity, private val host: HomeH
     }
 
     private fun showTrip(dist: String, road: String, at: String, left: String) {
+        lastTrip = { showTrip(dist, road, at, left) }
         val turn = "$dist|$road"
         if (turn != shownTurn) {
             shownTurn = turn

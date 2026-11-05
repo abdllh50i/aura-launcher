@@ -201,7 +201,8 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
         widget.listen(true)
         clock.refresh()
         syncFace(false)
-        handedStep = -1
+        // (pressed Home with a turn near: he chose this, for this turn)
+        NavSession.progress?.let { p -> if (p.toNext < HAND_OVER_M) handedStep = p.next }
     }
 
     override fun onHide() {
@@ -298,6 +299,7 @@ class HomePanel(shell: HomeActivity) : Panel(shell, Screens.HOME), HomeHost {
 
     /** Under 1 km to the turn, moving: Home hands over to Maps by itself, the same surface and a camera blend. It does not come back by itself; pressed again, it stays for this turn. */
     private fun handOver() {
+        if (NavSession.state != NavSession.State.NAVIGATING) handedStep = -1
         if (!isTop || NavSession.state != NavSession.State.NAVIGATING || !DriveState.moving) return
         val p = NavSession.progress ?: return
         if (p.toNext < HAND_OVER_M && p.next != handedStep) {

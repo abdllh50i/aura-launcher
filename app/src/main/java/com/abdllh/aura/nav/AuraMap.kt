@@ -875,7 +875,7 @@ class AuraMap(ctx: Context, interactive: Boolean, texture: Boolean, private val 
             } else {
                 val v = PropertyFactory.visibility(Property.NONE)
                 val off = ArrayList<String>()
-                for (l in s.layers) if (l is com.mapbox.mapboxsdk.style.layers.SymbolLayer && l.visibility.value != Property.NONE) {
+                for (l in s.layers) if ((l is com.mapbox.mapboxsdk.style.layers.SymbolLayer || l.id.startsWith("extras-")) && l.visibility.value != Property.NONE) {
                     l.setProperties(v)
                     off.add(l.id)
                 }
@@ -1410,7 +1410,8 @@ private class CarMarker(ctx: Context) : View(ctx) {
         val cy = height / 2f
         val fade = 1f - 0.4f * staleK
         // browsing: a soft halo in the route's colour under the car (navigating, the route itself leads to it)
-        val halo = 1f - navK
+        // (not at the home screen's or browse's small size: section 11's sprite stands alone there)
+        val halo = if (scaleX < 0.99f) 0f else 1f - navK
         if (halo > 0.01f) {
             p.colorFilter = null
             c.drawCircle(cx, cy, 30f.dp, paint(Palette.withAlpha(Palette.mix(color, Palette.text3, staleK), 0.18f), halo))
