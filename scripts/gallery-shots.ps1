@@ -1,5 +1,5 @@
 # Shoots the debug gallery (app/src/debug/.../GalleryPanel.kt) page by page, night and day: shots\v2-ds-<page>-<theme>.png
-#   gallery-shots.ps1 [-Pages controls,r-queue] [-Themes night,day] [-Serial emulator-5578] [-Design D:\k2501-work\tmp\v2\design\final2]
+#   gallery-shots.ps1 [-Pages controls,r-controls] [-Themes night,day] [-Serial emulator-5578] [-Design D:\k2501-work\tmp\v2\design\final2]
 # The emulator is told to hide its bars (the unit has none), so the pictures are the real 1024 x 600. -Design pushes the mockups' map
 # plates once, for the replicas to lie on.
 param([string[]]$Pages, [string[]]$Themes = @("night", "day"), [string]$Serial = "emulator-5570", [string]$Design = "", [string]$Lang = "", [int]$Wait = 1200)
@@ -9,7 +9,7 @@ New-Item -ItemType Directory -Force -Path $dir | Out-Null
 $Pages = $Pages | ForEach-Object { $_ -split "," }
 $Themes = $Themes | ForEach-Object { $_ -split "," }
 if (-not $Pages) {
-    $Pages = "buttons", "abtn", "controls", "bars", "rows", "sheet", "sheet-trip", "modal", "confirm", "menu", "snack", "snack-words", "snack-long", "field", "wash", "covers", "surfaces", "plates", "icons", "dock", "chrome-orders", "type1", "type2", "type3", "type4", "digits", "r-settings-display", "r-settings-maps", "r-controls", "r-queue", "r-sources", "r-music", "r-column", "running"
+    $Pages = "buttons", "abtn", "controls", "bars", "rows", "sheet", "sheet-trip", "modal", "confirm", "menu", "snack", "snack-words", "snack-long", "field", "wash", "covers", "surfaces", "plates", "icons", "dock", "chrome-orders", "type1", "type2", "type3", "type4", "digits", "r-settings-display", "r-settings-maps", "r-controls", "running"
 }
 & $adb -s $Serial shell "settings put global policy_control immersive.full=*; svc power stayon true; input keyevent KEYCODE_WAKEUP" | Out-Null # (a window draws nothing while the display is off, whatever is asked of it)
 if ($Design) {

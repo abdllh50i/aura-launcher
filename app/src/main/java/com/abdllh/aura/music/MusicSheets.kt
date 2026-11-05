@@ -214,7 +214,7 @@ internal class SourceRowView(ctx: Context, val row: SourceRow, private val chevr
 
 /**
  * "From where": the source sheet (SPEC.md section 5, "Side sheet"; `music-sources`, `sources-on-trip`). A row is a choice, or what starts one: the panel knows ([MusicPanel.chooseRow]).
- * It opens from the More sheet, and from the mini's cover anywhere ([MusicPanel.openSources]).
+ * It opens from the More sheet.
  */
 internal class SourceSheet(ctx: Context, private val music: MusicPanel) : Sheet(ctx, false, true) {
     private val rows: List<SourceRowView>
@@ -310,7 +310,7 @@ internal class MoreSheet(ctx: Context, private val music: MusicPanel) : Sheet(ct
         source.set(music.sourceGlyph, music.sourceName)
         queue.set(R.drawable.ic_queue, music.nextName)
         full.set(R.drawable.ic_expand, "")
-        full.on(music.hasLyrics)
+        full.on(music.fullLyricsOk)
         lyricsOff.set(R.drawable.ic_music, "")
         lyricsOff.on(music.lyricsCanGoOff)
         off.setChecked(music.lyricsAreOff, animate = isShown)

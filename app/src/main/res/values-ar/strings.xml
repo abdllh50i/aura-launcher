@@ -14,7 +14,6 @@
     <string name="err_write_settings">اسمح لنظام عمري بتعديل إعدادات النظام</string>
     <string name="media_nothing">لا يوجد تشغيل</string>
     <string name="media_tap_music">اضغط لفتح الموسيقى</string>
-    <string name="src_bt">بلوتوث</string>
     <string name="ctl_brightness">السطوع</string>
     <string name="ctl_volume">الصوت</string>
     <string name="ctl_mute">كتم</string>
@@ -23,7 +22,6 @@
     <string name="dock_phone">الهاتف</string>
     <string name="dock_nav">الخرائط</string>
     <string name="dock_music">الموسيقى</string>
-    <string name="dock_radio">الراديو</string>
     <string name="dock_camera">360°</string>
     <string name="dock_link">ربط الجوال</string>
     <string name="dock_video">فيديو</string>
@@ -62,8 +60,6 @@
     <string name="poi_park">حديقة ورياضة</string>
     <string name="poi_sight">معلم</string>
     <string name="poi_public">خدمة حكومية</string>
-    <string name="road_camera">ساهر</string>
-    <string name="road_bump">مطب</string>
     <string name="extras_title">إضافات الخريطة</string>
     <string name="extras_none">ما فيه إضافات محمّلة. اضغط تحديث.</string>
     <string name="extras_summary">%1$s ساهر · %2$s مطب · %3$s إشارة · %4$s شارع بسرعته</string>

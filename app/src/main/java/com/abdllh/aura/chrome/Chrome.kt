@@ -22,6 +22,7 @@ import com.abdllh.aura.home.Screens
 import com.abdllh.aura.media.MediaMonitor
 import com.abdllh.aura.media.NowPlaying
 import com.abdllh.aura.music.BtMusic
+import com.abdllh.aura.music.MusicPanel
 import com.abdllh.aura.music.PhoneLink
 import com.abdllh.aura.nav.CarLocation
 import com.abdllh.aura.nav.MapExtras
@@ -105,7 +106,7 @@ class Chrome private constructor(private val shell: HomeActivity) : FrameLayout(
         addView(volume, at(0, 516, 204, 84))
         addView(voice, at(186, 502, VoiceButton.SIZE, VoiceButton.SIZE))
         strip.speed.visibility = INVISIBLE
-        rowDock.glance.onOpen = { Screens.music(context) }
+        rowDock.glance.onOpen = { if (!MusicPanel.moreWhileLying()) Screens.music(context) }
         panel = shell.topPanel.ifEmpty { Screens.HOME }
         onHome = panel == Screens.HOME
         snapRows()

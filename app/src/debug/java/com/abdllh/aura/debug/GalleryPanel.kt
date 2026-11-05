@@ -151,8 +151,8 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
             "bars" -> bars(s)
             "running" -> running(s)
             "rows" -> rows(s)
-            "sheet" -> sideSheet(s, 12)
-            "sheet-trip" -> sideSheet(s, 384)
+            "sheet" -> sideSheet(s, 16)
+            "sheet-trip" -> sideSheet(s, 392)
             "modal" -> modal(s)
             "modal-ime" -> modal(s, ime = true)
             "confirm" -> confirm(s)
@@ -173,10 +173,6 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
             "r-settings-display" -> rSettingsDisplay(s)
             "r-settings-maps" -> rSettingsMaps(s)
             "r-controls" -> rControls(s, false)
-            "r-queue" -> rQueue(s)
-            "r-sources" -> rSources(s)
-            "r-music" -> rMusic(s)
-            "r-column" -> rColumn(s)
             else -> buttons(s)
         }
         Log.i("AuraGallery", "page $page, 9-patches kept: ${ctx.getDrawable(R.drawable.card_night)!!.isNinePatch()}")
@@ -796,111 +792,6 @@ class GalleryPanel(shell: HomeActivity) : Panel(shell, "gallery") {
         }
         s.dockRow("maps")
     }
-
-    private fun songRow(c: FrameLayout, y: Int, title: String, sub: String, dur: String, on: Boolean, art: String) {
-        val w = 424
-        if (on) {
-            c.addView(plateView(18) { Palette.selectedSoft }, at(8, y, w, 76))
-            c.addView(View(ctx).apply { val t = Tint(ctx, R.drawable.ring_18) { Palette.selectedSoftEdge }; background = t.drawable; look { t.recolour() } }, at(8, y, w, 76))
-        }
-        c.addView(coverView(art, 56, 12), at(8 + w - 10 - 56, y + 10, 56, 56))
-        c.textR(Type.resultTitle, title, 8 + w - 10 - 56 - 12, y + 3, { Palette.ink }, w = 250)
-        c.textR(Type.resultSub, sub, 8 + w - 10 - 56 - 12, y + 41, { Palette.ink2 }, w = 250)
-        if (on) c.icon(R.drawable.ic_eq, 28, 18, y + 24) { Palette.ink }
-        else c.addView(ctx.label(Type.resultSub, { Palette.ink }).apply { text = dur; layoutDirection = View.LAYOUT_DIRECTION_LTR; textDirection = View.TEXT_DIRECTION_LTR }, Type.resultSub.box(18, y + 23, 80))
-    }
-
-    private fun rMusicBase(s: FrameLayout) {
-        val back = ImageView(ctx).apply { scaleType = ImageView.ScaleType.FIT_XY }
-        s.addView(back, flp(MATCH, MATCH))
-        val b = ctx.assets.open("gallery/sea.jpg").use { BitmapFactory.decodeStream(it) }
-        back.look { Backdrop.washAsync(ctx, b, Palette.dark) { w -> back.setImageBitmap(w.panel) } }
-        s.addView(ctx.surfaceImage("cover-shadow"), at(44, 0, 300, 300))
-        s.addView(coverView("sea", 204, 20), at(92, 48, 204, 204))
-        s.textC(Type.musicTitle, "سهر الطريق", 24, 258, 340) { Palette.ink }
-        s.textC(Type.musicSub, "فرقة الساحل · من نغم", 24, 298, 340) { Palette.ink2 }
-        s.addView(SeekView(ctx).apply { setTimes("1:17", "3:42"); progress = .347f }, at(24, 340, 340, 30))
-        s.addView(IconButton(ctx, R.drawable.ic_prev, 44, 88, 88, token = { Palette.ink }), at(44, 400, 88, 88))
-        s.addView(PlayPauseView(ctx).apply { disc = { Palette.ink }; token = { Palette.wash }; glyphPx = 44; setPlaying(true, false) }, at(146, 396, 96, 96))
-        s.addView(IconButton(ctx, R.drawable.ic_next, 44, 88, 88, token = { Palette.ink }), at(256, 400, 88, 88))
-        for ((i, t) in listOf(Triple(12, 48, R.drawable.ic_iphone), Triple(12, 132, R.drawable.ic_queue), Triple(300, 48, R.drawable.ic_expand)).withIndex()) {
-            val plate = plateView(18) { Palette.fill }
-            s.addView(plate, at(t.first, t.second, 76, 76))
-            val px = intArrayOf(28, 32, 30)[i]
-            if (i == 0) {
-                s.icon(t.third, px, t.first + 24, t.second + 13) { Palette.ink }
-                s.textC(Type.gridLabel, "نغم", t.first, t.second + 39, 76) { Palette.ink }
-            } else s.icon(t.third, px, t.first + (76 - px) / 2, t.second + (76 - px) / 2) { Palette.ink }
-        }
-        val lines = listOf("يا ليل خذني على طريق البحر" to 84, "والهوى يسبقني قبل الفجر" to 154, "وأنا مو ناسي وين أخذنا العمر" to 308, "خلني أمشي والأغاني تشهد" to 378)
-        for ((i, l) in lines.withIndex()) s.textR(Type.lyric, l.first, 994, l.second, { if (i < 2) Palette.lyricPast else Palette.lyricDim }, w = 596)
-        s.strip()
-        s.dockRow("music")
-    }
-
-    private fun rMusic(s: FrameLayout) = rMusicBase(s)
-
-    private fun rQueue(s: FrameLayout) {
-        rMusicBase(s)
-        s.overlaySheet(12, 44, 440, 380)
-        val c = FrameLayout(ctx)
-        s.addView(c, at(12, 44, 440, 380))
-        c.textR(Type.pageTitle, "التالي", 418, 10, { Palette.ink })
-        c.addView(IconButton(ctx, R.drawable.ic_close, 28, 56, 56, token = { Palette.ink2 }), at(8, 8, 56, 56))
-        c.addView(IconButton(ctx, R.drawable.ic_repeat, 28, 56, 56, token = { Palette.accentInk }), at(68, 16, 56, 56))
-        c.addView(IconButton(ctx, R.drawable.ic_shuffle, 28, 56, 56, token = { Palette.ink2 }), at(124, 16, 56, 56))
-        songRow(c, 68, "سهر الطريق", "فرقة الساحل", "3:42", true, "sea")
-        songRow(c, 144, "درب الساحل", "فرقة الساحل", "4:05", false, "dusk")
-        songRow(c, 220, "ليل الخبر", "سالم", "3:18", false, "neon")
-        songRow(c, 296, "وتر قديم", "سالم", "5:02", false, "oud")
-        c.addView(ctx.scrollFade(Surface.OVERLAY, top = false), at(8, 344, 424, 28))
-    }
-
-    private fun rSources(s: FrameLayout) {
-        rMusicBase(s)
-        s.overlaySheet(12, 44, 440, 416)
-        val c = FrameLayout(ctx)
-        s.addView(c, at(12, 44, 440, 416))
-        c.textR(Type.pageTitle, "من وين تسمع", 418, 10, { Palette.ink })
-        c.addView(IconButton(ctx, R.drawable.ic_close, 28, 56, 56, token = { Palette.ink2 }), at(8, 8, 56, 56))
-        val src = listOf(Triple(R.drawable.ic_iphone, "من نغم", "آيفون متصل"), Triple(R.drawable.ic_bluetooth, "بلوتوث", "آيفون متصل"), Triple(R.drawable.ic_usb, "USB والملفات", "ما فيه فلاش"), Triple(R.drawable.ic_yt, "يوتيوب ميوزك", "يفتح التطبيق"))
-        for ((i, e) in src.withIndex()) {
-            val y = 68 + 84 * i
-            if (i == 0) c.addView(plateView(18) { Palette.selectedSoft }, at(8, y, 424, 84))
-            else c.addView(View(ctx).look { setBackgroundColor(Palette.line) }, at(22, y, 396, 1))
-            c.addView(plateView(16) { Palette.fill2 }, at(8 + 424 - 14 - 52, y + 16, 52, 52))
-            c.icon(e.first, 28, 8 + 424 - 14 - 52 + 12, y + 28) { Palette.ink }
-            c.textR(Type.resultTitle, e.second, 8 + 424 - 14 - 52 - 14, y + 10, { Palette.ink }, w = 280)
-            c.textR(Type.sourceSub, e.third, 8 + 424 - 14 - 52 - 14, y + 44, { Palette.ink2 }, w = 280)
-            if (i == 0) c.icon(R.drawable.ic_check, 26, 22, y + 29) { Palette.accentInk }
-        }
-    }
-
-    /** The driver's cards with what is in them: surfaces, the limit sign, End. */
-    private fun rColumn(s: FrameLayout) {
-        s.mapPlate("drive-turn")
-        s.scrims()
-        s.strip()
-        s.addView(SurfaceCard(ctx, Surface.CARD), Surface.CARD.at(12, 44, 364, 190))
-        s.addView(ctx.surfaceImage(R.drawable.turn_glow_night, R.drawable.turn_glow_day), at(76, 44, 300, 190))
-        s.addView(View(ctx).apply { background = ctx.getDrawable(R.drawable.tile_accent) }, at(272 - 16, 58 - 16, 122, 122))
-        s.icon(R.drawable.ic_turn_right, 84, 275, 61) { Palette.onAccent }
-        val dist = s.textR(Type.dist, "600", 258, 46, { Palette.ink }, w = 200, moving = true)
-        dist.look { text = withUnit("600", "م", Type.distUnit, Palette.ink2Move, moving = true) }
-        s.textR(Type.road, "طريق الملك فهد", 258, 101, { Palette.ink }, w = 240, moving = true)
-        s.textR(Type.hint, "عند الإشارة الثانية", 360, 172, { Palette.ink2Move }, w = 336, moving = true)
-        s.addView(SurfaceCard(ctx, Surface.CARD), Surface.CARD.at(12, 242, 232, 88))
-        s.textR(Type.speed, "87", 230, 246, { Palette.ink }, w = 94).digitSpacing(-0.5f)
-        s.textR(Type.speedUnit, "كم/س", 230, 300, { Palette.ink2Move }, w = 94, moving = true)
-        s.addView(LimitSign(ctx).apply { kmh = 120 }, at(22, 252, 68, 68))
-        s.addView(SurfaceCard(ctx, Surface.CARD), Surface.CARD.at(12, 338, 364, 80))
-        s.addView(ABtn(ctx).apply { kind = ABtn.Kind.DANGER; text = "إنهاء"; setHeightOverride(58); setPadding(0, 0, 0, 4) }, at(23, 349, 100, 58))
-        s.textR(Type.etaUnit, "الوصول", 360, 344, { Palette.ink2Move }, w = 110, moving = true)
-        s.textR(Type.etaValue, "7:38 م", 281, 344, { Palette.ink }, w = 110).apply { textDirection = View.TEXT_DIRECTION_RTL }
-        s.textR(Type.etaSub, "18 دقيقة · 21.8 كم", 360, 382, { Palette.ink2Move }, w = 222, moving = true)
-        s.dockRow("maps")
-    }
-
 }
 
 /** The lists the pages walk. */
@@ -910,13 +801,13 @@ private object TypeList {
         .map { it.isAccessible = true; it.get(Type) as Type.Role }
     val icons = listOf(
         "home", "nav", "music", "phone", "apps", "gear", "mic", "mic_off", "vol_mute", "vol_low", "vol", "minus", "plus", "close", "clear",
-        "chev_left", "chev_right", "chev_up", "chev_down", "back", "play", "pause", "next", "prev", "shuffle", "repeat", "repeat_one", "queue", "lyrics",
+        "chev_left", "chev_right", "chev_up", "back", "play", "pause", "next", "prev", "shuffle", "repeat", "repeat_one", "queue", "lyrics",
         "expand", "collapse", "gps", "gps_off", "wifi", "wifi_off", "iphone", "iphone_off", "bluetooth", "hotspot", "usb", "search", "pin", "star", "star_on",
-        "share", "send", "work", "bag", "food", "cafe", "fuel", "health", "worship", "parking", "lodging", "bank", "school", "park", "sight", "public",
+        "share", "send", "work", "food", "cafe", "fuel", "health", "worship", "parking", "lodging", "bank", "school", "park", "sight", "public",
         "cam", "cam_add", "signal", "bump", "flag", "route", "reroute", "locate", "compass", "overview", "go_straight", "turn_right", "turn_left", "slight_right",
         "slight_left", "sharp_right", "sharp_left", "uturn_right", "uturn_left", "merge_right", "merge_left", "fork_right", "fork_left", "ramp_right", "ramp_left",
         "arrive", "round_right", "round_straight", "round_left", "round_uturn", "lane_straight", "lane_right", "lane_left", "lane_slight_right", "lane_slight_left", "lane_uturn",
-        "hang", "person", "keypad", "message", "sun", "sun_dim", "moon", "auto", "sunset", "sunrise", "clock", "screen", "map", "car", "info", "language", "lock", "power",
+        "hang", "person", "keypad", "message", "sun", "sun_dim", "auto", "clock", "screen", "map", "car", "info", "language", "lock", "power",
         "update", "check", "check_round", "warn", "refresh", "trash", "edit", "qr", "link", "brightness", "eq", "bell", "bell_off", "radio", "video", "cam360", "files",
         "steering", "tools", "globe", "gallery", "android", "camera_app", "yt"
     )

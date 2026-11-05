@@ -39,10 +39,6 @@ PAGES = {
     "r-settings-display": ("settings-display", SETTINGS + DOCK + ["stripTime"]),
     "r-settings-maps": ("settings-maps", SETTINGS + DOCK + ["stripTime"]),
     "r-controls": ("controls", ["controlsSheet", "controlsTitle", "controlsClose", "slider", "segmented", "controlTile", "glancePrayer"] + DOCK),
-    "r-queue": ("music-queue", ["sideSheet", "sheetTitle", "sheetClose", "shuffle", "repeat", "songRow", "lyricLine", "playPause", "next", "prev"] + DOCK),
-    "r-sources": ("music-sources", ["sideSheet", "sheetTitle", "sheetClose", "sourceRow"]),
-    "r-music": ("music", ["wash", "bigCover", "musicTitle", "musicSub", "seekBar", "timeNow", "timeTotal", "transport", "prev", "playPause", "next", "sourceChip", "queue", "lyricsFull", "lyricLine"]),
-    "r-column": ("drive-turn", ["turnCard", "turnTile", "turnRoad", "turnHint", "speedCard", "speed", "speedUnit", "limitSign", "etaCard", "endNav", "etaLeft", "miniCard", "miniCover", "miniTitle", "miniSub", "miniPause", "miniNext"]),
 }
 
 

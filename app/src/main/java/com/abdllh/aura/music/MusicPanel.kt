@@ -441,6 +441,7 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         if (lyricsFull) showFull(false, animate = false, remember = false)
         shell.panels.panelChanged(this) // ("wake first": the map and Maps' frame under it, before anything fades)
         syncChip()
+        moreSheet?.takeIf { it.isOpen }?.refresh()
         if (root.isShown && Prefs.screenAnimations) root.anim(Tokens2.MS_cardIn, Motion.MOVE).alpha(0f).withEndAction { if (collapsed) root.visibility = View.INVISIBLE }.start()
         else { root.animate().cancel(); root.alpha = 0f; root.visibility = View.INVISIBLE }
     }
@@ -1201,11 +1202,7 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
 
     private fun showMore() = sheet(moreSheet ?: MoreSheet(this, this).also { moreSheet = it })
 
-    /** The source sheet, from the More sheet or the mini's cover anywhere. */
-    internal fun showSources() {
-        if (!showing) { BtMusic.init(this); Player.init(this) }
-        sheet(sourceSheet ?: SourceSheet(this, this).also { sourceSheet = it })
-    }
+    internal fun showSources() = sheet(sourceSheet ?: SourceSheet(this, this).also { sourceSheet = it })
 
     internal fun showQueue() = sheet(queueSheet ?: QueueSheet(this, this).also { queueSheet = it })
 
@@ -1213,7 +1210,8 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
     internal val sourceGlyph: Int get() = rowNow().icon
     internal val sourceName: String get() = rowTitle(rowNow(), full = false)
     internal val nextName: String get() = if (queueIsLocal) Player.upcoming().getOrNull(1)?.title.orEmpty() else getString(queueElsewhere)
-    internal val hasLyrics: Boolean get() = lyricsResult != null && lyricsShown != null && lyricsShown == lyricsKey
+    /** The lyrics on the whole screen need the panel up, and something to read. */
+    internal val fullLyricsOk: Boolean get() = !collapsed && lyricsResult != null && lyricsShown != null && lyricsShown == lyricsKey
     internal val lyricsAreOff: Boolean get() = lyricsOff
     /** Off is for a song, and with none to be had for this one there is nothing to turn off. */
     internal val lyricsCanGoOff: Boolean get() = lyricsSong != null && (lyricsOff || lyricsResult != null)
@@ -2101,11 +2099,19 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         /** The one there is, built ahead or asked for. */
         private var current: MusicPanel? = null
 
-        /** A tap on the mini's cover, on any screen with a mini: the source sheet, beside the column on a trip (SPEC.md section 6.4). */
-        fun openSources(shell: HomeActivity) {
-            if (current == null) shell.panels.prepare(Screens.MUSIC)
-            current?.showSources()
+        /**
+         * A tap on the mini with the panel lying collapsed and not allowed up: moving, or a trip with no gear P, which is every trip on his car. Its More sheet, beside the column on a trip, as the panel's
+         * one button is not there: with no way to it the source and the queue could not be reached on a trip. True: taken. False: the tap opens Music, as anywhere else.
+         */
+        fun moreWhileLying(): Boolean {
+            val m = current?.takeIf { it.showing && it.collapsed && !it.fullAllowed() } ?: return false
+            // (the touch that closed one of the sheets goes on to the mini: that one is no new request)
+            val now = SystemClock.uptimeMillis()
+            if (listOfNotNull(m.moreSheet, m.sourceSheet, m.queueSheet).none { now - it.closedByTouchAt < SAME_TOUCH_MS }) m.showMore()
+            return true
         }
+
+        private const val SAME_TOUCH_MS = 700L
 
         // art keys for "no cover" states (album ids are >= 0)
         private const val BT_ART = Long.MIN_VALUE + 1

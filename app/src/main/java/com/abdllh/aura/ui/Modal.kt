@@ -20,7 +20,7 @@ import android.widget.LinearLayout
  * window covers the screen, holds its own flat scrim, and the card comes and goes by the laws of section 9: alpha, scale .98 to 1,
  * 200 `enter`; out alpha, 140 `exit`. Back and a tap on the scrim close it through the same animation (while [cancelable]); the
  * dialog's dismiss listener still runs, at the end of it.
- * 560 wide, height to fit and at most 400, the `overlay` 9-patch centred in y 44..506; with a field ([followKeyboard]) its bottom
+ * 560 wide, height to fit and at most 400, the `overlay` 9-patch centred in y 48..504; with a field ([followKeyboard]) its bottom
  * sits above the keyboard. Never while the car moves: [dismissAll] is what the car's starting to move calls, as Cancel.
  * Build the card with [card], fill it, then `Modal(ctx, card).show()`.
  */
@@ -40,7 +40,7 @@ class Modal(private val ctx: Context, private val card: View, widthDp: Int = WID
 
         override fun onLook() = scrim.setBackgroundColor(Palette.scrim)
 
-        // (centred in the content's y 44..506, whatever the card's bounds with their outset: it may be taller than that)
+        // (centred in the content's y 48..504, whatever the card's bounds with their outset: it may be taller than that)
         override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
             super.onLayout(changed, l, t, r, b)
             val h = b - t

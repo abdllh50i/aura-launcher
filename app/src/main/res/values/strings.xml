@@ -14,7 +14,6 @@
     <string name="err_write_settings">Allow “Modify system settings” for AMRI OS</string>
     <string name="media_nothing">Nothing playing</string>
     <string name="media_tap_music">Tap to open Music</string>
-    <string name="src_bt">Bluetooth</string>
     <string name="ctl_brightness">Brightness</string>
     <string name="ctl_volume">Volume</string>
     <string name="ctl_mute">Mute</string>
@@ -23,7 +22,6 @@
     <string name="dock_phone">Phone</string>
     <string name="dock_nav">Maps</string>
     <string name="dock_music">Music</string>
-    <string name="dock_radio">Radio</string>
     <string name="dock_camera">360°</string>
     <string name="dock_link">Phone link</string>
     <string name="dock_video">Video</string>
@@ -62,8 +60,6 @@
     <string name="poi_park">Park &amp; sports</string>
     <string name="poi_sight">Attraction</string>
     <string name="poi_public">Public service</string>
-    <string name="road_camera">Speed camera</string>
-    <string name="road_bump">Speed bump</string>
     <string name="extras_title">Map additions</string>
     <string name="extras_none">Nothing fetched yet. Tap Update.</string>
     <string name="extras_summary">%1$s cameras · %2$s bumps · %3$s signals · %4$s streets with a limit</string>

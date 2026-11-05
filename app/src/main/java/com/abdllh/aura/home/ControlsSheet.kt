@@ -34,7 +34,7 @@ import com.abdllh.aura.ui.lp
 import com.abdllh.aura.util.Prefs
 
 /**
- * Controls, the side sheet from the strip's left end (SPEC.md section 5, `controls`, `controls-on-trip`): brightness, the theme, and four tiles: Wi-Fi, Bluetooth, the hotspot, screen off. At x 12 with no trip
+ * Controls, the side sheet from the strip's left end (SPEC.md section 5, `controls`, `controls-on-trip`): brightness, the theme, and four tiles: Wi-Fi, Bluetooth, the hotspot, screen off. At x 16 with no trip
  * and at x 392 beside the column on one. Volume and mute are in the row now, the camera and the car's settings in Apps, the update note in Settings. A tile that opens another app leaves the sheet
  * open under it: it goes when the window stops ([HomeActivity]), so its closing does not compete with the app's opening. A panel closes it at once ([PanelStack.show]).
  */

@@ -271,7 +271,7 @@ internal class SelectedPlate(ctx: Context) : View(ctx), Recolours {
 
 /**
  * The mini player at the right end of the dock, x 772..1008 (CHANGES.md section 2): the plate, the cover at the far end, the title, and pause at the driver's side of it. Anywhere else on the plate opens
- * Music. With no song, or on the parked Music panel, nothing: the cells do not move. Which it is comes from [ChromeRules.mini], a crossfade of 140 `move` inside a dock that is showing; in the same pixels
+ * Music, and with Music already lying collapsed its More sheet ([MusicPanel.moreWhileLying]). With no song, or on the parked Music panel, nothing: the cells do not move. Which it is comes from [ChromeRules.mini], a crossfade of 140 `move` inside a dock that is showing; in the same pixels
  * in both languages, only the words change.
  */
 internal class Glance(ctx: Context) : FrameLayout(ctx), Recolours {
