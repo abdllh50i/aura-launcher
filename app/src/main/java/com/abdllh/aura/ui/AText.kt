@@ -85,10 +85,10 @@ open class AText @JvmOverloads constructor(
     /**
      * A TextView clips its text to its frame, and with no font padding the frame ends at the font's descent: the dots of a final ي reach below that (Plex Arabic: -447 against -415, its lowest
      * marks -601), and "عمري" read "عمرى". So the frame goes on a little lower than the parent gave. The parent's layout does not change, and the text's place comes from the measured height,
-     * which does not either. Not with a background of its own, which would grow with it.
+     * which does not either. Plain labels only: a background would grow with it, and a subclass may read its height (the word pill of a lyric line ends there).
      */
     override fun layout(l: Int, t: Int, r: Int, b: Int) {
-        super.layout(l, t, r, if (background == null) b + kotlin.math.ceil(textSize * BELOW_DESCENT).toInt() else b)
+        super.layout(l, t, r, if (background == null && javaClass === AText::class.java) b + kotlin.math.ceil(textSize * BELOW_DESCENT).toInt() else b)
     }
 
     override fun setGravity(gravity: Int) {
