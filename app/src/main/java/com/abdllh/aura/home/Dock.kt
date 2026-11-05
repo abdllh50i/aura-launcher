@@ -10,10 +10,10 @@ import android.widget.LinearLayout
 import com.abdllh.aura.R
 import com.abdllh.aura.system.Controls
 import com.abdllh.aura.ui.AText
+import com.abdllh.aura.ui.IconButton
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
-import com.abdllh.aura.ui.Radius
 import com.abdllh.aura.ui.Shapes
 import com.abdllh.aura.ui.Space
 import com.abdllh.aura.ui.Touch
@@ -99,15 +99,12 @@ class Dock(ctx: Context, private val host: HomeHost) : FrameLayout(ctx) {
     }
 
     /** [round]: a button of its own (a tonal circle); otherwise a bare icon inside a capsule that has the surface. */
-    private fun button(ctx: Context, icon: Int, desc: Int, round: Boolean = false, onClick: () -> Unit): FrameLayout = FrameLayout(ctx).apply {
-        background = if (round) Shapes.tonalOval() else Shapes.ghost(Radius.PILL)
-        isClickable = true
-        contentDescription = ctx.getString(desc)
-        pressScale(Motion.PRESS_ICON)
-        setOnClickListener { onClick() }
-        val s = if (round) 28 else 26
-        addView(ctx.iconView(icon, s, Palette.text).apply { layoutParams = flp(s.dp, s.dp, Gravity.CENTER) })
-    }
+    private fun button(ctx: Context, icon: Int, desc: Int, round: Boolean = false, onClick: () -> Unit): IconButton =
+        (if (round) IconButton(ctx, icon, 28, 60, 60, IconButton.Kind.TONAL, plateW = 60, plateH = 60)
+        else IconButton(ctx, icon, 26, Touch.MIN, 60)).apply {
+            contentDescription = ctx.getString(desc)
+            setOnClickListener { onClick() }
+        }
 
     private fun step(dir: Int) {
         Controls.stepVolume(context, dir)

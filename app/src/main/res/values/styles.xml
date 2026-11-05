@@ -32,7 +32,7 @@
     </style>
 
     <!-- The home screen keeps its starting window: it is only seen at a cold start, where something must show at once.
-         On the light theme the screen's first frame shows the same near-black and fades it off (HomeActivity.coverStart). -->
+         On the light theme the screen's first frame shows the same near-black and fades it off (HomePanel.coverStart). -->
     <style name="Theme.Aura.Home" parent="Theme.Aura">
         <item name="android:windowShowWallpaper">false</item>
         <item name="android:windowDisablePreview">false</item>

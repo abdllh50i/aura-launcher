@@ -52,14 +52,14 @@
         <activity
             android:name=".home.HomeActivity"
             android:clearTaskOnLaunch="true"
-            android:configChanges="orientation|keyboard|keyboardHidden|screenSize|smallestScreenSize|screenLayout|uiMode|density|fontScale"
+            android:configChanges="orientation|keyboard|keyboardHidden|screenSize|smallestScreenSize|screenLayout|uiMode|density|fontScale|navigation|touchscreen|colorMode|layoutDirection|mcc|mnc"
             android:exported="true"
             android:launchMode="singleTask"
             android:resumeWhilePausing="true"
             android:screenOrientation="landscape"
             android:stateNotNeeded="true"
             android:theme="@style/Theme.Aura.Home"
-            android:windowSoftInputMode="adjustPan">
+            android:windowSoftInputMode="adjustNothing">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.HOME" />
@@ -141,14 +141,16 @@
             </intent-filter>
         </activity>
 
+        <!-- Settings is a panel of HomeActivity now; this name stays for whoever starts it (home/Entry.kt): no window, gone
+             at once. -->
         <activity
             android:name=".settings.SettingsActivity"
-            android:configChanges="orientation|keyboard|keyboardHidden|screenSize|smallestScreenSize|screenLayout|uiMode|density|fontScale"
+            android:excludeFromRecents="true"
             android:exported="true"
             android:label="@string/set_title"
-            android:screenOrientation="landscape"
-            android:theme="@style/Theme.Aura"
-            android:windowSoftInputMode="adjustPan">
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.NoDisplay">
             <intent-filter>
                 <action android:name="com.abdllh.aura.action.SETTINGS" />
                 <category android:name="android.intent.category.DEFAULT" />

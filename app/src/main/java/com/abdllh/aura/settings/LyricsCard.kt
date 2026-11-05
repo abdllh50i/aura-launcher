@@ -23,6 +23,8 @@ import com.abdllh.aura.ui.Radius
 import com.abdllh.aura.ui.Shapes
 import com.abdllh.aura.ui.Snack
 import com.abdllh.aura.ui.Space
+import com.abdllh.aura.ui.TextField
+import com.abdllh.aura.ui.Spinner
 import com.abdllh.aura.ui.Touch
 import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.WRAP
@@ -39,7 +41,7 @@ import kotlin.math.roundToInt
  * for timing lyrics by listening ([com.abdllh.aura.music.LyricsSync], on by default since 1.15). Kept in a file of its
  * own so the music section of [DisplaySoundPage] has one line for it.
  */
-class LyricsCard private constructor(private val act: SettingsActivity, private val ctx: Context) {
+class LyricsCard private constructor(private val act: SettingsPanel, private val ctx: Context) {
     private val status: AText = ctx.label(Type.FOOTNOTE, Palette.text2, lines = 3)
     private val test = ABtn(ctx).apply {
         kind = ABtn.Kind.TONAL
@@ -148,28 +150,19 @@ class LyricsCard private constructor(private val act: SettingsActivity, private 
      */
     private fun ask(title: String, hint: String, initial: String, uri: Boolean, onOk: (String) -> Unit) {
         val card = Modal.card(ctx)
-        val m = Modal(ctx, card)
-        m.dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE or WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN)
-        card.addView(ctx.label(Type.TITLE, Palette.text).apply { text = title })
-        val input = EditText(ctx).apply {
-            setText(initial)
-            setSelection(initial.length)
-            this.hint = hint
-            setHintTextColor(Palette.text3)
-            setTextColor(Palette.text)
-            textSize = Type.BODY.sp
-            typeface = Fonts.get(Type.BODY.weight)
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or
-                (if (uri) InputType.TYPE_TEXT_VARIATION_URI else InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD)
-            isSingleLine = true
-            textDirection = View.TEXT_DIRECTION_LTR
-            setPadding(Space.L.dp, 0, Space.L.dp, 0)
-            background = Shapes.rect(Palette.card2, Radius.M, Palette.stroke)
-        }
-        card.addView(input, lp(MATCH, Touch.MIN.dp).apply { topMargin = Space.L.dp })
+        val m = Modal(ctx, card).followKeyboard()
+        card.addView(Modal.title(ctx, title), lp(MATCH, WRAP))
+        val field = TextField(ctx, hint = hint)
+        val input = field.input
+        input.setText(initial)
+        input.setSelection(initial.length)
+        input.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or
+            (if (uri) InputType.TYPE_TEXT_VARIATION_URI else InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD)
+        input.textDirection = View.TEXT_DIRECTION_LTR
+        card.addView(field, lp(MATCH, TextField.HEIGHT).apply { topMargin = 14 })
         val save = { val v = input.text.toString().trim(); m.close(); onOk(v) }
-        // (the keyboard's own Done saves too: on the unit's short screen the keyboard covers the card's buttons)
-        input.imeOptions = EditorInfo.IME_ACTION_DONE
+        // (the keyboard's own Done saves too)
+        input.imeOptions = EditorInfo.IME_ACTION_DONE or EditorInfo.IME_FLAG_NO_EXTRACT_UI
         input.setOnEditorActionListener { _, action, e ->
             // (a keyboard's Done, or Enter on a hardware keyboard: no action then, the key itself, down and up)
             when {
@@ -178,21 +171,16 @@ class LyricsCard private constructor(private val act: SettingsActivity, private 
                 else -> false
             }
         }
-        val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END }
-        row.addView(ABtn(ctx).apply { kind = ABtn.Kind.GHOST; setText(R.string.btn_cancel); setOnClickListener { m.close() } }, lp(WRAP, WRAP))
-        row.addView(ABtn(ctx).apply {
-            kind = ABtn.Kind.PRIMARY
-            setText(R.string.btn_save)
-            setOnClickListener { save() }
-        }, lp(WRAP, WRAP).apply { marginStart = Space.M.dp })
-        card.addView(row, lp(MATCH, WRAP).apply { topMargin = Space.XL.dp })
+        val yes = ABtn(ctx).apply { kind = ABtn.Kind.PRIMARY; setText(R.string.btn_save); setOnClickListener { save() } }
+        val no = ABtn(ctx).apply { kind = ABtn.Kind.TONAL; setText(R.string.btn_cancel); setOnClickListener { m.close() } }
+        card.addView(Modal.buttons(ctx, yes, no), lp(MATCH, WRAP).apply { topMargin = 20 })
         m.show()
         input.requestFocus()
     }
 
     companion object {
         /** The card and its hint, at the end of the music section ([DisplaySoundPage]'s one line for it). */
-        fun addTo(act: SettingsActivity, ctx: Context, col: LinearLayout) {
+        fun addTo(act: SettingsPanel, ctx: Context, col: LinearLayout) {
             col.addRow(LyricsCard(act, ctx).view)
             col.addHint(ctx.getString(R.string.lyr_srv_hint))
         }

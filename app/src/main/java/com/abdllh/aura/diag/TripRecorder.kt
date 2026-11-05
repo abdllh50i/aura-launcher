@@ -224,7 +224,7 @@ object TripRecorder {
         o.put("t", stamp.format(Date())) // (the unit's clock: it may be late after a cold start)
         o.put("up", now / 1000)
         o.put("front", "${Front.pkg}/${Front.cls.substringAfterLast('.')}")
-        o.put("own", if (Front.ownResumed) Front.own.substringAfterLast('.') else "")
+        o.put("own", if (Front.ownResumed) Front.panel else "")
         val hh = JSONArray()
         var frameCount = 0
         for (i in hist.indices) { hh.put(hist[i]); frameCount += hist[i]; hist[i] = 0 }

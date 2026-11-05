@@ -22,7 +22,10 @@ import com.abdllh.aura.system.VolumeHud
 import com.abdllh.aura.music.BtMusic
 import com.abdllh.aura.music.Player
 import com.abdllh.aura.ui.Fonts
+import com.abdllh.aura.ui.Palette
+import com.abdllh.aura.ui.Snack
 import com.abdllh.aura.ui.Theme
+import com.abdllh.aura.ui.ThemeSwap
 import com.abdllh.aura.update.UpdateManager
 import com.abdllh.aura.util.Dp
 import com.abdllh.aura.util.Prefs
@@ -56,6 +59,13 @@ class AuraApp : Application() {
         if (BuildConfig.DEBUG) com.abdllh.aura.system.PrefTypes.check(this)
         Theme.refresh()
         Fonts.init(this)
+        if (com.abdllh.aura.chrome.Chrome.isOn(this)) com.abdllh.aura.chrome.Chrome.warm(this)
+        if (BuildConfig.DEBUG) Palette.contrastFaults().forEach { android.util.Log.e("AuraPalette", it) }
+        Snack.waitFor = { com.abdllh.aura.voice.AmriOverlay.showing }
+        ThemeSwap.holdOff = {
+            com.abdllh.aura.phone.Calls.state == com.abdllh.aura.phone.Calls.State.RINGING ||
+                com.abdllh.aura.nav.NavSession.progress?.let { it.toNext < ThemeSwap.NEAR_TURN_M } == true
+        }
         // the map's own tile server and the offline map (before any map style is built)
         com.abdllh.aura.nav.offline.OfflineMaps.init(this)
         com.abdllh.aura.nav.pack.PackManager.init(this) // the 2.0 map pack: what is on the disk, on a thread of its own; nothing starts by itself
@@ -97,6 +107,7 @@ class AuraApp : Application() {
             NwdBridge.stopBootTip(this) // (one an earlier AMRI started this boot)
             com.abdllh.aura.system.BetaLeftovers.removeOnce(this) // what a 1.6.1 beta left over the Bluetooth daemon
             Gear.init(this)
+            com.abdllh.aura.system.DriveState.init(this) // Parked or Moving, the one source (after the gear it reads)
             com.abdllh.aura.phone.Calls.init(this) // a phone call: AMRI's own card and ring, not the stock window
             com.abdllh.aura.system.Notices.apply(this) // Android's notifications off the screen, the phone's messages on it
             BootAnim.ensure(this) // this build's boot animation, also after an update from the screen

@@ -71,6 +71,8 @@ object Gear {
     @Volatile var source = Source.NONE; private set
     /** The gear shown is known, not assumed (an assumed one is drawn lighter). */
     val sure: Boolean get() = source != Source.HELD && source != Source.GUESS
+    /** The gear as the car itself says it (the reverse wire, the CAN box, a handbrake that can be believed); null otherwise: motion and guesses are not known ([DriveState]). */
+    val known: Pos? get() = if (source == Source.REVERSE || source == Source.CAN || source == Source.HANDBRAKE) current else null
     /** The CAN app has sent a gear at least once (the box reports it). */
     @Volatile var canReports = false; private set
 

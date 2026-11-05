@@ -25,12 +25,12 @@ import com.abdllh.aura.update.Rollback
 internal object WaybackCard {
     private const val GUARD_LINES = 10
 
-    fun addTo(col: LinearLayout, ctx: Context, act: SettingsActivity) {
+    fun addTo(col: LinearLayout, ctx: Context, act: SettingsPanel) {
         if (Device.isNwd || BuildConfig.DEBUG) way(col, ctx, act)
         guard(col, ctx)
     }
 
-    private fun way(col: LinearLayout, ctx: Context, act: SettingsActivity) {
+    private fun way(col: LinearLayout, ctx: Context, act: SettingsPanel) {
         col.addSection(ctx.getString(R.string.wayback_title))
         val info = Rollback.info(ctx)
         val p = info.payload
@@ -77,7 +77,7 @@ internal object WaybackCard {
         else -> ctx.getString(R.string.wayback_why_looking)
     }
 
-    private fun ask(ctx: Context, act: SettingsActivity, version: String, test: Boolean) {
+    private fun ask(ctx: Context, act: SettingsPanel, version: String, test: Boolean) {
         val title = if (test) ctx.getString(R.string.wayback_test_title) else ctx.getString(R.string.wayback_confirm_title, version)
         val text = if (test) ctx.getString(R.string.wayback_test_text, version, BuildConfig.VERSION_NAME) else ctx.getString(R.string.wayback_confirm_text, version)
         val go = ctx.getString(if (test) R.string.wayback_test_btn else R.string.wayback_back_btn)
@@ -92,7 +92,7 @@ internal object WaybackCard {
                     else -> ctx.getString(R.string.wayback_failed, why)
                 }
                 Snack.show(ctx, text, long = true, outlives = true)
-                if (!act.isDestroyed) act.rebuild()
+                if (!act.isGone) act.rebuild()
             }
         }
     }

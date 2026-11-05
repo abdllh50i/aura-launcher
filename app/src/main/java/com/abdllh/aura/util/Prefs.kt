@@ -11,18 +11,19 @@ object Prefs {
 
     fun init(ctx: Context) {
         sp = ctx.getSharedPreferences("aura", Context.MODE_PRIVATE)
-        // 1.0 offered a near-white accent, which disappears on the light theme: it became "graphite". 1.12 darkened
-        // graphite (white labels on the old one were 3:1), so a saved old one would match no swatch any more.
-        val saved = sp.getInt("accent", 0)
-        if (saved == 0xFFE8EAED.toInt() || saved == Palette.OLD_GRAPHITE) accent = Palette.accents.last()
-        Palette.accent = accent
     }
 
     val raw: SharedPreferences get() = sp
 
+    /** 2.0 has one accent, the logo's blue: what an old install saved stays in its file and is read by no one. */
     var accent: Int
-        get() = sp.getInt("accent", Palette.DEFAULT_ACCENT)
-        set(v) { sp.edit().putInt("accent", v).apply(); Palette.accent = v }
+        get() = Palette.DEFAULT_ACCENT
+        set(v) { sp.edit().putInt("accent", v).apply() }
+
+    /** The 30 ms tick under a row's or a dock cell's press (SPEC.md section 15). */
+    var pressTick: Boolean
+        get() = sp.getBoolean("pressTick", true)
+        set(v) { sp.edit().putBoolean("pressTick", v).apply() }
 
     /** "auto" | "dark" | "light" (see [com.abdllh.aura.ui.Theme]) */
     var theme: String
@@ -35,7 +36,7 @@ object Prefs {
         set(v) { sp.edit().putString("lang", v).apply() }
 
     var clock24: Boolean
-        get() = sp.getBoolean("clock24", true)
+        get() = sp.getBoolean("clock24", false)
         set(v) { sp.edit().putBoolean("clock24", v).apply() }
 
     var navPackage: String

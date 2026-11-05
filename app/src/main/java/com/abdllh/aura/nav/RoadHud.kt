@@ -1,8 +1,6 @@
 package com.abdllh.aura.nav
 
 import android.content.Context
-import android.graphics.Canvas
-import android.graphics.Paint
 import android.view.Gravity
 import android.view.View
 import android.widget.ImageView
@@ -10,7 +8,7 @@ import android.widget.LinearLayout
 import com.abdllh.aura.R
 import com.abdllh.aura.ui.AText
 import com.abdllh.aura.ui.Elev
-import com.abdllh.aura.ui.Fonts
+import com.abdllh.aura.ui.LimitSign
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Shapes
 import com.abdllh.aura.ui.Space
@@ -34,9 +32,9 @@ import java.util.Locale
 class RoadHud(ctx: Context, private val small: Boolean = false, parts: Parts = Parts.BOTH) : LinearLayout(ctx) {
     enum class Parts { BOTH, SIGN, ALERT }
 
-    private val sign = LimitSign(ctx)
+    private val sign = LimitSign(ctx, if (small) LimitSign.HOME else LimitSign.SPEED)
     private val icon: ImageView = ctx.iconView(R.drawable.ic_speed_camera, if (small) 22 else 26, 0xFFFFFFFF.toInt())
-    private val text: AText = ctx.label(if (small) Type.FOOTNOTE else Type.LABEL, 0xFFFFFFFF.toInt()).apply { fontFeatureSettings = "tnum" }
+    private val text: AText = ctx.label(if (small) Type.FOOTNOTE else Type.LABEL, 0xFFFFFFFF.toInt())
     private val chip = LinearLayout(ctx).apply {
         orientation = HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
@@ -55,8 +53,7 @@ class RoadHud(ctx: Context, private val small: Boolean = false, parts: Parts = P
         gravity = Gravity.CENTER_VERTICAL
         // (the chip first: this sits at the end edge of the screen, and the sign is the one at the edge)
         if (parts != Parts.SIGN) addView(chip, lp(WRAP, (if (small) 44 else 52).dp).apply { if (parts == Parts.BOTH) marginEnd = Space.M.dp })
-        val s = (if (small) 54 else 62).dp
-        if (parts != Parts.ALERT) addView(sign, lp(s, s))
+        if (parts != Parts.ALERT) addView(sign, lp(WRAP, WRAP))
         sign.visibility = View.GONE
     }
 
@@ -78,7 +75,6 @@ class RoadHud(ctx: Context, private val small: Boolean = false, parts: Parts = P
         if (s.limit > 0 && !limitShown) sign.enter(scaleFrom = 0.9f)
         else if (s.limit <= 0 && limitShown) sign.exit(scaleTo = 0.9f) { sign.visibility = View.GONE }
         if (s.limit > 0) sign.kmh = s.limit
-        sign.over = s.over
         val spot = s.spot
         if (spot == null) {
             if (shownSpot != null) {
@@ -101,36 +97,5 @@ class RoadHud(ctx: Context, private val small: Boolean = false, parts: Parts = P
             chip.enter(scaleFrom = 0.92f)
         }
         text.setIfChanged("$what · ${Units.distance(s.metres.toDouble(), arabic)}")
-    }
-
-    /** The limit as the road sign everybody knows: a white disc in a red ring; the ring fills in when the car is over it. */
-    private class LimitSign(ctx: Context) : View(ctx) {
-        var kmh = 0
-            set(v) { if (v != field) { field = v; invalidate() } }
-        var over = false
-            set(v) { if (v != field) { field = v; invalidate() } }
-        private val p = Paint(Paint.ANTI_ALIAS_FLAG)
-        private val t = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; typeface = Fonts.get(Fonts.MEDIUM) }
-
-        init { elevation = Elev.FLOAT.dp }
-
-        override fun onDraw(c: Canvas) {
-            if (kmh <= 0) return
-            val r = minOf(width, height) / 2f
-            val cx = width / 2f
-            val cy = height / 2f
-            p.style = Paint.Style.FILL
-            p.color = 0x33000000
-            c.drawCircle(cx, cy + 1.5f.dp, r - 1f.dp, p)
-            p.color = if (over) 0xFFE5484D.toInt() else 0xFFFFFFFF.toInt()
-            c.drawCircle(cx, cy, r - 2f.dp, p)
-            p.style = Paint.Style.STROKE
-            p.strokeWidth = r * 0.2f
-            p.color = 0xFFE5484D.toInt()
-            c.drawCircle(cx, cy, r - 2f.dp - p.strokeWidth / 2, p)
-            t.color = if (over) 0xFFFFFFFF.toInt() else 0xFF16181C.toInt()
-            t.textSize = r * (if (kmh >= 100) 0.72f else 0.86f)
-            c.drawText(kmh.toString(), cx, cy - (t.descent() + t.ascent()) / 2, t)
-        }
     }
 }

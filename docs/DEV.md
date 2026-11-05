@@ -69,11 +69,11 @@ Emulator: AVD "CarUnit" (Android 10 x86_64, 1024×600, 160 dpi) created with `AN
 `/data/local/tmp/ws/system.img` once.
 
 ## Home screen design
-`home/HomeActivity.kt` lays out `CarPanel` (clock, the car, quick buttons), `MapPanel` (live map, "Where to?", Home/Work,
+`home/HomePanel.kt` lays out `CarPanel` (clock, the car, quick buttons), `MapPanel` (live map, "Where to?", Home/Work,
 the `MediaCard`, the Maps screen's guidance sign in its compact form while navigating), the `Dock` and two bottom sheets (`ControlsSheet`, `AppDrawer`,
 both on `ui/Sheet.kt`). Colours are theme tokens in `ui/Palette.kt`; `ui/Theme.kt` resolves dark / light / auto (light between
 an estimated sunrise and sunset) and a theme or accent change rebuilds the views in place behind a `PixelCopy` snapshot that
-fades out. HomeActivity forwards its lifecycle to the embedded map; the map is capped at 30 fps and only draws when it changes.
+fades out. HomePanel forwards its lifecycle to the embedded map; the map is capped at 30 fps and only draws when it changes.
 
 Motion (1.6): `ui/Motion.kt` has the curves (emphasized in / exit / standard), a `Spring` (Choreographer frames, keeps its
 speed when the target changes: presses, sheets, sliding indicators) and `pressScale` on it. `ui/Segmented.kt` (sliding
@@ -118,9 +118,9 @@ It follows "Design system (1.12)" throughout: type roles, `Radius` / `Space` / `
   grey that read as disabled.
 * **Shadows.** None on the dark theme (`lift()`), where they could not be seen and were redrawn with every map frame.
   On the light theme: the map panel `Elev.REST` plus a `stroke` hairline, the row's pills `REST`, the player `FLOAT`.
-  The dock has a 1 dp `divider` on its top edge instead of a full-width shadow; its app tiles are flat. The window
-  background is the only full-screen fill (`ui/BackdropView`, a second fill of the same colour, is gone from home
-  and Settings, and deleted).
+  The dock has a 1 dp `divider` on its top edge instead of a full-width shadow; its app tiles are flat. There is one
+  full-screen fill: the top panel's own room, since 2.0's step 2, when the window lost its background (`ui/BackdropView`,
+  a second fill of the same colour, is gone from home and Settings, and deleted).
 * **Entrance.** Everything but the car settles in about half a second (it was ~1 s): header at 0 ms, the map row's
   three parts at 80/110/140, the player at 140, the quick buttons at 160, each `View.enter`. The map panel only moves
   (16 dp, `LONG`): it holds the live map's surface, which a fade would draw through a layer on every frame. The dock
@@ -147,9 +147,9 @@ It follows "Design system (1.12)" throughout: type roles, `Radius` / `Space` / `
   manager about every pin and laid the dock out in the frames of the window animation. A pinned app installed or
   removed anywhere reaches `Dock.rebuild()` through a package receiver registered for the activity's whole life
   (updates, `EXTRA_REPLACING`, are ignored).
-* **Sheets.** An app opened from the drawer, or a screen opened from a Controls tile, opens over the sheet; the sheet
-  closes in `HomeActivity.onStop` (closing it at the same time made the sheet, the window animation and the app's start
-  compete). A drawer under a translucent window closes after 1 s once the window lost focus; the Controls sheet stays
+* **Sheets.** An app opened from the drawer, or from a Controls tile, opens over the sheet; the sheet closes in
+  `HomeActivity.onStop` (closing it at the same time made the sheet, the window animation and the app's start compete); a
+  panel, which would open under it, closes it at once. A drawer under a translucent window closes after 1 s once the window lost focus; the Controls sheet stays
   open under a translucent panel (the Wi-Fi panel), which brings the driver back to it. The drawer is INVISIBLE when
   closed, not GONE (it overrides `setVisibility`), so its laid-out grid is kept; icons load at the size shown (68 dp);
   on open the grid rises once as one layer (12 dp, 60 ms after the sheet), and an unchanged list is not bound again.
@@ -221,10 +221,10 @@ there. What changes is the trap above: its sequences, `dev-install`, `HomeGuard`
 no Home alive and `BootHome`'s fallback ended in 2 instances and now in 1. Right after a by-name start the finished
 record can still be listed for a moment beside the new one (no window, gone by the next look).
 
-`Front.panel`, `setPanel` and `ownIs(name, withinMs)` are the same idea for "which screen is in front". Today `panel` is
-set when an activity resumes (`Screens.panelOf`); the shell will call `setPanel` at every switch. `ownIs(Class)` stays
-next to it, deprecated with the reason: a screen that is a panel never resumes as its class, so that overload would still
-compile and never be true. `MusicKeys` asks by name.
+`Front.panel`, `setPanel` and `ownIs(name, withinMs)` are the same idea for "which screen is in front". `panel` is set when
+an activity resumes (`Screens.panelOf`: for the shell, its top panel) and by the shell at every switch. There is no
+`ownIs(Class)` any more: a screen that is a panel never resumes as its class, so it would have compiled and never been
+true. `MusicKeys` asks by name.
 
 Checking it on the emulator (Android's own rules, not the firmware's: `persist.nwd.launcher.default` does not exist there):
 * `cmd package set-home-activity com.abdllh.aura/.home.HomeActivity` once, or the Home key goes to Launcher3.
@@ -242,6 +242,106 @@ Checking it on the emulator (Android's own rules, not the firmware's: `persist.n
 * After the debug assertion the Home key shows the chooser: stock Android clears the chosen home when a non-system home
   process crashes. `set-home-activity` again. The note written just before the throw is lost with the process in a debug
   build (`apply()`); a release build does not throw.
+
+### One window (2.0 step 2: `home/HomeActivity.kt`, `Panel.kt`, `PanelStack.kt`, `PanelMotion.kt`, `ShellRoot.kt`, `Entry.kt`)
+`HomeActivity` is the shell: one window, and nothing of any screen in it. `ShellRoot` is its content, in layers: `mapHost`
+(the map's slot, empty until step 3: always attached, always visible, never follows the keyboard), `panelLayer`, `chrome`
+(empty until the new design), `sheets` (Controls and the drawer, the same classes). `setContentView` runs once: a new theme
+rebuilds what is in the layers. The home screen moved unchanged to `HomePanel`, the bottom of the stack; Settings to
+`SettingsPanel`, the first panel above it, built on open, dropped on close. Maps and Music are still activities. Nothing
+looks different; a screen that is a panel opens in the window, with no activity start.
+
+**A panel** (`Panel`) is a `ContextWrapper` of the activity, so code moved from an activity keeps working on `this`, and its
+callbacks are the activity's under the same meaning: `onShow(args)` / `onHide` were onStart / onStop, `onResume` / `onPause`
+the same, `onArgs` was onNewIntent, `onBack`, `onPermission`, `onTick` (the shell's one `TIME_TICK` receiver), `onLook`,
+`onTrimMemory`, `onDestroy`. `PanelStack` keeps them in pairs. Under another panel a panel has had `onHide`, and is INVISIBLE
+once the move over it has ended (laid out still, so coming back runs no layout; a covered tree is drawn on every frame
+otherwise). `isGone`: dropped or window gone, the guard for a late answer. `isTop`: still in front. `finish()`,
+`requestPermissions(perms, code)` (the answer goes to whoever asked, and not once it is gone), `runOnUiThread`, `window` have
+the activity's names. What needs the real activity takes `shell`: `EnrollDialog`, and the home screen's views, built on
+`shell` itself (`CarGlView` asks its context for the window).
+To add one: a line in `PanelStack.make`, its name in `Screens.PANELS`, its old class becomes `class X : Entry(name)` with
+`Theme.NoDisplay`, `noHistory`, `excludeFromRecents`, `taskAffinity=""` in the manifest. `ProbePanel` (src/debug) is the
+smallest there is.
+
+**How it opens.** `Screens.open`: with the shell resumed and on the main thread, `panels.show(name, args)` in place.
+Otherwise a home intent limited to the package with the panel's name and the args as extras, which brings the shell forward
+and clears what is above it, as the Home key does. `resumedNow`, not `startedNow` as `home-shell.md` 6.7 proposed: a shell
+started and only paused has something over it (an Entry, always; a translucent panel of Android's), and a panel shown in
+place would open under that. `onNewIntent` with no panel named (the Home key) is Home, and pops everything. `Entry` is what is
+left of an old class name: no window, forwards through `Screens` and finishes in `onCreate` whatever happens. With no shell
+alive that is the home intent, so a by-name start makes a home-type activity and never the second instance of "One way to the
+screens"; walked with AMRI the real home: by name with none alive, then another app, then the Home key, one activity, in the
+home stack. `Screens.homeByName` carries the panel's name and args along. AMRI not the home app: the same, in an ordinary stack.
+
+**The stack never takes the home screen down.** A panel that cannot be built, or throws from a callback the stack calls, is
+dropped: the one under it comes back, a Snack says so and Settings → About keeps the last one ("Screen that last failed to
+open", prefs file `aura_shell`). The home panel's own failures go through, since that is what the crash guard counts and
+answers. A move ends by itself at `MOVE_LIMIT_MS`, and the state at rest is reached from one function (`settle`), wherever a
+move stopped; no move runs while the shell is not resumed (`paused()` settles, a panel chosen while stopped is just there),
+nor with the owner's "Animated screen changes" off. A touch on a panel that stops being on top hears `ACTION_CANCEL`
+(`PanelFrame`, as `Sheet`).
+
+**The moves** are one small object, `PanelMotion`, asked by the pair: `between(from, to)` answers a `Move` with `opening` and
+`closing`. The default rises 8 dp and fades, 200 ms in, 180 ms out, as one layer, started after the frame that holds the
+cost (a panel's first frame, with its layer already drawn at alpha 0; the frame of the one that comes back). A later call on
+the same view turns it back from where it is (`Motion.enter/exit`'s tag). The design's laws go there and nowhere else.
+
+**Dialogs and menus** are windows of their own over every panel: an activity's went with the activity, in the shell they
+would stay over what comes next, so `Modal.show` and `Menu.show` register (`Panel.own`) and the stack closes them when the top
+panel changes. That is also what ends the enrolment card on the Home key, whose `onActivityStopped` watch does not fire any
+more (the Home key no longer stops anything under a panel).
+
+**The window has no background** (`Theme.window(fill = false)`): each opaque panel draws its own room, the one full-screen
+fill at rest, as the design wants and as a map under the window will need. The car still stands on `Palette.bg`: it is the
+room's colour now. `CarStage.redraw` no longer pushes frames to the GPU while it is not shown: nothing takes them under another
+panel, and its thread would hang in the swap two frames later (an animation does not stop for that).
+
+**Soft input.** The shell is `adjustNothing`, set per panel at each switch (`Panel.softInput`). With ADJUST_RESIZE only that
+panel's frame follows the keyboard: `mapHost` and the panels under it keep the size they had without it, so nothing heavy is
+laid out again. Measured with `ProbePanel`: root 1024x230, its frame the same, the map's slot and Home 1024x528. **But that
+happens only with the status bar's policy off.** `policy_control immersive.status=*` (`SystemBars`, on by default, so on the
+unit) adds FLAG_FULLSCREEN to every window as far as the window manager is concerned (`PolicyControl.getWindowFlags`, in the
+firmware's bytecode too), and `DisplayPolicy.layoutWindowLw` gives a fullscreen window `mRestricted`, never the shrunk
+`mContent`: ADJUST_RESIZE does not resize. Only the visible frame shrinks, and the window **pans** to keep a focused field in
+sight. So a test on an emulator without `WRITE_SECURE_SETTINGS` (no `-g`, no policy) is not the unit's case: "the keyboard
+shrinks the screen to a strip" in the Maps notes is that case. And the pan is the bad one: measured with a real `SurfaceView` in
+the slot, a field lower than the keyboard's top moves the surface along with the window (298 px), and the window's views over
+it vanish (the transparent region does not follow). A field that stays above the keyboard pans nothing; with ADJUST_NOTHING
+there is no pan at all.
+
+**What moved with the activity.** Home's checks at `onResume` run at every return to the home panel, as they did (`refreshAll`,
+`autoCheckIfDue`, `ZLinkGuard`, the entrance if it has not played), and `notifyHomeForeground` at its `onShow`. `onLook` is the
+look check, asked after `onResume` and at each tick; coming out from under a leaving panel Home is rebuilt at once with no
+picture (it would be of that panel), before the panel goes. The update check is also asked at the tick now. A language change
+is `shell.languageChanged(args)`: the whole window again, the same panel on top (`reopen`, a companion field, and a system
+configuration change uses it too), Settings' picture as before. `GuardMarks.homeDrawn` belongs to the shell's first frame,
+whichever panel it holds. Home's start cover is inside its panel, so it waits under Settings when the window starts there.
+
+Debug hooks: `SettingsActivity --ei page N --es theme ... --es lang ... --es api_base ... --es repo ...` still work, in `Entry`'s
+`beforeOpen`; a language by the hook now shows at once, the window being rebuilt, where the old activity showed it from its next
+start. `am start -a android.intent.action.MAIN -c android.intent.category.HOME --es panel probe com.abdllh.aura`: the probe panel.
+`setprop debug.aura.probefail build|show|resume`, `debug.aura.probekeep 1`, `debug.aura.probesurface 1` (a real surface in the slot,
+its life in the log, `AuraProbe`). `am broadcast -a com.abdllh.aura.debug.PANELS --ei rounds 120 --es panels settings,probe`:
+opens, backs and Homes at random 0-300 ms apart on the main thread, then logs how the layer came to rest.
+
+Walked before and after on the emulator (scripted, AMRI the real home, the same steps in the same order from cleared data; 67
+screenshots compared pixel by pixel; the release build walked too, with no comparison): 7 Settings pages and their scroll, Back and the chevron, the Controls tile, the Home key from a deep page and from a
+dialog, another app and back, a call card and the volume display over Settings (touches through to it), by the old name with one alive
+and with none, debug hooks, language both ways, theme and accent (and Back right after a choice), a permission dialog denied and
+allowed, the enrolment card, the keyboard in the drawer and in Settings' dialogs, the pick from Settings, Screen check, Maps and Music
+from Home. Same pictures but the clock and other times, what a blinking cursor or a ring shows, a fling's distance, a card caught on its
+way out, Settings' new About lines, the map's tiles, and two meant differences: by name with no Home alive Back now goes to Home and not to the launcher that was behind, and a
+hook's language shows at once. Instances: always one, home stack, no crash, nothing from `AuraShell` at error level but what the probe
+was told to do. 120 rounds of the stress: one frame at rest, in place, no layer, views back to 228.
+
+Numbers, emulator, same session, interleaved (times do not carry over to the unit; GPU memory is not in them; PSS differences under
+about 5 MB mean nothing): from the tap's handler to Settings' first frame complete 104-148 ms median before (65-1023), 39 ms after
+(20-111). To rest: the old window animation ran 280 ms after that first frame, the move ends about 285 ms after the tap. PSS after a
+GC, two passes each, before and after: Home at rest 94.6, 107.9 / 100.5, 104.3 MB; Settings open 98.7, 109.7 / 105.1, 106.8; back
+102.6, 106.2 / 102.5, 104.0; after 15 more rounds 107.5, 116.8 / 104.7, 108.7 (native 69-73 / 61-66). Views 222 / 228 on Home, 317 / 320
+with Settings; window roots 2 / 1 with Settings open. On the unit that is one window's buffers instead of two while Settings is
+up, plus one screen-sized layer during a move; not measured. Not tried on the unit: all of it.
 
 ### Memory and start-up cuts (the foundations of 2.0: nothing looks different, while the GPU keeps its time)
 Home was the heavy screen, and almost none of its weight was code: the car's CPU path, its leftovers, the map's sprites and
@@ -346,7 +446,91 @@ unit's:
   (25 frames in 311–373 ms against 47 in 315–336: EGL and the program are most of it). The spin's middle frames show a little
   ghosting at 4 degrees a frame; it would need a look on the panel.
 
+## Design system (2.0: `ui/`, `design/tokens`, `design/icons`, debug `GalleryPanel`)
+What 2.0's screens are made of. The design is `SPEC.md` of the design folder (`tmp/v2/design/final2`); this says what is in the code and why it
+differs where it does. The old screens still build on all of it: they look imperfect in the new tokens until they are rebuilt, and that is expected.
+
+**The one font.** IBM Plex Sans Arabic in three weights, `assets/fonts` (727 KB, `OFL.txt` beside them, `NOTICE`). `Fonts.get(400|500|600)`, `Fonts.of(role)`;
+`Fonts.LIGHT..BOLD` are the old names and fall on the three. Roboto and Readex are out of the UI, and Readex out of the repository: nothing else needed it, because the map pack's glyphs are Plex too (`AMRI Map Sans`, the map branch's
+`tools/mapbuild`; its `run_build.ps1 -Fonts` can take `assets/fonts` once the two meet, the same files by the hashes of its `lock.json`). All text goes
+through `Fonts.tune(paint)`: subpixel, no hinting. Hinted at 1 dp = 1 px, stems snap and advances round to the pixel, and a long line is off by 2 px from the design;
+unhinted the letters are the design's. A long Arabic line still comes out about 1 % narrower than in Chromium (330 px against 327), not traced. There is no `tnum` any more: Plex's digits are
+equal, and no feature was needed; the seven sites left in `MapsActivity` and `MusicActivity` do nothing and go with those screens. Whether digits shrink in one run with Arabic (section 14, question 6): `600` at 56 px has 41 px of ink alone, with its unit in spans and in one run with
+Arabic (0.70 em is 39, the threshold of the measure adds 2; page `digits`, `gallery_compare.py --digits`), so on Android they do not. `withUnit` keeps its `LocaleSpan`, which does no harm.
+
+**A label.** `ctx.label(Type.road, { Palette.ink })` is one line, 1.5 em tall, its direction the language's; a name inside it keeps its own by `BidiFormatter.unicodeWrap` where it
+comes from. Its colour follows the theme when it is given as a token (a lambda); an Int stays what it was. Place it by its line box with `Type.road.box(x, lineTop, w)`, as the layout tables give
+them: the view is centred on the box and may overlap its neighbour. `lines = 2` or `0` wraps, with the role's line box and no multiplier; its first baseline stands where a one-line label's does, so it takes
+`box()` as well. `Role.px` is the size in the UI's language, `Role.night` the heavier weight of moving screens at night (`ctx.label(role, token, moving = true)`, or `label.oneLine(role, moving = true)`: it follows a theme change by itself, and a `typeface =` from `Fonts.of(role, true)` would stay the old theme's weight). Digits' letter-spacing: `digitSpacing(px)`.
+
+**Tokens.** `design/tokens/tokens.json` is the one source; `node design/tokens/gen_tokens_kt.mjs` writes `ui/DesignTokens.kt`. `Palette.ink` (`ColorTokens`), `Type.dist` (`TypeRoles`), `Tokens2.R_card`,
+`Tokens2.MS_theme`, `Tokens2.SPRING_segment`. Added to the design's generator: `scrim` (`scrimRgb` at .6), each role's night weight, `TOUCH_*`, `FREE_*`, and the two base classes, so a new token needs one command. Under
+"the old names" in `Palette` and `Type` is what 1.x called things, worked out from the same tokens; the blocks go with the last old screen. `Palette.accent` is one colour now: `Prefs.accent` still stores
+what old Settings' swatches pick, and nothing reads it. `Asked.kt` holds the owner's three open answers: the dock's order (the second of `q-dock-order.png`), the lyric's word and a message's text while moving. Each is one table or one constant.
+
+**Recolouring.** `ThemeSwap` is section 8's one path: ready first on a worker (`Surfaces.prepare`, `readySteps` for the car and the wash), the window recorded into a `Picture` and held in a view with a hardware layer, then in one frame
+`Palette.applyTheme`, `Look.apply` on the shown panel, the chrome and the sheets, and `map?.invoke(night)`; the ghost fades over 700 ms `move`; the old theme's bitmaps go. Hidden panels are marked stale and catch up in `PanelStack.arrive`, by whichever way they come back (the gallery under a panel of its own through a change, then Back, equals the page built anew: `--es over probe`, `--es swap day`).
+`Theme.isDarkNow` follows the real sun at -0.833 degrees, at the last fix, or Dammam before any (`Daylight`). The minute's tick asks (`PanelStack.tick`), and with a turn within 300 m or a call ringing (`ThemeSwap.holdOff`) it waits up to 2 minutes.
+What a view does in the walk is its own: a component is `Recolours`; any other view says `view.look { ... }`, or `.ink { }`, `.glyph { }`; a plate is a `Tint`; a view on a surface has a `SurfaceBackground`, whose 9-patch changes in place, because `view.background = ` puts the 9-patch's padding back over the view's own (a Snack came out with no padding after a change, and a Modal's card or a Menu would have lost theirs the same way). In the gallery, the same page built anew is pixel for pixel what recoloured in place, 25 pages both ways, with a sheet, a dialog and a menu left open through the change (`--es theme day --ez cut true`, no page, then `--ez rebuild true`). A bitmap of a theme (`Backdrop.noArt`, the song's wash) is the screen's to set again, in a `look { }` or a ready step. A `Panel` with `recolours = false`, which is every old screen, keeps restyling itself in `onLook` as before, and that is the one thing still
+restarting a map (`HomePanel.rebuild`, `MapsActivity`'s recreate): those lines go when the screens are rebuilt. The map's own colours come through `ThemeSwap.map`, set by whoever owns the map: `MapStyle.paints` and `TransitionOptions`, never `setStyle`.
+
+**Surfaces.** `scripts/install_surfaces.py <design folder>` copies what ships: 26 9-patches and 32 small bitmaps into `res/drawable-nodpi`, masks, frames, room, dock, capsules, cover shadow and car glow into `assets/surfaces`. `SurfaceCard` and `SurfaceColumn` are the base of what has an
+outset: `Surface.CARD.at(x, y, w, h)` from the visible rect, touches in the outset fall through, a tap inside never reaches the map. Always exact sizes: a 9-patch's minimum is its bitmap. `Tint(ctx, Plates.res(18)) { Palette.fill }` is a plate with its own mutated state, whose bitmap stays shared (the spec's cache of mutated
+drawables by token would save a hundred bytes a view, and each view needs its own bounds anyway). `Surfaces.asset/themed` decode the big ones `Config.HARDWARE`, `software` for what a Canvas reads; `Surfaces.res` keeps the small bitmaps of res ordinary, against the spec's table: on Android 10 a hardware bitmap is a buffer of its own and a trip through the uploader's GL context on the calling thread, to save about 10 KB (on the emulator a second each with several running: a page of 16 held its first frame 17 s, and under that load the window once lost its surface and drew nothing until a relayout). `turn-glow` was in no row of the spec's table; it goes in `res/drawable-nodpi`. The car's walls and frames stay with the car (section 10).
+`context.scrollFade(surface, top)`: lay it over a list inset 8 from the surface's edge, its last 28 px ending 8 above the card's bottom. The mockup's fade has rounded corners; a stretched bitmap has none and would poke out of the corner if it reached the edge.
+
+**Components, what changed under the old names.** `IconButton` (one view, no children, plate and glyph drawn; `Kind.BARE|TONAL|PILL|ACTIVE`, `pressPlate` for a dock cell) replaced `RoundBtn`, `Dock.button`, `MediaCard.transport` and the two close buttons; `MapPanel.place`, `MusicActivity.ctlButton`, `MapsActivity.roundIcon`, `mapButton`, `zoomHalf`
+go with their screens. `PressGesture`: a component calls `onTouch` from `dispatchTouchEvent` and keeps its listener; `View.pressScale` stays for the rest, on the listener. `tolerant` keeps a click alive 20 % outside the view, past Android's 8 px. `ABtn`: M 60, L 84, `icon(res)`, `loading`, the plates of section 5; `Kind.ANSWER`.
+A `Segmented` label is two views, regular and medium, and the thumb's coverage is their alpha: no text drawn and no layout while it slides. `AuraSwitch` is its track grown by 10 and `AuraSlider` its track grown by 27 and 60 high, because the baked shadows must not be cut at the view's edge and no parent may stop clipping: place them by `AuraSwitch.at`, `AuraSlider.at`, or in rows by
+`switchRow`, `sliderControl`, which take that off in margins. `SeekView` draws its times itself, one view and no layout at a tick; `MusicActivity` keeps its own old `SeekView` and `ThinProgress` classes until Music is rebuilt (they should go then: `ui/` has the new ones, imported by name). `EqualizerView` is gone, `EqGlyph` is the still glyph. `Spinner` turns by the view's rotation, its ring drawn once;
+`ABtn`'s spinner is a delayed post at 30 fps, because an animator on a label asks for a frame right after each frame, and on a slow frame that kept the main thread's other messages behind the frames (a page of five stopped answering broadcasts on the emulator). `Sheet(ctx, side = true)`: `sideHead(title, tools...)`, `placeOnTrip`. `Modal.card`, `Modal.title`, `Modal.body`,
+`Modal.buttons(ctx, action, others...)` with the action on the left in both languages, `followKeyboard()`, `Modal.dismissAll()` for the car's starting to move. `Snack` shows through one `SnackHost` over the window's content; `Snack.waitFor` is the voice card. `TextField`, `LimitSign` (`SPEED`, `HOME`, `STRIP`, `dim`; `RoadHud` uses it). `Rows`: `controlRow`, `valueChevron`, `sliderControl`, `group(..., fill = 414)` with the mockup's rounding of row heights; hairlines lie over the row under them and take no height.
+Icons: `scripts/gen_icons.py` from `design/icons`; 138 and 36 old names. New names mirror by `autoMirrored`; the aliases do not, because their callers still flip by hand.
+
+**Song colour.** `Backdrop.washAsync(ctx, cover, night) { wash -> }`: `panel`, 48 x 28, `widget` and `mini` (show them at the card's rect grown by `CARD_MARGIN`), `fill`, `wordPill`. `Backdrop.round(ctx, cover, size, radius)` on the worker, `noArt`. The word pill is the song's hue at the saturation and value the sea cover gives (night .55, .96, day .89, .525), then `reach`: from the fill itself, as section 4 words it, the
+sea cover's pill came out `#56A1BF` against the design's `#6FD6F6`, duller, because a fill's value is held down so that it works as a fill.
+
+**Tones.** `design/sound/make_tones.py` writes `res/raw/tone_tick`, `tone_saher`, `tone_over`; `Tones.tick(ctx)` etc., on the guidance stream, `Prefs.pressTick`. The spec gives the tick's length and the Saher tone's character and no pitch or level; these are this file's choice, one table, not heard on the car's speakers.
+
+**The gallery.** `am broadcast -n com.abdllh.aura/.debug.GalleryReceiver --es page controls --es theme night --ez cut true` (debug builds): every component in every state at real size, a page per group; `theme` without `cut` goes through the real `ThemeSwap`. `r-*` pages put them where the mockups have them with the mockups' words, on the mockups' map plates (`scripts/gallery-shots.ps1 -Design <folder>` pushes them).
+`scripts/gallery_compare.py <design folder>` compares those pages rect by rect with `screens/_layout.json`. Text can never be equal: Chromium's gamma and Skia's differ.
+On an emulator under load a window can stop drawing altogether while its main thread is well and every view is new: `OpenGLRenderer: dequeueBuffer failed, error = -110; switching to fallback` in the log (the composer lagged more than the buffer's wait, while something animated without a pause), then the renderer is disabled and the surface released until the next relayout. It is the framework's, on the emulator's composer, and not a state of a page; `--ez probe true` prints it (`settings put global hidden_api_policy 1` first). That is why the gallery's page with spinners is its own and last, and a theme change, which relayouts, brings the window back.
+With five emulators on the one GPU, one can also die outright (qemu gone, adb says `not found`). Its next start then waits behind a window of its own, "Android Emulator closed unexpectedly", with no device in adb, for as long as nobody closes it: closing the window sends nothing, and the boot goes on.
+
+**What it weighs.** Against the shell before it, entry by entry in the debug APK: +1,334,117 B (fonts 183,153 compressed, 443,855 raw; `assets/surfaces` 724,091; png 82,118; xml 37,413; tones 35,852; arsc 15,976; dex 110,756, the gallery's classes in it; and 144,732 of covers that only a debug build carries). The file itself says less, because an incremental build leaves gaps in the zip. PSS at Home on the emulator, 40 s after a start: 88.7, 90.5, 92.1 and 93.6 MB, against 96.9 MB before it (the one run of three whose map had come up by then); the views went from 311 to 214, since an `IconButton` has no children. One theme's bitmaps of `Surfaces.prepare` are 3.33 MB of gralloc on the unit, which the emulator's meminfo does not show (`Graphics: 0`); the three surfaces' 9-patches 504 KB for both themes. The fonts are compressed in the APK as Readex was, so the platform inflates each into a direct buffer: 727 KB; `noCompress` would map them instead, for 544 KB more APK. Not done: this is the build file's, and worth a look on the unit's numbers.
+
+## The chrome (2.0: `chrome/`, `system/DriveState.kt`, `system/Prayer.kt`, debug `ChromeProbe`)
+What stays over every panel: the status strip, Home's row and the dock, and over both the volume and the voice button. `Chrome` holds them, in `ShellRoot.chrome`, made once before the window's first frame and never rebuilt. **It is behind a switch, off in this branch**, because the old Dock and Home's old cards are still in their places until the screens are rebuilt: `am broadcast -n com.abdllh.aura/.debug.ChromeProbe --ez on true` (kept in the prefs file `aura_chrome`; `Chrome.isOn`). With it on it lies over the old panels, which show through where it has nothing. When the screens are rebuilt the default turns on and that one function goes.
+
+**The panel on top** comes from `Front`, which `PanelStack.applyTo` tells at every switch and which now has `addPanelListener`: no line of the stack knows about the chrome. `Chrome.show(name, animate)` is the whole of it. It reads `shell.topPanel` again when it is attached, because a recreate puts the panel back after the chrome is built and `Front` hears no change of name. Maps and Music are activities on this branch: the chrome only changes under them with no move, and it starts to matter when they are panels.
+
+**One row.** Volume and the mic never move or fade (`VolumeCluster`, `VoiceButton`, above both rows). `RowHome` and `RowDock` cross-fade by section 9: to the dock, Home's row 120 `exit`, the dock 160 `move`, the voice's plate into its disc in the same 160, the strip's time and badge 120 `exit`; back, the dock 120 `exit`, Home's row 160 `move`, the logo and gear row at 60, 180 `enter`. All on one frame callback (`Tweens`), which turns back from where it is: a second tap retargets, nothing is queued. It is not an animator, so the firmware's scale cannot make it jump; its first frame already counts one frame, and a frame that took long moves it on by two frames at most, so a panel's heavy first draw costs a little time and never a jump.
+**The owner's order.** With the home cell first (`Asked.ORDER_NEAREST`, the default), Home's five tiles read map, music, phone, apps, settings from the left at the row's first five centres, so each tile stands one cell to the left of its own dock cell. The capsule cannot move (it would run into the prayer capsule and leave a hole by the mic), so the tile moves: in the row's change, tiles and dock glyphs both move the 72 px on the same 160 `move`, from the same value, at the same x in every frame (`ChromeRules.shifts`, `RowHome.shift`, `RowDock.shift`); the home cell has no tile and fades in where it is, in the room they leave. The eye follows one row that makes room. Only translation and alpha. In the spec's order every shift is 0 and the same code only fades. The order is one word in `Asked.kt`; the gallery's `chrome-orders` shows both.
+**No layer on the rows**, where section 9 names one on `RowHome`. A tile that moves inside a layer would redraw the layer at every frame; with `hasOverlappingRendering` false a group's alpha goes into each thing it draws, children included (hwui's `AlphaFilterCanvas` unrolls them), and what is in a row hardly overlaps. It is one off-screen buffer less in the frame that must answer, and 3 bitmaps and a few glyphs per frame are no more than the layer's quad.
+**The plate** is one view at x 0 that only translates, on spring 520/0.86; from Home or to a panel with no cell it does not slide but stands or fades in place. A glyph goes white by how much of it the plate covers (`ChromeRules.coverage`, `IconButton.coverage`): a tint and a redraw of that one 72 x 84 cell, as section 5 words it. A row that is going takes no new touch from the first frame, and a touch that began on it hears it end (`Row.live`); under y 516 a touch on a row's blank parts stops there and does not reach the map.
+
+**Volume.** `VolumeCluster` through `CarAudio`, as `Dock` did: a step at once on the press, repeats after 400 ms at 120 ms, stops at the end of the range. The number takes no tap; held 400 ms it mutes, and because the firmware tells of a mute about 300 ms late the word shows at once and what the unit says counts again a second later. It hears `CarAudio`'s listeners and `VOLUME_CHANGED_ACTION`, `STREAM_MUTE_CHANGED_ACTION`. The 4 px bar is a track with a clip to its rounded outline and a fill of the same width that slides under it: only a translation, on spring 520/1. A change of level shows it; a mute going on or off does not. With the row on screen `VolumeHud` shows nothing for the media stream (`Chrome.rowOnScreen`), so nothing covers pause and next at the moment he handles audio; with another app in front it does as before.
+**Voice.** `Amri.wake` as the old quick button, its settings until the microphone is allowed. `Amri` has a state listener and `onLevel` now; the ring is one view scaled by the level, at most 15 times a second, only while listening. It is concentric with the disc: the mockup's stands 2 px lower (`top: 6px` for a 72 px ring in an 84 px cell whose centre the disc is not on), which reads as a mistake.
+**Strip.** `GearRow` and `GearBadge` draw their letters themselves, so a new gear is a redraw and a moving car's bigger letters need no layout. An assumed gear in the row is `ink2`: the design only words the badge (`ink3`), and in the row `ink3` would make it one of the others. `StripSpeed`: the number is drawn, the sign and the Saher part are placed by translation, the distance is a label in a fixed box, so a new speed redraws one small view and nothing is laid out. Which panel has it is `ChromeRules.stripSpeed`; `chrome.speedCardHidden = true` is for Maps with a search or a place card over its card. The time and the prayer are set once a minute, and while fixes come 200 ms after the next one, so a speed at the left and a minute at the right are never one damage rect.
+**Glance.** `ChromeRules.glance`: the prayer on Home and Maps and always on a trip, the mini on Apps, Settings and Phone with a song; a face changes by a 140 crossfade inside a dock that is showing, and comes right with the row otherwise. `prayerQuiet`: moving and more than 45 minutes out.
+
+**`DriveState`** is section 6.0's table: `DriveRule`, pure, with the tests, and an object that feeds it the last fix younger than 5 s and `Gear.known`. `Gear`'s D from motion and its assumed P and D are not known here: they are guesses from the same speed, and a jump of the GPS at a standstill must not skip the 2 s. One listener list, told when the state changes. Note what the table does in a tunnel on a car with no gear data: the fix dies, 5 s later there is no speed and no gear, and that is Parked, at 100 km/h. It is what the table says and what `Gear` does today, and worth a word from the owner. The chrome is its first user: the car starting to move dismisses a Modal as Cancel, and only with the switch on.
+**`system/Prayer.kt`** holds the text of branch v2-guide's `PrayerTimes`. That one is in `nav/guide/Stops.kt` with the guidance's stops, which cannot come along. When the two meet, the object in `Stops.kt` goes and its two users import this one; `PrayerTimesTest` here is its test too, with the glance's `Prayer`, which keeps the day's times until the day or the place changes, or the clock is set back. So a tick does no solar work.
+
+**The slots of section 6.0** are in `ShellRoot` whatever the switch says: `snack` (`Snack` uses it in the shell, and keeps its own for an old activity), `night`, `flyer`, `ghost`. `ThemeSwap` holds its picture in `ghost` now and has no view of its own to add. They are INVISIBLE where the spec says GONE: drawn no more than a GONE view, and coming back they ask for no layout in the frame that counts. `NightPanel` builds itself at its first show: a long press on the strip's left end; speed, limit, and arrow and distance with a trip; a touch ends it; for a call, a Saher under 400 m and a turn under 300 m it opens in 140 ms and comes back 5 s after. Its arrow is `ManeuverView`, which the guidance's rebuild redraws. `Flyer.fly(bitmap, from, to, ms)` has been flown once by the probe and has no user yet.
+
+**At the start.** The first hardware bitmap of a process brings up a GL context of the uploader's on the calling thread: about 600 ms on a loaded emulator, against 12 ms for each one after it, which put 800 ms into the window's `onCreate`. `Chrome.warm`, from `AuraApp`, does those four bitmaps, the logo (cut down once by halves to its real size: bilinear from 4 to 6 times its size skips most of its pixels) and the first prayer times on a thread at the process's start. Built in 56 to 96 ms then. On the unit the first bitmap's cost is not known.
+
+**Measured**, `ChromeProbe --ei rows 15`, `--ei plates 15`, on a still gallery page, emulator-5578 sharing its GPU with four others, frame metrics; *ui* is the main thread (input, animation, layout, draw), *render* sync and commands, *own* both. Host under 40 % busy, 5 runs of the rows and 3 of the plate, about 290 and 240 frames a run: rows own p50 1.5 to 2.7 ms, p90 4.2 to 5.6, p99 7.8 to 13.2, max 8.2 to 15.1, none over 16; plate own p50 1.4 to 2.7, p99 6.0 to 9.7, max 8.9 to 14.2, none over 16; ui p50 0.6, p99 1.3 to 8.4. Host at 48 to 80 %: 1 to 3 frames of 240 over 16 (26 ms at most in render, 34 once on the main thread). With a build running beside it, up to 29 frames of 390 over 16, and as many in the spec's order, which moves nothing: that is the host's GL and CPU, not the row. `total` is 20 to 30 ms at p50 there, which is the emulator's composition. At rest, 70 s: one frame, the minute's tick; 60 s with no tick in it: none; 30 s at a steady 60 km/h with the strip's speed up: one, the tick. Recoloured in place by the real `ThemeSwap` against the chrome built anew, Home's row, dock on Maps, dock on Settings, both ways: 0 pixels differ. Against the mockups (`chrome-shots.ps1`, `gallery_compare.py`'s `c-` pages, the real chrome on the mockups' plates in the spec's order, 14 states, both themes, English too): 382 non-text rects, mean difference 0.95 per channel; those over 8 are the voice ring's 2 px (above) and Music with no wash under it, on purpose. Text differs by Chromium's LCD anti-aliasing and is at offset 0 everywhere but `stripTime` (up to 1 px: it is a little narrower than Chromium's). Layout passes through all of that: 0, in the rows' change, the plate's moves and at rest. PSS at Home, 40 s after a start, on and off in turns: 90.2, 89.5, 92.5 against 91.9, 90.1, 92.5 MB, no difference to be seen; 285 views against 221, Java heap 9.0 against 8.7 MB. On the unit add one theme's capsules and dock in gralloc, about 1 MB, computed. The debug APK, both built clean: +91,268 B, dex 87,780 (the probe's classes in it) and resources.arsc 3,456; no asset or res file. Merged with `v2-shell` in a scratch worktree (it merges clean, and builds), with the switch on, over the real Maps panel on the one map: Home to Maps and back own p50 2.65 ms, p99 12.1, 2 of 311 frames over 16; at rest on Maps 20 s: 0 window frames. None of this was run on the unit.
+
+Debug hooks: `ChromeProbe` (its head lists them: `--es show`, `--es hold maps --ef at 60` for a still of the row's change, `--ef kmh 60` for fixes at a speed through the real path, `--ez listen`, `--ei vol`, `--es word`, `--ei rows`, `--ei plates`, `--ei rest`, `--ei panels`, `--es order spec`), `am broadcast -a com.abdllh.aura.debug.GEAR --es gear D`, `-a com.abdllh.aura.debug.VOLUME_KEY --es key up`. `scripts/chrome-shots.ps1 -Design <folder>`, gallery pages `chrome-orders`, `r-chrome-wall`, `r-chrome-drive`, `r-chrome-room`.
+
+Volume keys on the emulator: with nothing playing Android moves another stream, so `input keyevent KEYCODE_VOLUME_UP` changes no number there; `media volume --stream 3 --set 11` is a change from elsewhere, and the wheel's hook is what the unit does.
+
+**Left for the screens:** the old Dock, Home's old cards and quick buttons go and the switch's default turns on; Apps and Phone are still the old drawer and the firmware's phone app (`Chrome.open`, one line each); the old `ControlsSheet` opens from the strip; `AmriOverlay` is still the old pill, not the voice card; Maps says `speedCardHidden`; Music moving with a trip moves the plate with no panel: `chrome.show("music", true)`.
+
 ## Design system (1.12)
+The tokens' numbers below are history since 2.0; their names, and how they are used, are still what old screens do.
 Everything a screen is made of comes from `ui/`: colours (`Palette.kt`), sizes (`Tokens.kt`), shapes and shadows
 (`Shapes.kt`), motion (`Motion.kt`) and the shared components. Until 1.11 only the colours and the curves were tokens;
 the app had grown 27 text sizes, 18 radii, 11 elevations, 10 press depths and ~30 animations with their own numbers,
@@ -1896,20 +2080,20 @@ this area go in `strings_settings.xml` (both languages).
 
 **Settings is no longer recreated.** Until 1.11 `rebuild()` was `recreate()`: picking a navigation app, a microphone,
 teaching an offline command or switching Beta flashed the bare window and threw the page back to its top.
-* `SettingsActivity.rebuild()` builds the current page again in place, where it was scrolled to (posted, after the tap
+* `SettingsPanel.rebuild()` (`SettingsActivity` until 2.0) builds the current page again in place, where it was scrolled to (posted, after the tap
   that asked for it). Use it when a preference changes what the page shows.
-* `SettingsActivity.restyle()` (no arguments) is only for the theme, the accent and the language. It takes a picture of
+* `SettingsPanel.restyle()` (no arguments) is only for the theme, the accent and the language. It takes a picture of
   the screen (`PixelCopy`, 600 ms at most), stores the waiting choice, builds the whole screen again with the new
-  palette (the language: `recreate()`, the picture handed over in a companion field) and fades the picture out on top
+  palette (the language: the whole window again, the picture handed over in a companion field) and fades the picture out on top
   over `Motion.LONG`; page and scroll stay. It does nothing when nothing waits and the theme shows as it is. The accent
   needs it, since every drawable reads `Palette` when it is built.
 * A choice is kept at the tap: the theme in Prefs, the accent and the language in `pendingAccent` / `pendingLang` (not
   Prefs: the accent there would change `Palette` before the picture). The capture's answer stores them before it checks
-  that the screen is still there, `onDestroy` stores them when the screen goes first, `onRestart` restyles when they
-  still wait, and a `restyle()` during a capture leaves them to it: a pick shown as chosen is never lost. A choice waits
+  that the screen is still there, `onHide` stores them when the screen goes for good (before the home panel looks), `onShow`
+  restyles when they still wait, and a `restyle()` during a capture leaves them to it: a pick shown as chosen is never lost. A choice waits
   `Motion.MEDIUM` (`Later` in `Pages.kt`) so the indicator or tick is seen landing first; a newer one replaces it. Taps
   on what is already chosen do nothing (`ui.Segmented`, `Swatches`, a ticked navigation row, the microphone menu).
-* `onRestart` (back from Maps, Android's settings, the Play Store): a theme or accent changed elsewhere builds the
+* `onShow` again (back from Maps, Android's settings, the Play Store): a theme or accent changed elsewhere builds the
   screen again; otherwise the other pages are dropped and the current one rebuilt.
 
 **Pages are built once.** `built[]` keeps each page's `ScrollView` while the screen is up, so a page comes back at once,
@@ -1927,7 +2111,7 @@ switch: the old page leaves on `exit` (`XSHORT`, 8 dp towards the list side it w
 `enter` 40 ms later from 16 / 8 dp on the other side (a page coming back while leaving turns round). The content
 scrolls under 24 dp gradients in `Palette.bg` at its top and bottom, shown in proportion to what is beyond them
 (`edges()`), in place of a ScrollView fading edge, which drew through an offscreen layer on every scroll frame. No
-`BackdropView`: the window background is the screen's colour already.
+`BackdropView`: the panel's own room is the screen's colour already.
 
 **Rows** (`Rows.kt`): a section's rows sit in one card, `group(vararg rows: View?)`, with `Palette.stroke` hairlines from
 where the row's title starts; the card clips its corners so a pressed first or last row tints the corner, and a null
@@ -1977,7 +2161,7 @@ leaving turns it round from where it is.
 the app's language, not the unit's (`LocaleHelper.wrap`): the update page's errors (`UpdateManager`), and the ZLink,
 beta-leftover and removed-apps toasts.
 
-Test hooks: `SettingsActivity --ei page N --es theme dark|light --es lang ar|en`; `am broadcast -a
+Test hooks: `SettingsActivity --ei page N --es theme dark|light --es lang ar|en` (the old name: `home/Entry.kt`); `am broadcast -a
 com.abdllh.aura.debug.CALL --es state ring|talk|end …`; `com.abdllh.aura.debug.VOLUME_KEY --es key up|down|mute`;
 `com.abdllh.aura.debug.AMRI --es say "…"`. The overlays need the overlay permission (`appops set com.abdllh.aura
 SYSTEM_ALERT_WINDOW allow` on the emulator).
@@ -2867,12 +3051,9 @@ interface the search part implements over `places.db`. Everything fails towards 
   old one back. Zips must be STORED; `rom/tools/gen_bootanim.py` makes it (the car turning in, then the AMRI OS logo
   from `design/logo/`, palette PNGs with 16 entries kept for the logo blue).
 
-## Arabic font (`design/fonts/`)
-Arabic UI text is Readex Pro (OFL), a variable font: `ui/Fonts.kt` takes real weights from the one file
-(`Typeface.Builder` + `'wght'` 300 / 400 / 500 / 650); Latin text stays on the system Roboto. Upstream declares ascent
-1000 / descent 250 while the Arabic reaches about −550…1150, and the app's labels use `includeFontPadding = false`, so
-Android cut the bottom off (ي lost its dots). `design/fonts/make_arabic_font.py` writes the asset from the Google Fonts
-file with ascent 1150 / descent 560 (nothing else changed; renamed "Readex Pro AMRI" as the OFL asks).
+## Arabic font
+Until 2.0 Arabic UI text was Readex Pro (OFL), a variable font; the UI is IBM Plex Sans Arabic now ("Design system (2.0)"), whose metrics need no patch. Upstream Readex declares ascent 1000 / descent 250 while the Arabic reaches about −550…1150, and the
+app's labels use `includeFontPadding = false`, so Android cut the bottom off (ي lost its dots): `design/fonts/make_arabic_font.py` wrote the app's copy with ascent 1150 / descent 560, renamed "Readex Pro AMRI" as the OFL asks. The file and the script left the repository with 2.0 (git's history has them): the map pack's glyphs, the last thing that could have read them, are Plex as well.
 
 ## Logo and icon (`design/logo/`)
 `amri-os-en-source.png` / `amri-ar-source.png` are the owner's artwork (white and blue on black). `make_assets.py` takes

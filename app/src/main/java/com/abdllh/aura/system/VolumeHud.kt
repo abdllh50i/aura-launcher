@@ -223,6 +223,8 @@ object VolumeHud {
     private fun show(kind: Kind, value: Int, muted: Boolean) {
         val c = app ?: return
         if (auraOff() || !Settings.canDrawOverlays(c)) return
+        // (the row is on screen and shows it itself, with no overlay over what he is handling: SPEC.md, "Volume")
+        if (kind == Kind.MEDIA && com.abdllh.aura.chrome.Chrome.rowOnScreen()) return
         var v = hud
         if (v == null || v.dark != Palette.dark || v.accent != Palette.accent || v.lang != Prefs.lang) {
             if (v != null && attached) { v.stay(); detach() } // theme or language changed: built again
@@ -317,7 +319,6 @@ object VolumeHud {
             iconBg.addView(icon, flp(26.dp, 26.dp, Gravity.CENTER))
             card.addView(iconBg, lp(48.dp, 48.dp))
             card.addView(bar, lp(0, 12.dp, 1f).apply { marginStart = Space.L.dp + 2.dp; marginEnd = Space.L.dp })
-            value.fontFeatureSettings = "tnum" // (a number that changes as the button is held does not jiggle)
             card.addView(value, lp(56.dp, LayoutParams.WRAP_CONTENT))
             addView(card, flp(470.dp, 74.dp).apply { setMargins(Space.L.dp, TOP_DP.dp, Space.L.dp, 18.dp) })
         }

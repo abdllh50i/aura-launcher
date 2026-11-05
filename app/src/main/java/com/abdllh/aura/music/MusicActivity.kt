@@ -2000,7 +2000,7 @@ class MusicActivity : Activity() {
     }
 
     private inner class TrackRow(ctx: Context) : SongRow(ctx) {
-        private val eq = EqualizerView(ctx)
+        private val eq = com.abdllh.aura.ui.EqGlyph(ctx)
         // the playing row's tint in the cover's colour, kept and recoloured (not a new drawable per bind)
         private val nowFill = Shapes.rect(0, Radius.L)
         private val nowPressed = Shapes.rect(0, Radius.L)
@@ -2167,7 +2167,7 @@ class MusicActivity : Activity() {
             text = "1"
             // (the Latin face in every language: the Arabic one's taller lines did not fit the badge, and the digit is
             // the same in both)
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            typeface = Fonts.get(600)
             includeFontPadding = false
             background = repeatOneBg
             visibility = View.GONE
@@ -2529,47 +2529,5 @@ class ThinProgress(ctx: Context) : View(ctx) {
             p.color = color
             c.drawRoundRect(r, h / 2, h / 2, p)
         }
-    }
-}
-
-/**
- * Three bars beside the song that is playing; they move while it plays. Each of their frames redraws the window, as long
- * as a song plays: eight a second are plenty (FRAME_MS).
- */
-class EqualizerView(ctx: Context) : View(ctx) {
-    var color = Palette.accent
-        set(v) { if (v != field) { field = v; invalidate() } }
-    var animating = false
-        set(v) { if (v != field) { field = v; removeCallbacks(next); invalidate() } }
-    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val r = RectF()
-    private val next = Runnable { invalidate() }
-
-    override fun onDetachedFromWindow() {
-        removeCallbacks(next)
-        super.onDetachedFromWindow()
-    }
-
-    override fun onDraw(c: Canvas) {
-        p.color = color
-        val bw = width / 5f
-        val t = android.os.SystemClock.uptimeMillis() / 1000.0
-        for (i in 0 until 3) {
-            val f = if (animating) 0.3 + 0.7 * kotlin.math.abs(kotlin.math.sin(t * (2.3 + i * 0.8) + i * 1.7)) else 0.35 + i * 0.2
-            val bh = (height * f).toFloat()
-            val x = bw * 2 * i
-            r.set(x, height - bh, x + bw, height.toFloat())
-            c.drawRoundRect(r, bw / 2, bw / 2, p)
-        }
-        // One redraw waiting, never more. Until 1.19 each draw posted its own, so a draw for any other reason could start
-        // a second round that never ended (1.19 was measured at 26 frames a second once, against 11 for one round).
-        if (animating && isAttachedToWindow) {
-            removeCallbacks(next)
-            postDelayed(next, FRAME_MS)
-        }
-    }
-
-    private companion object {
-        const val FRAME_MS = 125L
     }
 }

@@ -14,7 +14,7 @@ import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Radius
-import com.abdllh.aura.ui.RoundBtn
+import com.abdllh.aura.ui.IconButton
 import com.abdllh.aura.ui.Shapes
 import com.abdllh.aura.ui.Space
 import com.abdllh.aura.ui.Touch
@@ -37,7 +37,7 @@ import java.util.Date
  * on the screen's background (its frames are composed over that colour, see CarEtc): no card may go under it.
  */
 class CarPanel(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
-    // Roboto Light in both languages (the clock's figures are the same in Arabic): the thin weight it had until 1.11
+    // Plex Regular in both languages (the clock's figures are the same in Arabic): the thin weight it had until 1.11
     // was about 2 px wide on this panel and broke up in daylight
     private val clock: AText = ctx.label(Type.DISPLAY_L).apply { typeface = Fonts.light() }
     private val ampm: AText = ctx.label(Type.BUTTON, Palette.text2)
@@ -50,11 +50,11 @@ class CarPanel(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
     /** The quick buttons' capsule. */
     val quick: LinearLayout
 
-    private val wifi = RoundBtn(ctx, R.drawable.ic_wifi, BTN, flat = true)
-    private val link = RoundBtn(ctx, R.drawable.ic_smartphone, BTN, flat = true)
-    private val screenOff = RoundBtn(ctx, R.drawable.ic_power, BTN, flat = true)
-    private val car = RoundBtn(ctx, R.drawable.ic_car, BTN, flat = true)
-    private val voice = RoundBtn(ctx, R.drawable.ic_mic, BTN, flat = true)
+    private val wifi = IconButton(ctx, R.drawable.ic_wifi, 30, BTN, BTN)
+    private val link = IconButton(ctx, R.drawable.ic_smartphone, 30, BTN, BTN)
+    private val screenOff = IconButton(ctx, R.drawable.ic_power, 30, BTN, BTN)
+    private val car = IconButton(ctx, R.drawable.ic_car, 30, BTN, BTN)
+    private val voice = IconButton(ctx, R.drawable.ic_mic, 30, BTN, BTN)
 
     init {
         orientation = VERTICAL

@@ -34,7 +34,7 @@ class PhoneLinkCard(private val ctx: Context) {
     private val qrRow = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; visibility = View.GONE }
     private val qr = QrView(ctx)
     private val manual: AText = ctx.label(Type.BODY, Palette.text2, lines = 0)
-    private val left: AText = ctx.label(Type.FOOTNOTE, Palette.text3).apply { fontFeatureSettings = "tnum" }
+    private val left: AText = ctx.label(Type.FOOTNOTE, Palette.text3)
     private val showBtn = ABtn(ctx).apply { kind = ABtn.Kind.TONAL }
     private val forgetBtn = ABtn(ctx).apply { kind = ABtn.Kind.GHOST; setText(R.string.link_forget) }
     private var showing = false

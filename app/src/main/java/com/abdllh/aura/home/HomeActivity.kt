@@ -2,98 +2,42 @@ package com.abdllh.aura.home
 
 import android.app.Activity
 import android.content.BroadcastReceiver
-import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.graphics.Bitmap
-import android.graphics.Rect
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.view.PixelCopy
-import android.view.View
-import android.widget.FrameLayout
-import android.widget.ImageView
-import android.widget.LinearLayout
-import com.abdllh.aura.R
 import com.abdllh.aura.media.MediaMonitor
-import com.abdllh.aura.nav.CarLocation
-import com.abdllh.aura.system.CarAudio
 import com.abdllh.aura.system.CrashGuard
 import com.abdllh.aura.system.NwdBridge
-import com.abdllh.aura.ui.CarStage
-import com.abdllh.aura.ui.CarFrames
 import com.abdllh.aura.ui.Fonts
-import com.abdllh.aura.ui.MATCH
-import com.abdllh.aura.ui.Motion
-import com.abdllh.aura.ui.Palette
-import com.abdllh.aura.ui.Snack
-import com.abdllh.aura.ui.Spring
 import com.abdllh.aura.ui.Theme
 import com.abdllh.aura.ui.afterNextDraw
-import com.abdllh.aura.ui.enter
-import com.abdllh.aura.ui.fadeTo
-import com.abdllh.aura.ui.lp
-import com.abdllh.aura.update.UpdateManager
 import com.abdllh.aura.util.LocaleHelper
 import com.abdllh.aura.util.Prefs
-import com.abdllh.aura.util.dp
 
-/** The home screen: the car on the start side, the map with the player on the end side, the dock, and two sheets. */
-class HomeActivity : Activity(), HomeHost {
-    private var root: FrameLayout? = null
-    private lateinit var carPanel: CarPanel
-    private lateinit var mapPanel: MapPanel
-    private lateinit var dock: Dock
-    private lateinit var controls: ControlsSheet
-    private lateinit var drawer: AppDrawer
-    private var introPlayed = false
-    /** Over the screen until its entrance starts, after a cold start on the light theme ([coverStart]). */
-    private var startCover: View? = null
+/**
+ * The shell: the one window of 2.0, which holds the map's slot, the panels ([PanelStack], Home at the bottom), the chrome and
+ * the sheets ([ShellRoot]), and hands what the system tells an activity on to the top panel. Nothing of any screen is here:
+ * the home screen itself is [HomePanel]. It keeps this name and its manifest entry for good: the home intent, BootHome,
+ * HomeGuard, stock Android's preferred home and every script know it.
+ */
+class HomeActivity : Activity() {
+    lateinit var root: ShellRoot
+        private set
+    lateinit var panels: PanelStack
+        private set
     private var builtLang = ""
-    private var builtAccent = 0
-    private var builtDark = true
-    private var restyling = false
-    private var resumedNow = false
-    private var startedNow = false
-    private var packagesWatched = false
     private var counted = false
+    private var firstResume = true
+
+    var startedNow = false
+        private set
+    var resumedNow = false
+        private set
 
     private val tick = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
-            if (!::carPanel.isInitialized) return
-            carPanel.refresh()
-            // "Auto" reached sunrise or sunset; not while a sheet is in use (the next minute's tick retries)
-            if (Theme.isDarkNow() != builtDark && !drawer.isOpen && !controls.isOpen) restyle()
-        }
-    }
-    private val volume = object : BroadcastReceiver() {
-        override fun onReceive(c: Context, i: Intent) {
-            if (!::dock.isInitialized) return
-            dock.syncVolume()
-            if (controls.isOpen) controls.syncVolume()
-        }
-    }
-    // A pinned app installed or removed anywhere (the system's app manager, an update): the dock follows at once,
-    // also while the home screen is in the background, since it no longer rebuilds itself on every return.
-    private val packages = object : BroadcastReceiver() {
-        override fun onReceive(c: Context, i: Intent) {
-            if (i.getBooleanExtra(Intent.EXTRA_REPLACING, false)) return // an update: the app stays
-            val pkg = i.data?.schemeSpecificPart ?: return
-            if (::dock.isInitialized && DockPins.contains(pkg)) dock.rebuild()
-        }
-    }
-    private val carAudio: () -> Unit = {
-        if (::dock.isInitialized) {
-            dock.syncVolume()
-            if (controls.isOpen) controls.syncVolume()
-        }
-    }
-    private val updateObserver: (UpdateManager.State) -> Unit = {
-        if (::dock.isInitialized) {
-            dock.refreshBadge()
-            carPanel.refreshUpdate()
+            if (::panels.isInitialized) panels.tick()
         }
     }
 
@@ -118,123 +62,37 @@ class HomeActivity : Activity(), HomeHost {
         Screens.homeBuilt(intent, alive)
         alive++
         counted = true
+        current = this
         Fonts.refreshLocale(this)
         Theme.refresh()
         builtLang = Prefs.lang
-        builtAccent = Prefs.accent
-        builtDark = Palette.dark
-        Theme.window(this, Palette.dock)
-        // (with the GPU's frame file there, the GPU draws the car from its first frame: see CarStage.playIntro)
-        if (CarStage.startsOnCpu(this, Palette.dark, Palette.bg)) CarFrames.warmUp(this, resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL)
-        setContentView(buildUi())
-        if (!processStarted) {
-            processStarted = true
-            if (!Palette.dark) coverStart()
-        }
-        mapPanel.onCreate(savedInstanceState)
+        root = ShellRoot(this)
+        setContentView(root)
+        panels = PanelStack(this, HomePanel(this, savedInstanceState))
         MediaMonitor.start(this)
         NwdBridge.startStockServicesOncePerBoot(this)
-        try {
-            registerReceiver(packages, IntentFilter().apply {
-                addAction(Intent.ACTION_PACKAGE_ADDED)
-                addAction(Intent.ACTION_PACKAGE_REMOVED)
-                addDataScheme("package")
-            })
-            packagesWatched = true
-        } catch (_: Throwable) { }
-        if (Prefs.safeModeNotice) {
-            Prefs.safeModeNotice = false
-            toast(getString(R.string.safe_mode_notice))
+        com.abdllh.aura.chrome.Chrome.attachIfOn(this) // (what stays over every panel: behind its switch until the screens are rebuilt)
+        // what this start is for: a recreate brings back what was on top; the intent says it once (a recreate reads it again)
+        val again = reopen
+        reopen = null
+        if (again != null) panels.show(again.first, again.second)
+        else Screens.panelIn(intent)?.let { name ->
+            panels.show(name, intent.extras)
+            intent.removeExtra(Screens.EXTRA_PANEL)
         }
-    }
-
-    /**
-     * The light theme's way out of the starting window. That window can only be drawn in the XML colours, the dark
-     * theme's, so every boot on the light theme (all day under "auto") opened on near-black and then cut to the white
-     * screen at once. The first frame now shows the same near-black over the built screen, and it fades off as the
-     * entrance starts ([animateIn]): a plain fill on top, which costs one translucent rectangle per frame while it
-     * fades (fading the whole screen in instead would draw it all through a layer).
-     */
-    private fun coverStart() {
-        // (one flat colour: faded as it is, not through an offscreen copy of the whole screen)
-        val c = object : View(this) { override fun hasOverlappingRendering() = false }
-        c.setBackgroundColor(getColor(R.color.bg))
-        root?.addView(c, MATCH, MATCH)
-        startCover = c
-    }
-
-    // (no backdrop view: the window's background is the theme's, and a view painting the same colour over the whole
-    // screen was a second full-screen fill in every frame of the map)
-    private fun buildUi(): View {
-        val r = FrameLayout(this)
-
-        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val content = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        carPanel = CarPanel(this, this)
-        content.addView(carPanel, lp(0, MATCH, 0.40f))
-        mapPanel = MapPanel(this, this)
-        content.addView(mapPanel, lp(0, MATCH, 0.60f).apply { topMargin = 12.dp; bottomMargin = 12.dp; marginEnd = 12.dp })
-        col.addView(content, lp(MATCH, 0, 1f))
-        dock = Dock(this, this)
-        col.addView(dock, lp(MATCH, DOCK_DP.dp))
-        r.addView(col, MATCH, MATCH)
-
-        controls = ControlsSheet(this, this)
-        r.addView(controls, MATCH, MATCH)
-        drawer = AppDrawer(this, this)
-        r.addView(drawer, MATCH, MATCH)
-        root = r
-        return r
     }
 
     override fun onStart() {
         super.onStart()
-        NwdBridge.notifyHomeForeground(this)
-        mapPanel.onStart()
         startedNow = true
-    }
-
-    override fun onStop() {
-        mapPanel.onStop()
-        startedNow = false
-        // a sheet left open under an app opened from it (so it did not close during the app's opening) goes now
-        if (::drawer.isInitialized) closeSheets()
-        super.onStop()
-    }
-
-    override fun onDestroy() {
-        if (counted) { counted = false; alive-- }
-        if (::mapPanel.isInitialized) mapPanel.onDestroy()
-        if (packagesWatched) try { unregisterReceiver(packages) } catch (_: Throwable) { }
-        super.onDestroy()
-    }
-
-    override fun onLowMemory() {
-        super.onLowMemory()
-        if (::mapPanel.isInitialized) mapPanel.onLowMemory()
-    }
-
-    /** Asks once for the location (the home map shows the car; Maps needs it anyway). */
-    private fun askLocationOnce() {
-        if (CarLocation.hasPermission(this) || Prefs.raw.getBoolean("askedLocation", false)) return
-        Prefs.raw.edit().putBoolean("askedLocation", true).apply()
-        requestPermissions(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION), 7)
-    }
-
-    override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, grants: IntArray) {
-        if (CarLocation.hasPermission(this)) CarLocation.acquire(this, "home")
+        panels.started()
     }
 
     override fun onResume() {
         super.onResume()
-        if (builtLang != Prefs.lang) {
-            AppRepo.clear() // (the app names are the old language's)
-            recreate() // the language changed in Settings
-            return
-        }
-        if (builtAccent != Prefs.accent || Theme.isDarkNow() != builtDark) restyle() // changed in Settings
+        resumedNow = true
+        if (languageChanged()) return
         com.abdllh.aura.system.Animations.ensureAnimators()
-        com.abdllh.aura.system.ZLinkGuard.onHomeShown() // back from ZLink: it is switched off again after a while
         val f = IntentFilter().apply {
             addAction(Intent.ACTION_TIME_TICK)
             addAction(Intent.ACTION_TIME_CHANGED)
@@ -242,212 +100,100 @@ class HomeActivity : Activity(), HomeHost {
             addAction(Intent.ACTION_LOCALE_CHANGED)
         }
         registerReceiver(tick, f)
-        try {
-            // muting (Mute tile, steering-wheel key) only sends STREAM_MUTE_CHANGED, not VOLUME_CHANGED
-            registerReceiver(volume, IntentFilter("android.media.VOLUME_CHANGED_ACTION").apply { addAction("android.media.STREAM_MUTE_CHANGED_ACTION") })
-        } catch (_: Throwable) { }
-        CarAudio.addListener(carAudio)
-        mapPanel.onResume()
-        resumedNow = true
-        refreshAll()
-        UpdateManager.observe(updateObserver)
-        UpdateManager.autoCheckIfDue()
-        if (!introPlayed) {
-            introPlayed = true
-            animateIn()
-            root?.postDelayed({ if (!isDestroyed) drawer.prewarm() }, PREWARM_AFTER_MS)
-            root?.postDelayed({ if (!isFinishing) askLocationOnce() }, 2600)
-        }
-    }
-
-    private fun refreshAll() {
-        carPanel.refresh()
-        mapPanel.refresh()
-        dock.refresh()
-        if (controls.isOpen) controls.refresh()
-    }
-
-    /**
-     * Entrance, settled within about half a second (it kept the player and the quick buttons out of reach for a
-     * second until 1.11): the header, the map's row and player, the quick buttons and the dock's tiles one after the
-     * other while the car turns towards the screen. Each card fades through its own layer; the map panel only moves
-     * (it holds the live map's surface, which a fade would draw through a layer at every frame) and the dock's tiles
-     * only rise with the dock.
-     * Everything is put where it starts from at once, so the first frame shows that, and it all starts moving after
-     * that frame: on a cold start the first frame held the main thread for up to 650 ms, and an entrance started
-     * before it was over by the time it showed (the cards appeared all at once, with no stagger).
-     */
-    private fun animateIn() {
-        carPanel.stage.playIntro(100)
-        // (a part hidden for now, a place button while navigating, stays hidden)
-        val cards = ArrayList<Triple<View, Float, Long>>()
-        fun rise(v: View, dy: Float, delay: Long) {
-            if (v.visibility != View.VISIBLE) return
-            v.alpha = 0f
-            v.translationY = dy.dp
-            cards.add(Triple(v, dy, delay))
-        }
-        rise(carPanel.header, -8f, 0L)
-        // (each card on its own, so its own shadow stays outside the layer it fades in)
-        for (i in 0 until mapPanel.places.childCount) rise(mapPanel.places.getChildAt(i), -8f, 80L + 30L * i)
-        rise(mapPanel.media, 12f, 140L)
-        rise(carPanel.quick, 12f, 160L)
-        mapPanel.translationY = 16f.dp
-        dock.translationY = DOCK_DP.dp.toFloat()
-        for (i in 0 until dock.apps.childCount) dock.apps.getChildAt(i).translationY = 18.dp.toFloat()
-
-        val r = root ?: return
-        r.afterNextDraw {
-            if (isDestroyed) return@afterNextDraw
-            com.abdllh.aura.guard.GuardMarks.homeDrawn() // (the guard's "OK" follows in about 20 s)
-            for ((v, dy, delay) in cards) v.enter(dy = dy, delay = delay)
-            mapPanel.animate().translationY(0f).setStartDelay(0L).setDuration(Motion.LONG).setInterpolator(Motion.EMPHASIZED).start()
-            dock.animate().translationY(0f).setStartDelay(0L).setDuration(Motion.LONG).setInterpolator(Motion.EMPHASIZED).start()
-            for (i in 0 until dock.apps.childCount) {
-                dock.apps.getChildAt(i).animate().translationY(0f).setStartDelay(60L + 25L * i).setDuration(Motion.MEDIUM)
-                    .setInterpolator(Motion.EMPHASIZED).start()
-            }
-            // (on a spring, which steps at most a few frames' worth per frame: the frames after the first are heavy
-            // too, and a timed fade jumped from black to white across them)
-            startCover?.let { c ->
-                Spring(1f, COVER_STIFFNESS, 1f, 0.01f) { c.alpha = it }.apply {
-                    onRest = { r.removeView(c) }
-                    animateTo(0f)
-                }
-            }
-            startCover = null
-            com.abdllh.aura.nav.MapLib.preload(this) // (the map below will want it: off the main thread, and not before this frame)
-            // (counted from here too: from onResume, the first frame's wait brought it into the middle of the entrance)
-            r.postDelayed({ if (!isDestroyed) mapPanel.startLive() }, LIVE_MAP_AFTER_MS)
+        panels.resumed()
+        if (firstResume) {
+            firstResume = false
+            // whichever panel it is (the guard's "OK" follows in about 20 s)
+            root.afterNextDraw { if (!isDestroyed) com.abdllh.aura.guard.GuardMarks.homeDrawn() }
         }
     }
 
     override fun onPause() {
         try { unregisterReceiver(tick) } catch (_: Throwable) { }
-        try { unregisterReceiver(volume) } catch (_: Throwable) { }
-        CarAudio.removeListener(carAudio)
-        mapPanel.onPause()
         resumedNow = false
-        UpdateManager.unobserve(updateObserver)
-        com.abdllh.aura.system.ZLinkGuard.onHomeHidden()
+        if (::panels.isInitialized) panels.paused()
         super.onPause()
+    }
+
+    override fun onStop() {
+        startedNow = false
+        if (::panels.isInitialized) panels.stopped()
+        // a sheet left open under an app opened from it (so it did not close during the app's opening) goes now
+        if (::root.isInitialized) root.closeSheets()
+        super.onStop()
+    }
+
+    override fun onDestroy() {
+        if (counted) { counted = false; alive-- }
+        if (current === this) current = null
+        // (a system configuration change: what was on top is back in the new window)
+        if (::panels.isInitialized) {
+            if (isChangingConfigurations && reopen == null && panels.top.name != Screens.HOME) reopen = panels.top.name to null
+            panels.destroyed()
+        }
+        super.onDestroy()
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        if (::panels.isInitialized) panels.trim(TRIM_LOW_MEMORY)
     }
 
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        if (level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
-            // keep only the resting views of the car while another app is in front
-            CarFrames.meta(this)?.let { m -> CarFrames.trim(listOf(m.defaultFrame, m.defaultFrameRtl)) }
-        }
-        // the stopped home map keeps its tile caches until told (Maps may be running its own engine meanwhile)
-        if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW && ::mapPanel.isInitialized) mapPanel.onLowMemory()
+        if (::panels.isInitialized) panels.trim(level)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        closeSheets()
-    }
-
-    private fun closeSheets(): Boolean {
-        var closed = false
-        if (::drawer.isInitialized && drawer.isOpen) { drawer.close(); closed = true }
-        if (::controls.isInitialized && controls.isOpen) { controls.close(); closed = true }
-        return closed
+        if (!::panels.isInitialized) return
+        // (the Home key's intent names no panel: Home. Not setIntent: the one a recreate reads stays the first)
+        val name = Screens.panelIn(intent)
+        panels.show(name ?: Screens.HOME, if (name == null) null else intent.extras)
     }
 
     @Deprecated("launcher: back does nothing on the home screen")
     override fun onBackPressed() {
-        closeSheets()
+        if (::panels.isInitialized) panels.back()
     }
 
-    // ---- HomeHost
-    override fun openDrawer() {
-        if (controls.isOpen) controls.close()
-        drawer.open()
+    override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, grants: IntArray) {
+        if (::panels.isInitialized) panels.answer(code, grants)
     }
 
-    override fun openControls() {
-        if (drawer.isOpen) drawer.close()
-        controls.open()
+    /** The name of the top panel ([com.abdllh.aura.system.Front]). */
+    val topPanel: String get() = if (::panels.isInitialized) panels.top.name else Screens.HOME
+
+    /** A window of its own opened over the panels ([Panel.own]). */
+    fun ownWindow(isOpen: () -> Boolean, close: () -> Unit) {
+        if (::panels.isInitialized) panels.own(isOpen, close)
     }
 
-    override fun openSettings(page: Int) {
-        Screens.settings(this, page)
-    }
-
-    override fun toast(msg: String, outlives: Boolean) {
-        Snack.show(this, msg, aboveDp = DOCK_DP + 16, outlives = outlives)
-    }
+    /** The system bars for the top panel, and no window background: each panel draws its own room ([HomePanel]). */
+    fun windowLook(navBar: Int) = Theme.window(this, navBar, fill = false)
 
     /**
-     * Applies a new theme or accent in place: the screen is captured, the views are rebuilt with the new colours,
-     * and the capture fades out on top of them (no activity restart, no flash).
+     * The language is not the one this window was built in (Settings, a debug hook): the whole window again, the language
+     * lives in the activity's resources, with the same panel on top, told [args]. True when so. The only time the map is
+     * rebuilt in normal use (home-shell.md 7.5); NavSession goes on through it.
      */
-    override fun restyle() {
-        if (restyling) return
-        if (Theme.isDarkNow() == builtDark && Prefs.accent == builtAccent) return
-        val r = root
-        if (r == null || r.width == 0 || r.height == 0 || !r.isAttachedToWindow) { rebuild(null); return }
-        restyling = true
-        val snap = try { Bitmap.createBitmap(r.width, r.height, Bitmap.Config.ARGB_8888) } catch (_: Throwable) { null }
-        if (snap == null) { rebuild(null); return }
-        val at = IntArray(2)
-        r.getLocationInWindow(at)
-        val main = Handler(Looper.getMainLooper())
-        val fallback = Runnable { if (restyling) rebuild(null) } // the copy never answered
-        try {
-            PixelCopy.request(window, Rect(at[0], at[1], at[0] + r.width, at[1] + r.height), snap, { result ->
-                main.removeCallbacks(fallback)
-                if (restyling) rebuild(if (result == PixelCopy.SUCCESS) snap else null)
-            }, main)
-            main.postDelayed(fallback, 600)
-        } catch (_: Throwable) {
-            rebuild(null)
-        }
-    }
-
-    private fun rebuild(snap: Bitmap?) {
-        restyling = false
-        if (isDestroyed) return
-        val reopen = ::controls.isInitialized && controls.isOpen
-        // the live map of the old view tree owns a GL surface: shut it down before the views are replaced
-        if (::mapPanel.isInitialized) {
-            if (resumedNow) mapPanel.onPause()
-            if (startedNow) mapPanel.onStop()
-            mapPanel.onDestroy()
-        }
-        Theme.refresh()
-        builtDark = Palette.dark
-        builtAccent = Prefs.accent
-        Theme.window(this, Palette.dock)
-        val ui = buildUi() as FrameLayout
-        setContentView(ui)
-        mapPanel.onCreate(null)
-        mapPanel.startLive() // (no entrance to wait for)
-        if (startedNow) mapPanel.onStart()
-        if (resumedNow) mapPanel.onResume()
-        refreshAll()
-        if (reopen) controls.open(false)
-        ui.postDelayed({ if (!isDestroyed) drawer.prewarm() }, PREWARM_AFTER_MS)
-        if (snap != null) {
-            val cover = ImageView(this).apply { setImageBitmap(snap); scaleType = ImageView.ScaleType.FIT_XY }
-            ui.addView(cover, MATCH, MATCH)
-            cover.fadeTo(0f, Motion.LONG) { ui.removeView(cover) }
-        }
+    fun languageChanged(args: Bundle? = null): Boolean {
+        if (builtLang == Prefs.lang) return false
+        AppRepo.clear() // (the app names are the old language's)
+        reopen = panels.top.name to args
+        recreate()
+        return true
     }
 
     companion object {
-        /** The home screen has been built once in this process: later builds have no starting window before them. */
-        private var processStarted = false
+        /** The shell that is alive, if one is: [Screens] then needs no activity start at all. */
+        var current: HomeActivity? = null
+            private set
         /** Home activities alive in this process: one at most ([Screens.homeBuilt]; a recreate destroys before it builds). */
         private var alive = 0
-        /** The light theme's start cover fades on this spring: critically damped, mostly gone in about 0.4 s. */
-        private const val COVER_STIFFNESS = 100f
-        /** Height of the dock (big touch targets: the unit's 1024x600 panel is about 120 dpi, 1 dp = 1 px). */
-        const val DOCK_DP = 92
-        /** The live map starts once the entrance has settled. */
-        private const val LIVE_MAP_AFTER_MS = 700L
-        /** The app drawer's cells are built while nothing else happens. */
-        private const val PREWARM_AFTER_MS = 2500L
+        /** What a recreate is to bring back on top (the new instance takes it in its onCreate). */
+        private var reopen: Pair<String, Bundle?>? = null
+        /** [onLowMemory] told to the panels as the level that means the same. */
+        const val TRIM_LOW_MEMORY = android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE
     }
 }

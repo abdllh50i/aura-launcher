@@ -6,8 +6,8 @@ import android.view.View
 import com.abdllh.aura.util.Prefs
 
 /**
- * Dark / light / automatic appearance. "Automatic" follows the real daylight where the car is ([Daylight]): dark from
- * civil dusk to civil dawn.
+ * Dark / light / automatic appearance. "Automatic" follows the real sun where the car is ([Daylight]): night from sunset to sunrise.
+ * A change of it goes through [ThemeSwap]; [refresh] alone only assigns the tokens.
  */
 object Theme {
     const val AUTO = "auto"
@@ -25,14 +25,21 @@ object Theme {
         val want = isDarkNow()
         if (want == Palette.dark) return false
         Palette.applyTheme(want)
+        changed?.invoke()
         return true
     }
 
-    /** Window background and system bar colours for the current theme. */
+    /** The tokens changed, by whichever path: what lasts through every old screen's own restyle (the chrome) follows from here. */
+    var changed: (() -> Unit)? = null
+
+    /**
+     * Window background and system bar colours for the current theme. [fill] false: no background at all, what is in the
+     * window draws its own (the one window of 2.0: its panels' rooms, and the map where they leave it).
+     */
     @Suppress("DEPRECATION")
-    fun window(a: Activity, navBar: Int = Palette.bg) {
+    fun window(a: Activity, navBar: Int = Palette.bg, fill: Boolean = true) {
         val w = a.window
-        w.setBackgroundDrawable(ColorDrawable(Palette.bg))
+        w.setBackgroundDrawable(if (fill) ColorDrawable(Palette.bg) else null)
         w.statusBarColor = Palette.bg
         w.navigationBarColor = navBar
         var flags = w.decorView.systemUiVisibility

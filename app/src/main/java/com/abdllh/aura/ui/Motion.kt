@@ -7,17 +7,14 @@ import android.graphics.RectF
 import android.os.Build
 import android.view.Choreographer
 import android.view.Gravity
-import android.view.MotionEvent
 import android.view.SurfaceView
 import android.view.TextureView
 import android.view.View
-import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.ViewPropertyAnimator
 import android.view.ViewTreeObserver
 import android.view.animation.PathInterpolator
 import android.widget.FrameLayout
-import android.widget.TextView
 import com.abdllh.aura.R
 import kotlin.math.abs
 import kotlin.math.min
@@ -35,6 +32,10 @@ object Motion {
     @JvmField val EXIT: TimeInterpolator = PathInterpolator(0.23f, 1f, 0.32f, 1f)
     /** Moving within the screen. */
     @JvmField val STANDARD: TimeInterpolator = PathInterpolator(0.2f, 0f, 0f, 1f)
+
+    /** The three curves under the design's names (SPEC.md section 9): `enter` is [EMPHASIZED], `move` is [STANDARD]. */
+    @JvmField val ENTER: TimeInterpolator = EMPHASIZED
+    @JvmField val MOVE: TimeInterpolator = STANDARD
 
     /** The quickest exits (a menu or a dialog card going after a choice was made in it). */
     const val XSHORT = 100L
@@ -123,76 +124,6 @@ class Spring(
         if (done) { value = target; velocity = 0f }
         apply(value)
         if (done) { running = false; onRest?.invoke() } else Choreographer.getInstance().postFrameCallback(this)
-    }
-}
-
-/** True when this view or one inside it matches [p]. */
-private fun View.holds(p: (View) -> Boolean): Boolean {
-    if (p(this)) return true
-    if (this is ViewGroup) for (i in 0 until childCount) if (getChildAt(i).holds(p)) return true
-    return false
-}
-
-/**
- * Press feedback: the view sinks under the finger ([Motion.PRESS_ICON] / [Motion.PRESS_CONTROL] /
- * [Motion.PRESS_SURFACE]) and comes back when let go (from where it was, however quick the tap), settling with one
- * small overshoot, not a wobble. Cheap: only the view's scale moves, no layout.
- * Inside something that scrolls, the sink waits for the tap timeout as Android's pressed tint does, so a drag that
- * starts on a row scrolls the list without the row sinking and bouncing back. A view with text sinks through a
- * hardware layer: text drawn at a new size on every frame makes this GPU rasterise a new set of letters each time.
- */
-fun View.pressScale(scale: Float = Motion.PRESS_CONTROL) {
-    val s = (getTag(R.id.aura_press_spring) as? Spring) ?: Spring(1f, 1200f, 1f) { v -> scaleX = v; scaleY = v }.also { sp ->
-        setTag(R.id.aura_press_spring, sp)
-        sp.onRest = {
-            if (sp.value == 1f && getTag(R.id.aura_press_layer) == true) {
-                setLayerType(View.LAYER_TYPE_NONE, null)
-                setTag(R.id.aura_press_layer, null)
-            }
-        }
-    }
-    var pending = false
-    val sink = Runnable {
-        pending = false
-        if (layerType == View.LAYER_TYPE_NONE && holds { it is TextView } && !holds { it is TextureView || it is SurfaceView }) {
-            setLayerType(View.LAYER_TYPE_HARDWARE, null)
-            setTag(R.id.aura_press_layer, true)
-        }
-        s.stiffness = 1200f // (in fast and without overshoot: 95 % in about 80 ms)
-        s.dampingRatio = 1f
-        s.animateTo(scale)
-    }
-    val release = Runnable {
-        removeCallbacks(sink)
-        pending = false
-        s.stiffness = 560f
-        s.dampingRatio = 0.7f
-        s.animateTo(1f)
-    }
-    setOnTouchListener { v, e ->
-        when (e.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                removeCallbacks(release)
-                val inScroller = generateSequence(v.parent) { it.parent }.any { it is ViewGroup && it.shouldDelayChildPressedState() }
-                if (inScroller) { pending = true; postDelayed(sink, ViewConfiguration.getTapTimeout().toLong()) } else sink.run()
-            }
-            MotionEvent.ACTION_UP -> if (pending) {
-                // a tap quicker than the timeout still shows, as briefly as Android shows its pressed tint then
-                removeCallbacks(sink)
-                sink.run()
-                postDelayed(release, ViewConfiguration.getPressedStateDuration().toLong())
-            } else release.run()
-            MotionEvent.ACTION_CANCEL -> release.run()
-            MotionEvent.ACTION_MOVE -> {
-                // Only leaving the view lets go: a finger wobbling on a tile in a moving car is still a press. A scroll
-                // needs no check of its own here: the parent that takes the touch sends ACTION_CANCEL, which lets go.
-                if (e.x < -v.width * 0.2f || e.y < -v.height * 0.2f || e.x > v.width * 1.2f || e.y > v.height * 1.2f) {
-                    release.run() // slid off: no press any more, and back without the overshoot of a let-go
-                    s.dampingRatio = 0.9f
-                }
-            }
-        }
-        false
     }
 }
 

@@ -53,6 +53,9 @@ internal object AmriOverlay {
     private var attached = false
     private val hideLater = Runnable { hide() }
 
+    /** Its card is up: a Snack waits ([com.abdllh.aura.ui.Snack.waitFor]). */
+    val showing: Boolean get() = attached
+
     fun show(c: Context, mode: Mode, text: String, hideAfterMs: Int = 0, sub: String? = null) {
         val app = c.applicationContext
         if (!Settings.canDrawOverlays(app)) return
@@ -94,7 +97,10 @@ internal object AmriOverlay {
     fun text(t: String) { frame?.pill?.title?.text = t }
 
     /** The voice's level, 0..1, while listening. */
-    fun level(l: Float) { frame?.pill?.level(l) }
+    fun level(l: Float) {
+        frame?.pill?.level(l)
+        Amri.onLevel?.invoke(l)
+    }
 
     fun hide() {
         main.removeCallbacks(hideLater)

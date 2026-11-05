@@ -17,6 +17,7 @@ import com.abdllh.aura.R
 import com.abdllh.aura.media.MediaMonitor
 import com.abdllh.aura.media.NowPlaying
 import com.abdllh.aura.ui.AText
+import com.abdllh.aura.ui.IconButton
 import com.abdllh.aura.ui.Elev
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Motion
@@ -124,16 +125,11 @@ class MediaCard(ctx: Context, private val host: HomeHost) : LinearLayout(ctx) {
     // Dimmed while nothing plays, and then the ghost background is clear (a disabled button is not pressed): nothing
     // overlaps, so the alpha goes straight onto the icon instead of through an offscreen buffer at every frame of the
     // live map under the card.
-    private fun transport(ctx: Context, res: Int, desc: Int, onClick: () -> Unit): FrameLayout = object : FrameLayout(ctx) {
-        override fun hasOverlappingRendering() = false
-    }.apply {
-        background = Shapes.ghostOval()
-        isClickable = true
-        contentDescription = ctx.getString(desc)
-        pressScale(Motion.PRESS_ICON)
-        setOnClickListener { onClick() }
-        addView(ImageView(ctx).apply { setImageResource(res); setColorFilter(Palette.text); scaleType = ImageView.ScaleType.FIT_CENTER }, flp(27.dp, 27.dp, Gravity.CENTER))
-    }
+    private fun transport(ctx: Context, res: Int, desc: Int, onClick: () -> Unit): IconButton =
+        IconButton(ctx, res, 32, 54, 54, token = { Palette.ink }).apply {
+            contentDescription = ctx.getString(desc)
+            setOnClickListener { onClick() }
+        }
 
     private fun skip(dir: Int, key: MediaMonitor.Key) {
         lastDir = dir

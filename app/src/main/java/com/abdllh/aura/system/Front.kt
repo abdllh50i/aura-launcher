@@ -34,7 +34,7 @@ object Front {
     var cls = ""
         private set
 
-    /** AMRI's own activity in front (or the last one that was), by class name. */
+    /** AMRI's own activity in front (or the last one that was), by class name. For which screen: [panel]. */
     var own = ""
         private set
     /** When [own] left the front (elapsedRealtime); 0 while it is there. */
@@ -43,9 +43,8 @@ object Front {
     val ownResumed get() = own.isNotEmpty() && ownLeftAt == 0L
 
     /**
-     * AMRI's own screen in front (or the last one that was), by its name in [Screens], whatever hosts it. Today every
-     * screen is an activity and its resume says so. Once a screen is a panel of the home activity, the activity's
-     * resume says "home" and the shell calls [setPanel] right after it, and at every switch.
+     * AMRI's own screen in front (or the last one that was), by its name in [Screens], whatever hosts it: the top panel
+     * for the shell ([Screens.panelOf] at its resume, [com.abdllh.aura.home.PanelStack] at every switch), else the activity.
      */
     var panel = ""
         private set
@@ -54,16 +53,18 @@ object Front {
         if (name == panel) return
         panel = name
         Log.i(TAG, "panel: $name")
+        for (l in panelListeners) l(name)
     }
+
+    private val panelListeners = CopyOnWriteArrayList<(String) -> Unit>()
+
+    /** Told [panel] when it changes, on the main thread: the moment a panel comes to the top. */
+    fun addPanelListener(l: (String) -> Unit) { panelListeners.add(l) }
+    fun removePanelListener(l: (String) -> Unit) { panelListeners.remove(l) }
 
     /** [panel] is [name] and is in front, or was until less than [withinMs] ago. */
     fun ownIs(name: String, withinMs: Long): Boolean =
         panel == name && (ownLeftAt == 0L || SystemClock.elapsedRealtime() - ownLeftAt < withinMs)
-
-    /** [own] is [activity] and is in front, or was until less than [withinMs] ago. */
-    @Deprecated("By the screen's name: once the screen is a panel its activity never resumes, and this still compiles and is never true")
-    fun ownIs(activity: Class<*>, withinMs: Long): Boolean =
-        own == activity.name && (ownLeftAt == 0L || SystemClock.elapsedRealtime() - ownLeftAt < withinMs)
 
     fun addListener(l: () -> Unit) { listeners.add(l) }
 

@@ -18,7 +18,6 @@ import com.abdllh.aura.system.CrashGuard
 import com.abdllh.aura.system.Device
 import com.abdllh.aura.ui.ABtn
 import com.abdllh.aura.ui.AuraSlider
-import com.abdllh.aura.ui.Fonts
 import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Motion
 import com.abdllh.aura.ui.Palette
@@ -39,9 +38,9 @@ import com.abdllh.aura.util.dp
 
 /**
  * A choice of the theme, the accent or the language: the control shows the choice landing first (the indicator
- * slides, the tick comes in), then the screen takes it ([SettingsActivity.restyle]). A newer choice made before then
+ * slides, the tick comes in), then the screen takes it ([SettingsPanel.restyle]). A newer choice made before then
  * replaces the one waiting. The choice itself is kept at the tap (the theme in Prefs, the accent and the language in
- * [SettingsActivity.pendingAccent] / [SettingsActivity.pendingLang]), so leaving the screen meanwhile does not lose it.
+ * [SettingsPanel.pendingAccent] / [SettingsPanel.pendingLang]), so leaving the screen meanwhile does not lose it.
  */
 private class Later(private val v: View) {
     private var r: Runnable? = null
@@ -60,7 +59,7 @@ private fun Context.choices(labels: List<String>, selected: Int, onSelect: (Int)
     }
 
 // ---------------------------------------------------------------------------------------------- General
-class GeneralPage(private val act: SettingsActivity) : Page(R.string.set_general, R.drawable.ic_sliders) {
+class GeneralPage(private val act: SettingsPanel) : Page(R.string.set_general, R.drawable.ic_sliders) {
     override fun build(ctx: Context): View {
         val col = ctx.pageColumn()
         col.addSection(ctx.getString(R.string.set_appearance))
@@ -98,16 +97,13 @@ class GeneralPage(private val act: SettingsActivity) : Page(R.string.set_general
             langLater?.then { act.restyle() }
         }
         langLater = Later(lang)
-        // (the Arabic name in the Arabic typeface, also in the English UI; its letters are drawn smaller than Latin
-        // ones at one size, so it is a little larger to look the same size as "English" beside it)
-        lang.item(1).apply { Fonts.arabic()?.let { typeface = it }; textSize = Type.BUTTON.sp + 2f }
         col.addRow(ctx.group(ctx.block(null, null, null, lang)))
         return col
     }
 }
 
 // ---------------------------------------------------------------------------------------------- Display & sound
-class DisplaySoundPage(private val act: SettingsActivity) : Page(R.string.set_display_sound, R.drawable.ic_sun) {
+class DisplaySoundPage(private val act: SettingsPanel) : Page(R.string.set_display_sound, R.drawable.ic_sun) {
     /** The page's sliders and their values, set again at each visit ([onShow]). */
     private var levels: (() -> Unit)? = null
 
@@ -266,7 +262,7 @@ class DisplaySoundPage(private val act: SettingsActivity) : Page(R.string.set_di
 }
 
 // ---------------------------------------------------------------------------------------------- Navigation
-class NavigationPage(private val act: SettingsActivity) : Page(R.string.set_navigation, R.drawable.ic_nav) {
+class NavigationPage(private val act: SettingsPanel) : Page(R.string.set_navigation, R.drawable.ic_nav) {
     private var offline: OfflineCard? = null
     private var extras: ExtrasCard? = null
     /** The count of the cameras marked from the car, kept current while the page shows (they change on the map). */
@@ -374,7 +370,7 @@ class NavigationPage(private val act: SettingsActivity) : Page(R.string.set_navi
 }
 
 // ---------------------------------------------------------------------------------------------- Vehicle & system
-class VehiclePage(private val act: SettingsActivity) : Page(R.string.set_vehicle, R.drawable.ic_car) {
+class VehiclePage(private val act: SettingsPanel) : Page(R.string.set_vehicle, R.drawable.ic_car) {
     private class Tile(val icon: Int, val label: Int, val available: (Context) -> Boolean, val run: (Context) -> Unit)
     private var internet: InternetCard? = null
     private var phoneLink: com.abdllh.aura.link.PhoneLinkCard? = null
@@ -518,7 +514,7 @@ class VehiclePage(private val act: SettingsActivity) : Page(R.string.set_vehicle
 }
 
 // ---------------------------------------------------------------------------------------------- About
-class AboutPage(private val act: SettingsActivity) : Page(R.string.set_about, R.drawable.ic_info) {
+class AboutPage(private val act: SettingsPanel) : Page(R.string.set_about, R.drawable.ic_info) {
     // (the notes from the unit and the last crash change while the screen is up)
     override val keep: Boolean get() = false
 
@@ -580,6 +576,9 @@ class AboutPage(private val act: SettingsActivity) : Page(R.string.set_about, R.
         com.abdllh.aura.system.MusicKeys.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_steering, R.string.about_music_key, it) }
         // the last time the home screen started in a way it should not have to: a healthy unit has no such line
         com.abdllh.aura.home.Screens.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_home, R.string.about_home_start, it) }
+        // the screens that are panels of the one window: how long the last one took, and the last that failed to open
+        com.abdllh.aura.home.PanelStack.lastOpen.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_layers, R.string.about_panel_open, it) }
+        com.abdllh.aura.home.PanelStack.failedNote(ctx).takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_alert, R.string.about_panel_failed, it) }
         // the last Bluetooth song's lookup: where its cover and length came from, or why nothing came
         com.abdllh.aura.music.CoverSearch.note.takeIf { it.isNotEmpty() }?.let { info(R.drawable.ic_disc, R.string.about_cover, it) }
         // how the last song handed to YouTube's app went (it could not be tried before the unit)

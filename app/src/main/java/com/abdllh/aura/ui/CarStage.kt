@@ -633,9 +633,13 @@ class CarStage(context: Context) : FrameLayout(context) {
         c.drawRect(0f, height - 22.dp.toFloat(), width.toFloat(), height.toFloat(), fadeBottom)
     }
 
-    /** Shows the current state: the GPU draws it straight away (no redraw of the view tree), else this view redraws. */
+    /**
+     * Shows the current state: the GPU draws it straight away (no redraw of the view tree), else this view redraws.
+     * Under another panel nothing takes the GPU's frames, and its thread would hang in the swap two frames later (an
+     * animation does not stop for that): the view's next draw, as it comes back, gives it the state.
+     */
     private fun redraw() {
-        if (glOn) pushGl() else invalidate()
+        if (glOn && isShown) pushGl() else invalidate()
     }
 
     /** The current state to the GPU: frames, blend, framing, fade-in, and the crisp copy of a resting frame. */

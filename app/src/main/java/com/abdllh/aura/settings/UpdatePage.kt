@@ -14,7 +14,9 @@ import com.abdllh.aura.ui.MATCH
 import com.abdllh.aura.ui.Palette
 import com.abdllh.aura.ui.Radius
 import com.abdllh.aura.ui.Shapes
+import com.abdllh.aura.ui.ProgressBar
 import com.abdllh.aura.ui.Space
+import com.abdllh.aura.ui.Spinner
 import com.abdllh.aura.ui.Touch
 import com.abdllh.aura.ui.Type
 import com.abdllh.aura.ui.WRAP
@@ -30,7 +32,7 @@ import com.abdllh.aura.util.Prefs
 import com.abdllh.aura.util.dp
 
 /** Software update screen: check GitHub, show release notes, download, verify, install. */
-class UpdatePage(private val act: SettingsActivity) : Page(R.string.set_update, R.drawable.ic_download) {
+class UpdatePage(private val act: SettingsPanel) : Page(R.string.set_update, R.drawable.ic_download) {
     private lateinit var holder: LinearLayout
     private lateinit var ctx: Context
     private var observer: ((UpdateManager.State) -> Unit)? = null
@@ -215,7 +217,7 @@ class UpdatePage(private val act: SettingsActivity) : Page(R.string.set_update, 
         title(ctx.getString(R.string.upd_downloading, s.release.tag.removePrefix("v")))
         val bar = ProgressBar(ctx).apply { set(f) }
         holder.addView(bar, lp(MATCH, WRAP).apply { topMargin = Space.L.dp })
-        val line = ctx.label(Type.FOOTNOTE, Palette.text2).apply { text = progressLine(s, f); fontFeatureSettings = "tnum" }
+        val line = ctx.label(Type.FOOTNOTE, Palette.text2).apply { text = progressLine(s, f) }
         holder.addView(line, lp(MATCH, WRAP).apply { topMargin = Space.S.dp })
         holder.addView(ABtn(ctx).apply { kind = ABtn.Kind.GHOST; setText(R.string.btn_cancel); setOnClickListener { UpdateManager.cancel() } }, lp(WRAP, WRAP).apply { topMargin = Space.L.dp })
         dlBar = bar

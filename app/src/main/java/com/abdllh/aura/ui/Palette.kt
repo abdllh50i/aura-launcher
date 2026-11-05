@@ -3,18 +3,19 @@ package com.abdllh.aura.ui
 import android.graphics.Color
 
 /**
- * Colour tokens of the current theme (dark or light) plus the user-selected accent.
- * Views read the tokens when they are built; a theme change recreates the activity (see [Theme]).
+ * The colours of the current theme: one of the two generated [ThemeColors] ([ColorTokens] gives each by name, `Palette.ink`;
+ * the values and what each is for are SPEC.md section 2), and what measures them. [applyTheme] assigns the other set in place;
+ * what is on screen follows through [Look] (ui/Look.kt), nothing is rebuilt ([ThemeSwap]).
  *
- * Contrast rules (1.12, measured with [contrast]): body text ([text], [text2]) is at least 4.5:1 on every surface of
- * its theme; [text3] is at least 4:1 and only for text of 14 sp or more that is never the only sign of something
- * tappable; text on a filled colour is [onColor] of it; the accent as a *foreground* (a label, an icon, a highlighted
- * word) is [accentFg], never [accent], which is a fill (buttons, the slider's fill, indicators, the route).
+ * Under "the old names" is what 1.x called them, worked out from the same tokens, so old screens keep building until they are
+ * rebuilt; the block goes with the last of them.
+ *
+ * One accent, the logo's blue: there is no choosing it any more. [accent] as a fill, [accentInk] as text or a glyph.
  */
-object Palette {
+object Palette : ColorTokens() {
     @JvmField var dark = true
 
-    @JvmField var bg = 0          // screen background
+    // ---- the old names
     @JvmField var card = 0        // panels and rows
     @JvmField var card2 = 0       // raised parts: inputs, chips, round buttons
     @JvmField var card3 = 0       // slider tracks, pressed chips
@@ -23,55 +24,23 @@ object Palette {
     @JvmField var text2 = 0
     @JvmField var text3 = 0
     @JvmField var press = 0       // pressed overlay on transparent buttons
-    @JvmField var scrim = 0       // behind bottom sheets and modals
     @JvmField var glass = 0       // floating cards on top of the map
-    @JvmField var glassStroke = 0 // their edge (on the dark map a shadow does not show, the edge does)
+    @JvmField var glassStroke = 0 // their edge
     @JvmField var sheet = 0       // bottom sheets and modal cards
-    @JvmField var dock = 0        // bottom bar
     @JvmField var shadow = 0      // colour of the soft drop shadows
-    @JvmField var divider = 0     // lines between parts of one surface (the dock's top edge)
-    @JvmField var track = 0       // the empty part of thin progress bars and level meters (translucent: any surface)
-    @JvmField var control = 0     // the "off" track of a switch: it must show on a card without being a colour
-    @JvmField var overlay = 0     // the system-level overlays (volume, call, voice, messages) over any screen
+    @JvmField var divider = 0     // lines between parts of one surface
+    @JvmField var control = 0     // the "off" track of a switch
+    @JvmField var overlay = 0     // the system-level overlays
     @JvmField var overlayStroke = 0
-
-    // Status colours, themed: the dark theme's bright ones are about 2:1 on white, so the light theme has deeper ones
-    // (each at least 4.5:1 on white, and white on them at least as much, so they serve as text and as fills).
     @JvmField var success = 0
-    @JvmField var warn = 0
     @JvmField var danger = 0
-
-    // the map's land, under the map until it has drawn (the map's other colours are its style's: MapStyle)
-    @JvmField var mapLand = 0
-
-    val DEFAULT_ACCENT = 0xFF3E6AE1.toInt()
-
-    /** The graphite swatch until 1.11 (white on it was 3.0:1); a saved one is moved to [accents]' graphite. */
-    const val OLD_GRAPHITE = 0xFF8E959F.toInt()
-
-    /**
-     * The owner's accent: a fill. Assigning it also works out [accentFg] for the loaded theme, so every assignment
-     * (Prefs at start, the swatches in Settings) keeps the two together.
-     */
-    var accent: Int = DEFAULT_ACCENT
-        set(v) { field = v; accentFg = foreground(v) }
-
-    /**
-     * The accent as text or an icon: the accent itself when it already reads at 4.5:1 on its own tinted surface
-     * ([accentSoft] over a card), else lighter on the dark theme and deeper on the light one, just as far as needed.
-     */
     @JvmField var accentFg = 0
 
-    /** Selectable accent colours shown in Settings. */
-    val accents = intArrayOf(
-        0xFF3E6AE1.toInt(), // blue
-        0xFF2FB8FF.toInt(), // cyan
-        0xFF2FD07A.toInt(), // green
-        0xFFF5A524.toInt(), // amber
-        0xFFE5484D.toInt(), // red
-        0xFFA569FF.toInt(), // violet
-        0xFF767D87.toInt()  // graphite (white on it 4.2:1)
-    )
+    /** The one accent. */
+    val DEFAULT_ACCENT = Tokens2.NIGHT.accent
+
+    /** What Settings' swatches offer until that page is rebuilt: the one accent. */
+    val accents = intArrayOf(DEFAULT_ACCENT)
 
     init {
         applyTheme(true)
@@ -79,59 +48,26 @@ object Palette {
 
     fun applyTheme(isDark: Boolean) {
         dark = isDark
-        if (isDark) {
-            bg = 0xFF0B0C0E.toInt()
-            card = 0xFF17191D.toInt()
-            card2 = 0xFF1F2227.toInt() // (one step over card, as in 1.11: raised with card, or tonal controls fade into it)
-            card3 = 0xFF292D33.toInt()
-            stroke = 0xFF2A2E34.toInt()
-            text = 0xFFF2F3F5.toInt()
-            text2 = 0xFFA3A8B0.toInt()
-            text3 = 0xFF80868F.toInt()
-            press = 0x17FFFFFF
-            scrim = 0xB3000000.toInt()
-            glass = 0xF2121417.toInt()
-            glassStroke = 0x1FFFFFFF
-            sheet = 0xFF141619.toInt()
-            dock = 0xFF070809.toInt()
-            shadow = 0xFF000000.toInt()
-            divider = 0xFF1A1C20.toInt()
-            track = 0x26FFFFFF
-            control = 0xFF3A3F47.toInt()
-            overlay = 0xF51C1F24.toInt()
-            overlayStroke = 0x1AFFFFFF
-            success = 0xFF2FD07A.toInt()
-            warn = 0xFFF5A524.toInt()
-            danger = 0xFFE5484D.toInt()
-            mapLand = 0xFF1B2230.toInt()
-        } else {
-            bg = 0xFFECEEF1.toInt()
-            card = 0xFFFFFFFF.toInt()
-            card2 = 0xFFF3F4F6.toInt()
-            card3 = 0xFFE2E5E9.toInt()
-            stroke = 0xFFDCE0E5.toInt()
-            text = 0xFF15171B.toInt()
-            text2 = 0xFF4F555E.toInt()
-            text3 = 0xFF6E747E.toInt()
-            press = 0x12000000
-            scrim = 0x66000000
-            glass = 0xF5FFFFFF.toInt()
-            glassStroke = 0
-            sheet = 0xFFFFFFFF.toInt() // (white, so the card2 tiles on it show as tiles)
-            dock = 0xFFFFFFFF.toInt()
-            shadow = 0xFF5A6270.toInt()
-            divider = 0x14000000
-            track = 0x1A000000
-            control = 0xFFC5CBD3.toInt()
-            // (solid: at 98 % the dark words of the screen under a call card still showed through its white)
-            overlay = 0xFFFFFFFF.toInt()
-            overlayStroke = 0x14000000
-            success = 0xFF17804A.toInt()
-            warn = 0xFFA86200.toInt()
-            danger = 0xFFC9363B.toInt()
-            mapLand = 0xFFF1F2EF.toInt()
-        }
-        accentFg = foreground(accent)
+        c = if (isDark) Tokens2.NIGHT else Tokens2.DAY
+        card = cardFlat
+        card2 = over(fill, cardFlat)
+        card3 = over(fill2, cardFlat)
+        stroke = over(line, cardFlat)
+        text = ink
+        text2 = ink2
+        text3 = ink3
+        press = fillPress
+        glass = withAlpha(cardFlat, 0.96f)
+        glassStroke = line
+        sheet = cardFlat
+        shadow = if (isDark) 0xFF000000.toInt() else 0xFF5A6270.toInt()
+        divider = dockEdge
+        control = over(track, cardFlat)
+        overlay = cardFlat
+        overlayStroke = line
+        success = green
+        danger = red
+        accentFg = accentInk
     }
 
     fun withAlpha(color: Int, alpha: Float): Int =
@@ -144,6 +80,16 @@ object Palette {
             (Color.red(a) + (Color.red(b) - Color.red(a)) * k).toInt(),
             (Color.green(a) + (Color.green(b) - Color.green(a)) * k).toInt(),
             (Color.blue(a) + (Color.blue(b) - Color.blue(a)) * k).toInt()
+        )
+    }
+
+    /** A translucent [top] over an opaque [under], as one opaque colour. */
+    fun over(top: Int, under: Int): Int {
+        val a = Color.alpha(top) / 255f
+        return Color.rgb(
+            (Color.red(under) + (Color.red(top) - Color.red(under)) * a).toInt(),
+            (Color.green(under) + (Color.green(top) - Color.green(under)) * a).toInt(),
+            (Color.blue(under) + (Color.blue(top) - Color.blue(under)) * a).toInt()
         )
     }
 
@@ -163,27 +109,57 @@ object Palette {
     }
 
     /**
-     * Text colour that stays readable on a fill of [bg]: white while it has 3:1 there (the labels on fills are 17 sp
-     * medium or larger), else near-black. Measured, not guessed from brightness: the YIQ guess this replaced put
-     * white on cyan and green at about 2:1.
+     * Text colour that stays readable on a fill of [bg]: white while it has 3:1 there (the labels on fills are 24 px medium or
+     * larger), else near-black. Measured, not guessed from brightness.
      */
     fun onColor(bg: Int): Int = if (contrast(0xFFFFFFFF.toInt(), bg) >= 3.0) 0xFFFFFFFF.toInt() else 0xFF0A0C0F.toInt()
 
-    private fun foreground(c: Int): Int {
-        val under = mix(card, c, if (dark) 0.20f else 0.13f) // where accent text sits: a tint over a card
-        val toward = if (dark) 0xFFFFFFFF.toInt() else 0xFF000000.toInt()
-        var t = 0f
-        var fg = c
-        while (t < 0.8f && contrast(fg, under) < 4.5) {
-            t += 0.04f
-            fg = mix(c, toward, t)
+    /** [c] mixed toward white ([lighten]) or black only as far as it takes to reach [ratio] on [on]. */
+    fun reach(c: Int, on: Int, ratio: Double, lighten: Boolean): Int {
+        val toward = if (lighten) Color.WHITE else Color.BLACK
+        var k = 0f
+        var out = c
+        while (k < 0.8f && contrast(out, on) < ratio) {
+            k += 0.04f
+            out = mix(c, toward, k)
         }
-        return fg
+        return out
     }
 
-    /** The accent a little lighter (pressed state of accent buttons). */
-    fun accentPressed(): Int = mix(accent, if (dark) 0xFFFFFFFF.toInt() else 0xFF000000.toInt(), 0.16f)
+    /** The accent a little deeper (a pressed accent). */
+    fun accentPressed(): Int = accentLo
 
-    /** Accent tint for selected chips/rows (with [accentFg] on it). */
-    fun accentSoft(): Int = withAlpha(accent, if (dark) 0.20f else 0.13f)
+    /** Accent tint for selected chips and rows (with [accentInk] on it). */
+    fun accentSoft(): Int = selectedSoft
+
+    /**
+     * The pairs of section 2 that are two tokens, whichever theme is loaded: what falls under its ratio, as lines to log. Debug
+     * builds ask at start ([com.abdllh.aura.AuraApp]) and the gallery shows them.
+     */
+    fun contrastFaults(): List<String> {
+        val out = ArrayList<String>()
+        for (t in arrayOf(Tokens2.NIGHT, Tokens2.DAY)) {
+            val name = if (t === Tokens2.NIGHT) "night" else "day"
+            fun need(what: String, a: Int, b: Int, ratio: Double) {
+                val got = contrast(a, b)
+                if (got < ratio) out.add("$name: $what ${"%.2f".format(got)} < $ratio")
+            }
+            need("ink on dock", t.ink, t.dock, 4.5)
+            need("ink2 on dock", t.ink2, t.dock, 4.5)
+            need("ink3 on dock", t.ink3, t.dock, 3.0)
+            need("icon on dock", t.icon, t.dock, 4.5)
+            need("ink on card", t.ink, t.cardFlat, 4.5)
+            need("ink2 on card", t.ink2, t.cardFlat, 4.5)
+            need("white on accent", t.onAccent, t.accent, 4.5)
+            need("selected plate on dock", t.selected, t.dock, 3.0)
+            need("selected ink on it", t.selectedInk, t.selected, 4.5)
+            need("word on its pill", t.wordPillInk, t.wordPill, 4.5)
+            need("limit number on its face", t.limitInk, t.limitFace, 4.5)
+            need("white on answer", t.onAccent, t.answerLo, 4.5)
+            need("white on decline", t.onAccent, t.declineLo, 4.5)
+            need("glyph on the bump plate", t.onWarn, t.warn, 4.5)
+            need("glyph on the play disc", t.wash, t.ink, 4.5)
+        }
+        return out
+    }
 }
