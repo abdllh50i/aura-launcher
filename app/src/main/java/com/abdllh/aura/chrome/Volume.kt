@@ -52,16 +52,16 @@ internal class VolumeCluster(ctx: Context) : FrameLayout(ctx), Recolours {
     private fun repeats(b: IconButton, dir: Int) {
         val again = object : Runnable {
             override fun run() {
-                val before = CarAudio.volume()
-                CarAudio.step(dir)
-                if (CarAudio.volume() != before) b.postDelayed(this, REPEAT_MS)
+                val before = CarAudio.level()
+                CarAudio.stepLevel(dir)
+                if (CarAudio.level() != before) b.postDelayed(this, REPEAT_MS)
             }
         }
         b.setOnTouchListener { _, e ->
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     Tones.tick(context)
-                    CarAudio.step(dir)
+                    CarAudio.stepLevel(dir)
                     b.postDelayed(again, Tokens2.MS_muteHold)
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> b.removeCallbacks(again)
@@ -88,11 +88,11 @@ internal class VolumeCluster(ctx: Context) : FrameLayout(ctx), Recolours {
 
     private val resync = Runnable { sync() }
 
-    /** What the unit says now, in place. */
-    fun sync() = number.set(CarAudio.volume(), if (SystemClock.uptimeMillis() < wantUntil) wantMuted else CarAudio.muted())
+    /** What the unit says now, in place: the level (0..50 on his unit, the boost's part above the firmware's top in the warm tint). */
+    fun sync() = number.set(CarAudio.level(), if (SystemClock.uptimeMillis() < wantUntil) wantMuted else CarAudio.muted(), CarAudio.boost() > 0)
 
     /** Debug builds: the mockups' numbers. */
-    fun hold(v: Int, muted: Boolean) = number.set(v, muted)
+    fun hold(v: Int, muted: Boolean) = number.set(v, muted, v > CarAudio.max())
 
     override fun onDetachedFromWindow() {
         removeCallbacks(resync)
@@ -125,6 +125,7 @@ internal class VolumeNumber(ctx: Context, private val onHold: () -> Unit) : View
     private var value = 0
     private var text = "0"
     private var muted = false
+    private var boosted = false
     private val hold = Runnable { onHold() }
 
     init {
@@ -138,11 +139,12 @@ internal class VolumeNumber(ctx: Context, private val onHold: () -> Unit) : View
         onLook()
     }
 
-    fun set(v: Int, muted: Boolean) {
-        if (v == value && muted == this.muted) return
+    fun set(v: Int, muted: Boolean, boosted: Boolean = false) {
+        if (v == value && muted == this.muted && boosted == this.boosted) return
         value = v
         text = v.toString()
         this.muted = muted
+        this.boosted = boosted
         invalidate()
     }
 
@@ -167,7 +169,8 @@ internal class VolumeNumber(ctx: Context, private val onHold: () -> Unit) : View
             c.drawText(word, cx, y, p)
         } else {
             speaker.draw(c)
-            p.color = Palette.ink
+            // above the firmware's top the number is the boost's: the warm token, as dark as it must be to read on the row
+            p.color = if (boosted) Palette.reach(Palette.warn, Palette.dock, 4.5, Palette.dark) else Palette.ink
             c.drawText(text, cx, y, p)
         }
     }

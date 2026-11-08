@@ -703,7 +703,94 @@ internal object Collect {
         o.put("canBoxVersion", CanGear.boxVersion(c) ?: JSONObject.NULL)
         o.put("canBox", CanGear.boxInfo(c) ?: JSONObject.NULL).put("canAppKnowsGear", CanGear.supported(c)).put("canGearPossible", CanGear.gearPossible(manager) ?: JSONObject.NULL)
         o.put("canMessages", CanGear.messages).put("canGearRaw", CanGear.raw)
+        o.put("volume", try { volume(c) } catch (t: Throwable) { JSONObject().put("error", t.toString()) })
         return o
+    }
+
+    /**
+     * The volume (2.0 beta 4): the level, the boost's effect as it reads back, the last 200 events ([com.abdllh.aura.system.VolumeLog]),
+     * the firmware's and the CAN box's volume keys, every Settings.System and Settings.Global key with "vol" or "amp" in its name,
+     * and where audioflinger has the boost (by root).
+     */
+    fun volume(c: Context): JSONObject {
+        val o = com.abdllh.aura.system.CarAudio.report()
+        val named = JSONObject()
+        for (k in listOf("can_amp_max_volume_value", "can_use_amp_volume_seekbar_enable_key", "can_use_amp_volume_key", "mcu_max_volume",
+            "mcu_system_volume", "mcu_mute_state", "mcu_bt_volume", "mcu_other_setting_default_volume", "mcu_other_setting_volume_mix",
+            "mcu_max_gain_volume", "nwd_media_mix_navi_vol", "nwd_navi_vol", "nwd_arm_volume_type", "mcu_amplifier_switch", "car_amp_state",
+            "key_can_audio_channel", "mcu_current_source", "mcu_backcar_state",
+            // the firmware study (2.0 beta 4): tops, sources' gains, tone, who owns the volume, the heat display
+            "mcu_max_horn_volume", "mcu_max_treble_tenor_bass_volume", "mcu_state", "mcu_audio_state", "mcu_device_state", "mcu_version",
+            "mcu_gain_gps", "mcu_gain_bt", "mcu_gain_dvd", "mcu_gain_tv", "mcu_gain_ipod", "mcu_gain_aux", "mcu_gain_radio", "mcu_gain_cdc",
+            "mcu_gain_mp5", "mcu_gain_aux2", "mcu_gain_canbus_usb", "mcu_state_equal", "mcu_eq", "mcu_treble", "mcu_tenor", "mcu_bass",
+            "mcu_heavy_bass", "arm_ctrl_dsp", "arm_ctrl_ic", "audio_ic", "arm_volume", "nwd_arm_radio_module", "mcu_other_setting_gps_setting_type",
+            "cpu_temp_display_enable", "360apk_foreground")) {
+            named.put(k, Settings.System.getString(c.contentResolver, k) ?: JSONObject.NULL)
+        }
+        o.put("namedKeys", named)
+        // the heat protection's caps and thresholds (system_server's and the setting service's), and the audio's
+        val props = JSONObject()
+        for (k in listOf("persist.sys.tempcontrol.enable", "persist.warntemp.threshold", "persist.warntemp.check.total", "persist.warntemp.asp.volume",
+            "persist.warntemp.dsp.volume", "sys.nwd.hw.has.dsp", "persist.hightemp.threshold", "persist.hightemp.check.total", "persist.temp.check.delay",
+            "persist.temp.debug", "persist.sys.nwd.json.interface", "persist.warntemp.volume", "persist.warntemp.volume2", "persist.warntemp.cpu.threshold",
+            "persist.warntemp.cpu.threshold2", "persist.warntemp.threshold2", "persist.sys.nwd.streammusic.max", "persist.sys.nwd.memory.vol",
+            "persist.sys.bluetooth_goc", "ro.product.nwd.platform", "ro.nwd.config.path")) props.put(k, com.abdllh.aura.system.SystemProps.get(k))
+        o.put("props", props)
+        // UartConfig.ini: which volume manager runs (mcu_set_volume) and the heat protection's overrides
+        val cfg = com.abdllh.aura.system.SystemProps.get("ro.nwd.config.path").ifEmpty { "/data/nwdappconfig" } + "/app/UartConfig.ini"
+        val ini = (try { File(cfg).takeIf { it.canRead() }?.readText() } catch (_: Throwable) { null }) ?: Sh.text("cat '$cfg'", 4000)
+        val wanted = Regex("mcu_set_volume|key_warm_|sync_bt_transmit_volume|audio_param_memory|a2dp_not_request_focus|volume|temp", RegexOption.IGNORE_CASE)
+        o.put("uartConfig", JSONObject().put("path", cfg).put("lines", JSONArray(ini.lineSequence().map { it.trim() }.filter { wanted.containsMatchIn(it) }.take(60).map { Num.cut(it, 160) }.toList())))
+        o.put("heatLog", Num.lines(Sh.text("logcat -d | grep -E 'trigger hightemp=|finish broadcast ACTION_HIGHTEMP_TRIGGER|high temp set vol:|The machine temperature is too high|mWarnTempCheckTotal=|hw is asp|hw is dsp|enable temp control|disable temp control|turn on temperature control|volume is max|set audio param,type = 14|keyValue=0x0e' | tail -n 80 | cut -c1-180", 8000)))
+        o.put("systemKeys", settingsWith(c, Settings.System.CONTENT_URI, "system"))
+        o.put("globalKeys", settingsWith(c, Settings.Global.CONTENT_URI, "global"))
+        val af = Sh.text("dumpsys media.audio_flinger", 8000)
+        if (af.isNotEmpty()) {
+            val keep = JSONArray()
+            val track = Regex("^\\S{0,2}\\s*\\d+\\s+(yes|no)\\s+\\d+\\s+\\d+")
+            for (l in af.lineSequence()) {
+                val s = l.trim()
+                if (s.startsWith("Output thread") || s.contains("Effect Chain") || s.startsWith("Effect ID") || s.startsWith("- name:") ||
+                    s.startsWith("- TYPE:") || s.contains("Session State") || Regex("^\\d{5}\\s+0x").containsMatchIn(s) ||
+                    s.contains("Tracks of which") || s.startsWith("Type     Id Active") || track.containsMatchIn(s) || s.startsWith("Standby:") ||
+                    s.startsWith("Output device:")) keep.put(Num.cut(s, 170))
+                if (keep.length() >= 200) break
+            }
+            o.put("audioFlingerEffects", keep)
+            // whose tracks: the Bluetooth daemon (gocsdk_8800 plays A2DP through an AudioTrack) and AMRI
+            o.put("audioPids", Sh.text("echo gocsdk_8800 \$(pidof gocsdk_8800); echo aura \$(pidof com.abdllh.aura)", 3000).trim())
+        } else o.put("audioFlingerEffects", "no root shell")
+        val audio = Sh.text("dumpsys audio", 8000)
+        val at = audio.indexOf("- STREAM_MUSIC:")
+        o.put("streamMusic", if (at >= 0) JSONArray(audio.substring(at).lineSequence().take(8).map { Num.cut(it.trim(), 170) }.toList()) else JSONObject.NULL)
+        return o
+    }
+
+    /** Every key of one settings table whose name has "vol" or "amp" in it, with its value: the provider first, the root shell if it says nothing. */
+    private fun settingsWith(c: Context, uri: android.net.Uri, table: String): JSONObject {
+        val out = JSONObject()
+        fun want(name: String) = name.contains("vol", true) || name.contains("amp", true)
+        try {
+            c.contentResolver.query(uri, arrayOf("name", "value"), null, null, null)?.use { cur ->
+                while (cur.moveToNext()) {
+                    val name = cur.getString(0) ?: continue
+                    if (want(name)) out.put(name, cur.getString(1) ?: JSONObject.NULL)
+                }
+            }
+        } catch (t: Throwable) {
+            out.put("_queryError", t.toString())
+        }
+        if (out.length() == 0 || out.has("_queryError")) {
+            val text = Sh.text("settings list $table", 6000)
+            for (l in text.lineSequence()) {
+                val i = l.indexOf('=')
+                if (i <= 0) continue
+                val name = l.substring(0, i)
+                if (want(name)) out.put(name, l.substring(i + 1))
+            }
+            if (text.isNotEmpty()) out.put("_via", "root shell")
+        }
+        return out
     }
 }
 

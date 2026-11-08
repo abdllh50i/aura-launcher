@@ -569,17 +569,16 @@ object Amri {
                 }
                 Answer(s(R.string.amri_playing))
             }
+            // on the level's scale, 0..50 on his unit: above the firmware's 40 the boost (CarAudio.level)
             is Command.VolumeStep -> {
                 CarAudio.setMuted(false)
-                CarAudio.step(if (cmd.up) cmd.by else -cmd.by)
-                Answer(s(R.string.amri_volume_now, CarAudio.volume()))
+                Answer(s(R.string.amri_volume_now, CarAudio.stepLevel(if (cmd.up) cmd.by else -cmd.by)))
             }
             is Command.VolumeSet -> {
                 CarAudio.setMuted(false)
-                CarAudio.setVolume(cmd.level.coerceIn(0, CarAudio.max()))
-                Answer(s(R.string.amri_volume_now, CarAudio.volume()))
+                Answer(s(R.string.amri_volume_now, CarAudio.setLevel(cmd.level)))
             }
-            Command.VolumeMax -> { CarAudio.setMuted(false); CarAudio.setVolume(CarAudio.max()); Answer(s(R.string.amri_volume_max)) }
+            Command.VolumeMax -> { CarAudio.setMuted(false); CarAudio.setLevel(CarAudio.maxLevel()); Answer(s(R.string.amri_volume_max)) }
             Command.Mute -> { CarAudio.setMuted(true); Answer(s(R.string.amri_muted), speak = false) }
             Command.Unmute -> { CarAudio.setMuted(false); Answer(s(R.string.amri_unmuted)) }
             Command.OpenMusic -> { openMusic(c, false); Answer(s(R.string.amri_music)) }
