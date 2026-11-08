@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The volume pill above the firmware's top (41..50): the digital boost -->
+    <string name="vol_boost">Boost</string>
+</resources>

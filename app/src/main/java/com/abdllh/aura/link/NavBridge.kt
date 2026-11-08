@@ -168,14 +168,14 @@ internal object NavBridge {
             "music.toggle" -> MediaMonitor.send(c, MediaMonitor.Key.PLAY_PAUSE)
             "music.next" -> MediaMonitor.send(c, MediaMonitor.Key.NEXT)
             "music.prev" -> MediaMonitor.send(c, MediaMonitor.Key.PREV)
-            "volume.up" -> { CarAudio.setMuted(false); CarAudio.step(1) }
-            "volume.down" -> CarAudio.step(-1)
+            "volume.up" -> { CarAudio.setMuted(false); CarAudio.stepLevel(1) } // the level's scale: through the boost to 50
+            "volume.down" -> CarAudio.stepLevel(-1)
             "screen.off" -> if (!Actions.screenOff(c)) return o.put("state", "refused").put("reason", "failed")
             "voice.mute" -> NavSession.voiceOn = !NavSession.voiceOn
             "open.maps" -> if (!Actions.nav(c)) return o.put("state", "refused").put("reason", "no_app")
             "open.music" -> Screens.music(c)
         }
-        return o.put("state", "ok").put("volume", CarAudio.volume()).put("muted", CarAudio.muted()).put("navVoice", NavSession.voiceOn)
+        return o.put("state", "ok").put("volume", CarAudio.level()).put("muted", CarAudio.muted()).put("navVoice", NavSession.voiceOn)
     }
 
     // ------------------------------------------------------------------------------------------ what is going on
@@ -207,7 +207,7 @@ internal object NavBridge {
 
     private fun musicJson(): JSONObject {
         val n: NowPlaying? = MediaMonitor.current
-        val o = JSONObject().put("playing", n?.playing == true).put("volume", CarAudio.volume()).put("maxVolume", CarAudio.max()).put("muted", CarAudio.muted())
+        val o = JSONObject().put("playing", n?.playing == true).put("volume", CarAudio.level()).put("maxVolume", CarAudio.maxLevel()).put("muted", CarAudio.muted())
         if (n != null) o.put("title", n.title).put("artist", n.artist).put("source", n.sourcePkg ?: "")
         return o
     }

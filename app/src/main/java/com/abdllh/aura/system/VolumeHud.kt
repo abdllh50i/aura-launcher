@@ -40,6 +40,9 @@ import com.abdllh.aura.util.LocaleHelper
 import com.abdllh.aura.util.Prefs
 import java.util.concurrent.Executors
 
+/** The boost's tint as text on the pill's card: the warm token, as far toward white or black as it takes to read (4.5:1). */
+private fun boostInk(): Int = Palette.reach(Palette.warn, Palette.cardFlat, 4.5, Palette.dark)
+
 /**
  * Aura's own volume display, in place of the stock floating bar (com.android.launcher/com.launcher.FloatBar).
  *
@@ -80,7 +83,7 @@ object VolumeHud {
         val c = ctx.applicationContext
         app = c
         startedAt = SystemClock.elapsedRealtime()
-        lastVolume = CarAudio.volume()
+        lastVolume = CarAudio.level()
         lastMute = CarAudio.muted()
         CarAudio.addListener(onAudio)
         CarAudio.addParamListener(onParam)
@@ -105,12 +108,12 @@ object VolumeHud {
                         val k = (i.extras?.get("extra_key_value") as? Number)?.toInt() ?: return
                         if (k == 14 || k == 15 || k == 2) keyAt = SystemClock.elapsedRealtime()
                     }
-                    "com.nwd.ACTION_REQUEST_VLOUME_DISPLAY" -> show(Kind.MEDIA, CarAudio.volume(), CarAudio.muted())
-                    DEBUG_KEY -> { // what the firmware does for a wheel button, on the emulator
+                    "com.nwd.ACTION_REQUEST_VLOUME_DISPLAY" -> show(Kind.MEDIA, CarAudio.level(), CarAudio.muted())
+                    DEBUG_KEY -> { // a wheel button on the emulator's own stream (the firmware's stand-in is CarAudio.DEBUG_WHEEL)
                         keyAt = SystemClock.elapsedRealtime()
                         when (i.getStringExtra("key")) {
-                            "up" -> CarAudio.step(1)
-                            "down" -> CarAudio.step(-1)
+                            "up" -> CarAudio.stepLevel(1)
+                            "down" -> CarAudio.stepLevel(-1)
                             "mute" -> CarAudio.toggleMute()
                         }
                     }
@@ -125,7 +128,7 @@ object VolumeHud {
     private fun auraOff() = SystemProps.get(Device.DISABLED_PROP) == "1"
 
     private val onAudio: () -> Unit = {
-        val v = CarAudio.volume()
+        val v = CarAudio.level()
         val m = CarAudio.muted()
         if (v != lastVolume || m != lastMute) {
             val now = SystemClock.elapsedRealtime()
@@ -212,7 +215,9 @@ object VolumeHud {
             v?.window?.remove() // (the language changed: built again)
             v = HudView(LocaleHelper.wrap(c)).also { hud = it }
         }
-        v.bind(kind, value, CarAudio.max(), muted)
+        // the media level on the whole scale (0..50 on his unit: the boost above the firmware's top); navigation and phone on theirs
+        if (kind == Kind.MEDIA) v.bind(kind, value, CarAudio.maxLevel(), muted, CarAudio.max())
+        else v.bind(kind, value, CarAudio.max(), muted, CarAudio.max())
         if (v.window.attached) v.stay() // pressed again while it was fading out
         else if (v.window.add()) v.enter() else return
         main.removeCallbacks(hide)
@@ -232,8 +237,11 @@ object VolumeHud {
         private val card = FrameLayout(c)
         private val icon = ImageView(c).apply { scaleType = ImageView.ScaleType.FIT_CENTER }
         private val bar = Bar(c)
-        private val value: AText = c.label(Type.hudNum, { Palette.ink }, gravity = Gravity.CENTER)
+        private var boosted = false
+        private val value: AText = c.label(Type.hudNum, { if (boosted) boostInk() else Palette.ink }, gravity = Gravity.CENTER)
         private val word: AText = c.label(Type.button, { Palette.redInk }, gravity = Gravity.CENTER).apply { setText(R.string.ctl_mute); visibility = View.INVISIBLE }
+        /** Above the firmware's top: the word over the bar's end, in the boost's tint. */
+        private val boostWord: AText = c.label(Type.rowHint, { boostInk() }, gravity = Gravity.RIGHT or Gravity.CENTER_VERTICAL).apply { setText(R.string.vol_boost); visibility = View.INVISIBLE }
         private var iconMuted = false
         private var leaving = false
 
@@ -244,15 +252,18 @@ object VolumeHud {
             value.textDirection = View.TEXT_DIRECTION_LTR
             card.addView(value, Type.hudNum.box(CARD_X + 206, CARD_Y + 10, 50))
             card.addView(word, Type.button.box(CARD_X + 200, CARD_Y + 16, 60))
+            card.addView(boostWord, at(CARD_X + 58, CARD_Y + 38, Bar.W, 24)) // under the bar's end (above it, the dots of its ي met the bar)
             window.root.addView(card, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
             icon.look { setColorFilter(if (iconMuted) Palette.ink3 else Palette.ink) }
         }
 
-        fun bind(kind: Kind, level: Int, max: Int, muted: Boolean) {
+        /** [top]: where the boost begins on the scale (the firmware's top); the bar's part above it is the boost's. */
+        fun bind(kind: Kind, level: Int, max: Int, muted: Boolean, top: Int) {
             window.syncLook()
             window.root.translationY = if (com.abdllh.aura.voice.AmriOverlay.showing) ABOVE_VOICE else 0f
             val m = max.coerceAtLeast(1)
             val f = level.coerceIn(0, m).toFloat() / m
+            val boost = kind == Kind.MEDIA && !muted && level > top
             icon.setImageResource(when {
                 kind == Kind.NAV -> R.drawable.ic_nav
                 kind == Kind.PHONE -> R.drawable.ic_phone
@@ -263,13 +274,18 @@ object VolumeHud {
             iconMuted = muted
             icon.setColorFilter(if (muted) Palette.ink3 else Palette.ink)
             bar.dim = muted
+            bar.top = if (kind == Kind.MEDIA && m > top) top.toFloat() / m else 1f
             bar.to(f)
+            boosted = boost
+            boostWord.visibility = if (boost) View.VISIBLE else View.INVISIBLE
+            boostWord.setTextColor(boostInk())
             if (muted) {
                 value.visibility = View.INVISIBLE
                 word.visibility = View.VISIBLE
             } else {
                 word.visibility = View.INVISIBLE
                 value.visibility = View.VISIBLE
+                value.setTextColor(if (boost) boostInk() else Palette.ink)
                 value.text = level.coerceIn(0, m).toString()
             }
         }
@@ -315,6 +331,9 @@ object VolumeHud {
     private class Bar(c: android.content.Context) : View(c), Recolours {
         var dim = false
             set(v) { field = v; invalidate() }
+        /** Where the boost begins (the firmware's top), 0..1: the fill above it is in the boost's tint. */
+        var top = 1f
+            set(v) { field = v; invalidate() }
         private var known = false
         private val glide = Spring(0f, 520f, 1f, 0.001f) { invalidate() }
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -342,6 +361,18 @@ object VolumeHud {
             c.drawRoundRect(r, h / 2, h / 2, paint)
             val f = glide.value.coerceIn(0f, 1f)
             if (f <= 0f) return
+            if (!dim && f > top) { // the boost's part first, under the firmware's: one bar, two tints
+                r.set(0f, 0f, (w * f).coerceAtLeast(h), h)
+                paint.color = Palette.reach(Palette.warn, Palette.cardFlat, 3.0, Palette.dark)
+                c.drawRoundRect(r, h / 2, h / 2, paint)
+                r.set(0f, 0f, (w * top).coerceAtLeast(h), h)
+                paint.color = Palette.accent
+                c.save()
+                c.clipRect(0f, 0f, w * top, h)
+                c.drawRoundRect(0f, 0f, w * top + h, h, h / 2, h / 2, paint) // square where the two meet
+                c.restore()
+                return
+            }
             r.set(0f, 0f, (w * f).coerceAtLeast(h), h)
             paint.color = if (dim) Palette.ink3 else Palette.accent
             c.drawRoundRect(r, h / 2, h / 2, paint)

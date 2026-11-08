@@ -42,12 +42,12 @@ object Controls {
         }
     }
 
-    // Volume is the car's amplifier volume (see CarAudio), not Android's music stream.
-    @Suppress("UNUSED_PARAMETER") fun volumeMax(ctx: Context) = CarAudio.max()
+    // Volume is the car's amplifier volume (see CarAudio), not Android's music stream; the level's scale (the boost above its top).
+    @Suppress("UNUSED_PARAMETER") fun volumeMax(ctx: Context) = CarAudio.maxLevel()
     @Suppress("UNUSED_PARAMETER") fun muted(ctx: Context) = CarAudio.muted()
-    @Suppress("UNUSED_PARAMETER") fun volume(ctx: Context) = if (CarAudio.muted()) 0 else CarAudio.volume()
-    @Suppress("UNUSED_PARAMETER") fun setVolume(ctx: Context, v: Int) = CarAudio.setVolume(v)
+    @Suppress("UNUSED_PARAMETER") fun volume(ctx: Context) = if (CarAudio.muted()) 0 else CarAudio.level()
+    @Suppress("UNUSED_PARAMETER") fun setVolume(ctx: Context, v: Int) { CarAudio.setLevel(v) }
     @Suppress("UNUSED_PARAMETER") fun toggleMute(ctx: Context) = CarAudio.toggleMute()
     /** One step from the real level (not the 0 shown while muted), which also turns the sound back on. */
-    @Suppress("UNUSED_PARAMETER") fun stepVolume(ctx: Context, dir: Int) = CarAudio.setVolume(CarAudio.volume() + dir)
+    @Suppress("UNUSED_PARAMETER") fun stepVolume(ctx: Context, dir: Int) { CarAudio.stepLevel(dir) }
 }
