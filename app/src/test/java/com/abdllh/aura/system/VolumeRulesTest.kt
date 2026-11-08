@@ -163,7 +163,7 @@ class VolumeRulesTest {
         // paused for a minute, then on again
         t += 61_000
         r.key(+1, false, t)
-        assertEquals(1, r.firmware(r.fw - 7, t + 50).sets().size)
+        assertEquals(1, r.firmware(r.fw - 6, t + 50).sets().size) // (27 - 7 would be 20, a heat cap: left on purpose)
     }
 
     @Test fun aLowerValueLongAfterTheKeyIsNotTheKeys() {
