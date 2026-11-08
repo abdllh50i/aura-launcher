@@ -38,7 +38,8 @@ import java.util.concurrent.CopyOnWriteArrayList
  * stand-in": its setAudioParam answers with the callback, and am broadcast -a com.abdllh.aura.debug.WHEEL --es key up|down|mute
  * [--ei repeat 8 --ei every 250] [--ei glitch 7] [--es first fw] [--ei delay 40] sends the firmware's key broadcast and takes the
  * firmware's step (from a stale value [glitch] away, its report first with first=fw); -a com.abdllh.aura.debug.FW --ei vol N
- * is a change by somebody else.
+ * is a change by somebody else; -a com.abdllh.aura.debug.HEAT [--ei vol 30] [--es first fw] is the heat protection's broadcast
+ * and its set.
  */
 object CarAudio {
     private const val TAG = "AuraAudio"
@@ -55,8 +56,13 @@ object CarAudio {
     private const val KEY_MAX = "mcu_max_volume"
     private const val KEY_MUTE = "mcu_mute_state"
     private const val ACTION_KEY = "com.nwd.action.ACTION_KEY_VALUE"
+    /** The unit's heat protection (system_server's NwdManagerService, the setting service's CpuTempMonitor): extra_volume (int, 30 on his unit), extra_360apk_foreground (int). */
+    private const val ACTION_HEAT = "com.nwd.action.ACTION_HIGHTEMP_TRIGGER"
     const val DEBUG_WHEEL = "com.abdllh.aura.debug.WHEEL"
     const val DEBUG_FW = "com.abdllh.aura.debug.FW"
+    const val DEBUG_HEAT = "com.abdllh.aura.debug.HEAT"
+    /** How long the pill says the unit is hot after its heat protection lowered the volume. */
+    private const val HOT_SHOW_MS = 30_000L
 
     private val main = Handler(Looper.getMainLooper())
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
@@ -66,6 +72,7 @@ object CarAudio {
     private var service: IBinder? = null
     private var binding = false
     @Volatile private var known = -1 // last volume we know of (callback on a binder thread, observer, our own set)
+    @Volatile private var hotAt = -1_000_000L // when the unit's heat protection last lowered the volume (its broadcast)
     private var nwd = false
     private var fake = false
     private val rules = VolumeRules()
@@ -106,12 +113,14 @@ object CarAudio {
         try {
             ctx.applicationContext.registerReceiver(keys, IntentFilter().apply {
                 addAction(ACTION_KEY)
-                if (fake) { addAction(DEBUG_WHEEL); addAction(DEBUG_FW) }
+                addAction(ACTION_HEAT)
+                if (fake) { addAction(DEBUG_WHEEL); addAction(DEBUG_FW); addAction(DEBUG_HEAT) }
             })
         } catch (t: Throwable) {
             Log.w(TAG, "keys: $t")
         }
         rules.max = max()
+        rules.heatCaps = HEAT_PROPS.map { (k, d) -> SystemProps.get(k, d.toString()).trim().toIntOrNull() ?: d }.filter { it in 1..rules.max }.toSet()
         val acts = rules.start(volume(), if (off()) 0 else VolumeBoost.saved(ctx))
         VolumeLog.add("start", known, if (fake) "stand-in firmware" else if (off()) "kill switch on: no boost, no guard" else null, rules.level(), rules.fw, rules.boost)
         run(acts)
@@ -127,6 +136,13 @@ object CarAudio {
 
     /** Did Aura itself change the volume or the mute just now (its row, its voice)? */
     fun changedByAura(withinMs: Long = 1500L): Boolean = SystemClock.elapsedRealtime() - selfAt < withinMs
+
+    /** When the unit's heat protection last lowered the volume (elapsedRealtime; the pill shows its word while [hot]). */
+    fun hotAt(): Long = hotAt
+    fun hot(): Boolean = SystemClock.elapsedRealtime() - hotAt < HOT_SHOW_MS
+
+    /** The heat caps' properties and their defaults (NwdManagerService: asp/dsp; the setting service's CpuTempMonitor: volume/volume2). */
+    private val HEAT_PROPS = listOf("persist.warntemp.asp.volume" to 30, "persist.warntemp.dsp.volume" to 20, "persist.warntemp.volume" to 30, "persist.warntemp.volume2" to 20)
 
     // ------------------------------------------------------------------------------------------ public API
     /** The firmware's top (40 on his unit). */
@@ -192,6 +208,8 @@ object CarAudio {
     fun report(): org.json.JSONObject = org.json.JSONObject()
         .put("level", level()).put("maxLevel", maxLevel()).put("firmware", volume()).put("firmwareMax", max())
         .put("muted", muted()).put("boost", VolumeBoost.state()).put("standIn", fake).put("nwdPath", nwd)
+        .put("heatCaps", org.json.JSONArray(rules.heatCaps.sorted())).put("hotNow", rules.hot(SystemClock.elapsedRealtime()))
+        .put("lastHeatSecondsAgo", if (hotAt < 0) org.json.JSONObject.NULL else (SystemClock.elapsedRealtime() - hotAt) / 1000)
         .put("events", VolumeLog.json())
 
     // ------------------------------------------------------------------------------------------ the rules
@@ -218,8 +236,10 @@ object CarAudio {
                             2 -> { rules.muteKey(); VolumeLog.add("key-mute", null, null, rules.level(), rules.fw, rules.boost) }
                         }
                     }
+                    ACTION_HEAT -> onHeat((i.extras?.get("extra_volume") as? Number)?.toInt() ?: 0, i.extras?.get("extra_360apk_foreground"))
                     DEBUG_WHEEL -> if (fake) standInWheel(i)
                     DEBUG_FW -> if (fake) standInReport(i.getIntExtra("vol", volume()))
+                    DEBUG_HEAT -> if (fake) standInHeat(i.getIntExtra("vol", 30), i.getStringExtra("first") == "fw")
                 }
             } catch (t: Throwable) {
                 Log.w(TAG, "key: $t")
@@ -241,6 +261,25 @@ object CarAudio {
         VolumeLog.add(if (dir > 0) "key-up" else "key-down", null, null, rules.level(), rules.fw, rules.boost)
         run(acts)
         if (acts.any { it is VolumeRules.Act.Boost || it is VolumeRules.Act.Firmware }) notifyChanged()
+    }
+
+    /**
+     * The unit's heat protection lowers the volume to [v]: never fought (no boost, the guard leaves it), shown by the pill, and logged
+     * with every thermal zone's temperature (read off the main thread).
+     */
+    private fun onHeat(v: Int, fg: Any?) {
+        val t = SystemClock.elapsedRealtime()
+        hotAt = t
+        rules.max = max()
+        run(rules.heat(v, t))
+        notifyChanged()
+        Thread {
+            val zones = try {
+                val a = com.abdllh.aura.diag.Collect.thermal()
+                (0 until a.length()).joinToString(", ") { n -> a.getJSONObject(n).let { "${it.optString("zone")} ${it.opt("c")}" } }
+            } catch (e: Throwable) { "zones: $e" }
+            VolumeLog.add("heat-temps", v, "360 app in front: ${fg ?: "?"}; $zones", rules.level(), rules.fw, rules.boost)
+        }.start()
     }
 
     private fun run(acts: List<VolumeRules.Act>) {
@@ -308,6 +347,15 @@ object CarAudio {
                 else { c.sendBroadcast(bc); main.postDelayed(step, delay) }
             }, n * every)
         }
+    }
+
+    /** The heat protection's broadcast and the setting service's set to [v] when above it ([fwFirst]: the set reported first). */
+    private fun standInHeat(v: Int, fwFirst: Boolean) {
+        val c = app ?: return
+        val bc = Intent(ACTION_HEAT).setPackage(c.packageName).putExtra("extra_volume", v).putExtra("extra_360apk_foreground", 0)
+        val set = Runnable { if (known > v) standInReport(v) }
+        if (fwFirst) { set.run(); main.postDelayed({ c.sendBroadcast(bc) }, 60) }
+        else { c.sendBroadcast(bc); main.postDelayed(set, 60) }
     }
 
     /** The stand-in's notifyAudioParam(14, v). */

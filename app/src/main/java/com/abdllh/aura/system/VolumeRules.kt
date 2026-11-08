@@ -18,6 +18,12 @@ package com.abdllh.aura.system
  *
  * The broadcast of a key and the firmware's report of its step race each other (one is a broadcast, the other a binder call):
  * a change no key explains is held for [CLAIM_MS], and a key that comes in that time is its cause.
+ *
+ * The heat protection is never fought (a reading of the firmware, not seen on his unit: system_server's NwdManagerService and the
+ * setting service's CpuTempMonitor send com.nwd.action.ACTION_HIGHTEMP_TRIGGER, and the setting service sets the volume to its
+ * extra_volume, 30 on his unit, whenever it is above that while the unit is hot). So: [heat] releases the boost and stops the
+ * guard for [HEAT_MS]; a wheel up that lands exactly on a heat cap ([heatCaps]) is left as it is whichever comes first, the
+ * broadcast or the firmware's report; a boost that the firmware's drop leaves under its top is released, not put back.
  */
 class VolumeRules(var max: Int = 40, val boostSteps: Int = BOOST_STEPS) {
     sealed class Act {
@@ -54,7 +60,24 @@ class VolumeRules(var max: Int = 40, val boostSteps: Int = BOOST_STEPS) {
     private val corrections = ArrayDeque<Long>()
     private var pausedUntil = NEVER
 
+    /** The values the unit's heat protection sets (persist.warntemp.asp.volume 30, .dsp.volume 20, .volume 30, .volume2 20). */
+    var heatCaps: Set<Int> = setOf(30, 20)
+    private var heatAt = NEVER
+
+    /** The heat protection fired less than [HEAT_MS] ago. */
+    fun hot(now: Long): Boolean = heatAt != NEVER && now - heatAt in 0..HEAT_MS
+
     fun maxLevel(): Int = max + boostSteps
+
+    /** The unit's heat protection lowers the volume to [v] (its broadcast): no boost, and the guard leaves its drops alone. */
+    fun heat(v: Int, now: Long): List<Act> {
+        heatAt = now
+        if (v in 1..max) heatCaps = heatCaps + v
+        val out = ArrayList<Act>(2)
+        out += Act.Note("heat", "the unit's heat protection sets the volume to $v")
+        if (boost > 0) { boost = 0; out += Act.Boost(0, "the unit's heat protection") }
+        return out
+    }
 
     /** The number the row, the pill and Amri show: the firmware's, and above its top the boost. */
     fun level(): Int = if (fw >= max) max + boost else fw.coerceAtLeast(0)
@@ -135,9 +158,18 @@ class VolumeRules(var max: Int = 40, val boostSteps: Int = BOOST_STEPS) {
         return emptyList()
     }
 
+    /** Not corrected: a note, and a boost the firmware's drop left under its top goes (the effect must not stay on at 30). */
+    private fun left(kind: String, text: String): List<Act> {
+        val out = arrayListOf<Act>(Act.Note(kind, text))
+        if (boost > 0 && fw in 0 until max) { boost = 0; out += Act.Boost(0, "the firmware left its top ($fw)") }
+        return out
+    }
+
     private fun judge(from: Int, to: Int, now: Long): List<Act> {
         if (keyBoostDown) {
             if (to < max && !keyCorrected) {
+                // the firmware's own step is to max - 1; a drop to a heat cap, or any drop while hot, is the heat protection's
+                if (hot(now) || (to in heatCaps && to < max - 1)) return left("heat", "wheel down while boosted, firmware $from -> $to: the heat protection's, left")
                 keyCorrected = true
                 return listOf(self(max, now, "wheel down while boosted: the firmware back to $max"))
             }
@@ -146,13 +178,15 @@ class VolumeRules(var max: Int = 40, val boostSteps: Int = BOOST_STEPS) {
         val wrong = (keyDir > 0 && to < keyBefore) || (keyDir < 0 && to > keyBefore)
         if (wrong) {
             val dir = if (keyDir > 0) "up" else "down"
-            if (keyCorrected) return listOf(Act.Note("glitch", "wheel $dir at $keyBefore, firmware $from -> $to again: left"))
-            if (now < pausedUntil) return listOf(Act.Note("glitch", "wheel $dir at $keyBefore, firmware $from -> $to: guard paused, left"))
+            if (keyDir > 0 && hot(now)) return left("heat", "wheel up at $keyBefore, firmware $from -> $to: the unit is hot, left")
+            if (keyDir > 0 && to in heatCaps) return left("heat", "wheel up at $keyBefore, firmware $from -> $to: the heat protection's value, left")
+            if (keyCorrected) return left("glitch", "wheel $dir at $keyBefore, firmware $from -> $to again: left")
+            if (now < pausedUntil) return left("glitch", "wheel $dir at $keyBefore, firmware $from -> $to: guard paused, left")
             while (corrections.isNotEmpty() && now - corrections.first() > BRAKE_MS) corrections.removeFirst()
             if (corrections.size >= BRAKE_COUNT) {
                 pausedUntil = now + PAUSE_MS
                 corrections.clear()
-                return listOf(Act.Note("glitch", "wheel $dir at $keyBefore, firmware $from -> $to: $BRAKE_COUNT corrections in ${BRAKE_MS / 1000} s, guard paused for ${PAUSE_MS / 1000} s"))
+                return left("glitch", "wheel $dir at $keyBefore, firmware $from -> $to: $BRAKE_COUNT corrections in ${BRAKE_MS / 1000} s, guard paused for ${PAUSE_MS / 1000} s")
             }
             corrections.addLast(now)
             keyCorrected = true
@@ -190,6 +224,8 @@ class VolumeRules(var max: Int = 40, val boostSteps: Int = BOOST_STEPS) {
         const val BRAKE_COUNT = 4
         const val BRAKE_MS = 10_000L
         const val PAUSE_MS = 60_000L
+        /** How long after the heat broadcast the unit counts as hot (it repeats it every ~10 s while it stays hot above the cap). */
+        const val HEAT_MS = 5 * 60_000L
         private const val NEVER = Long.MIN_VALUE / 2
     }
 }

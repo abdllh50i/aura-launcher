@@ -197,6 +197,59 @@ class VolumeRulesTest {
         assertTrue(r.firmware(40, 250).isEmpty())
     }
 
+    // ---- the heat protection (ACTION_HIGHTEMP_TRIGGER sets 30 on his unit): never fought
+
+    @Test fun theHeatBroadcastReleasesTheBoost() {
+        val r = rules(40, 5)
+        assertEquals(listOf(0), r.heat(30, 0).boosts())
+        assertTrue(r.firmware(30, 60).sets().isEmpty())
+        assertEquals(30, r.level())
+    }
+
+    @Test fun aWheelUpThatLandsOnTheHeatCapIsLeft() {
+        val r = rules(32)
+        r.key(+1, false, 0)
+        assertTrue(r.firmware(30, 60).sets().isEmpty()) // its report before its broadcast: still not fought
+        assertEquals(30, r.level())
+    }
+
+    @Test fun whileHotTheGuardLeavesWheelUpDrops() {
+        val r = rules(35)
+        r.heat(30, 0)
+        r.firmware(30, 50)
+        r.key(+1, false, 1000)
+        assertTrue(r.firmware(31, 1040).isEmpty())
+        r.key(+1, false, 2000)
+        assertTrue(r.firmware(25, 2050).sets().isEmpty())
+        r.key(+1, false, VolumeRules.HEAT_MS + 3000) // later, no longer hot: guarded again
+        assertEquals(listOf(26), r.firmware(22, VolumeRules.HEAT_MS + 3050).sets())
+    }
+
+    @Test fun aGlitchOffTheCapIsStillCorrected() {
+        val r = rules(32)
+        r.key(+1, false, 0)
+        assertEquals(listOf(33), r.firmware(27, 60).sets())
+    }
+
+    @Test fun wheelDownWhileBoostedThenTheHeatDropReleasesTheBoostInsteadOfFortyAgain() {
+        val r = rules(40, 3)
+        assertEquals(listOf(2), r.key(-1, false, 0).boosts())
+        val acts = r.firmware(30, 50)
+        assertTrue(acts.sets().isEmpty())
+        assertEquals(listOf(0), acts.boosts())
+        assertEquals(30, r.level())
+    }
+
+    @Test fun aDropLeftUnderTheTopTakesTheBoostWithIt() {
+        val r = rules(40, 2)
+        assertEquals(listOf(3), r.key(+1, false, 0).boosts())
+        assertEquals(listOf(40), r.firmware(33, 50).sets())
+        val again = r.firmware(33, 120) // the same drop again in the key's window: left, and the boost goes with it
+        assertTrue(again.sets().isEmpty())
+        assertEquals(listOf(0), again.boosts())
+        assertEquals(33, r.level())
+    }
+
     @Test fun rowPlusAtFortyIsFortyOneAndMinusBackReleases() {
         val r = rules(40)
         assertEquals(listOf(1), r.setLevel(r.level() + 1, 0).boosts())

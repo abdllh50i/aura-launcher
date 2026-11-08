@@ -2,4 +2,6 @@
 <resources>
     <!-- The volume pill above the firmware's top (41..50): the digital boost -->
     <string name="vol_boost">تعزيز</string>
+    <!-- Under the pill's bar after the unit's heat protection lowered the volume (to 30 on his unit) -->
+    <string name="vol_hot">الجهاز حار</string>
 </resources>

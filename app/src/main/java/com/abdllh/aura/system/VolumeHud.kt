@@ -74,6 +74,7 @@ object VolumeHud {
     private var startedAt = 0L
     private var lastVolume = -1
     private var lastMute = false
+    private var lastHeat = -1_000_000L
     private var hud: HudView? = null
 
     enum class Kind { MEDIA, NAV, PHONE }
@@ -85,6 +86,7 @@ object VolumeHud {
         startedAt = SystemClock.elapsedRealtime()
         lastVolume = CarAudio.level()
         lastMute = CarAudio.muted()
+        lastHeat = CarAudio.hotAt()
         CarAudio.addListener(onAudio)
         CarAudio.addParamListener(onParam)
         try {
@@ -130,12 +132,15 @@ object VolumeHud {
     private val onAudio: () -> Unit = {
         val v = CarAudio.level()
         val m = CarAudio.muted()
-        if (v != lastVolume || m != lastMute) {
+        val heat = CarAudio.hotAt()
+        if (v != lastVolume || m != lastMute || heat != lastHeat) {
             val now = SystemClock.elapsedRealtime()
             val asked = now - keyAt < KEY_WINDOW_MS || CarAudio.changedByAura()
-            if (asked || (v != lastVolume && now - startedAt > QUIET_AFTER_START_MS)) show(Kind.MEDIA, v, m)
+            // the heat protection's drop shows with its word, whichever came first: its broadcast or the new volume
+            if (asked || heat != lastHeat || (v != lastVolume && now - startedAt > QUIET_AFTER_START_MS)) show(Kind.MEDIA, v, m)
             lastVolume = v
             lastMute = m
+            lastHeat = heat
         }
     }
 
@@ -277,7 +282,10 @@ object VolumeHud {
             bar.top = if (kind == Kind.MEDIA && m > top) top.toFloat() / m else 1f
             bar.to(f)
             boosted = boost
-            boostWord.visibility = if (boost) View.VISIBLE else View.INVISIBLE
+            // the same place says the unit is hot, after its heat protection lowered the volume (30 on his unit)
+            val hot = kind == Kind.MEDIA && !boost && CarAudio.hot()
+            boostWord.setText(if (hot) R.string.vol_hot else R.string.vol_boost)
+            boostWord.visibility = if (boost || hot) View.VISIBLE else View.INVISIBLE
             boostWord.setTextColor(boostInk())
             if (muted) {
                 value.visibility = View.INVISIBLE
