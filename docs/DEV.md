@@ -3474,3 +3474,8 @@ them off the black (alpha = brightest channel), writes the transparent logos, th
 ## The route probe in the Screen check (1.19.1)
 
 The last step of the Screen check runs `nav/route/RouteProbe` in `:route`: does Valhalla run on the unit's ARM32 userspace at all, how long a route takes, how much memory it holds, and whether the kernel runs a static AArch64 program. It runs last because it may die a few times on its way; its deaths are reported, never felt by Home. The whole JSON goes in the report as `n_route`, one line of it on the page's summary. A cancel leaves it to end by itself. It adds 7.5 MB to the APK, of which 6 MB is the library 2.0 ships anyway.
+
+## Volume, beta.5: what his car said about beta.4
+
+- The boost cut the sound in and out on the unit. beta.4 made DynamicsProcessing first, in its frequency-resolution variant with a 10 ms frame; that is costly on the A53s in the mixer thread. LoudnessEnhancer (gain plus a soft compressor, time domain) is first now; DynamicsProcessing is the fallback in its time-resolution variant with a gentler limiter.
+- The drop when raising from the wheel was still there. Two reasons in VolumeRules: a wheel step that landed exactly on a heat cap (30) was left as the heat protection's even with no heat broadcast, and a brake let every fifth correction of a held key through. Now a drop to a cap waits HEAT_WAIT_MS (1.2 s) for ACTION_HIGHTEMP_TRIGGER and is corrected if none comes, and there is no brake: a correction happens once per key and AMRI's own echo is never news, so it cannot loop.

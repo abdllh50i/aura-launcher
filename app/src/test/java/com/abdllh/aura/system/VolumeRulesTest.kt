@@ -148,22 +148,17 @@ class VolumeRulesTest {
         assertTrue(again.any { it is Act.Note })
     }
 
-    @Test fun theBrakeStopsTheGuardAfterFour() {
-        val r = rules(30)
+    @Test fun aHeldKeyIsCorrectedEveryTime() {
+        // beta.4 had a brake that let every fifth correction through: a held key heard the drop again
+        val r = rules(31)
         var t = 0L
-        repeat(4) {
+        repeat(8) {
+            val before = r.fw
             r.key(+1, false, t)
-            assertEquals(1, r.firmware(r.fw - 7, t + 50).sets().size)
-            t += 1000
+            assertEquals(listOf(before + 1), r.firmware(26, t + 50).sets())
+            t += 300
         }
-        r.key(+1, false, t)
-        val fifth = r.firmware(r.fw - 7, t + 50)
-        assertTrue(fifth.sets().isEmpty())
-        assertTrue(fifth.any { it is Act.Note && it.text.contains("paused") })
-        // paused for a minute, then on again
-        t += 61_000
-        r.key(+1, false, t)
-        assertEquals(1, r.firmware(r.fw - 6, t + 50).sets().size) // (27 - 7 would be 20, a heat cap: left on purpose)
+        assertEquals(39, r.level())
     }
 
     @Test fun aLowerValueLongAfterTheKeyIsNotTheKeys() {
@@ -206,10 +201,24 @@ class VolumeRulesTest {
         assertEquals(30, r.level())
     }
 
-    @Test fun aWheelUpThatLandsOnTheHeatCapIsLeft() {
+    @Test fun aWheelUpThatLandsOnTheCapWithNoHeatBroadcastIsCorrected() {
+        // his case on beta.4: drops to 30 with no heat at all were left alone
         val r = rules(32)
         r.key(+1, false, 0)
-        assertTrue(r.firmware(30, 60).sets().isEmpty()) // its report before its broadcast: still not fought
+        val first = r.firmware(30, 60)
+        assertTrue(first.sets().isEmpty()) // it waits for the broadcast first
+        assertTrue(first.any { it is Act.Recheck })
+        assertTrue(r.recheck(600).isEmpty()) // still waiting
+        assertEquals(listOf(33), r.recheck(60 + VolumeRules.HEAT_WAIT_MS + 20).sets())
+        assertEquals(33, r.level())
+    }
+
+    @Test fun aWheelUpThatLandsOnTheCapWithTheHeatBroadcastIsLeft() {
+        val r = rules(32)
+        r.key(+1, false, 0)
+        r.firmware(30, 60)
+        r.heat(30, 300)
+        assertTrue(r.recheck(60 + VolumeRules.HEAT_WAIT_MS + 20).sets().isEmpty())
         assertEquals(30, r.level())
     }
 
@@ -234,10 +243,20 @@ class VolumeRulesTest {
     @Test fun wheelDownWhileBoostedThenTheHeatDropReleasesTheBoostInsteadOfFortyAgain() {
         val r = rules(40, 3)
         assertEquals(listOf(2), r.key(-1, false, 0).boosts())
-        val acts = r.firmware(30, 50)
+        assertTrue(r.firmware(30, 50).sets().isEmpty())
+        r.heat(30, 200)
+        val acts = r.recheck(50 + VolumeRules.HEAT_WAIT_MS + 20)
         assertTrue(acts.sets().isEmpty())
-        assertEquals(listOf(0), acts.boosts())
         assertEquals(30, r.level())
+        assertEquals(0, r.boost)
+    }
+
+    @Test fun wheelDownWhileBoostedToTheCapWithNoHeatGoesBackToForty() {
+        val r = rules(40, 3)
+        r.key(-1, false, 0)
+        r.firmware(30, 50)
+        assertEquals(listOf(40), r.recheck(50 + VolumeRules.HEAT_WAIT_MS + 20).sets())
+        assertEquals(42, r.level())
     }
 
     @Test fun aDropLeftUnderTheTopTakesTheBoostWithIt() {

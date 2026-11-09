@@ -11,9 +11,9 @@ import org.json.JSONObject
  * The digital boost above the firmware's top: [VolumeRules.BOOST_STEPS] steps of [DB_PER_STEP] dB on Android's output mix
  * (session 0, the output the music plays on), so 41..50 are louder than 40 while the amplifier stays at its top.
  *
- * DynamicsProcessing (API 28) with only its input gain and its limiter in use: the gain raises everything, the limiter (threshold
- * [LIMIT_DB], ratio 10) keeps the loud parts under full scale, so nothing clips digitally. When it cannot attach, LoudnessEnhancer
- * (its own limiter inside) takes its place. The effect exists only while the boost is above 0; at 0 it is released.
+ * LoudnessEnhancer (a gain with its own soft compressor, so the loud parts stay under full scale), and when it cannot attach,
+ * DynamicsProcessing (API 28) with only its input gain and a gentle limiter at [LIMIT_DB]. The effect exists only while the boost
+ * is above 0; at 0 it is released.
  *
  * What it can raise is what goes through Android's mixer: AMRI's own music, the apps, a Bluetooth stream the firmware plays through
  * Android. Sound the MCU routes past Android (the radio, a source on the audio IC's own inputs) is not reached.
@@ -62,28 +62,14 @@ object VolumeBoost {
         null
     }
 
+    /**
+     * LoudnessEnhancer first: a gain and a soft compressor in the time domain, cheap on the A53s. beta.4 put DynamicsProcessing
+     * first, with its frequency-resolution variant and a 10 ms frame: on the unit the sound cut in and out as soon as the boost
+     * came on (his report), the mixer thread missing its period. DynamicsProcessing stays the fallback, in its time-resolution
+     * variant at its default frame, and with a gentler limiter, so it neither costs that much nor pumps.
+     */
     private fun create(db: Float) {
         lastError = null
-        try {
-            val cfg = DynamicsProcessing.Config.Builder(
-                DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION, 2,
-                false, 0, false, 0, false, 0, true
-            ).setPreferredFrameDuration(10f).build()
-            val d = DynamicsProcessing(PRIORITY, 0, cfg)
-            d.setLimiterAllChannelsTo(DynamicsProcessing.Limiter(true, true, 0, 1f, 60f, 10f, LIMIT_DB, 0f))
-            d.setInputGainAllChannelsTo(db)
-            d.enabled = true
-            dp = d
-            kind = "dynamics"
-            createdAt = System.currentTimeMillis()
-            Log.i(TAG, "boost: DynamicsProcessing on session 0, id ${idOf(d)}, +$db dB")
-            return
-        } catch (t: Throwable) {
-            lastError = "dynamics: $t"
-            Log.w(TAG, "boost: DynamicsProcessing failed: $t")
-            try { dp?.release() } catch (_: Throwable) { }
-            dp = null
-        }
         try {
             val l = LoudnessEnhancer(0)
             l.setTargetGain(Math.round(db * 100))
@@ -92,11 +78,31 @@ object VolumeBoost {
             kind = "loudness"
             createdAt = System.currentTimeMillis()
             Log.i(TAG, "boost: LoudnessEnhancer on session 0, id ${idOf(l)}, +$db dB")
+            return
         } catch (t: Throwable) {
-            lastError = (lastError ?: "") + "; loudness: $t"
-            Log.w(TAG, "boost: LoudnessEnhancer failed too: $t")
+            lastError = "loudness: $t"
+            Log.w(TAG, "boost: LoudnessEnhancer failed: $t")
             try { le?.release() } catch (_: Throwable) { }
             le = null
+        }
+        try {
+            val cfg = DynamicsProcessing.Config.Builder(
+                DynamicsProcessing.VARIANT_FAVOR_TIME_RESOLUTION, 2,
+                false, 0, false, 0, false, 0, true
+            ).build()
+            val d = DynamicsProcessing(PRIORITY, 0, cfg)
+            d.setLimiterAllChannelsTo(DynamicsProcessing.Limiter(true, true, 0, 5f, 200f, 4f, LIMIT_DB, 0f))
+            d.setInputGainAllChannelsTo(db)
+            d.enabled = true
+            dp = d
+            kind = "dynamics"
+            createdAt = System.currentTimeMillis()
+            Log.i(TAG, "boost: DynamicsProcessing on session 0, id ${idOf(d)}, +$db dB")
+        } catch (t: Throwable) {
+            lastError = (lastError ?: "") + "; dynamics: $t"
+            Log.w(TAG, "boost: DynamicsProcessing failed too: $t")
+            try { dp?.release() } catch (_: Throwable) { }
+            dp = null
             kind = "none"
         }
     }
