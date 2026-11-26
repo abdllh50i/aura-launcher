@@ -264,21 +264,9 @@ object PhoneLink {
         }
     }
 
-    /** Naghm's `lyrics` message as the screen's lyrics: each line at its time (seconds there, ms here). */
-    fun lyricsOf(message: JSONObject): Lyrics.Result? {
-        val all = message.optJSONArray("lines") ?: return null
-        val lines = ArrayList<Lyrics.Line>(all.length())
-        var timed = false
-        for (i in 0 until all.length()) {
-            val line = all.optJSONObject(i) ?: continue
-            val at = if (line.isNull("time")) -1.0 else line.optDouble("time", -1.0)
-            if (at >= 0) timed = true
-            lines.add(Lyrics.Line(if (at >= 0) (at * 1000).toLong() else 0L, text(line, "text").trim()))
-        }
-        if (lines.none { it.text.isNotBlank() }) return null
-        return Lyrics.Result(message.optBoolean("synced", timed) && timed, lines, durationSec = (durationMs / 1000).toInt(),
-            source = Lyrics.SOURCE_NAGHM)
-    }
+    /** Naghm's `lyrics` message as the screen's lyrics: each line at its time (seconds there, ms here), including optional word/syllable timings. */
+    fun lyricsOf(message: JSONObject): Lyrics.Result? =
+        LyricsEngine.parsePhoneLyricsJson(message.toString(), durationSec = (durationMs / 1000).toInt())
 
     /** A JSON string, "" for a missing value or null (optString would give "null"). */
     private fun text(o: JSONObject, key: String): String = if (o.isNull(key)) "" else o.optString(key, "")

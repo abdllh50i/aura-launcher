@@ -31,14 +31,25 @@ object Lyrics {
     private const val API = "https://lrclib.net/api"
     private const val RETRY_MISSING_MS = 3 * 24 * 3600_000L // a song nobody had added: asked again after 3 days
 
+    /** One sub-word syllable timing (ms) inside a word-timed lyric line (Apple Music TTML / LyricsPlus). */
+    class Syllable(val startMs: Long, val endMs: Long, val text: String)
+
     /**
      * A line and the time it is sung at (0 for all of them when the lyrics are not timed). [words] (1.15): when each of
-     * its words starts, and where the last one ends (-1: not given), as the owner's server gave them; null when it
-     * gave none. Since 1.16 these are only ever real times (a word-timed source, or the song heard): a line without
-     * them is lit whole, never word by word on a guess. [ends] (1.16): where each word's singing ends when a pause
-     * follows it (-1: it runs on to the next word), so the light waits through the pause.
+     * its words starts, and where the last one ends (-1: not given), as a real word-timed source or the owner's server
+     * gave them; null when none were given. Since 1.16 these are only ever real times: a line without them is lit whole,
+     * never word by word on a guess. [ends] (1.16): where each word's singing ends when a pause follows it (-1: it runs
+     * on to the next word), so the light waits through the pause. [endMs] and [syllables] (2.0-beta.6): explicit line end
+     * and per-word syllable timings from Apple Music TTML / LyricsPlus so held notes stretch without drifting ahead.
      */
-    class Line(val ms: Long, val text: String, val words: LongArray? = null, val ends: LongArray? = null)
+    class Line(
+        val ms: Long,
+        val text: String,
+        val words: LongArray? = null,
+        val ends: LongArray? = null,
+        val endMs: Long = -1L,
+        val syllables: Array<Array<Syllable>?>? = null
+    )
 
     /**
      * [synced]: the lines carry times. [instrumental]: a song without words. [durationSec]: the length of the recording
@@ -74,11 +85,25 @@ object Lyrics {
     const val SOURCE_ALIGNED = "aligned"
     /** 1.19: the lines Naghm found on the phone, sent over its link ([PhoneLink.lyrics]). */
     const val SOURCE_NAGHM = "naghm"
+    /** 2.0-beta.6: real word-/syllable-synced lyrics from Apple Music / LyricsPlus / BetterLyrics TTML. */
+    const val SOURCE_APPLE = "apple"
+    const val SOURCE_LYRICSPLUS = "lyricsplus"
+    const val SOURCE_TTML = "ttml"
+
+    private val LYRICSPLUS_HOSTS = arrayOf(
+        "https://lyricsplus.prjktla.workers.dev",
+        "https://lyricsplus.binimum.org",
+        "https://lyricsplus.atomix.one"
+    )
+    private val BETTERLYRICS_ENDPOINTS = arrayOf(
+        "https://lyrics-api.boidu.dev/getLyrics",
+        "https://api.betterlyrics.org/getLyrics"
+    )
 
     private val io = Executors.newSingleThreadExecutor()
     /** The owner's server's later questions, apart: a slow or absent server must not hold the next song's lookup. */
     private val serverIo = Executors.newSingleThreadExecutor()
-    private val main = Handler(Looper.getMainLooper())
+    private val main by lazy { Handler(Looper.getMainLooper()) }
 
     /**
      * Timed lines for a song whose untimed (or partly timed) lines were already handed out, on the main thread: the
@@ -225,10 +250,10 @@ object Lyrics {
      * The owner's "no lyrics for this song" (the More sheet), kept by the song's key as its timing correction is. In a file of its own: a new record of the song, or an emptied cache, must not bring
      * them back, and the four old preference files take no new keys ([com.abdllh.aura.system.PrefTypes]).
      */
-    fun isOff(c: Context, title: String, artist: String, durationSec: Int) = offFile(c).contains(key(title, artist, durationSec))
+    fun isOff(c: Context, title: String, artist: String, durationSec: Int) = offFile(c).contains(offKey(title, artist, durationSec))
 
     fun setOff(c: Context, title: String, artist: String, durationSec: Int, off: Boolean) {
-        val k = key(title, artist, durationSec)
+        val k = offKey(title, artist, durationSec)
         offFile(c).edit().apply { if (off) putBoolean(k, true) else remove(k) }.apply()
     }
 
@@ -259,12 +284,29 @@ object Lyrics {
     @Volatile private var wanted: String? = null // the song asked for last
 
     /**
-     * LRCLIB's record of the song, or null when it has none (an exception: a question went unanswered). The server
-     * is often busy (503), each kind of question on its own: so a busy answer is asked once more, then the next kind.
-     * No album: a file's "album" is often its folder's name, and the exact match then misses.
+     * Looks up lyrics with real word/syllable timings first (LyricsPlus Apple Music / Musixmatch, then BetterLyrics TTML),
+     * falling back to LRCLIB (exact match, cleaned searches, raw fallback) and finally any line-synced LyricsPlus result.
+     * Null when every asked provider confirmed nothing; throws when a provider went unanswered without a valid result.
      */
     private fun fetch(title: String, artist: String, durationSec: Int): JSONObject? {
-        // "not there" is believed only when every question got its answer (a busy one may have had the song)
+        val (cleanTitle, cleanArtist) = LyricsEngine.splitArtistTitle(title, artist)
+        var fallbackSynced: LyricsEngine.ParsedLyrics? = null
+
+        // 1. Real word-/syllable-synced lyrics: LyricsPlus (Apple Music, LyricsPlus, Musixmatch, Spotify)
+        val lp = fetchLyricsPlus(cleanTitle, cleanArtist, durationSec)
+        if (lp != null) {
+            if (lp.wordSynced) return richJson(lp, durationSec)
+            if (lp.synced) fallbackSynced = lp
+        }
+
+        // 2. Real word-/syllable-synced lyrics: BetterLyrics TTML (Apple Music TTML)
+        val bl = fetchBetterLyrics(cleanTitle, cleanArtist, durationSec)
+        if (bl != null) {
+            if (bl.wordSynced) return richJson(bl, durationSec)
+            if (fallbackSynced == null && bl.synced) fallbackSynced = bl
+        }
+
+        // 3. LRCLIB (line-synced and plain database)
         var unanswered = false
         fun ask(url: String): Pair<Int, String>? = try {
             var r = http(url)
@@ -276,21 +318,139 @@ object Lyrics {
             unanswered = true
             null
         }
-        // the exact match first (it wants the artist and the length)
-        if (artist.isNotBlank() && durationSec > 0) {
-            val r = ask("$API/get?track_name=${enc(title)}&artist_name=${enc(artist)}&duration=$durationSec")
-            if (r?.first == 200) JSONObject(r.second).takeIf { hasWords(it) }?.let { return it }
+
+        var plainFallback: JSONObject? = null
+        fun considerLrclib(o: JSONObject?): JSONObject? {
+            if (o == null || !hasWords(o)) return null
+            if (o.optBoolean("instrumental") || o.optString("syncedLyrics").isNotBlank()) return o
+            if (plainFallback == null) plainFallback = o
+            return null
         }
-        // then searches: free text (the lightest for the server), then by field
-        val searches = listOfNotNull("q=${enc("$title $artist".trim())}",
-            if (artist.isNotBlank()) "track_name=${enc(title)}&artist_name=${enc(artist)}" else null)
+
+        // Exact match first (cleaned, then raw if different)
+        if (cleanArtist.isNotBlank() && durationSec > 0) {
+            val r = ask("$API/get?track_name=${enc(cleanTitle)}&artist_name=${enc(cleanArtist)}&duration=$durationSec")
+            if (r?.first == 200) considerLrclib(JSONObject(r.second))?.let { return it }
+        }
+        if (artist.isNotBlank() && durationSec > 0 && (cleanTitle != title.trim() || cleanArtist != artist.trim())) {
+            val r = ask("$API/get?track_name=${enc(title)}&artist_name=${enc(artist)}&duration=$durationSec")
+            if (r?.first == 200) considerLrclib(JSONObject(r.second))?.let { return it }
+        }
+
+        // Searches: cleaned free text, cleaned field query, then raw free text if cleaned changed it
+        val searches = LinkedHashSet<String>()
+        searches.add("q=${enc("$cleanTitle $cleanArtist".trim())}")
+        if (cleanArtist.isNotBlank()) searches.add("track_name=${enc(cleanTitle)}&artist_name=${enc(cleanArtist)}")
+        if (cleanTitle != title.trim() || cleanArtist != artist.trim()) searches.add("q=${enc("$title $artist".trim())}")
         for (q in searches) {
             val r = ask("$API/search?$q") ?: continue
             if (r.first != 200) continue
-            best(JSONArray(r.second), title, artist, durationSec)?.let { return it }
+            considerLrclib(best(JSONArray(r.second), cleanTitle, cleanArtist, durationSec))?.let { return it }
         }
+
+        if (fallbackSynced != null) return richJson(fallbackSynced, durationSec)
+        if (plainFallback != null) return plainFallback
         if (unanswered) throw IllegalStateException("LRCLIB did not answer every question")
         return null
+    }
+
+    /** Queries LyricsPlus mirrors for Apple Music / Musixmatch syllable-synced lyrics. */
+    private fun fetchLyricsPlus(title: String, artist: String, durationSec: Int): LyricsEngine.ParsedLyrics? {
+        if (title.isBlank()) return null
+        val baseQuery = "title=${enc(title)}&artist=${enc(artist)}&source=apple,lyricsplus,musixmatch,spotify"
+        for (host in LYRICSPLUS_HOSTS) {
+            val urlWithDur = if (durationSec > 0) "$host/v2/lyrics/get?$baseQuery&duration=$durationSec" else "$host/v2/lyrics/get?$baseQuery"
+            try {
+                var r = http(urlWithDur, connectMs = 5000, readMs = 7000)
+                if (r.first == 404 && durationSec > 0) {
+                    r = http("$host/v2/lyrics/get?$baseQuery", connectMs = 5000, readMs = 7000)
+                }
+                if (r.first == 200 && r.second.isNotBlank()) {
+                    LyricsEngine.parseLyricsPlus(r.second)?.let {
+                        Log.d(TAG, "LyricsPlus (${it.source}, words=${it.wordSynced}) for '$title'")
+                        return it
+                    }
+                    return null
+                }
+                // 404 means the catalog has no match; mirrors back the same catalog so skip remaining mirrors
+                if (r.first == 404) return null
+            } catch (t: Throwable) {
+                Log.d(TAG, "LyricsPlus $host for '$title': $t")
+            }
+        }
+        return null
+    }
+
+    /** Queries BetterLyrics TTML endpoints for Apple Music word-/syllable-synced TTML lyrics. */
+    private fun fetchBetterLyrics(title: String, artist: String, durationSec: Int): LyricsEngine.ParsedLyrics? {
+        if (title.isBlank()) return null
+        val baseQuery = "s=${enc(title)}&a=${enc(artist)}"
+        for (endpoint in BETTERLYRICS_ENDPOINTS) {
+            val urlWithDur = if (durationSec > 0) "$endpoint?$baseQuery&d=$durationSec" else "$endpoint?$baseQuery"
+            try {
+                var r = http(urlWithDur, connectMs = 5000, readMs = 7000)
+                if (r.first == 404 && durationSec > 0) {
+                    r = http("$endpoint?$baseQuery", connectMs = 5000, readMs = 7000)
+                }
+                if (r.first == 200 && r.second.isNotBlank()) {
+                    LyricsEngine.parseBetterLyrics(r.second)?.let {
+                        Log.d(TAG, "BetterLyrics TTML (words=${it.wordSynced}) for '$title'")
+                        return it
+                    }
+                    return null
+                }
+                if (r.first == 404) return null
+            } catch (t: Throwable) {
+                Log.d(TAG, "BetterLyrics $endpoint for '$title': $t")
+            }
+        }
+        return null
+    }
+
+    /** Serializes real word-/syllable-synced [LyricsEngine.ParsedLyrics] into our on-disk cache JSON format. */
+    private fun richJson(parsed: LyricsEngine.ParsedLyrics, durationSec: Int): JSONObject {
+        val lines = LyricsEngine.toLines(parsed)
+        val arr = JSONArray()
+        val lrc = StringBuilder()
+        val plain = StringBuilder()
+        for (l in lines) {
+            val item = JSONObject().put("ms", l.ms).put("text", l.text)
+            if (l.endMs > 0L) item.put("endMs", l.endMs)
+            l.words?.let { w ->
+                val wa = JSONArray()
+                for (t in w) wa.put(t)
+                item.put("words", wa)
+            }
+            l.ends?.let { e ->
+                val ea = JSONArray()
+                for (t in e) ea.put(t)
+                item.put("ends", ea)
+            }
+            l.syllables?.let { allSyls ->
+                val sa = JSONArray()
+                for (wordSyls in allSyls) {
+                    if (wordSyls == null) { sa.put(JSONObject.NULL); continue }
+                    val wsa = JSONArray()
+                    for (s in wordSyls) wsa.put(JSONArray().put(s.startMs).put(s.endMs).put(s.text))
+                    sa.put(wsa)
+                }
+                item.put("syllables", sa)
+            }
+            arr.put(item)
+            if (lrc.isNotEmpty()) lrc.append('\n')
+            lrc.append("[%02d:%05.2f]%s".format(java.util.Locale.ROOT, l.ms / 60_000, (l.ms % 60_000) / 1000.0, l.text))
+            if (plain.isNotEmpty()) plain.append('\n')
+            plain.append(l.text)
+        }
+        return JSONObject().apply {
+            put("richLines", arr)
+            put("syncedLyrics", lrc.toString())
+            put("plainLyrics", plain.toString())
+            if (durationSec > 0) put("duration", durationSec)
+            put("source", parsed.source)
+            if (parsed.wordSynced) put("words", parsed.source)
+            put("covered", 1.0)
+        }
     }
 
     /**
@@ -300,16 +460,23 @@ object Lyrics {
      * timing would be off by its intro).
      */
     private fun best(all: JSONArray, title: String, artist: String, durationSec: Int): JSONObject? {
-        val t = norm(title)
-        val a = norm(artist)
+        val t = norm(LyricsEngine.cleanTitle(title))
+        val a = norm(LyricsEngine.cleanArtist(artist))
+        val aRtl = LyricsEngine.isRtlText(artist)
         val found = ArrayList<JSONObject>()
         for (i in 0 until all.length()) {
             val o = all.optJSONObject(i) ?: continue
             if (!hasWords(o)) continue
-            val ot = norm(o.optString("trackName"))
+            val ot = norm(LyricsEngine.cleanTitle(o.optString("trackName")))
             if (ot.isEmpty() || !(ot.contains(t) || t.contains(ot))) continue // another song
-            val oa = norm(o.optString("artistName"))
-            if (a.isNotEmpty() && oa.isNotEmpty() && !(oa.contains(a) || a.contains(oa))) continue
+            val oaRaw = o.optString("artistName")
+            val oa = norm(LyricsEngine.cleanArtist(oaRaw))
+            if (a.isNotEmpty() && oa.isNotEmpty() && !(oa.contains(a) || a.contains(oa))) {
+                // Allow cross-script artist names (e.g. Arabic vs Latin transliteration) when title is a strong match
+                val crossScript = aRtl != LyricsEngine.isRtlText(oaRaw)
+                val strongTitle = ot == t || (minOf(ot.length, t.length) >= 4 && (ot.contains(t) || t.contains(ot)))
+                if (!crossScript || !strongTitle) continue
+            }
             val d = o.optDouble("duration", 0.0)
             if (durationSec > 0 && d > 0 && abs(d - durationSec) > 8) continue // another recording of it
             found.add(o)
@@ -317,7 +484,9 @@ object Lyrics {
         val want = if (durationSec > 0) durationSec.toDouble() else agreedLength(found)
         return found.minByOrNull { o ->
             val d = o.optDouble("duration", 0.0)
-            (if (o.optString("syncedLyrics").isNotBlank()) 0.0 else 100.0) + (if (want > 0 && d > 0) abs(d - want) else 50.0)
+            val ot = norm(LyricsEngine.cleanTitle(o.optString("trackName")))
+            val titlePenalty = if (ot == t) 0.0 else 4.0
+            (if (o.optString("syncedLyrics").isNotBlank()) 0.0 else 100.0) + titlePenalty + (if (want > 0 && d > 0) abs(d - want) else 50.0)
         }
     }
 
@@ -327,23 +496,11 @@ object Lyrics {
         return lengths.maxByOrNull { d -> lengths.count { abs(it - d) <= 3.0 } } ?: 0.0
     }
 
-    /** For comparing names: lower case, Arabic letters in one form (أ إ آ → ا, ة → ه, ى → ي), no marks or punctuation. */
-    private fun norm(s: String): String {
-        val b = StringBuilder()
-        for (ch in s.lowercase()) {
-            when {
-                ch in 'ً'..'ْ' || ch == 'ـ' -> {}
-                ch == 'أ' || ch == 'إ' || ch == 'آ' -> b.append('ا')
-                ch == 'ة' -> b.append('ه')
-                ch == 'ى' -> b.append('ي')
-                ch.isLetterOrDigit() -> b.append(ch)
-            }
-        }
-        return b.toString()
-    }
+    /** For comparing names: lower case, Arabic letters in one form (أ إ آ ٱ → ا, ة → ه, ى ئ → ي, ؤ → و), no marks or punctuation. */
+    private fun norm(s: String): String = LyricsEngine.normText(s)
 
     private fun hasWords(o: JSONObject) =
-        o.optBoolean("instrumental") || o.optString("syncedLyrics").isNotBlank() || o.optString("plainLyrics").isNotBlank()
+        o.optBoolean("instrumental") || o.has("richLines") || o.optString("syncedLyrics").isNotBlank() || o.optString("plainLyrics").isNotBlank()
 
     private fun parse(o: JSONObject): Result? {
         if (o.optBoolean("none")) return null
@@ -352,6 +509,14 @@ object Lyrics {
         val source = o.optString("source").ifBlank { SOURCE_LRCLIB }
         val covered = o.optDouble("covered", 1.0).let { if (it.isNaN()) 1f else it.toFloat() }
         if (o.optBoolean("instrumental")) return Result(false, emptyList(), instrumental = true, durationSec = sec, source = source)
+        val rich = o.optJSONArray("richLines")
+        if (rich != null && rich.length() > 0) {
+            val lines = parseRichLines(rich)
+            if (lines.isNotEmpty()) {
+                return Result(true, lines, durationSec = sec, source = source, covered = covered,
+                    words = o.optString("words"), offsetMs = o.optLong("offsetMs", 0L))
+            }
+        }
         val synced = o.optString("syncedLyrics").takeIf { it.isNotBlank() && it != "null" }
         if (synced != null) {
             var lines = parseLrc(synced)
@@ -365,40 +530,38 @@ object Lyrics {
         return Result(false, plain.lines().map { Line(0L, it.trim()) }, durationSec = sec, source = source, covered = 0f)
     }
 
-    private val TAG_RE = Regex("""\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?]""")
+    private fun parseRichLines(arr: JSONArray): List<Line> {
+        val out = ArrayList<Line>(arr.length())
+        for (i in 0 until arr.length()) {
+            val item = arr.optJSONObject(i) ?: continue
+            val ms = item.optLong("ms", 0L)
+            val endMs = item.optLong("endMs", -1L)
+            val text = item.optString("text", "")
+            val wa = item.optJSONArray("words")
+            val words = wa?.let { a -> LongArray(a.length()) { idx -> a.optLong(idx, -1L) } }
+            val ea = item.optJSONArray("ends")
+            val ends = ea?.let { a -> LongArray(a.length()) { idx -> a.optLong(idx, -1L) } }
+            val sa = item.optJSONArray("syllables")
+            val syllables = sa?.let { a ->
+                Array(a.length()) { idx ->
+                    val wsa = a.optJSONArray(idx) ?: return@Array null
+                    Array(wsa.length()) { sIdx ->
+                        val tup = wsa.optJSONArray(sIdx)
+                        Syllable(tup?.optLong(0, 0L) ?: 0L, tup?.optLong(1, 0L) ?: 0L, tup?.optString(2, "").orEmpty())
+                    }
+                }
+            }
+            out.add(Line(ms, text, words, ends, endMs, syllables))
+        }
+        return out
+    }
 
     /**
      * "[01:02.34] words" (several times on one line allowed); metadata tags ([ar:], [offset:]...) are left out. Word
      * tags ("<01:02.34>word", enhanced LRC: the server's "enhanced" field, now and then LRCLIB's own text) become the
      * line's [Line.words] and leave its text.
      */
-    fun parseLrc(text: String): List<Line> {
-        val out = ArrayList<Line>()
-        var offset = 0L
-        for (raw in text.lines()) {
-            val line = raw.trim()
-            Regex("""\[offset:\s*([+-]?\d+)]""", RegexOption.IGNORE_CASE).find(line)?.let { offset = it.groupValues[1].toLongOrNull() ?: 0L }
-            val times = TAG_RE.findAll(line).toList()
-            if (times.isEmpty()) continue
-            val rest = line.substring(times.last().range.last + 1)
-            val tagged = rest.indexOf('<') >= 0
-            var first = -1L
-            for (m in times) {
-                val min = m.groupValues[1].toLong()
-                val sec = m.groupValues[2].toLong()
-                val frac = m.groupValues[3]
-                val ms = when (frac.length) { 0 -> 0L; 1 -> frac.toLong() * 100; 2 -> frac.toLong() * 10; else -> frac.take(3).toLong() }
-                val at = (min * 60_000 + sec * 1000 + ms - offset).coerceAtLeast(0L)
-                if (first < 0L) first = at
-                if (!tagged) { out.add(Line(at, rest.trim())); continue }
-                // (the word tags are the first time's: a line listed at several times has its words moved with it)
-                val w = Words.parseTagged(rest, at - first - offset)
-                out.add(Line(at, w.text, w.times, w.ends))
-            }
-        }
-        out.sortBy { it.ms }
-        return out
-    }
+    fun parseLrc(text: String): List<Line> = LyricsEngine.parseLrc(text)
 
     /** What was kept for the song (its result may be "none"), or null when nothing was. */
     private fun read(f: File): Kept? = try {
@@ -407,15 +570,15 @@ object Lyrics {
         null
     }
 
-    private fun http(url: String): Pair<Int, String> {
+    private fun http(url: String, connectMs: Int = 8000, readMs: Int = 12000): Pair<Int, String> {
         val c = URL(url).openConnection() as HttpURLConnection
-        c.connectTimeout = 8000
-        c.readTimeout = 12000
+        c.connectTimeout = connectMs
+        c.readTimeout = readMs
         c.setRequestProperty("User-Agent", Places.USER_AGENT)
         try {
             val code = c.responseCode
             val body = (if (code in 200..299) c.inputStream else c.errorStream)?.use { String(it.readBytes(), Charsets.UTF_8) }.orEmpty()
-            Log.d(TAG, "$code ${url.substringAfter("/api/").take(60)}")
+            Log.d(TAG, "$code ${url.substringAfter("://").take(70)}")
             return code to body
         } finally {
             c.disconnect()
@@ -426,7 +589,13 @@ object Lyrics {
     private fun enc(s: String) = URLEncoder.encode(s.trim(), "UTF-8").replace("+", "%20")
 
     private fun key(title: String, artist: String, durationSec: Int): String {
-        // (|2: picked by the agreed length since 1.6: what 1.5.4 kept may be a video's timing)
+        // (|3: 2.0-beta.6 upgrades cache entries to real word-/syllable-synced Apple Music TTML / LyricsPlus)
+        val s = "${title.trim().lowercase()}|${artist.trim().lowercase()}|${durationSec / 3}|3"
+        return MessageDigest.getInstance("SHA-1").digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
+    }
+
+    /** Kept on |2 so existing "No lyrics for this song" preferences survive the lyrics cache upgrade. */
+    private fun offKey(title: String, artist: String, durationSec: Int): String {
         val s = "${title.trim().lowercase()}|${artist.trim().lowercase()}|${durationSec / 3}|2"
         return MessageDigest.getInstance("SHA-1").digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
     }

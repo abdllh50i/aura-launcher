@@ -414,10 +414,15 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
     private var phoneSeen: Lyrics.Result? = null
 
     /**
-     * Naghm's lines in place of the screen's own [own], already showing. Not when they are the very same lines (the owner's
-     * correction kept with them goes on applying), and lines without times do not take the place of timed ones.
+     * Naghm's lines in place of the screen's own [own], already showing. Never replaces real word-timed lyrics with
+     * line-only ones; upgrades line-only lyrics when Naghm sends real word times; otherwise avoids replacing the very
+     * same lines (keeping the owner's saved correction) and never replaces timed lines with untimed ones.
      */
-    private fun phoneTakesOver(own: Lyrics.Result, r: Lyrics.Result) = !Lyrics.sameLines(own.lines, r.lines) && (r.synced || !own.synced)
+    private fun phoneTakesOver(own: Lyrics.Result, r: Lyrics.Result): Boolean {
+        if (r.wordsCovered > own.wordsCovered + 0.05f) return true
+        if (own.wordsCovered >= 0.5f && r.wordsCovered < 0.1f) return false
+        return !Lyrics.sameLines(own.lines, r.lines) && (r.synced || !own.synced)
+    }
 
     /** Naghm's own lyrics for the Bluetooth song [s] (1.19), when it sent some for this very song. */
     private fun phoneLyrics(s: LyricSong?): Lyrics.Result? {
@@ -701,15 +706,17 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         if (s == null) { lyricsShown = null; lyricsOff = false; noLyrics = false; lyrics { it.showStatus("") }; return }
         lyricsOff = Lyrics.isOff(this, s.title, s.artist, s.offSec)
         if (lyricsOff) { lyricsAnswer(s.key, null, false); return }
-        // 1.19: Naghm's song with the phone's lyrics already here: those, at once (the same lines as on the phone, timed
-        // on the very recording; the screen's own lookup does not always find them)
-        phoneLyrics(s)?.let { r ->
+        // 1.19: Naghm's song with the phone's lyrics already here: show them at once (zero wait).
+        // 2.0-beta.6: if Naghm's lines carry no real word timings yet and word-by-word mode is on, still query
+        // LyricsPlus / BetterLyrics TTML in the background so the screen upgrades seamlessly to real syllable sync.
+        val phone = phoneLyrics(s)
+        if (phone != null) {
             val own = lyricsResult?.takeIf { lyricsShown == s.key }
-            lyricsAnswer(s.key, if (own == null || phoneTakesOver(own, r)) r else own, false)
-            return
-        }
-        // (while they are looked up their place stays as it is, stepped back)
-        if (lyricsShown != s.key) {
+            val chosen = if (own == null || phoneTakesOver(own, phone)) phone else own
+            lyricsAnswer(s.key, chosen, false)
+            if (!chosen.wantsWords || !Words.on) return
+        } else if (lyricsShown != s.key) {
+            // (while they are looked up their place stays as it is, stepped back)
             lyrics { it.dim() }
             // (what shows is stepped back and no longer follows: back on that song before this answer comes — the
             // phone skipping one way and back — its lines are shown again, not left dimmed)
@@ -719,14 +726,20 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
         }
         Lyrics.get(this, s.title, s.artist, s.sec) { r, failed ->
             if (lyricsKey != s.key || isGone) return@get
-            // (the phone's lyrics came first meanwhile: they stay)
-            if (phoneLyrics(s) != null) return@get
+            // If Naghm's lyrics are already on screen, only upgrade when our lookup brings real word/syllable timings
+            // (or timed lines over untimed phone lines).
+            val livePhone = phoneLyrics(s)
+            if (livePhone != null) {
+                val cur = lyricsResult?.takeIf { lyricsShown == s.key } ?: livePhone
+                val upgrade = r != null && r.synced && (r.wordsCovered > cur.wordsCovered + 0.05f || !cur.synced)
+                if (!upgrade) return@get
+            }
             lyricsView.removeCallbacks(lyricsLoading)
             // the length of the recording the lines were timed on: the Bluetooth song's, while the phone tells none
             // (timed lines only: an untimed record's length says no more than a catalogue's)
             if (bt && r != null && r.synced && r.durationSec > 0) BtMusic.offerDuration(r.durationSec, s.title, s.artist, BtMusic.FROM_LYRICS)
             val wait = songMovesUntil - SystemClock.uptimeMillis()
-            if (wait > 0) root.postDelayed({ if (lyricsKey == s.key && !isGone && phoneLyrics(s) == null) lyricsAnswer(s.key, r, failed) }, wait)
+            if (wait > 0) root.postDelayed({ if (lyricsKey == s.key && !isGone) lyricsAnswer(s.key, r, failed) }, wait)
             else lyricsAnswer(s.key, r, failed)
         }
     }
@@ -754,13 +767,18 @@ class MusicPanel(shell: HomeActivity) : Panel(shell, Screens.MUSIC) {
                 // (the same song's lines again stay where they are; other ones, Naghm's after the screen's own, go up)
                 val old = lyricsResult
                 val same = lyricsShown == key && old != null && Lyrics.sameLines(old.lines, r.lines)
+                val gainedWords = old != null && r.wordsCovered > old.wordsCovered + 0.05f
                 lyricsResult = r
                 // the owner's correction kept with these lyrics (a Bluetooth song's: see onLineTap; the very lyrics that
                 // show go on with the one they have, which may be newer than what they were read with)
-                if (r !== old) lyricsOffset = if (lyricsSong?.bt == true) r.offsetMs else 0L
+                if (r !== old) {
+                    val keepPrev = same && lyricsOffset != 0L && r.offsetMs == 0L
+                    if (!keepPrev) lyricsOffset = if (lyricsSong?.bt == true) r.offsetMs else 0L
+                }
                 val at = positionNow() + lyricsShift
                 if (!same) lyrics { it.show(r) }
-                if (com.abdllh.aura.BuildConfig.DEBUG) android.util.Log.d("AuraMusic", "lyrics up: ${r.source}, ${r.lines.size} lines, offset $lyricsOffset, put up: ${!same}")
+                else if (gainedWords) lyrics { it.timeLines(r) }
+                if (com.abdllh.aura.BuildConfig.DEBUG) android.util.Log.d("AuraMusic", "lyrics up: ${r.source}, ${r.lines.size} lines, words=${r.wordsCovered}, offset $lyricsOffset, put up: ${!same}")
                 lyricsShown = key
                 lyrics { it.needSync = unknown; it.at(at) }
                 listenFor(r)

@@ -72,6 +72,13 @@ internal object Words {
         return if (l.words != null && e.size == count(l.text)) e else null
     }
 
+    /** Optional sub-word syllable timings for each word of line [i] (Apple Music TTML / LyricsPlus); null when none. */
+    fun syllables(lines: List<Lyrics.Line>, i: Int): Array<Array<Lyrics.Syllable>?>? {
+        val l = lines[i]
+        val s = l.syllables ?: return null
+        return if (l.words != null && s.size == count(l.text)) s else null
+    }
+
     private val WORD_TAG = Regex("""<(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?>""")
 
     /** A line's text with its word tags taken out, its words' times (as [Lyrics.Line.words]) and pauses ([Lyrics.Line.ends]). */
@@ -168,7 +175,7 @@ internal object Words {
                 any = true
                 val first = found.words!![0]
                 val ms = if (first < l.ms) maxOf(first, l.ms - EARLIER_MS, prevMs + 1) else l.ms
-                Lyrics.Line(ms, l.text, found.words, found.ends)
+                Lyrics.Line(ms, l.text, found.words, found.ends, if (found.endMs > 0L) found.endMs else l.endMs, found.syllables)
             } else l
             prevMs = line.ms
             out.add(line)
